@@ -140,6 +140,8 @@ enum PlatePatternMatcher {
         "11000PM", "11100PM", "111000P", "770DAM",
         // Common OCR garbles of car badge text
         "SUBAAIU", "SBUBABL", "SBUBAR", "SSUBARU",
+        "SUZARU", "SUCARU", "TATARU", "SUSARU", "SUUARU",
+        "SURENC", "SALAFO", "CUTEACI", "CUTEACK", "SUTEACK",
         "RREGAI", "FREGAI",
         "MYWAYTO", "MYWAITO",
     ]

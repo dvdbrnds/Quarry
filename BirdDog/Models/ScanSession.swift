@@ -6,6 +6,7 @@ struct ScanSession: Identifiable, Codable {
     let startTime: Date
     var endTime: Date?
     var plates: [ScannedPlate]
+    var diagnostics: [DiagnosticEntry]
 
     var isActive: Bool { endTime == nil }
 
@@ -45,5 +46,6 @@ struct ScanSession: Identifiable, Codable {
         self.startTime = Date()
         self.endTime = nil
         self.plates = []
+        self.diagnostics = []
     }
 }
