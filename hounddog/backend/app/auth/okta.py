@@ -1,0 +1,92 @@
+"""Okta OIDC token verification for the dashboard."""
+
+from fastapi import Depends, HTTPException, Request
+from jose import JWTError, jwt
+import httpx
+
+from ..config import settings
+
+_jwks_cache: dict | None = None
+
+
+async def _get_jwks() -> dict:
+    global _jwks_cache
+    if _jwks_cache:
+        return _jwks_cache
+    if not settings.okta_domain:
+        return {}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"https://{settings.okta_domain}/oauth2/default/v1/keys")
+        resp.raise_for_status()
+        _jwks_cache = resp.json()
+        return _jwks_cache
+
+
+def _extract_token(request: Request) -> str | None:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+    return request.cookies.get("access_token")
+
+
+class OktaUser:
+    def __init__(self, sub: str, email: str, groups: list[str]):
+        self.sub = sub
+        self.email = email
+        self.groups = groups
+
+    @property
+    def role(self) -> str:
+        if "admin" in self.groups:
+            return "admin"
+        if "supervisor" in self.groups:
+            return "supervisor"
+        if "finance" in self.groups:
+            return "finance"
+        return "officer"
+
+    def has_role(self, *roles: str) -> bool:
+        return self.role in roles
+
+
+async def get_current_user(request: Request) -> OktaUser:
+    if not settings.okta_domain:
+        return OktaUser(sub="dev", email="dev@local", groups=["admin"])
+
+    token = _extract_token(request)
+    if not token:
+        raise HTTPException(401, "Missing authentication token")
+
+    try:
+        jwks = await _get_jwks()
+        unverified_header = jwt.get_unverified_header(token)
+        key = None
+        for k in jwks.get("keys", []):
+            if k["kid"] == unverified_header.get("kid"):
+                key = k
+                break
+        if not key:
+            raise HTTPException(401, "Invalid token key")
+
+        payload = jwt.decode(
+            token,
+            key,
+            algorithms=["RS256"],
+            audience=settings.okta_audience or settings.okta_client_id,
+            issuer=f"https://{settings.okta_domain}/oauth2/default",
+        )
+        return OktaUser(
+            sub=payload.get("sub", ""),
+            email=payload.get("email", payload.get("sub", "")),
+            groups=payload.get("groups", []),
+        )
+    except JWTError as e:
+        raise HTTPException(401, f"Token verification failed: {e}")
+
+
+def require_role(*roles: str):
+    async def dependency(user: OktaUser = Depends(get_current_user)):
+        if not user.has_role(*roles):
+            raise HTTPException(403, f"Requires one of: {', '.join(roles)}")
+        return user
+    return dependency

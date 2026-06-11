@@ -92,6 +92,39 @@ final class CameraService: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Violation Photo Capture
+
+    private var latestSampleBuffer: CMSampleBuffer?
+
+    func captureViolationPhoto() -> String? {
+        guard let buffer = latestSampleBuffer,
+              let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
+
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+
+        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+        let targetSize = CGSize(width: 640, height: 480)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
+
+        guard let jpegData = resized.jpegData(compressionQuality: 0.6) else { return nil }
+
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("violation_photos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let filename = "violation_\(UUID().uuidString).jpg"
+        let fileURL = dir.appendingPathComponent(filename)
+        try? jpegData.write(to: fileURL)
+        return fileURL.path
+    }
+
+    static func deleteViolationPhoto(at path: String) {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
     /// Force a full session teardown and rebuild. Exposed for the admin
     /// "Reconnect Camera" button and internal hub retry logic.
     func forceReconnect() {
@@ -730,6 +763,7 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        latestSampleBuffer = sampleBuffer
         frameCount += 1
 
         if isUsingExternalCamera && frameCount % 4 == 0,

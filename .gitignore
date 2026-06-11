@@ -45,9 +45,21 @@ dist/
 # Secrets / credentials
 *.env
 .env.*
+!.env.example
+
+# Node
+node_modules/
+
+# Frontend build
+hounddog/frontend/dist/
+
+# Backend uploads
+hounddog/backend/uploads/
 
 # Excel temp files
 ~$*.xlsx
 
 # Permit data (contains real student/staff records)
 All Parking Permits.xlsx
+Parking Permits Export*.xlsx
+ReportSearchExport.xlsx

@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hounddog
+      POSTGRES_PASSWORD: hounddog
+      POSTGRES_DB: hounddog
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      HOUNDDOG_DATABASE_URL: postgresql+asyncpg://hounddog:hounddog@db:5432/hounddog
+      HOUNDDOG_CORS_ORIGINS: '["http://localhost:5173"]'
+      HOUNDDOG_DEBUG: "true"
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata:
