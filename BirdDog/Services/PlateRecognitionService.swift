@@ -97,7 +97,7 @@ final class PlateRecognitionService {
                 var accepted = false
                 let minConfidence: Float = useExternal ? 0.7 : 0.8
 
-                let minAspect: CGFloat = useExternal ? 0.5 : 1.2
+                let minAspect: CGFloat = useExternal ? 0.4 : 1.2
                 let maxAspect: CGFloat = 10.0
                 let passesAspect = aspect > minAspect && aspect < maxAspect
 

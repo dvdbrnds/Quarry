@@ -74,6 +74,7 @@ final class PlateReaderViewModel: ObservableObject {
     private let candidateVoter = CandidateVoter()
 
     private var alertPlayer: AVAudioPlayer?
+    private var currentDayStart: Date = Calendar.current.startOfDay(for: Date())
 
     private var engineObserver: Any?
 
@@ -130,6 +131,14 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     func startScanning() {
+        if activeSession == nil {
+            let cam = cameraService.activeCameraName
+            let df = DateFormatter()
+            df.dateFormat = "h:mma"
+            let label = cam.isEmpty || cam == "None" ? "Scan \(df.string(from: Date()))" : "\(cam) \(df.string(from: Date()))"
+            let session = ScanSession(label: label)
+            activeSession = session
+        }
         cameraService.start()
         isScanning = true
     }
@@ -137,6 +146,17 @@ final class PlateReaderViewModel: ObservableObject {
     func stopScanning() {
         cameraService.stop()
         isScanning = false
+        finalizeSession()
+    }
+
+    private func finalizeSession() {
+        guard var session = activeSession else { return }
+        session.endTime = Date()
+        session.plates = scanLog
+        session.diagnostics = diagnosticLog
+        sessionManager.save(session)
+        activeSession = nil
+        reloadHistory()
     }
 
     func clearLog() {
@@ -150,20 +170,13 @@ final class PlateReaderViewModel: ObservableObject {
         deletePersistedScanLog()
     }
 
-    func startSession(label: String) {
-        endSessionIfActive()
-        let session = ScanSession(label: label)
-        activeSession = session
+    func startNewSession() {
+        finalizeSession()
         clearLog()
     }
 
     func endSessionIfActive() {
-        guard var session = activeSession else { return }
-        session.endTime = Date()
-        session.plates = scanLog
-        sessionManager.save(session)
-        activeSession = nil
-        reloadHistory()
+        finalizeSession()
     }
 
     func reloadHistory() {
@@ -190,6 +203,12 @@ final class PlateReaderViewModel: ObservableObject {
         diagnosticLog.append(contentsOf: result.diagnostics)
 
         let now = Date()
+        let todayStart = Calendar.current.startOfDay(for: now)
+        if todayStart > currentDayStart {
+            currentDayStart = todayStart
+            startNewSession()
+        }
+
         pruneExpiredSeenPlates()
         candidateVoter.pruneExpired()
 
@@ -487,6 +506,7 @@ final class PlateReaderViewModel: ObservableObject {
 
         if var session = activeSession {
             session.plates = scanLog
+            session.diagnostics = diagnosticLog
             sessionManager.save(session)
             activeSession = session
         }
@@ -497,10 +517,17 @@ final class PlateReaderViewModel: ObservableObject {
         do {
             let data = try Data(contentsOf: Self.scanLogURL)
             let restored = try JSONDecoder().decode([ScannedPlate].self, from: data)
-            if !restored.isEmpty {
-                scanLog = restored
-                for entry in restored {
+            let todayOnly = restored.filter { $0.timestamp >= currentDayStart }
+            if !todayOnly.isEmpty {
+                scanLog = todayOnly
+                for entry in todayOnly {
                     seenPlates.append((text: entry.text, time: entry.timestamp))
+                }
+            }
+            if todayOnly.count < restored.count {
+                deletePersistedScanLog()
+                if !todayOnly.isEmpty {
+                    persistScanLog()
                 }
             }
         } catch {

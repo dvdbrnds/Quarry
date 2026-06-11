@@ -19,9 +19,9 @@ struct SessionHistoryView: View {
         List {
             if viewModel.sessionHistory.isEmpty {
                 ContentUnavailableView(
-                    "No Sessions Yet",
-                    systemImage: "clock.badge.questionmark",
-                    description: Text("Start a test session from the scanner to begin collecting data.")
+                    "No Archive Data",
+                    systemImage: "archivebox",
+                    description: Text("Previous days' scans are archived here automatically and kept for 30 days.")
                 )
             }
 
@@ -122,6 +122,12 @@ struct SessionHistoryView: View {
                         .font(.caption2)
                         .foregroundStyle(.green)
                 }
+
+                if !session.diagnostics.isEmpty {
+                    Text("\(session.diagnostics.count) diag")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)
@@ -199,6 +205,10 @@ struct SessionDetailView: View {
                     var urls: [URL] = []
                     if let summary = LogExporter.exportSessionSummary(from: session.plates) { urls.append(summary) }
                     if let csv = LogExporter.exportCSV(from: session.plates) { urls.append(csv) }
+                    if !session.diagnostics.isEmpty,
+                       let diag = LogExporter.exportDiagnosticCSV(from: session.diagnostics) {
+                        urls.append(diag)
+                    }
                     if !urls.isEmpty {
                         exportURLs = urls
                         showExport = true

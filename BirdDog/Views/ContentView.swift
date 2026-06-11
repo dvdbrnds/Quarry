@@ -12,9 +12,7 @@ struct ContentView: View {
     @State private var showAdminSettings = false
     @State private var showPasscodeEntry = false
     @State private var showSessionHistory = false
-    @State private var showStartSession = false
     @State private var showCameraLog = false
-    @State private var newSessionLabel = ""
     @State private var exportURLs: [URL] = []
     @State private var now = Date()
 
@@ -135,17 +133,6 @@ struct ContentView: View {
         } message: {
             Text("This will remove all \(viewModel.scanLog.count) scanned plates from this session.")
         }
-        .alert("Start Test Session", isPresented: $showStartSession) {
-            TextField("Session name", text: $newSessionLabel)
-            Button("Start") {
-                let label = newSessionLabel.trimmingCharacters(in: .whitespaces)
-                viewModel.startSession(label: label.isEmpty ? defaultSessionLabel() : label)
-                newSessionLabel = ""
-            }
-            Button("Cancel", role: .cancel) { newSessionLabel = "" }
-        } message: {
-            Text("Give this test run a name (e.g. \"iPad Built-in\" or \"e-con 60fps\").")
-        }
         .sheet(isPresented: $showSessionHistory) {
             NavigationStack {
                 SessionHistoryView(viewModel: viewModel)
@@ -263,23 +250,10 @@ struct ContentView: View {
 
     private var bottomBar: some View {
         HStack {
-            if let session = viewModel.activeSession {
-                HStack(spacing: 4) {
-                    Circle().fill(.red).frame(width: 6, height: 6)
-                    Text(session.label)
-                        .font(.caption.bold())
-                        .lineLimit(1)
-                }
-                Text(sessionDuration)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            } else {
-                Text(sessionDuration)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+            Text(sessionDuration)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
 
             Spacer()
 
@@ -314,30 +288,12 @@ struct ContentView: View {
                 }
             }
 
-            if viewModel.activeSession != nil {
-                Button {
-                    viewModel.endSessionIfActive()
-                } label: {
-                    Label("End", systemImage: "stop.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                }
-            } else {
-                Button {
-                    showStartSession = true
-                } label: {
-                    Label("Test", systemImage: "play.circle.fill")
-                        .font(.subheadline)
-                }
-            }
-
             Button {
                 showSessionHistory = true
             } label: {
-                Image(systemName: "clock.arrow.circlepath")
+                Label("Archive", systemImage: "archivebox")
                     .font(.subheadline)
             }
-            .badge(viewModel.sessionHistory.count)
 
             Button {
                 showClearConfirm = true
@@ -355,13 +311,7 @@ struct ContentView: View {
             }
             .disabled(viewModel.scanLog.isEmpty)
             .confirmationDialog("Export Options", isPresented: $showExportOptions) {
-                Button("Plates Only (CSV)") {
-                    if let url = LogExporter.exportCSV(from: viewModel.scanLog) {
-                        exportURLs = [url]
-                        showExportSheet = true
-                    }
-                }
-                Button("Plates + Diagnostics") {
+                Button("Plates + Diagnostics (CSV)") {
                     var urls: [URL] = []
                     if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
                     if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
@@ -474,16 +424,6 @@ struct ContentView: View {
         return String(format: "%d:%02d", m, s)
     }
 
-    private func defaultSessionLabel() -> String {
-        let cam = viewModel.cameraService.activeCameraName
-        let df = DateFormatter()
-        df.dateFormat = "h:mma"
-        let time = df.string(from: Date())
-        if cam.isEmpty {
-            return "Test \(time)"
-        }
-        return "\(cam) \(time)"
-    }
 }
 
 struct ShareSheet: UIViewControllerRepresentable {

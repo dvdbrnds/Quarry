@@ -46,7 +46,7 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
     }
 }
 
-struct DiagnosticEntry: Sendable {
+struct DiagnosticEntry: Sendable, Codable {
     let timestamp: Date
     let rawText: String
     let normalizedText: String

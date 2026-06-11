@@ -23,7 +23,11 @@ final class SessionHistoryManager {
         return d
     }()
 
-    private init() {}
+    private let retentionDays: Int = 30
+
+    private init() {
+        pruneExpired()
+    }
 
     func save(_ session: ScanSession) {
         let url = sessionsDir.appendingPathComponent("\(session.id.uuidString).json")
@@ -60,6 +64,18 @@ final class SessionHistoryManager {
         let sessions = loadAll()
         for session in sessions {
             delete(session)
+        }
+    }
+
+    /// Remove sessions older than `retentionDays`.
+    func pruneExpired() {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date()) ?? Date()
+        let sessions = loadAll()
+        for session in sessions {
+            let sessionDate = session.endTime ?? session.startTime
+            if sessionDate < cutoff {
+                delete(session)
+            }
         }
     }
 }
