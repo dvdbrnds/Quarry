@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BirdDog — Brand Identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="brand.css" />
+<style>
+  body { background: #e5e2d6; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="logos.jsx"></script>
+<script type="text/babel" src="app-assets.jsx"></script>
+<script type="text/babel" src="spec-and-marketing.jsx"></script>
+
+<script type="text/babel">
+const { DesignCanvas, DCSection, DCArtboard } = window;
+
+function App() {
+  return (
+    <DesignCanvas
+      title="BirdDog"
+      subtitle="Brand identity exploration · Moravian beta · Patrol Suite for campus parking enforcement"
+    >
+      {/* ============================================================ */}
+      <DCSection id="logos" title="Logo Directions">
+        <DCArtboard id="d1" label="01 · Stacked Crest" width={360} height={360}>
+          <Direction1Crest />
+        </DCArtboard>
+        <DCArtboard id="d2" label="02 · Horizontal Lockup" width={360} height={360}>
+          <Direction2Horizontal />
+        </DCArtboard>
+        <DCArtboard id="d3" label="03 · License Plate Frame" width={360} height={360}>
+          <Direction3Plate />
+        </DCArtboard>
+        <DCArtboard id="d4" label="04 · Department Shield" width={360} height={360}>
+          <Direction4Shield />
+        </DCArtboard>
+        <DCArtboard id="d5" label="05 · Scan-line Wordmark" width={360} height={360}>
+          <Direction5Scanline />
+        </DCArtboard>
+        <DCArtboard id="d6" label="06 · BD Monogram" width={360} height={360}>
+          <Direction6Monogram />
+        </DCArtboard>
+        <DCArtboard id="d7" label="07 · Department Seal" width={360} height={360}>
+          <Direction7Seal />
+        </DCArtboard>
+        <DCArtboard id="d8" label="08 · Minimal Type" width={360} height={360}>
+          <Direction8MinimalType />
+        </DCArtboard>
+        <DCArtboard id="d9" label="09 · Plate Strip Industrial" width={360} height={360}>
+          <Direction9Strip />
+        </DCArtboard>
+      </DCSection>
+
+      {/* ============================================================ */}
+      <DCSection id="icons" title="App Icons (iPhone & iPad)">
+        <DCArtboard id="ia" label="A · Navy + Brass" width={240} height={240}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AppIconA />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="ib" label="B · Brass Field" width={240} height={240}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AppIconB />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="ic" label="C · Monogram + Mark" width={240} height={240}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AppIconC />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="id" label="D · Bone (light)" width={240} height={240}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AppIconD />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="iscale" label="Icon at scale (60 / 120 / 180)" width={520} height={240}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28 }}>
+            <div style={{ transform: 'scale(0.3)', transformOrigin: 'center' }}><AppIconA /></div>
+            <div style={{ transform: 'scale(0.6)', transformOrigin: 'center' }}><AppIconA /></div>
+            <div style={{ transform: 'scale(0.9)', transformOrigin: 'center' }}><AppIconA /></div>
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ============================================================ */}
+      <DCSection id="splash" title="Splash & Launch Screens">
+        <DCArtboard id="splashphone" label="iPhone splash" width={360} height={740}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <SplashScreen width={320} height={692} label="iPhone" />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="splashpad" label="iPad splash" width={620} height={740}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <SplashScreen width={560} height={700} label="iPad" />
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ============================================================ */}
+      <DCSection id="login" title="Login Screen Header Art">
+        <DCArtboard id="loginart" label="Login banner" width={760} height={360}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <LoginHeaderArt />
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ============================================================ */}
+      <DCSection id="header" title="In-App Header & Favicon">
+        <DCArtboard id="hdrlight" label="Header · light" width={400} height={120}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <InAppHeader />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="hdrdark" label="Header · dark" width={400} height={120}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <InAppHeader inverted />
+          </div>
+        </DCArtboard>
+        <DCArtboard id="favicon" label="Favicon · 64 / 32 / 16" width={260} height={120}>
+          <div style={{ width: '100%', height: '100%', background: '#e5e2d6', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+            <Favicon size={64} />
+            <Favicon size={32} />
+            <Favicon size={16} />
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ============================================================ */}
+      <DCSection id="spec" title="Brand Spec Sheet">
+        <DCArtboard id="specsheet" label="Color + Type spec" width={1100} height={1480}>
+          <SpecSheet />
+        </DCArtboard>
+      </DCSection>
+
+      {/* ============================================================ */}
+      <DCSection id="onepager" title="Marketing One-Pager">
+        <DCArtboard id="onepager" label="For IT / procurement" width={1100} height={1320}>
+          <OnePager />
+        </DCArtboard>
+      </DCSection>
+
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
