@@ -14,6 +14,7 @@
 		1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3E09DFE576A65B9E6C3329 /* ContentView.swift */; };
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
 		2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */; };
+		2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */; };
 		2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */; };
 		37569C3C0139FED6C7584B07 /* PlatePatternMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */; };
 		3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F3193DCF5C38933C9A27783B /* Assets.xcassets */; };
@@ -35,15 +36,19 @@
 		9BC6C7A9621CBA14F935AA79 /* CandidateVoter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */; };
 		A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D365FD04C9B93E301AA01 /* ScanSession.swift */; };
 		A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */ = {isa = PBXBuildFile; fileRef = C42BDC169688489AFC03AF14 /* lots.json */; };
+		A995D232122A1DA19C939AB6 /* Parking Permits Export (1-1-25 to 6-11-26).xlsx in Resources */ = {isa = PBXBuildFile; fileRef = EF327B2CBBEE852C1E69491E /* Parking Permits Export (1-1-25 to 6-11-26).xlsx */; };
 		ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E381758AC904764909D151F /* GeofenceService.swift */; };
 		AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */; };
 		B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */; };
 		B97725AA2B765B44F6A149CD /* ScannedPlate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2505471792A29EC48A7FD322 /* ScannedPlate.swift */; };
 		B9D4DE65A44793882C83972C /* SessionHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */; };
 		BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */; };
+		BFCF47AAA1D215464FCCD89E /* ReportSearchExport.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 3EFB2C42066478E1CF015E82 /* ReportSearchExport.xlsx */; };
 		C5B0B9026A6F36C07B39AEA0 /* LogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BF196714A7C025584420F0 /* LogExporterTests.swift */; };
 		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
 		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
+		E7FA00A5056019AF87304DA2 /* ~$ReportSearchExport.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 63A480FE14BAC0C36AF24836 /* ~$ReportSearchExport.xlsx */; };
+		F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,9 +71,12 @@
 		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
+		3EFB2C42066478E1CF015E82 /* ReportSearchExport.xlsx */ = {isa = PBXFileReference; path = ReportSearchExport.xlsx; sourceTree = "<group>"; };
 		4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotManagementView.swift; sourceTree = "<group>"; };
 		5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcher.swift; sourceTree = "<group>"; };
+		61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoundDogSyncService.swift; sourceTree = "<group>"; };
+		63A480FE14BAC0C36AF24836 /* ~$ReportSearchExport.xlsx */ = {isa = PBXFileReference; path = "~$ReportSearchExport.xlsx"; sourceTree = "<group>"; };
 		64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDogApp.swift; sourceTree = "<group>"; };
 		6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryView.swift; sourceTree = "<group>"; };
 		72F5636944CED0E09729E861 /* DataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataProvider.swift; sourceTree = "<group>"; };
@@ -85,6 +93,7 @@
 		A60D6819CAAEDDD374807655 /* ScanLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogView.swift; sourceTree = "<group>"; };
 		A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateOverlayView.swift; sourceTree = "<group>"; };
 		A78E19F300499EF824B1615C /* CandidateVoterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoterTests.swift; sourceTree = "<group>"; };
+		AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingTicket.swift; sourceTree = "<group>"; };
 		B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		B93C48DCFE8DCDB9B0125C83 /* permits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = permits.json; sourceTree = "<group>"; };
 		B93D8CD7DEBD2418FF0C7F74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -95,6 +104,7 @@
 		DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcherTests.swift; sourceTree = "<group>"; };
 		EDAF99197F0B8306C7230405 /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
 		EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotMatchingTests.swift; sourceTree = "<group>"; };
+		EF327B2CBBEE852C1E69491E /* Parking Permits Export (1-1-25 to 6-11-26).xlsx */ = {isa = PBXFileReference; path = "Parking Permits Export (1-1-25 to 6-11-26).xlsx"; sourceTree = "<group>"; };
 		F3193DCF5C38933C9A27783B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -104,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */,
+				AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */,
 				85B823FB184EA9720E86DF1E /* PermitRecord.swift */,
 				0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */,
 				2505471792A29EC48A7FD322 /* ScannedPlate.swift */,
@@ -129,6 +140,7 @@
 				737FD3F7D372AFD77737EE09 /* CameraService.swift */,
 				72F5636944CED0E09729E861 /* DataProvider.swift */,
 				2E381758AC904764909D151F /* GeofenceService.swift */,
+				61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */,
 				32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */,
 				07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */,
 				84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */,
@@ -141,6 +153,9 @@
 		7633F04F8A234B0E341D30EC /* BirdDog */ = {
 			isa = PBXGroup;
 			children = (
+				63A480FE14BAC0C36AF24836 /* ~$ReportSearchExport.xlsx */,
+				EF327B2CBBEE852C1E69491E /* Parking Permits Export (1-1-25 to 6-11-26).xlsx */,
+				3EFB2C42066478E1CF015E82 /* ReportSearchExport.xlsx */,
 				E8BE159D74C944022E6BF7BD /* App */,
 				23F7BA4979B2D798151C9E32 /* Models */,
 				2FA41B1B577F89D2982CA9D1 /* Resources */,
@@ -272,7 +287,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					F54415F8B9AD95176D8C2D54 = {
 						DevelopmentTeam = P6D8DZ6BZ7;
@@ -311,8 +326,11 @@
 			files = (
 				3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */,
 				0FF55B00E57C6DC9EAEF1E42 /* LaunchScreen.storyboard in Resources */,
+				A995D232122A1DA19C939AB6 /* Parking Permits Export (1-1-25 to 6-11-26).xlsx in Resources */,
+				BFCF47AAA1D215464FCCD89E /* ReportSearchExport.xlsx in Resources */,
 				A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */,
 				77802D98BB1AE822113E654C /* permits.json in Resources */,
+				E7FA00A5056019AF87304DA2 /* ~$ReportSearchExport.xlsx in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,9 +364,11 @@
 				08974B307700E90A8928F832 /* DataProvider.swift in Sources */,
 				B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */,
 				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
+				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,
 				5994879595E847E9856A1071 /* LogExporter.swift in Sources */,
 				035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */,
 				23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */,
+				F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */,
 				58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */,
 				7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */,
 				804F3E3D558F634FC371174B /* PlateDatabase.swift in Sources */,
