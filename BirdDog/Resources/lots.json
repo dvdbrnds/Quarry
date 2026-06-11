@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LOT_A",
+    "name": "LOT A",
+    "boundary": [
+      { "latitude": 40.62540, "longitude": -75.37020 },
+      { "latitude": 40.62545, "longitude": -75.36970 },
+      { "latitude": 40.62510, "longitude": -75.36965 },
+      { "latitude": 40.62505, "longitude": -75.37015 }
+    ]
+  },
+  {
+    "id": "LOT_Q",
+    "name": "LOT Q",
+    "boundary": [
+      { "latitude": 40.62320, "longitude": -75.36860 },
+      { "latitude": 40.62325, "longitude": -75.36810 },
+      { "latitude": 40.62290, "longitude": -75.36805 },
+      { "latitude": 40.62285, "longitude": -75.36855 }
+    ]
+  }
+]

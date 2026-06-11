@@ -1,0 +1,42 @@
+/* BirdDog Brand Tokens */
+:root {
+  /* Primary palette — institutional navy */
+  --bd-navy-950: #050b1a;
+  --bd-navy-900: #0a1428;
+  --bd-navy-800: #0f1d3a;
+  --bd-navy-700: #14274d;
+  --bd-navy-600: #1e3563;
+  --bd-navy-500: #2a4480;
+  --bd-navy-400: #4a6aa8;
+
+  /* Accent — mustard / brass (institutional, badge-adjacent) */
+  --bd-brass-700: #8a6a08;
+  --bd-brass-600: #ca8a04;
+  --bd-brass-500: #eab308;
+  --bd-brass-400: #fbbf24;
+  --bd-brass-300: #fcd34d;
+
+  /* Neutrals — warm off-whites */
+  --bd-bone-50: #fafaf6;
+  --bd-bone-100: #f3f1ea;
+  --bd-bone-200: #e5e2d6;
+  --bd-bone-300: #c8c3b1;
+
+  /* Greys */
+  --bd-ink-900: #14171c;
+  --bd-ink-700: #2d3340;
+  --bd-ink-500: #5a6373;
+  --bd-ink-300: #9099a8;
+
+  /* Functional */
+  --bd-red: #b91c1c;
+  --bd-green: #15803d;
+
+  /* Type */
+  --bd-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --bd-body: 'Inter', system-ui, sans-serif;
+  --bd-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--bd-body); -webkit-font-smoothing: antialiased; }

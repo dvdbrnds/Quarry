@@ -1,0 +1,616 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */; };
+		08974B307700E90A8928F832 /* DataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F5636944CED0E09729E861 /* DataProvider.swift */; };
+		146E2D4B87A2D168A6F5B247 /* PlateReaderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */; };
+		1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3E09DFE576A65B9E6C3329 /* ContentView.swift */; };
+		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
+		2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */; };
+		2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */; };
+		37569C3C0139FED6C7584B07 /* PlatePatternMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */; };
+		3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F3193DCF5C38933C9A27783B /* Assets.xcassets */; };
+		3FFD378444F1F788A2ADF916 /* AdminSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995B0C59C443E480C6E8929E /* AdminSettingsView.swift */; };
+		4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDFCA61ABE8C3A028664636 /* CameraLogView.swift */; };
+		4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */; };
+		50D3CFDA5BB31F7ADF11E3ED /* AdminPasscodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */; };
+		58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B823FB184EA9720E86DF1E /* PermitRecord.swift */; };
+		5994879595E847E9856A1071 /* LogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDAF99197F0B8306C7230405 /* LogExporter.swift */; };
+		64981CA33F907E9364BD1333 /* PlateRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */; };
+		69CAE303D623B0FF8901592F /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737FD3F7D372AFD77737EE09 /* CameraService.swift */; };
+		6C3D5AF592FB47DAB1529273 /* ScanLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60D6819CAAEDDD374807655 /* ScanLogView.swift */; };
+		77802D98BB1AE822113E654C /* permits.json in Resources */ = {isa = PBXBuildFile; fileRef = B93C48DCFE8DCDB9B0125C83 /* permits.json */; };
+		7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */; };
+		804F3E3D558F634FC371174B /* PlateDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */; };
+		83D4DA427F57D63F16E9F644 /* PlateRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */; };
+		8DC5242CF0EADCE06BA53918 /* CandidateVoterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78E19F300499EF824B1615C /* CandidateVoterTests.swift */; };
+		8F5F5EE340D5F20CF18E7E40 /* SessionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */; };
+		9BC6C7A9621CBA14F935AA79 /* CandidateVoter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */; };
+		A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D365FD04C9B93E301AA01 /* ScanSession.swift */; };
+		A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */ = {isa = PBXBuildFile; fileRef = C42BDC169688489AFC03AF14 /* lots.json */; };
+		ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E381758AC904764909D151F /* GeofenceService.swift */; };
+		AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */; };
+		B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */; };
+		B97725AA2B765B44F6A149CD /* ScannedPlate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2505471792A29EC48A7FD322 /* ScannedPlate.swift */; };
+		B9D4DE65A44793882C83972C /* SessionHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */; };
+		BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */; };
+		C5B0B9026A6F36C07B39AEA0 /* LogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BF196714A7C025584420F0 /* LogExporterTests.swift */; };
+		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
+		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CFF5D219562E10CE7F922CFC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A73322F57390BBE16A310EF1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F54415F8B9AD95176D8C2D54;
+			remoteInfo = BirdDog;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		06BF196714A7C025584420F0 /* LogExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporterTests.swift; sourceTree = "<group>"; };
+		07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateDatabase.swift; sourceTree = "<group>"; };
+		0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateStatus.swift; sourceTree = "<group>"; };
+		18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryManager.swift; sourceTree = "<group>"; };
+		2505471792A29EC48A7FD322 /* ScannedPlate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannedPlate.swift; sourceTree = "<group>"; };
+		25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognizerService.swift; sourceTree = "<group>"; };
+		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
+		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
+		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
+		4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotManagementView.swift; sourceTree = "<group>"; };
+		5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcher.swift; sourceTree = "<group>"; };
+		64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDogApp.swift; sourceTree = "<group>"; };
+		6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryView.swift; sourceTree = "<group>"; };
+		72F5636944CED0E09729E861 /* DataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataProvider.swift; sourceTree = "<group>"; };
+		737FD3F7D372AFD77737EE09 /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
+		797D365FD04C9B93E301AA01 /* ScanSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSession.swift; sourceTree = "<group>"; };
+		83A916BDEBE42D9A33EF954B /* BirdDogTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BirdDogTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognitionService.swift; sourceTree = "<group>"; };
+		85B823FB184EA9720E86DF1E /* PermitRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermitRecord.swift; sourceTree = "<group>"; };
+		85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManagementView.swift; sourceTree = "<group>"; };
+		8E3E09DFE576A65B9E6C3329 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateReaderViewModel.swift; sourceTree = "<group>"; };
+		995B0C59C443E480C6E8929E /* AdminSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminSettingsView.swift; sourceTree = "<group>"; };
+		9C892FB471FBA100CC681F7F /* BirdDog.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BirdDog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A60D6819CAAEDDD374807655 /* ScanLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogView.swift; sourceTree = "<group>"; };
+		A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateOverlayView.swift; sourceTree = "<group>"; };
+		A78E19F300499EF824B1615C /* CandidateVoterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoterTests.swift; sourceTree = "<group>"; };
+		B93C48DCFE8DCDB9B0125C83 /* permits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = permits.json; sourceTree = "<group>"; };
+		B93D8CD7DEBD2418FF0C7F74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		BCDFCA61ABE8C3A028664636 /* CameraLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLogView.swift; sourceTree = "<group>"; };
+		C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		C42BDC169688489AFC03AF14 /* lots.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = lots.json; sourceTree = "<group>"; };
+		C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminPasscodeView.swift; sourceTree = "<group>"; };
+		DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcherTests.swift; sourceTree = "<group>"; };
+		EDAF99197F0B8306C7230405 /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
+		EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotMatchingTests.swift; sourceTree = "<group>"; };
+		F3193DCF5C38933C9A27783B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoter.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		23F7BA4979B2D798151C9E32 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */,
+				85B823FB184EA9720E86DF1E /* PermitRecord.swift */,
+				0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */,
+				2505471792A29EC48A7FD322 /* ScannedPlate.swift */,
+				797D365FD04C9B93E301AA01 /* ScanSession.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		2FA41B1B577F89D2982CA9D1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F3193DCF5C38933C9A27783B /* Assets.xcassets */,
+				C42BDC169688489AFC03AF14 /* lots.json */,
+				B93C48DCFE8DCDB9B0125C83 /* permits.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		42549E04E38CE9D07441104A /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */,
+				737FD3F7D372AFD77737EE09 /* CameraService.swift */,
+				72F5636944CED0E09729E861 /* DataProvider.swift */,
+				2E381758AC904764909D151F /* GeofenceService.swift */,
+				32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */,
+				07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */,
+				84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */,
+				25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */,
+				18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		7633F04F8A234B0E341D30EC /* BirdDog */ = {
+			isa = PBXGroup;
+			children = (
+				E8BE159D74C944022E6BF7BD /* App */,
+				23F7BA4979B2D798151C9E32 /* Models */,
+				2FA41B1B577F89D2982CA9D1 /* Resources */,
+				42549E04E38CE9D07441104A /* Services */,
+				B2D77E37F6985980EEEFACF7 /* Utilities */,
+				E2F5EFD60FB03A295958831F /* ViewModels */,
+				D019AE2E8316940406CA420C /* Views */,
+			);
+			path = BirdDog;
+			sourceTree = "<group>";
+		};
+		9AA81D669EBA9A7845728796 = {
+			isa = PBXGroup;
+			children = (
+				7633F04F8A234B0E341D30EC /* BirdDog */,
+				B6DBF615ED9822B25DD56DE8 /* BirdDogTests */,
+				F1033ECF524F33B2C14CD28B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B2D77E37F6985980EEEFACF7 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */,
+				EDAF99197F0B8306C7230405 /* LogExporter.swift */,
+				5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		B6DBF615ED9822B25DD56DE8 /* BirdDogTests */ = {
+			isa = PBXGroup;
+			children = (
+				A78E19F300499EF824B1615C /* CandidateVoterTests.swift */,
+				06BF196714A7C025584420F0 /* LogExporterTests.swift */,
+				EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */,
+				DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */,
+			);
+			path = BirdDogTests;
+			sourceTree = "<group>";
+		};
+		D019AE2E8316940406CA420C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */,
+				995B0C59C443E480C6E8929E /* AdminSettingsView.swift */,
+				BCDFCA61ABE8C3A028664636 /* CameraLogView.swift */,
+				C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */,
+				8E3E09DFE576A65B9E6C3329 /* ContentView.swift */,
+				85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */,
+				4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */,
+				A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */,
+				A60D6819CAAEDDD374807655 /* ScanLogView.swift */,
+				6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E2F5EFD60FB03A295958831F /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		E8BE159D74C944022E6BF7BD /* App */ = {
+			isa = PBXGroup;
+			children = (
+				64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */,
+				B93D8CD7DEBD2418FF0C7F74 /* Info.plist */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		F1033ECF524F33B2C14CD28B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9C892FB471FBA100CC681F7F /* BirdDog.app */,
+				83A916BDEBE42D9A33EF954B /* BirdDogTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F54415F8B9AD95176D8C2D54 /* BirdDog */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EC554D927248AF32E5D9DB38 /* Build configuration list for PBXNativeTarget "BirdDog" */;
+			buildPhases = (
+				EC04D1E381B050FC3791F679 /* Sources */,
+				BC54BF09735C0AA3764C51EB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BirdDog;
+			packageProductDependencies = (
+			);
+			productName = BirdDog;
+			productReference = 9C892FB471FBA100CC681F7F /* BirdDog.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F82190BA3678247D16B5F389 /* BirdDogTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E440FF6CEAC9E4EA01695048 /* Build configuration list for PBXNativeTarget "BirdDogTests" */;
+			buildPhases = (
+				37B687174E46094148996F68 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A6FBF073018239D7AD6BFA22 /* PBXTargetDependency */,
+			);
+			name = BirdDogTests;
+			packageProductDependencies = (
+			);
+			productName = BirdDogTests;
+			productReference = 83A916BDEBE42D9A33EF954B /* BirdDogTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A73322F57390BBE16A310EF1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					F54415F8B9AD95176D8C2D54 = {
+						DevelopmentTeam = P6D8DZ6BZ7;
+						ProvisioningStyle = Automatic;
+					};
+					F82190BA3678247D16B5F389 = {
+						DevelopmentTeam = P6D8DZ6BZ7;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 025162F798047A33BB50DFD6 /* Build configuration list for PBXProject "BirdDog" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9AA81D669EBA9A7845728796;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F1033ECF524F33B2C14CD28B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F54415F8B9AD95176D8C2D54 /* BirdDog */,
+				F82190BA3678247D16B5F389 /* BirdDogTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BC54BF09735C0AA3764C51EB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */,
+				A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */,
+				77802D98BB1AE822113E654C /* permits.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		37B687174E46094148996F68 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8DC5242CF0EADCE06BA53918 /* CandidateVoterTests.swift in Sources */,
+				C5B0B9026A6F36C07B39AEA0 /* LogExporterTests.swift in Sources */,
+				2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */,
+				37569C3C0139FED6C7584B07 /* PlatePatternMatcherTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC04D1E381B050FC3791F679 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				50D3CFDA5BB31F7ADF11E3ED /* AdminPasscodeView.swift in Sources */,
+				3FFD378444F1F788A2ADF916 /* AdminSettingsView.swift in Sources */,
+				4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */,
+				BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */,
+				4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */,
+				AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */,
+				69CAE303D623B0FF8901592F /* CameraService.swift in Sources */,
+				9BC6C7A9621CBA14F935AA79 /* CandidateVoter.swift in Sources */,
+				1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */,
+				08974B307700E90A8928F832 /* DataProvider.swift in Sources */,
+				B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */,
+				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
+				5994879595E847E9856A1071 /* LogExporter.swift in Sources */,
+				035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */,
+				23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */,
+				58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */,
+				7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */,
+				804F3E3D558F634FC371174B /* PlateDatabase.swift in Sources */,
+				CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */,
+				CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */,
+				146E2D4B87A2D168A6F5B247 /* PlateReaderViewModel.swift in Sources */,
+				64981CA33F907E9364BD1333 /* PlateRecognitionService.swift in Sources */,
+				83D4DA427F57D63F16E9F644 /* PlateRecognizerService.swift in Sources */,
+				2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */,
+				6C3D5AF592FB47DAB1529273 /* ScanLogView.swift in Sources */,
+				A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */,
+				B97725AA2B765B44F6A149CD /* ScannedPlate.swift in Sources */,
+				B9D4DE65A44793882C83972C /* SessionHistoryManager.swift in Sources */,
+				8F5F5EE340D5F20CF18E7E40 /* SessionHistoryView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A6FBF073018239D7AD6BFA22 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F54415F8B9AD95176D8C2D54 /* BirdDog */;
+			targetProxy = CFF5D219562E10CE7F922CFC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2910A2B91C67AD82C5780C6E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
+				INFOPLIST_FILE = BirdDog/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = edu.moravian.birddog;
+				SDKROOT = iphoneos;
+				SUPPORTED_INTERFACE_ORIENTATIONS = UIInterfaceOrientationPortrait;
+				"SUPPORTED_INTERFACE_ORIENTATIONS~ipad" = UIInterfaceOrientationPortrait;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3CB309DED50F05C67E5D7853 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BirdDog/App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		625E75E67288962E321BB7AC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BirdDog/App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C87F00E4FFD54996FCDF4200 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = edu.moravian.birddog.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BirdDog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BirdDog";
+			};
+			name = Release;
+		};
+		CA69BC759CF4C07C5D450702 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
+				INFOPLIST_FILE = BirdDog/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = edu.moravian.birddog;
+				SDKROOT = iphoneos;
+				SUPPORTED_INTERFACE_ORIENTATIONS = UIInterfaceOrientationPortrait;
+				"SUPPORTED_INTERFACE_ORIENTATIONS~ipad" = UIInterfaceOrientationPortrait;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E210B9AAE4C133316864A153 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = edu.moravian.birddog.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BirdDog.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BirdDog";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		025162F798047A33BB50DFD6 /* Build configuration list for PBXProject "BirdDog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				625E75E67288962E321BB7AC /* Debug */,
+				3CB309DED50F05C67E5D7853 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E440FF6CEAC9E4EA01695048 /* Build configuration list for PBXNativeTarget "BirdDogTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E210B9AAE4C133316864A153 /* Debug */,
+				C87F00E4FFD54996FCDF4200 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EC554D927248AF32E5D9DB38 /* Build configuration list for PBXNativeTarget "BirdDog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2910A2B91C67AD82C5780C6E /* Debug */,
+				CA69BC759CF4C07C5D450702 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A73322F57390BBE16A310EF1 /* Project object */;
+}
