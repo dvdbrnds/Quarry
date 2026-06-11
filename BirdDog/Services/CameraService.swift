@@ -47,6 +47,8 @@ final class CameraService: NSObject, ObservableObject {
     private var discoverySession: AVCaptureDevice.DiscoverySession?
     private var hasSetInitialPreference = false
     private var pollTimer: Timer?
+    private let sharpnessThreshold: Double = 50.0
+    private var lastFrameSharpness: Double = 999
 
     func start() {
         if !isRunning {
@@ -663,17 +665,20 @@ final class CameraService: NSObject, ObservableObject {
             return Candidate(format: format, width: dims.width, height: dims.height, maxFPS: maxFPS)
         }
 
-        // Priority 1: 1080p at highest fps (e-con See3CAM does 60fps)
+        // Priority 1: 4K at 24+ fps — more pixels = better OCR at distance
+        let uhd4k = candidates.filter { $0.height >= 2160 && $0.maxFPS >= 24 }
+            .max { $0.maxFPS < $1.maxFPS }
+        // Priority 2: 1080p at highest fps
         let hd1080_best = candidates.filter { $0.height == 1080 }.max { $0.maxFPS < $1.maxFPS }
-        // Priority 2: 720p at high fps (e-con does 120fps at 720p — useful if 1080p is unavailable)
+        // Priority 3: 720p at high fps (e-con does 120fps at 720p)
         let hd720_fast = candidates.filter { $0.height == 720 && $0.maxFPS >= 60 }.max { $0.maxFPS < $1.maxFPS }
-        // Priority 3: highest resolution that can do 24+ fps
+        // Priority 4: highest resolution that can do 24+ fps
         let highRes = candidates.filter { $0.maxFPS >= 24 }
             .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
-        // Priority 4: whatever has the most pixels
+        // Priority 5: whatever has the most pixels
         let fallback = candidates.max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
 
-        let pick = hd1080_best ?? hd720_fast ?? highRes ?? fallback
+        let pick = uhd4k ?? hd1080_best ?? hd720_fast ?? highRes ?? fallback
 
         guard let pick else {
             log("NO usable format found")
@@ -727,18 +732,26 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
                        from connection: AVCaptureConnection) {
         frameCount += 1
 
-        if focusMeterEnabled && isUsingExternalCamera && frameCount % 4 == 0,
+        if isUsingExternalCamera && frameCount % 4 == 0,
            let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let score = laplacianVariance(buf)
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.focusScore = score
-                if score > self.focusPeak { self.focusPeak = score }
+            if focusMeterEnabled {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.focusScore = score
+                    if score > self.focusPeak { self.focusPeak = score }
+                }
             }
+            lastFrameSharpness = score
         }
 
         guard frameCount % UInt64(frameSkip) == 0 else { return }
         guard !isProcessing else { return }
+
+        if isUsingExternalCamera && lastFrameSharpness < sharpnessThreshold {
+            return
+        }
+
         isProcessing = true
         delegate?.cameraService(self, didOutput: sampleBuffer, orientation: cachedOrientation)
     }

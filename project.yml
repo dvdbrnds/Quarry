@@ -16,6 +16,8 @@ targets:
     platform: iOS
     sources:
       - path: BirdDog
+        excludes:
+          - "BirdDog-graphic design-Assets/**"
     resources:
       - path: BirdDog/Resources/Assets.xcassets
       - path: BirdDog/Resources/permits.json

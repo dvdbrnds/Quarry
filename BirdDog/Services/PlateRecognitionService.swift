@@ -11,12 +11,30 @@ final class PlateRecognitionService {
 
     private let requestQueue = DispatchQueue(label: "com.birddog.recognition", qos: .utility)
     private let builtInScanRegion = CGRect(x: 0, y: 0.2, width: 1.0, height: 0.6)
-    private let externalScanRegion = CGRect(x: 0, y: 0.05, width: 1.0, height: 0.9)
+    private let defaultExternalScanRegion = CGRect(x: 0, y: 0.05, width: 1.0, height: 0.9)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     var isExternalCamera = false
 
     private var consecutiveEmptyFrames: Int = 0
+
+    private var recentPlateYPositions: [CGFloat] = []
+    private var lastPlateDetectionTime: Date = .distantPast
+    private let adaptiveROIHistory = 5
+    private let adaptiveROITimeout: TimeInterval = 3.0
+    private let adaptiveROIPadding: CGFloat = 0.20
+
+    private var externalScanRegion: CGRect {
+        guard isExternalCamera,
+              !recentPlateYPositions.isEmpty,
+              Date().timeIntervalSince(lastPlateDetectionTime) < adaptiveROITimeout else {
+            return defaultExternalScanRegion
+        }
+        let avgY = recentPlateYPositions.reduce(0, +) / CGFloat(recentPlateYPositions.count)
+        let minY = max(0, avgY - adaptiveROIPadding)
+        let maxY = min(1.0, avgY + adaptiveROIPadding)
+        return CGRect(x: 0, y: minY, width: 1.0, height: maxY - minY)
+    }
 
     func recognizePlates(in sampleBuffer: CMSampleBuffer,
                          orientation: CGImagePropertyOrientation,
@@ -77,13 +95,13 @@ final class PlateRecognitionService {
 
                 var reason = ""
                 var accepted = false
-                let minConfidence: Float = useExternal ? 0.6 : 0.8
+                let minConfidence: Float = useExternal ? 0.7 : 0.8
 
                 let minAspect: CGFloat = useExternal ? 0.5 : 1.2
                 let maxAspect: CGFloat = 10.0
                 let passesAspect = aspect > minAspect && aspect < maxAspect
 
-                let alternates = topN.dropFirst().compactMap { alt -> String? in
+                var alternates = topN.dropFirst().compactMap { alt -> String? in
                     let norm = PlatePatternMatcher.normalize(alt.string)
                     return norm != normalized ? norm : nil
                 }
@@ -96,8 +114,15 @@ final class PlateRecognitionService {
                     plateText = normalized
                 }
 
+                if PlatePatternMatcher.evaluatePlate(plateText) != nil {
+                    let recovered = self.recoverFormatViaConfusables(plateText)
+                    for alt in recovered where !alternates.contains(alt) {
+                        alternates.append(alt)
+                    }
+                }
+
                 let matchesFormat = PlatePatternMatcher.evaluatePlate(plateText) == nil
-                let effectiveMinConf: Float = matchesFormat ? (useExternal ? 0.4 : 0.6) : minConfidence
+                let effectiveMinConf: Float = matchesFormat ? (useExternal ? 0.55 : 0.6) : minConfidence
 
                 if candidate.confidence < effectiveMinConf {
                     reason = PlatePatternMatcher.RejectionReason.lowConfidence.rawValue
@@ -107,8 +132,6 @@ final class PlateRecognitionService {
                     reason = PlatePatternMatcher.RejectionReason.badAspectRatio.rawValue
                 } else if let rejection = PlatePatternMatcher.evaluatePlate(plateText) {
                     reason = rejection.rawValue
-                } else if PlatePatternMatcher.isVanityPlate(plateText) && aspect < 1.0 {
-                    reason = PlatePatternMatcher.RejectionReason.badAspectRatio.rawValue
                 } else {
                     accepted = true
                     plates.append(RecognizedPlate(
@@ -132,10 +155,38 @@ final class PlateRecognitionService {
                 ))
             }
 
+            if useExternal && !plates.isEmpty {
+                var verifiedPlates = plates
+                for (i, plate) in plates.enumerated() {
+                    if let reCropText = self.reCropAndOCR(
+                        pixelBuffer: pixelBuffer,
+                        boundingBox: plate.boundingBox,
+                        orientation: orientation
+                    ), reCropText != plate.text,
+                       PlatePatternMatcher.evaluatePlate(reCropText) == nil {
+                        var newAlts = plate.alternates
+                        if !newAlts.contains(reCropText) {
+                            newAlts.append(reCropText)
+                        }
+                        verifiedPlates[i] = RecognizedPlate(
+                            text: plate.text,
+                            confidence: plate.confidence,
+                            boundingBox: plate.boundingBox,
+                            timestamp: plate.timestamp,
+                            alternates: newAlts
+                        )
+                    }
+                }
+                plates = verifiedPlates
+            }
+
             if plates.isEmpty {
                 self.consecutiveEmptyFrames += 1
             } else {
                 self.consecutiveEmptyFrames = 0
+                for plate in plates {
+                    self.updateAdaptiveROI(plateBox: plate.boundingBox)
+                }
             }
 
             completion(RecognitionResult(plates: plates, diagnostics: diagnostics))
@@ -319,5 +370,71 @@ final class PlateRecognitionService {
             score += 0.5
         }
         return score
+    }
+
+    // MARK: - Re-crop Verification
+
+    /// Crops the frame to a plate's bounding box and re-runs OCR for a second opinion.
+    private func reCropAndOCR(pixelBuffer: CVPixelBuffer, boundingBox: CGRect, orientation: CGImagePropertyOrientation) -> String? {
+        let width = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+        let height = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
+
+        let pad: CGFloat = 0.03
+        let cropRect = CGRect(
+            x: max(0, boundingBox.origin.x - pad) * width,
+            y: max(0, boundingBox.origin.y - pad) * height,
+            width: min(1.0, boundingBox.width + pad * 2) * width,
+            height: min(1.0, boundingBox.height + pad * 2) * height
+        )
+
+        guard cropRect.width > 20, cropRect.height > 10 else { return nil }
+
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer).cropped(to: cropRect)
+        let handler = VNImageRequestHandler(ciImage: ciImage, orientation: orientation)
+        let req = VNRecognizeTextRequest()
+        req.recognitionLevel = .accurate
+        req.usesLanguageCorrection = false
+        req.revision = VNRecognizeTextRequestRevision3
+        try? handler.perform([req])
+
+        guard let top = req.results?.first?.topCandidates(1).first else { return nil }
+        let normalized = PlatePatternMatcher.normalize(top.string)
+        guard normalized.count >= 5, normalized.count <= 7 else { return nil }
+        return normalized
+    }
+
+    // MARK: - Confusable Format Recovery
+
+    /// Tries single-character confusable substitutions to find a format-valid reading.
+    private func recoverFormatViaConfusables(_ text: String) -> [String] {
+        guard text.count >= 5, text.count <= 7 else { return [] }
+        var recovered: [String] = []
+        let chars = Array(text)
+
+        for i in 0..<chars.count {
+            guard let alts = PlatePatternMatcher.confusables[chars[i]] else { continue }
+            for alt in alts {
+                var modified = chars
+                modified[i] = alt
+                let variant = String(modified)
+                if PlatePatternMatcher.evaluatePlate(variant) == nil,
+                   !recovered.contains(variant) {
+                    recovered.append(variant)
+                    if recovered.count >= 3 { return recovered }
+                }
+            }
+        }
+        return recovered
+    }
+
+    // MARK: - Adaptive ROI
+
+    private func updateAdaptiveROI(plateBox: CGRect) {
+        let centerY = plateBox.midY
+        recentPlateYPositions.append(centerY)
+        if recentPlateYPositions.count > adaptiveROIHistory {
+            recentPlateYPositions.removeFirst()
+        }
+        lastPlateDetectionTime = Date()
     }
 }

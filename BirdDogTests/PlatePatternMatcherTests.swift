@@ -51,14 +51,21 @@ final class PlatePatternMatcherTests: XCTestCase {
         XCTAssertEqual(PlatePatternMatcher.evaluatePlate("PARKING"), .rejectList)
     }
 
-    func testVanityPlateAccepted() {
-        XCTAssertTrue(PlatePatternMatcher.isVanityPlate("HELLO"))
-        XCTAssertTrue(PlatePatternMatcher.isVanityPlate("ABCDEF"))
+    func testVanityPlateDisabled() {
+        XCTAssertFalse(PlatePatternMatcher.isVanityPlate("HELLO"))
+        XCTAssertFalse(PlatePatternMatcher.isVanityPlate("ABCDEF"))
+        XCTAssertFalse(PlatePatternMatcher.isVanityPlate("ABC1234"))
     }
 
-    func testNonVanityPlate() {
-        XCTAssertFalse(PlatePatternMatcher.isVanityPlate("ABC1234"))
-        XCTAssertFalse(PlatePatternMatcher.isVanityPlate("AB"))
+    func testAllLetterPlateRejected() {
+        XCTAssertEqual(PlatePatternMatcher.evaluatePlate("HELLO"), .noDigits)
+        XCTAssertEqual(PlatePatternMatcher.evaluatePlate("ABCDEF"), .noDigits)
+    }
+
+    func testNonStandardFormatRejected() {
+        XCTAssertEqual(PlatePatternMatcher.evaluatePlate("TOYOTA1"), .noFormatMatch)
+        XCTAssertEqual(PlatePatternMatcher.evaluatePlate("BRONCO3"), .noFormatMatch)
+        XCTAssertEqual(PlatePatternMatcher.evaluatePlate("HELLO12"), .noFormatMatch)
     }
 
     func testLocalFormatRecognition() {
