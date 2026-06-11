@@ -30,6 +30,28 @@ final class PlateDatabase {
             }
         }
         seedIfNeeded()
+        pruneExpiredPermits()
+    }
+
+    private static let retentionYears = 5
+
+    private func pruneExpiredPermits() {
+        let calendar = Calendar.current
+        guard let cutoff = calendar.date(byAdding: .year, value: -Self.retentionYears, to: Date()) else { return }
+        let descriptor = FetchDescriptor<PermitRecord>()
+        guard let all = try? context.fetch(descriptor) else { return }
+        var pruned = 0
+        for record in all {
+            if let exp = record.expirationDate, exp < cutoff {
+                context.delete(record)
+                pruned += 1
+            }
+        }
+        if pruned > 0 {
+            try? context.save()
+            recordsByLengthCache.removeAll()
+            print("Pruned \(pruned) permits expired before \(cutoff)")
+        }
     }
 
     private static func deleteStoreFiles() {
