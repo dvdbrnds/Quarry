@@ -94,10 +94,6 @@ struct ContentView: View {
                             focusMeterOverlay
                                 .padding(.bottom, 4)
                         }
-                        if viewModel.cameraService.isUsingExternalCamera {
-                            exposureSlider
-                                .padding(.bottom, 8)
-                        }
                     }
                 }
                 .frame(height: geo.size.height * 0.58)
@@ -372,29 +368,6 @@ struct ContentView: View {
         .padding(.horizontal, 16)
     }
 
-    private var exposureSlider: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sun.min.fill")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.7))
-            Slider(
-                value: Binding(
-                    get: { viewModel.cameraService.exposureBias },
-                    set: { viewModel.cameraService.exposureBias = $0 }
-                ),
-                in: -4...4,
-                step: 0.5
-            )
-            .tint(.yellow)
-            Image(systemName: "sun.max.fill")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.7))
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .padding(.horizontal, 16)
-    }
 
     private var permissionDeniedView: some View {
         VStack(spacing: 16) {
