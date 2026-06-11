@@ -1,0 +1,65 @@
+import { Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
+import Permits from "./pages/Permits";
+import Lots from "./pages/Lots";
+import Dashboard from "./pages/Dashboard";
+import Tickets from "./pages/Tickets";
+import Pay from "./pages/Pay";
+import PaySuccess from "./pages/PaySuccess";
+import Finance from "./pages/Finance";
+
+function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          isActive
+            ? "bg-brass text-navy-deep"
+            : "text-bone hover:bg-navy-700"
+        }`
+      }
+    >
+      {children}
+    </NavLink>
+  );
+}
+
+export default function App() {
+  const location = useLocation();
+  const isPayRoute = location.pathname.startsWith("/pay");
+
+  if (isPayRoute) {
+    return (
+      <Routes>
+        <Route path="/pay" element={<Pay />} />
+        <Route path="/pay/success" element={<PaySuccess />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <div className="min-h-screen">
+      <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
+        <h1 className="text-lg font-bold tracking-wide text-brass mr-4">
+          HoundDog
+        </h1>
+        <NavItem to="/dashboard">Dashboard</NavItem>
+        <NavItem to="/permits">Permits</NavItem>
+        <NavItem to="/lots">Lots</NavItem>
+        <NavItem to="/tickets">Tickets</NavItem>
+        <NavItem to="/finance">Finance</NavItem>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/permits" element={<Permits />} />
+          <Route path="/lots" element={<Lots />} />
+          <Route path="/tickets" element={<Tickets />} />
+          <Route path="/finance" element={<Finance />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}

@@ -21,6 +21,7 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
     let cameraName: String
     /// Seconds between first candidate sighting and confirmation
     let detectionLatency: TimeInterval
+    var violationPhotoPath: String?
 
     init(
         text: String,
@@ -31,7 +32,8 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         matchMethod: MatchMethod,
         matchedPlate: String,
         cameraName: String = "",
-        detectionLatency: TimeInterval = 0
+        detectionLatency: TimeInterval = 0,
+        violationPhotoPath: String? = nil
     ) {
         self.id = UUID()
         self.text = text
@@ -43,6 +45,7 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         self.matchedPlate = matchedPlate
         self.cameraName = cameraName
         self.detectionLatency = detectionLatency
+        self.violationPhotoPath = violationPhotoPath
     }
 }
 

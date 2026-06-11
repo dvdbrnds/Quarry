@@ -5,6 +5,7 @@ struct AdminSettingsView: View {
 
     @ObservedObject var cameraService: CameraService
     @ObservedObject private var appSettings = AppSettings.shared
+    @ObservedObject private var syncService = HoundDogSyncService.shared
     @State private var showPermitImporter = false
     @State private var showLotImporter = false
     @State private var showPasscodeChange = false
@@ -16,6 +17,7 @@ struct AdminSettingsView: View {
         List {
             cameraSection
             schoolSection
+            houndDogSection
             ocrEngineSection
             dataSection
             securitySection
@@ -97,6 +99,87 @@ struct AdminSettingsView: View {
             Text("Organization")
         } footer: {
             Text("Displayed in the app header and included in export metadata.")
+        }
+    }
+
+    // MARK: - HoundDog Server
+
+    private var houndDogSection: some View {
+        Section {
+            HStack {
+                Text("Server URL")
+                Spacer()
+                TextField("https://hounddog.example.com", text: $appSettings.houndDogURL)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+            }
+
+            HStack {
+                Text("API Key")
+                Spacer()
+                SecureField("Device API key", text: $appSettings.houndDogAPIKey)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
+
+            Toggle(isOn: $syncService.isEnabled) {
+                Label("Auto-Sync", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .onChange(of: syncService.isEnabled) { _, enabled in
+                if enabled {
+                    syncService.start()
+                } else {
+                    syncService.stop()
+                }
+            }
+
+            HStack {
+                Text("Status")
+                Spacer()
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(syncStatusColor)
+                        .frame(width: 8, height: 8)
+                    Text(syncService.syncState.rawValue)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let lastSync = syncService.lastSyncDate {
+                infoRow("Last Sync", value: lastSync.formatted(.dateTime.hour().minute().second()))
+            }
+
+            if let error = syncService.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Button {
+                Task { await syncService.syncNow() }
+            } label: {
+                Label("Sync Now", systemImage: "arrow.clockwise")
+            }
+            .disabled(appSettings.houndDogURL.isEmpty || appSettings.houndDogAPIKey.isEmpty)
+        } header: {
+            Text("HoundDog Server")
+        } footer: {
+            Text("Connect to HoundDog for centralized permit and lot management. Permits and lots sync automatically over WiFi.")
+        }
+    }
+
+    private var syncStatusColor: Color {
+        switch syncService.syncState {
+        case .synced: return .green
+        case .syncing: return .orange
+        case .error: return .red
+        case .offline: return .gray
+        case .idle: return .gray
         }
     }
 
@@ -195,10 +278,12 @@ struct AdminSettingsView: View {
             infoRow("Build", value: buildNumber)
             infoRow("Permits", value: "\(PlateDatabase.shared.totalCount()) (\(PlateDatabase.shared.validCount()) valid)")
             infoRow("Lots", value: "\(GeofenceService.shared.lots.count)")
-            if LocalDataProvider.shared.hasImportedPermits {
-                infoRow("Permit Source", value: "Imported file")
+            if syncService.isEnabled && !appSettings.houndDogURL.isEmpty {
+                infoRow("Data Source", value: "HoundDog server")
+            } else if LocalDataProvider.shared.hasImportedPermits {
+                infoRow("Data Source", value: "Imported file")
             } else {
-                infoRow("Permit Source", value: "Bundled")
+                infoRow("Data Source", value: "Bundled")
             }
         }
     }
