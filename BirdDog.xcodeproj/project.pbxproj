@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */; };
 		08974B307700E90A8928F832 /* DataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F5636944CED0E09729E861 /* DataProvider.swift */; };
+		0FF55B00E57C6DC9EAEF1E42 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */; };
 		146E2D4B87A2D168A6F5B247 /* PlateReaderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */; };
 		1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3E09DFE576A65B9E6C3329 /* ContentView.swift */; };
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
@@ -84,6 +85,7 @@
 		A60D6819CAAEDDD374807655 /* ScanLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogView.swift; sourceTree = "<group>"; };
 		A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateOverlayView.swift; sourceTree = "<group>"; };
 		A78E19F300499EF824B1615C /* CandidateVoterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoterTests.swift; sourceTree = "<group>"; };
+		B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		B93C48DCFE8DCDB9B0125C83 /* permits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = permits.json; sourceTree = "<group>"; };
 		B93D8CD7DEBD2418FF0C7F74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		BCDFCA61ABE8C3A028664636 /* CameraLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLogView.swift; sourceTree = "<group>"; };
@@ -210,6 +212,7 @@
 			children = (
 				64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */,
 				B93D8CD7DEBD2418FF0C7F74 /* Info.plist */,
+				B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -307,6 +310,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */,
+				0FF55B00E57C6DC9EAEF1E42 /* LaunchScreen.storyboard in Resources */,
 				A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */,
 				77802D98BB1AE822113E654C /* permits.json in Resources */,
 			);

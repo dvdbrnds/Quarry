@@ -202,25 +202,17 @@ enum PlatePatternMatcher {
             return .noDigits
         }
 
-        if isAllDigit && cleaned.count == 6 {
-            if !matchesAnyNAFormat(cleaned) { return .noFormatMatch }
-            return nil
-        }
-
-        if cleaned.count <= 6 {
-            if !matchesAnyNAFormat(cleaned) { return .noFormatMatch }
+        if !matchesAnyNAFormat(cleaned) {
+            return .noFormatMatch
         }
 
         return nil
     }
 
-    /// Returns true for all-letter plates (vanity). These require extra
-    /// confirmation frames (4 external, 3 built-in) since the reject list
-    /// can't catch every possible false positive.
+    /// Returns true for all-letter plates (vanity). Currently disabled:
+    /// non-format plates are rejected by evaluatePlate() before this matters.
     static func isVanityPlate(_ text: String) -> Bool {
-        let cleaned = normalize(text)
-        guard cleaned.count >= 5, cleaned.count <= 7 else { return false }
-        return cleaned.allSatisfy(\.isLetter)
+        return false
     }
 
     static func matchesAnyNAFormat(_ text: String) -> Bool {

@@ -23,13 +23,15 @@ final class CandidateVoter {
 
     /// Returns the consensus plate text using character-level majority voting
     /// across the primary + alternate candidates from all frames.
+    /// Candidates matching known NA plate formats receive a weight bonus.
     func consensus(for key: String) -> String? {
         guard let ballots = activeBallots[key], !ballots.isEmpty else { return nil }
 
         let allCandidates = ballots.flatMap { ballot -> [(String, Float)] in
-            var results: [(String, Float)] = [(ballot.primary, ballot.confidence)]
+            let baseWeight = ballot.confidence
+            var results: [(String, Float)] = [(ballot.primary, Self.formatWeight(ballot.primary, base: baseWeight))]
             for alt in ballot.alternates {
-                results.append((alt, ballot.confidence * 0.6))
+                results.append((alt, Self.formatWeight(alt, base: baseWeight * 0.6)))
             }
             return results
         }
@@ -55,6 +57,16 @@ final class CandidateVoter {
         }
 
         return String(result)
+    }
+
+    private static func formatWeight(_ text: String, base: Float) -> Float {
+        if PlatePatternMatcher.isLocalFormat(text) {
+            return base * 2.0
+        }
+        if PlatePatternMatcher.matchesAnyNAFormat(text) {
+            return base * 1.5
+        }
+        return base
     }
 
     /// Remove stale entries that haven't received new observations.

@@ -220,12 +220,10 @@ final class PlateReaderViewModel: ObservableObject {
             // Global shutter cameras produce sharp per-frame captures even at
             // speed, so external thresholds are lower than built-in.
             var threshold: Int
-            if PlatePatternMatcher.isVanityPlate(voterKey) {
-                threshold = isExternal ? 3 : 3
-            } else if PlatePatternMatcher.isLocalFormat(voterKey) {
+            if PlatePatternMatcher.isLocalFormat(voterKey) {
                 threshold = isExternal ? 1 : 1
             } else {
-                threshold = isExternal ? 2 : confirmationThreshold
+                threshold = isExternal ? 3 : confirmationThreshold
             }
 
             if newCount == 1 && isExternal {
