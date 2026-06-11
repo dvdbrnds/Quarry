@@ -33,7 +33,7 @@ final class PlateDatabase {
         pruneExpiredPermits()
     }
 
-    private static let retentionYears = 5
+    private static let retentionYears = 10
 
     private func pruneExpiredPermits() {
         let calendar = Calendar.current
