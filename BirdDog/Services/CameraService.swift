@@ -38,6 +38,7 @@ final class CameraService: NSObject, ObservableObject {
     }
     @Published var focusScore: Double = 0
     @Published var focusPeak: Double = 0
+    @Published var exposureLocked: Bool = false
     var focusMeterEnabled = false
     private var currentDevice: AVCaptureDevice?
     private var currentInput: AVCaptureDeviceInput?
@@ -47,7 +48,7 @@ final class CameraService: NSObject, ObservableObject {
     private var discoverySession: AVCaptureDevice.DiscoverySession?
     private var hasSetInitialPreference = false
     private var pollTimer: Timer?
-    private let sharpnessThreshold: Double = 50.0
+    private let sharpnessThreshold: Double = 30.0
     private var lastFrameSharpness: Double = 999
 
     func start() {
@@ -208,7 +209,7 @@ final class CameraService: NSObject, ObservableObject {
 
     /// Temporarily drop to frameSkip=1 for a short burst to capture more
     /// frames of a plate that just appeared.
-    func triggerBurst(duration: TimeInterval = 0.5) {
+    func triggerBurst(duration: TimeInterval = 1.5) {
         burstUntil = Date().addingTimeInterval(duration)
         frameSkip = 1
     }
@@ -637,23 +638,64 @@ final class CameraService: NSObject, ObservableObject {
             camera.videoZoomFactor = camera.minAvailableVideoZoomFactor
             selectBestExternalFormat(for: camera)
 
-            // Manual-focus lens: lock focus if the camera reports it supports
-            // locked mode. This stops AVFoundation from hunting on a fixed lens.
             if camera.isFocusModeSupported(.locked) {
                 camera.focusMode = .locked
                 log("focus mode: locked (manual focus lens)")
             }
 
+            if camera.isWhiteBalanceModeSupported(.locked) {
+                camera.whiteBalanceMode = .locked
+                log("white balance: locked")
+            } else if camera.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                camera.whiteBalanceMode = .continuousAutoWhiteBalance
+            }
+
             let bias = max(camera.minExposureTargetBias, min(exposureBias, camera.maxExposureTargetBias))
             camera.setExposureTargetBias(bias, completionHandler: nil)
-            log("exposure bias: \(bias) (range \(camera.minExposureTargetBias)…\(camera.maxExposureTargetBias))")
+            log("exposure bias: \(bias)")
 
-            if camera.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
-                camera.whiteBalanceMode = .continuousAutoWhiteBalance
+            // Start with auto-exposure, then lock after it settles to prevent
+            // the bright/dim flicker cycle that hurts OCR accuracy.
+            if camera.isExposureModeSupported(.continuousAutoExposure) {
+                camera.exposureMode = .continuousAutoExposure
+                log("exposure: auto (will lock after settling)")
             }
         }
 
         camera.unlockForConfiguration()
+
+        if isExternal {
+            scheduleExposureLock(for: camera)
+        }
+    }
+
+    private var exposureLockTimer: Timer?
+
+    private func scheduleExposureLock(for camera: AVCaptureDevice) {
+        exposureLockTimer?.invalidate()
+        DispatchQueue.main.async { [weak self] in
+            self?.exposureLocked = false
+        }
+        exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.lockExposure(camera)
+        }
+    }
+
+    private func lockExposure(_ camera: AVCaptureDevice) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard camera.isExposureModeSupported(.locked) else {
+                self.log("exposure: camera does not support locked mode")
+                return
+            }
+            try? camera.lockForConfiguration()
+            camera.exposureMode = .locked
+            camera.unlockForConfiguration()
+            self.log("exposure: LOCKED at current level")
+            DispatchQueue.main.async {
+                self.exposureLocked = true
+            }
+        }
     }
 
     private func applyExposureBias() {

@@ -11,7 +11,7 @@ final class PlateRecognitionService {
 
     private let requestQueue = DispatchQueue(label: "com.birddog.recognition", qos: .utility)
     private let builtInScanRegion = CGRect(x: 0, y: 0.2, width: 1.0, height: 0.6)
-    private let defaultExternalScanRegion = CGRect(x: 0, y: 0.05, width: 1.0, height: 0.9)
+    private let defaultExternalScanRegion = CGRect(x: 0, y: 0.0, width: 1.0, height: 1.0)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     var isExternalCamera = false
@@ -21,7 +21,7 @@ final class PlateRecognitionService {
     private var recentPlateYPositions: [CGFloat] = []
     private var lastPlateDetectionTime: Date = .distantPast
     private let adaptiveROIHistory = 5
-    private let adaptiveROITimeout: TimeInterval = 3.0
+    private let adaptiveROITimeout: TimeInterval = 5.0
     private let adaptiveROIPadding: CGFloat = 0.20
 
     private var externalScanRegion: CGRect {

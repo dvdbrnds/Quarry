@@ -13,7 +13,7 @@ final class CandidateVoter {
     private var activeBallots: [String: [Ballot]] = [:]
     private var ballotTimestamps: [String: Date] = [:]
 
-    private let expiryInterval: TimeInterval = 3.0
+    private let expiryInterval: TimeInterval = 5.0
 
     /// Record a new observation. The `key` groups ballots by fuzzy plate identity.
     func record(key: String, ballot: Ballot) {
