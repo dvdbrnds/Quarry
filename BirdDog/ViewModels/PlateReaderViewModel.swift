@@ -236,13 +236,11 @@ final class PlateReaderViewModel: ObservableObject {
             let bestConf = max(existing?.bestConfidence ?? 0, plate.confidence)
             candidateCounts[voterKey] = (newCount, bestConf)
 
-            // Global shutter cameras produce sharp per-frame captures even at
-            // speed, so external thresholds are lower than built-in.
             var threshold: Int
             if PlatePatternMatcher.isLocalFormat(voterKey) {
-                threshold = isExternal ? 1 : 1
+                threshold = 1
             } else {
-                threshold = isExternal ? 3 : confirmationThreshold
+                threshold = isExternal ? 2 : confirmationThreshold
             }
 
             if newCount == 1 && isExternal {
