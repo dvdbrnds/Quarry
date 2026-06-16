@@ -156,7 +156,17 @@ Go to your HoundDog application in Coolify → **Environment Variables** tab.
 
 ---
 
-## Step 6: Deploy
+## Step 6: Persistent Storage & Backups
+
+- [ ] **App uploads** (ticket violation photos): Go to HoundDog app → **Persistent Storage** tab → Add volume:
+  - **Name:** `hounddog-uploads`
+  - **Destination Path:** `/app/uploads`
+- [ ] **Database backups** (optional but recommended): Go to your PostgreSQL resource → **Backups** tab → configure scheduled backups (local or S3)
+- [ ] Database data volume is managed automatically by Coolify — no action needed
+
+---
+
+## Step 7: Deploy
 
 - [ ] Go to your HoundDog application in Coolify
 - [ ] Click **Deploy**
@@ -172,7 +182,7 @@ Go to your HoundDog application in Coolify → **Environment Variables** tab.
 
 ---
 
-## Step 7: Verify
+## Step 8: Verify
 
 - [ ] **Dashboard** — loads with pipeline stats and live activity feed
 - [ ] **Permits** — shows table with Import CSV, Export CSV, + New Permit buttons
