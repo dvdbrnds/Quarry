@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.okta import get_current_user
 from ..database import get_db
 from ..models.ticket import Ticket
 from ..websocket import manager
@@ -18,7 +19,7 @@ from ..schemas.ticket import (
     TicketUpdate,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided"}
 

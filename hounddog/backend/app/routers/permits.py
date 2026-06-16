@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.okta import OktaUser, get_current_user
 from ..database import get_db
 from ..models.permit import Permit
 from ..schemas.permit import (
@@ -19,7 +20,7 @@ from ..schemas.permit import (
     PermitImportResult,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=PermitList)
