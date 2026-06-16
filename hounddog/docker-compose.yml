@@ -9,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hounddog"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   api:
     build: ./backend
@@ -16,13 +21,31 @@ services:
       - "8000:8000"
     environment:
       HOUNDDOG_DATABASE_URL: postgresql+asyncpg://hounddog:hounddog@db:5432/hounddog
-      HOUNDDOG_CORS_ORIGINS: '["http://localhost:5173"]'
+      HOUNDDOG_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
       HOUNDDOG_DEBUG: "true"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - ./backend:/app
+      - uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_TARGET: "http://api:8000"
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+    command: sh -c "npm install && npx vite --host 0.0.0.0"
+    depends_on:
+      - api
 
 volumes:
   pgdata:
+  uploads:
+  node_modules:

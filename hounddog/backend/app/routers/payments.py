@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.okta import OktaUser, get_current_user, require_role
 from ..config import settings
 from ..database import get_db
 from ..models.payment import Payment
@@ -101,7 +102,9 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.post("/bursar-import", response_model=BursarImportResult)
 async def bursar_import(
-    payload: BursarImportPayload, db: AsyncSession = Depends(get_db)
+    payload: BursarImportPayload,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_role("admin", "finance")),
 ):
     matched = 0
     unmatched = 0
@@ -155,7 +158,9 @@ async def bursar_import(
 
 @router.post("/bursar-import-csv", response_model=BursarImportResult)
 async def bursar_import_csv(
-    file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_role("admin", "finance")),
 ):
     content = (await file.read()).decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(content))
@@ -178,7 +183,10 @@ async def bursar_import_csv(
 
 
 @router.get("/revenue", response_model=RevenueReport)
-async def revenue_report(db: AsyncSession = Depends(get_db)):
+async def revenue_report(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_role("admin", "finance")),
+):
     total_fines = (
         await db.execute(select(func.sum(Ticket.fine_amount)))
     ).scalar() or Decimal(0)
@@ -220,7 +228,10 @@ async def payments_for_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(g
 
 
 @router.get("/export/csv")
-async def export_payments(db: AsyncSession = Depends(get_db)):
+async def export_payments(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_role("admin", "finance")),
+):
     result = await db.execute(select(Payment).order_by(Payment.paid_at.desc()))
     payments = result.scalars().all()
 

@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.okta import get_current_user
 from ..database import get_db
 from ..models.lot import ParkingLot
 from ..schemas.lot import LotCreate, LotRead, LotUpdate
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[LotRead])

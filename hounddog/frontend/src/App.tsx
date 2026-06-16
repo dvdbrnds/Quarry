@@ -6,6 +6,10 @@ import Tickets from "./pages/Tickets";
 import Pay from "./pages/Pay";
 import PaySuccess from "./pages/PaySuccess";
 import Finance from "./pages/Finance";
+import AuthCallback from "./pages/AuthCallback";
+import AuthGuard from "./components/AuthGuard";
+import { logout } from "./auth";
+import type { AuthUser } from "./auth";
 
 function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   return (
@@ -24,19 +28,7 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  const location = useLocation();
-  const isPayRoute = location.pathname.startsWith("/pay");
-
-  if (isPayRoute) {
-    return (
-      <Routes>
-        <Route path="/pay" element={<Pay />} />
-        <Route path="/pay/success" element={<PaySuccess />} />
-      </Routes>
-    );
-  }
-
+function DashboardShell({ user }: { user: AuthUser }) {
   return (
     <div className="min-h-screen">
       <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
@@ -48,6 +40,19 @@ export default function App() {
         <NavItem to="/lots">Lots</NavItem>
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/finance">Finance</NavItem>
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-bone/70">{user.email}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-brass/20 text-brass font-medium uppercase tracking-wide">
+            {user.role}
+          </span>
+          <button
+            onClick={() => logout()}
+            className="text-xs text-bone/50 hover:text-bone transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
@@ -61,5 +66,34 @@ export default function App() {
         </Routes>
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  const location = useLocation();
+  const isPayRoute = location.pathname.startsWith("/pay");
+  const isAuthCallback = location.pathname === "/auth/callback";
+
+  if (isAuthCallback) {
+    return (
+      <Routes>
+        <Route path="/auth/callback" element={<AuthCallback />} />
+      </Routes>
+    );
+  }
+
+  if (isPayRoute) {
+    return (
+      <Routes>
+        <Route path="/pay" element={<Pay />} />
+        <Route path="/pay/success" element={<PaySuccess />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <AuthGuard>
+      {(user) => <DashboardShell user={user} />}
+    </AuthGuard>
   );
 }

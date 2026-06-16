@@ -5,12 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .routers import permits, lots, sync, tickets, payments
+from .routers import auth, permits, lots, sync, tickets, payments
 from .websocket import manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from .database import engine, Base
+    from .models import Permit, ParkingLot, Device, Ticket, Payment  # noqa: F401
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     yield
 
 
@@ -29,16 +33,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(permits.router, prefix="/api/permits", tags=["permits"])
 app.include_router(lots.router, prefix="/api/lots", tags=["lots"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
 
-import os
-upload_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
-os.makedirs(upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
+import os as _os
+_upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
+_os.makedirs(_upload_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_upload_dir), name="uploads")
 
 
 @app.get("/health")
