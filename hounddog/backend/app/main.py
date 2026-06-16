@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -8,13 +10,24 @@ from .config import settings
 from .routers import auth, permits, lots, sync, tickets, payments
 from .websocket import manager
 
+logger = logging.getLogger("hounddog")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .database import engine, Base
     from .models import Permit, ParkingLot, Device, Ticket, Payment  # noqa: F401
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    for attempt in range(1, 11):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database connected and tables created.")
+            break
+        except Exception as exc:
+            logger.warning("DB connect attempt %d/10 failed: %s", attempt, exc)
+            if attempt == 10:
+                raise
+            await asyncio.sleep(3)
     yield
 
 
