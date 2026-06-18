@@ -3,6 +3,7 @@ import Permits from "./pages/Permits";
 import Lots from "./pages/Lots";
 import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
+import Devices from "./pages/Devices";
 import Pay from "./pages/Pay";
 import PaySuccess from "./pages/PaySuccess";
 import Finance from "./pages/Finance";
@@ -40,6 +41,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
         <NavItem to="/lots">Lots</NavItem>
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/finance">Finance</NavItem>
+        <NavItem to="/devices">Devices</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-bone/70">{user.email}</span>
@@ -63,6 +65,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
           <Route path="/lots" element={<Lots />} />
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/finance" element={<Finance />} />
+          <Route path="/devices" element={<Devices />} />
         </Routes>
       </main>
     </div>

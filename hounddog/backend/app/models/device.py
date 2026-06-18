@@ -16,5 +16,6 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(128))
     api_key: Mapped[str] = mapped_column(String(128), unique=True, default=lambda: secrets.token_urlsafe(32))
     device_type: Mapped[str] = mapped_column(String(32), default="ipad")
+    push_token: Mapped[str | None] = mapped_column(String(256), nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

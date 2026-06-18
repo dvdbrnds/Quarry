@@ -68,6 +68,17 @@ export interface ImportResult {
   skipped: number;
 }
 
+export interface Device {
+  id: string;
+  name: string;
+  api_key: string;
+  device_type: string;
+  last_seen: string | null;
+  created_at: string;
+  pairing_url?: string;
+  pairing_payload?: { url: string; key: string; name: string };
+}
+
 export const api = {
   permits: {
     list: (params?: { page?: number; search?: string; status?: string; lot?: string }) => {
@@ -100,5 +111,12 @@ export const api = {
       request<Lot>(`/lots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/lots/${id}`, { method: "DELETE" }),
+  },
+  devices: {
+    list: () => request<Device[]>("/devices"),
+    create: (data: { name: string; device_type?: string }) =>
+      request<Device>("/devices", { method: "POST", body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/devices/${id}`, { method: "DELETE" }),
   },
 };

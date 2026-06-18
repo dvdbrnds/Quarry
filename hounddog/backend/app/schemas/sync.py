@@ -26,6 +26,10 @@ class SyncStatusResponse(BaseModel):
     device_count: int
 
 
+class PushTokenRegister(BaseModel):
+    token: str
+
+
 class TicketUpload(BaseModel):
     plate: str
     lot: str = ""

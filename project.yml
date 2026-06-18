@@ -18,10 +18,13 @@ targets:
       - path: BirdDog
         excludes:
           - "BirdDog-graphic design-Assets/**"
+          - "**/*.xlsx"
     resources:
       - path: BirdDog/Resources/Assets.xcassets
       - path: BirdDog/Resources/permits.json
       - path: BirdDog/Resources/lots.json
+    entitlements:
+      path: BirdDog/App/BirdDog.entitlements
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.birddog
       MARKETING_VERSION: "2.0.0"

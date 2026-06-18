@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .routers import auth, permits, lots, sync, tickets, payments
+from .routers import auth, devices, permits, lots, sync, tickets, payments
 from .websocket import manager
 
 logger = logging.getLogger("quarry")
@@ -47,6 +47,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
 app.include_router(permits.router, prefix="/api/permits", tags=["permits"])
 app.include_router(lots.router, prefix="/api/lots", tags=["lots"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])

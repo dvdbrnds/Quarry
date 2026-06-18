@@ -9,6 +9,7 @@ struct AdminSettingsView: View {
     @State private var showPermitImporter = false
     @State private var showLotImporter = false
     @State private var showPasscodeChange = false
+    @State private var showQRScanner = false
     @State private var importMessage: String?
     @State private var showImportAlert = false
     @State private var importAlertIsError = false
@@ -45,6 +46,9 @@ struct AdminSettingsView: View {
             if let msg = importMessage {
                 Text(msg)
             }
+        }
+        .fullScreenCover(isPresented: $showQRScanner) {
+            QRScannerView(isPresented: $showQRScanner, onPaired: {})
         }
     }
 
@@ -166,10 +170,16 @@ struct AdminSettingsView: View {
                 Label("Sync Now", systemImage: "arrow.clockwise")
             }
             .disabled(appSettings.houndDogURL.isEmpty || appSettings.houndDogAPIKey.isEmpty)
+
+            Button {
+                showQRScanner = true
+            } label: {
+                Label("Scan Pairing QR Code", systemImage: "qrcode.viewfinder")
+            }
         } header: {
-            Text("HoundDog Server")
+            Text("Quarry Server")
         } footer: {
-            Text("Connect to HoundDog for centralized permit and lot management. Permits and lots sync automatically over WiFi.")
+            Text("Connect to your school's Quarry server for centralized permit and lot management. Permits and lots sync automatically.")
         }
     }
 

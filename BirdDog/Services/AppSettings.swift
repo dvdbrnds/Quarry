@@ -63,4 +63,12 @@ final class AppSettings: ObservableObject {
     var isFirstLaunch: Bool {
         schoolName.isEmpty
     }
+
+    var isServerConfigured: Bool {
+        !houndDogURL.isEmpty && !houndDogAPIKey.isEmpty
+    }
+
+    var needsOnboarding: Bool {
+        !isServerConfigured
+    }
 }
