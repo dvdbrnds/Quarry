@@ -15,6 +15,7 @@ logger = logging.getLogger("quarry")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from sqlalchemy import text
     from .database import engine, Base
     from .models import Permit, ParkingLot, Device, Ticket, Payment  # noqa: F401
     for attempt in range(1, 11):
@@ -28,6 +29,12 @@ async def lifespan(app: FastAPI):
             if attempt == 10:
                 raise
             await asyncio.sleep(3)
+
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+            ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)
+        """))
+    logger.info("Schema migrations applied.")
     yield
 
 
