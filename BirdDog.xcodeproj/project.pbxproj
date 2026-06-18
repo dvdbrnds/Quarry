@@ -20,6 +20,7 @@
 		3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F3193DCF5C38933C9A27783B /* Assets.xcassets */; };
 		3FFD378444F1F788A2ADF916 /* AdminSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995B0C59C443E480C6E8929E /* AdminSettingsView.swift */; };
 		4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDFCA61ABE8C3A028664636 /* CameraLogView.swift */; };
+		48B2B22D2F94299902405993 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */; };
 		4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */; };
 		50D3CFDA5BB31F7ADF11E3ED /* AdminPasscodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */; };
 		58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B823FB184EA9720E86DF1E /* PermitRecord.swift */; };
@@ -34,20 +35,19 @@
 		8DC5242CF0EADCE06BA53918 /* CandidateVoterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78E19F300499EF824B1615C /* CandidateVoterTests.swift */; };
 		8F5F5EE340D5F20CF18E7E40 /* SessionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */; };
 		9BC6C7A9621CBA14F935AA79 /* CandidateVoter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */; };
+		9F99C1DDA5B19ED739F4E5BD /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56771E1D5749AF106C7BF205 /* QRScannerView.swift */; };
 		A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D365FD04C9B93E301AA01 /* ScanSession.swift */; };
 		A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */ = {isa = PBXBuildFile; fileRef = C42BDC169688489AFC03AF14 /* lots.json */; };
-		A995D232122A1DA19C939AB6 /* Parking Permits Export (1-1-25 to 6-11-26).xlsx in Resources */ = {isa = PBXBuildFile; fileRef = EF327B2CBBEE852C1E69491E /* Parking Permits Export (1-1-25 to 6-11-26).xlsx */; };
 		ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E381758AC904764909D151F /* GeofenceService.swift */; };
+		AD14C162989528A1823FFEBC /* PushTokenService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B5520F9040D8218B1B7166 /* PushTokenService.swift */; };
 		AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */; };
 		B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */; };
 		B97725AA2B765B44F6A149CD /* ScannedPlate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2505471792A29EC48A7FD322 /* ScannedPlate.swift */; };
 		B9D4DE65A44793882C83972C /* SessionHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */; };
 		BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */; };
-		BFCF47AAA1D215464FCCD89E /* ReportSearchExport.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 3EFB2C42066478E1CF015E82 /* ReportSearchExport.xlsx */; };
 		C5B0B9026A6F36C07B39AEA0 /* LogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BF196714A7C025584420F0 /* LogExporterTests.swift */; };
 		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
 		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
-		E7FA00A5056019AF87304DA2 /* ~$ReportSearchExport.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 63A480FE14BAC0C36AF24836 /* ~$ReportSearchExport.xlsx */; };
 		F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */; };
 /* End PBXBuildFile section */
 
@@ -68,15 +68,15 @@
 		18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryManager.swift; sourceTree = "<group>"; };
 		2505471792A29EC48A7FD322 /* ScannedPlate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannedPlate.swift; sourceTree = "<group>"; };
 		25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognizerService.swift; sourceTree = "<group>"; };
+		2A42B55C539B3FC8C46FA926 /* BirdDog.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BirdDog.entitlements; sourceTree = "<group>"; };
 		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
-		3EFB2C42066478E1CF015E82 /* ReportSearchExport.xlsx */ = {isa = PBXFileReference; path = ReportSearchExport.xlsx; sourceTree = "<group>"; };
 		4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotManagementView.swift; sourceTree = "<group>"; };
 		5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcher.swift; sourceTree = "<group>"; };
+		56771E1D5749AF106C7BF205 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoundDogSyncService.swift; sourceTree = "<group>"; };
-		63A480FE14BAC0C36AF24836 /* ~$ReportSearchExport.xlsx */ = {isa = PBXFileReference; path = "~$ReportSearchExport.xlsx"; sourceTree = "<group>"; };
 		64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDogApp.swift; sourceTree = "<group>"; };
 		6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryView.swift; sourceTree = "<group>"; };
 		72F5636944CED0E09729E861 /* DataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataProvider.swift; sourceTree = "<group>"; };
@@ -88,7 +88,9 @@
 		85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManagementView.swift; sourceTree = "<group>"; };
 		8E3E09DFE576A65B9E6C3329 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateReaderViewModel.swift; sourceTree = "<group>"; };
+		93B5520F9040D8218B1B7166 /* PushTokenService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTokenService.swift; sourceTree = "<group>"; };
 		995B0C59C443E480C6E8929E /* AdminSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminSettingsView.swift; sourceTree = "<group>"; };
+		9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9C892FB471FBA100CC681F7F /* BirdDog.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BirdDog.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A60D6819CAAEDDD374807655 /* ScanLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogView.swift; sourceTree = "<group>"; };
 		A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateOverlayView.swift; sourceTree = "<group>"; };
@@ -104,7 +106,6 @@
 		DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcherTests.swift; sourceTree = "<group>"; };
 		EDAF99197F0B8306C7230405 /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
 		EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotMatchingTests.swift; sourceTree = "<group>"; };
-		EF327B2CBBEE852C1E69491E /* Parking Permits Export (1-1-25 to 6-11-26).xlsx */ = {isa = PBXFileReference; path = "Parking Permits Export (1-1-25 to 6-11-26).xlsx"; sourceTree = "<group>"; };
 		F3193DCF5C38933C9A27783B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -145,6 +146,7 @@
 				07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */,
 				84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */,
 				25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */,
+				93B5520F9040D8218B1B7166 /* PushTokenService.swift */,
 				18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */,
 			);
 			path = Services;
@@ -153,9 +155,6 @@
 		7633F04F8A234B0E341D30EC /* BirdDog */ = {
 			isa = PBXGroup;
 			children = (
-				63A480FE14BAC0C36AF24836 /* ~$ReportSearchExport.xlsx */,
-				EF327B2CBBEE852C1E69491E /* Parking Permits Export (1-1-25 to 6-11-26).xlsx */,
-				3EFB2C42066478E1CF015E82 /* ReportSearchExport.xlsx */,
 				E8BE159D74C944022E6BF7BD /* App */,
 				23F7BA4979B2D798151C9E32 /* Models */,
 				2FA41B1B577F89D2982CA9D1 /* Resources */,
@@ -207,7 +206,9 @@
 				8E3E09DFE576A65B9E6C3329 /* ContentView.swift */,
 				85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */,
 				4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */,
+				9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */,
 				A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */,
+				56771E1D5749AF106C7BF205 /* QRScannerView.swift */,
 				A60D6819CAAEDDD374807655 /* ScanLogView.swift */,
 				6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */,
 			);
@@ -225,6 +226,7 @@
 		E8BE159D74C944022E6BF7BD /* App */ = {
 			isa = PBXGroup;
 			children = (
+				2A42B55C539B3FC8C46FA926 /* BirdDog.entitlements */,
 				64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */,
 				B93D8CD7DEBD2418FF0C7F74 /* Info.plist */,
 				B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */,
@@ -326,11 +328,8 @@
 			files = (
 				3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */,
 				0FF55B00E57C6DC9EAEF1E42 /* LaunchScreen.storyboard in Resources */,
-				A995D232122A1DA19C939AB6 /* Parking Permits Export (1-1-25 to 6-11-26).xlsx in Resources */,
-				BFCF47AAA1D215464FCCD89E /* ReportSearchExport.xlsx in Resources */,
 				A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */,
 				77802D98BB1AE822113E654C /* permits.json in Resources */,
-				E7FA00A5056019AF87304DA2 /* ~$ReportSearchExport.xlsx in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -367,6 +366,7 @@
 				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,
 				5994879595E847E9856A1071 /* LogExporter.swift in Sources */,
 				035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */,
+				48B2B22D2F94299902405993 /* OnboardingView.swift in Sources */,
 				23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */,
 				F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */,
 				58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */,
@@ -378,6 +378,8 @@
 				64981CA33F907E9364BD1333 /* PlateRecognitionService.swift in Sources */,
 				83D4DA427F57D63F16E9F644 /* PlateRecognizerService.swift in Sources */,
 				2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */,
+				AD14C162989528A1823FFEBC /* PushTokenService.swift in Sources */,
+				9F99C1DDA5B19ED739F4E5BD /* QRScannerView.swift in Sources */,
 				6C3D5AF592FB47DAB1529273 /* ScanLogView.swift in Sources */,
 				A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */,
 				B97725AA2B765B44F6A149CD /* ScannedPlate.swift in Sources */,
@@ -401,6 +403,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = BirdDog/App/BirdDog.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -567,6 +570,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = BirdDog/App/BirdDog.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

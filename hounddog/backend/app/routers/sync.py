@@ -10,6 +10,7 @@ from ..models.device import Device
 from ..models.lot import ParkingLot
 from ..models.permit import Permit
 from ..schemas.sync import (
+    PushTokenRegister,
     SyncLotsResponse,
     SyncPermitsResponse,
     SyncStatusResponse,
@@ -98,6 +99,16 @@ async def sync_status(
         lot_count=lot_count,
         device_count=device_count,
     )
+
+
+@router.post("/register-push", status_code=204)
+async def register_push_token(
+    body: PushTokenRegister,
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    device.push_token = body.token
+    await db.flush()
 
 
 @router.post("/tickets", status_code=202)

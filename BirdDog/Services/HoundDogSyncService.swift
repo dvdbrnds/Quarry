@@ -11,7 +11,10 @@ final class HoundDogSyncService: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var permitCount: Int = 0
     @Published private(set) var lotCount: Int = 0
-    @Published var isEnabled: Bool = false
+
+    @Published var isEnabled: Bool {
+        didSet { UserDefaults.standard.set(isEnabled, forKey: Self.isEnabledKey) }
+    }
 
     enum SyncState: String {
         case idle = "Idle"
@@ -23,11 +26,12 @@ final class HoundDogSyncService: ObservableObject {
 
     private static let lastPermitSyncKey = "HoundDogSync.lastPermitSync"
     private static let lastLotSyncKey = "HoundDogSync.lastLotSync"
-    private static let syncIntervalSeconds: TimeInterval = 60
+    private static let isEnabledKey = "HoundDogSync.isEnabled"
+    private static let syncIntervalSeconds: TimeInterval = 30
 
     private var syncTimer: Timer?
     private let monitor = NWPathMonitor()
-    private var hasWifi = false
+    private var isConnected = false
     private let session = URLSession.shared
 
     private var lastPermitSync: Date? {
@@ -41,10 +45,12 @@ final class HoundDogSyncService: ObservableObject {
     }
 
     private init() {
+        self.isEnabled = UserDefaults.standard.bool(forKey: Self.isEnabledKey)
+
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
-                self?.hasWifi = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
-                if self?.isEnabled == true && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) {
+                self?.isConnected = path.status == .satisfied
+                if self?.isEnabled == true && path.status == .satisfied {
                     await self?.syncNow()
                 }
             }
@@ -68,6 +74,13 @@ final class HoundDogSyncService: ObservableObject {
         syncTimer = nil
     }
 
+    func startIfConfigured() {
+        let settings = AppSettings.shared
+        guard !settings.houndDogURL.isEmpty, !settings.houndDogAPIKey.isEmpty else { return }
+        isEnabled = true
+        start()
+    }
+
     func syncNow() async {
         let settings = AppSettings.shared
         guard !settings.houndDogURL.isEmpty, !settings.houndDogAPIKey.isEmpty else {
@@ -75,7 +88,7 @@ final class HoundDogSyncService: ObservableObject {
             return
         }
 
-        guard hasWifi else {
+        guard isConnected else {
             syncState = .offline
             return
         }

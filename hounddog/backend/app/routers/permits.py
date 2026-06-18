@@ -19,6 +19,7 @@ from ..schemas.permit import (
     PermitImportPayload,
     PermitImportResult,
 )
+from ..websocket import manager
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -66,6 +67,7 @@ async def create_permit(data: PermitCreate, db: AsyncSession = Depends(get_db)):
     db.add(permit)
     await db.flush()
     await db.refresh(permit)
+    await _notify_permit_change("created", 1)
     return permit
 
 
@@ -90,6 +92,7 @@ async def update_permit(
 
     await db.flush()
     await db.refresh(permit)
+    await _notify_permit_change("updated", 1)
     return permit
 
 
@@ -100,6 +103,7 @@ async def delete_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)
         raise HTTPException(404, "Permit not found")
     permit.deleted_at = datetime.now(timezone.utc)
     await db.flush()
+    await _notify_permit_change("deleted", 1)
 
 
 @router.post("/import", response_model=PermitImportResult)
@@ -163,6 +167,8 @@ async def import_permits(
             inserted += 1
 
     await db.flush()
+    if inserted + updated > 0:
+        await _notify_permit_change("imported", inserted + updated)
     return PermitImportResult(inserted=inserted, updated=updated, skipped=skipped)
 
 
@@ -216,6 +222,8 @@ async def import_permits_csv(
             inserted += 1
 
     await db.flush()
+    if inserted + updated > 0:
+        await _notify_permit_change("imported", inserted + updated)
     return PermitImportResult(inserted=inserted, updated=updated, skipped=skipped)
 
 
@@ -247,3 +255,10 @@ async def export_permits(db: AsyncSession = Depends(get_db)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=permits.csv"},
     )
+
+
+async def _notify_permit_change(action: str, count: int):
+    """Broadcast permit change to WebSocket clients and send APNs push to devices."""
+    await manager.broadcast("permit_changed", {"action": action, "count": count})
+    from ..services.apns import send_permit_push
+    await send_permit_push(action, count)

@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     debug: bool = False
 
+    # Instance identity (used in QR pairing payload)
+    public_url: str = "http://localhost:8000"
+    school_name: str = ""
+
     # Okta SSO (Phase 2)
     okta_domain: str = ""
     okta_client_id: str = ""
@@ -21,6 +25,13 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     stripe_publishable_key: str = ""
+
+    # APNs (Push Notifications)
+    apns_key_path: str = ""
+    apns_key_id: str = ""
+    apns_team_id: str = ""
+    apns_bundle_id: str = "edu.moravian.birddog"
+    apns_use_sandbox: bool = True
 
     model_config = {"env_prefix": "QUARRY_", "env_file": ".env"}
 
