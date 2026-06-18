@@ -2,7 +2,6 @@ import {
   APIProvider,
   Map,
   useMap,
-  useMapsLibrary,
 } from "@vis.gl/react-google-maps";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, Lot } from "../api";
@@ -34,11 +33,9 @@ function MapContent({
   onBoundaryChange,
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
-  const drawingLib = useMapsLibrary("drawing");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const drawingManagerRef = useRef<any>(null);
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
   const [drawingActive, setDrawingActive] = useState(false);
 
   const syncEditPolygon = useCallback(() => {
@@ -97,7 +94,36 @@ function MapContent({
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
 
-  // Render editable polygon for the boundary being created/edited
+  // Render vertex markers for the points being placed
+  useEffect(() => {
+    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current = [];
+
+    if (!map || !editingBoundary || !drawingActive) return;
+
+    editingBoundary.forEach((c, i) => {
+      const marker = new google.maps.Marker({
+        position: { lat: c.latitude, lng: c.longitude },
+        map,
+        label: { text: String(i + 1), color: "white", fontSize: "11px", fontWeight: "bold" },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: "#b8860b",
+          fillOpacity: 1,
+          strokeColor: "white",
+          strokeWeight: 2,
+        },
+      });
+      markersRef.current.push(marker);
+    });
+
+    return () => {
+      markersRef.current.forEach((m) => m.setMap(null));
+    };
+  }, [map, editingBoundary, drawingActive]);
+
+  // Render editable polygon for the boundary being edited (not in drawing mode)
   useEffect(() => {
     if (!map) return;
 
@@ -106,7 +132,7 @@ function MapContent({
       editPolygonRef.current = null;
     }
 
-    if (!editingBoundary || editingBoundary.length < 3) return;
+    if (!editingBoundary || editingBoundary.length < 3 || drawingActive) return;
 
     const poly = new google.maps.Polygon({
       paths: editingBoundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
@@ -133,62 +159,71 @@ function MapContent({
     return () => {
       poly.setMap(null);
     };
-  }, [map, editingBoundary, syncEditPolygon]);
+  }, [map, editingBoundary, drawingActive, syncEditPolygon]);
 
-  // Drawing manager for creating new polygons
+  // Drawing-mode preview polygon (connects placed points)
+  const previewPolyRef = useRef<google.maps.Polyline | null>(null);
   useEffect(() => {
-    if (!map || !drawingLib) return;
+    if (previewPolyRef.current) {
+      previewPolyRef.current.setMap(null);
+      previewPolyRef.current = null;
+    }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const DM = (google.maps.drawing as any).DrawingManager;
-    const dm = new DM({
-      drawingMode: null,
-      drawingControl: false,
-      polygonOptions: {
-        strokeColor: "#b8860b",
-        strokeWeight: 3,
-        fillColor: "#b8860b",
-        fillOpacity: 0.3,
-        editable: true,
-      },
+    if (!map || !drawingActive || !editingBoundary || editingBoundary.length < 2) return;
+
+    const path = editingBoundary.map((c) => ({ lat: c.latitude, lng: c.longitude }));
+    // Close the loop visually if we have 3+ points
+    if (editingBoundary.length >= 3) {
+      path.push(path[0]);
+    }
+
+    const line = new google.maps.Polyline({
+      path,
+      strokeColor: "#b8860b",
+      strokeWeight: 3,
+      strokeOpacity: 0.8,
+      map,
     });
 
-    dm.setMap(map);
-    drawingManagerRef.current = dm;
+    previewPolyRef.current = line;
+    return () => { line.setMap(null); };
+  }, [map, drawingActive, editingBoundary]);
 
-    dm.addListener("polygoncomplete", (polygon: google.maps.Polygon) => {
-      const path = polygon.getPath();
-      const coords: Coordinate[] = [];
-      for (let i = 0; i < path.getLength(); i++) {
-        const pt = path.getAt(i);
-        coords.push({ latitude: pt.lat(), longitude: pt.lng() });
-      }
-      onBoundaryChange(coords);
-      polygon.setMap(null);
-      dm.setDrawingMode(null);
-      setDrawingActive(false);
+  // Click-to-place handler during drawing mode
+  useEffect(() => {
+    if (!map || !drawingActive) return;
+
+    const listener = map.addListener("click", (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      const newPoint: Coordinate = {
+        latitude: e.latLng.lat(),
+        longitude: e.latLng.lng(),
+      };
+      onBoundaryChange([...(editingBoundary ?? []), newPoint]);
     });
 
     return () => {
-      dm.setMap(null);
+      google.maps.event.removeListener(listener);
     };
-  }, [map, drawingLib, onBoundaryChange]);
+  }, [map, drawingActive, editingBoundary, onBoundaryChange]);
 
-  const toggleDrawing = useCallback(() => {
-    const dm = drawingManagerRef.current;
-    if (!dm) return;
+  const startDrawing = useCallback(() => {
+    onBoundaryChange([]);
+    setDrawingActive(true);
+  }, [onBoundaryChange]);
 
-    if (drawingActive) {
-      dm.setDrawingMode(null);
-      setDrawingActive(false);
-    } else {
-      dm.setDrawingMode((google.maps.drawing as any).OverlayType.POLYGON);
-      setDrawingActive(true);
-    }
-  }, [drawingActive]);
+  const finishDrawing = useCallback(() => {
+    setDrawingActive(false);
+  }, []);
+
+  const undoLastPoint = useCallback(() => {
+    if (!editingBoundary || editingBoundary.length === 0) return;
+    onBoundaryChange(editingBoundary.slice(0, -1));
+  }, [editingBoundary, onBoundaryChange]);
 
   const clearBoundary = useCallback(() => {
     onBoundaryChange([]);
+    setDrawingActive(false);
     if (editPolygonRef.current) {
       editPolygonRef.current.setMap(null);
       editPolygonRef.current = null;
@@ -200,27 +235,55 @@ function MapContent({
       <div className="absolute top-3 right-3 z-10 flex gap-2">
         {editingBoundary !== null && (
           <>
-            <button
-              onClick={toggleDrawing}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg transition-colors ${
-                drawingActive
-                  ? "bg-signal-red text-white"
-                  : "bg-white text-navy hover:bg-gray-50"
-              }`}
-            >
-              {drawingActive ? "Cancel Drawing" : "Draw Boundary"}
-            </button>
-            {editingBoundary.length > 0 && (
-              <button
-                onClick={clearBoundary}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-signal-red hover:bg-red-50 transition-colors"
-              >
-                Clear
-              </button>
+            {drawingActive ? (
+              <>
+                <button
+                  onClick={undoLastPoint}
+                  disabled={!editingBoundary || editingBoundary.length === 0}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-navy hover:bg-gray-50 transition-colors disabled:opacity-30"
+                >
+                  Undo Point
+                </button>
+                <button
+                  onClick={finishDrawing}
+                  disabled={!editingBoundary || editingBoundary.length < 3}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-brass text-navy-deep hover:bg-brass-deep transition-colors disabled:opacity-30"
+                >
+                  Done ({editingBoundary?.length ?? 0} pts)
+                </button>
+                <button
+                  onClick={clearBoundary}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-signal-red text-white transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={startDrawing}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-navy hover:bg-gray-50 transition-colors"
+                >
+                  {editingBoundary.length > 0 ? "Redraw Boundary" : "Draw Boundary"}
+                </button>
+                {editingBoundary.length > 0 && (
+                  <button
+                    onClick={clearBoundary}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-signal-red hover:bg-red-50 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
       </div>
+      {drawingActive && (
+        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-navy max-w-[200px]">
+          Click on the map to place boundary points. Place at least 3 points, then click <strong>Done</strong>.
+        </div>
+      )}
       <Map
         defaultCenter={MORAVIAN_CENTER}
         defaultZoom={16}
@@ -232,7 +295,9 @@ function MapContent({
         fullscreenControl={true}
         zoomControl={true}
         style={{ width: "100%", height: "100%" }}
-        onClick={() => onSelectLot(null)}
+        onClick={() => {
+          if (!drawingActive) onSelectLot(null);
+        }}
       />
     </>
   );
@@ -253,10 +318,7 @@ export default function LotMap(props: LotMapProps) {
   }
 
   return (
-    <APIProvider
-      apiKey={props.apiKey}
-      libraries={["drawing"]}
-    >
+    <APIProvider apiKey={props.apiKey}>
       <div className="w-full h-full relative rounded-xl overflow-hidden">
         <MapContent {...props} />
       </div>
