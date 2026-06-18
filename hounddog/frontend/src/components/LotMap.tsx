@@ -87,12 +87,6 @@ function MapContent({
       poly.addListener("mouseout", () => infoWindow.close());
 
       polygonsRef.current.push(poly);
-
-      if (isSelected) {
-        const bounds = new google.maps.LatLngBounds();
-        lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-        map.fitBounds(bounds, 80);
-      }
     });
 
     return () => {
@@ -105,9 +99,14 @@ function MapContent({
     if (!map || !selectedLotId) return;
     const lot = lots.find((l) => l.id === selectedLotId);
     if (!lot || lot.boundary.length < 3) return;
-    const bounds = new google.maps.LatLngBounds();
-    lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-    map.fitBounds(bounds, 80);
+
+    const timer = setTimeout(() => {
+      const bounds = new google.maps.LatLngBounds();
+      lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+      map.fitBounds(bounds, 80);
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [map, selectedLotId, lots]);
 
   // Render vertex markers for the points being placed
