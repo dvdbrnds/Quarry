@@ -1,4 +1,4 @@
-# HoundDog Deployment Guide
+# Quarry Deployment Guide
 
 Complete these steps in order. Each step depends on the one before it.
 
@@ -7,13 +7,13 @@ Complete these steps in order. Each step depends on the one before it.
 ## Step 1: DNS Record
 
 - [ ] Create a DNS A record pointing to your Coolify server:
-  - **Name:** `hounddog.moravian.edu` (or your chosen subdomain)
+  - **Name:** `quarry.moravian.edu` (or your chosen subdomain)
   - **Type:** A
   - **Value:** Your Coolify server's IP address
   - **TTL:** 300
 - [ ] If internal/DMZ only, add to your internal DNS server
 - [ ] If public-facing, add to your public DNS provider
-- [ ] Verify propagation: `ping hounddog.moravian.edu`
+- [ ] Verify propagation: `ping quarry.moravian.edu`
 
 ---
 
@@ -21,22 +21,22 @@ Complete these steps in order. Each step depends on the one before it.
 
 - [ ] Open Coolify dashboard
 - [ ] Go to **Projects** in the left sidebar
-- [ ] Open your project (or create one: click **+ Add** at the top)
+- [ ] Open your project (or create one named **Quarry**: click **+ Add** at the top)
 - [ ] Inside your project environment, click **+ New** to add a resource
 - [ ] Select **PostgreSQL** from the database options
 - [ ] Configure the database:
-  - [ ] Set Postgres User to `hounddog`
+  - [ ] Set Postgres User to `quarry`
   - [ ] Set a strong Postgres Password (**save this — you need it in Step 5**)
-  - [ ] Set Postgres Database to `hounddog`
+  - [ ] Set Postgres Database to `quarry`
 - [ ] Click **Start** to deploy the database
 - [ ] Once running, go to the database resource page
 - [ ] Find the **Internal URL** in the database's General Configuration section
-  - It will look like: `postgresql://hounddog:<password>@<container-name>:5432/hounddog`
+  - It will look like: `postgresql://quarry:<password>@<container-name>:5432/quarry`
 - [ ] **Copy and save this URL** — you need it for Step 5
 
 ---
 
-## Step 3: Create HoundDog Application in Coolify
+## Step 3: Create Quarry Application in Coolify
 
 - [ ] In the same project environment, click **+ New** to add another resource
 - [ ] Select **Public Repository** (or connect via GitHub App if you've set that up)
@@ -47,7 +47,7 @@ Complete these steps in order. Each step depends on the one before it.
   - This tells Coolify to use only the `hounddog/` subdirectory from the monorepo
 - [ ] Click **Continue**
 - [ ] On the application configuration page:
-  - [ ] Set **Domains** (FQDN) to `https://hounddog.moravian.edu`
+  - [ ] Set **Domains** (FQDN) to `https://quarry.moravian.edu`
   - [ ] Set **Ports Exposes** to `3200`
     - This is the port nginx listens on inside the container
 - [ ] **Do NOT deploy yet** — set environment variables first (Step 5)
@@ -66,13 +66,13 @@ Complete these steps in order. Each step depends on the one before it.
 
 ### B) Configure the App
 
-- [ ] Set App integration name to **HoundDog**
+- [ ] Set App integration name to **Quarry**
 - [ ] Grant type: **Authorization Code** (default, leave checked)
 - [ ] Add Sign-in redirect URIs:
-  - [ ] `https://hounddog.moravian.edu/auth/callback`
+  - [ ] `https://quarry.moravian.edu/auth/callback`
   - [ ] `http://localhost:5173/auth/callback`
 - [ ] Add Sign-out redirect URIs:
-  - [ ] `https://hounddog.moravian.edu`
+  - [ ] `https://quarry.moravian.edu`
   - [ ] `http://localhost:5173`
 - [ ] Set Controlled access: **Limit access to selected groups** (or "Allow everyone")
 - [ ] Click **Save**
@@ -86,21 +86,21 @@ Complete these steps in order. Each step depends on the one before it.
 ### D) Create Okta Groups
 
 - [ ] Go to **Directory** → **Groups** → **Add Group**
-- [ ] Create group: `hounddog_admin`
-- [ ] Create group: `hounddog_supervisor`
-- [ ] Create group: `hounddog_finance`
-- [ ] Create group: `hounddog_officer`
-- [ ] Add yourself to `hounddog_admin`
+- [ ] Create group: `quarry_admin`
+- [ ] Create group: `quarry_supervisor`
+- [ ] Create group: `quarry_finance`
+- [ ] Create group: `quarry_officer`
+- [ ] Add yourself to `quarry_admin`
 - [ ] Assign other users to appropriate groups
 
 ### E) Assign Groups to the App
 
-- [ ] Go to **Applications** → **HoundDog** → **Assignments** tab
+- [ ] Go to **Applications** → **Quarry** → **Assignments** tab
 - [ ] Click **Assign** → **Assign to Groups**
-- [ ] Assign `hounddog_admin`
-- [ ] Assign `hounddog_supervisor`
-- [ ] Assign `hounddog_finance`
-- [ ] Assign `hounddog_officer`
+- [ ] Assign `quarry_admin`
+- [ ] Assign `quarry_supervisor`
+- [ ] Assign `quarry_finance`
+- [ ] Assign `quarry_officer`
 
 ### F) Add Groups Claim to the Token
 
@@ -120,46 +120,48 @@ Complete these steps in order. Each step depends on the one before it.
 
 ## Step 5: Set Environment Variables in Coolify
 
-Go to your HoundDog application in Coolify → **Environment Variables** tab.
+Go to your Quarry application in Coolify → **Environment Variables** tab.
 
 ### Required (app will not start without these)
 
-- [ ] `HOUNDDOG_DATABASE_URL`
+- [ ] `QUARRY_DATABASE_URL`
   - Take the Internal URL from Step 2 and change `postgresql://` to `postgresql+asyncpg://`
-  - Example: `postgresql+asyncpg://hounddog:<password>@<container-name>:5432/hounddog`
-- [ ] `HOUNDDOG_SECRET_KEY`
+  - Example: `postgresql+asyncpg://quarry:<password>@<container-name>:5432/quarry`
+- [ ] `QUARRY_SECRET_KEY`
   - Generate with: `openssl rand -hex 32`
   - Paste the output
-- [ ] `HOUNDDOG_DEBUG`
+- [ ] `QUARRY_DEBUG`
   - Set to `false`
-- [ ] `HOUNDDOG_CORS_ORIGINS`
-  - Set to `["https://hounddog.moravian.edu"]`
+- [ ] `QUARRY_CORS_ORIGINS`
+  - Set to `["https://quarry.moravian.edu"]`
 
-### Okta SSO (from Step 4)
+### Okta SSO (add later — do NOT create these vars until Okta is ready)
 
-- [ ] `HOUNDDOG_OKTA_DOMAIN`
+> **Skip these for now.** If the Okta vars are absent, auth is disabled and the
+> dashboard is open with full admin access. When you're ready, add these four
+> vars in Coolify and redeploy — auth turns on automatically.
+
+- [ ] `QUARRY_OKTA_DOMAIN`
   - Your Okta domain, e.g.: `moravian.okta.com`
   - No `https://`, no trailing slash
-- [ ] `HOUNDDOG_OKTA_CLIENT_ID`
+- [ ] `QUARRY_OKTA_CLIENT_ID`
   - The Client ID from Step 4C
-- [ ] `HOUNDDOG_OKTA_CLIENT_SECRET`
+- [ ] `QUARRY_OKTA_CLIENT_SECRET`
   - The Client Secret from Step 4C
-- [ ] `HOUNDDOG_OKTA_AUDIENCE`
+- [ ] `QUARRY_OKTA_AUDIENCE`
   - Usually the same as the Client ID
   - Or use a custom audience if configured in Okta's Authorization Server
 
-### Stripe (skip for now, add later)
+### Stripe (add later — do NOT create these vars until Stripe is ready)
 
-- [ ] `HOUNDDOG_STRIPE_SECRET_KEY` — leave blank
-- [ ] `HOUNDDOG_STRIPE_WEBHOOK_SECRET` — leave blank
-- [ ] `HOUNDDOG_STRIPE_PUBLISHABLE_KEY` — leave blank
+> Same as above — just skip these entirely. Don't add blank entries.
 
 ---
 
 ## Step 6: Persistent Storage & Backups
 
-- [ ] **App uploads** (ticket violation photos): Go to HoundDog app → **Persistent Storage** tab → Add volume:
-  - **Name:** `hounddog-uploads`
+- [ ] **App uploads** (ticket violation photos): Go to Quarry app → **Persistent Storage** tab → Add volume:
+  - **Name:** `quarry-uploads`
   - **Destination Path:** `/app/uploads`
 - [ ] **Database backups** (optional but recommended): Go to your PostgreSQL resource → **Backups** tab → configure scheduled backups (local or S3)
 - [ ] Database data volume is managed automatically by Coolify — no action needed
@@ -168,17 +170,17 @@ Go to your HoundDog application in Coolify → **Environment Variables** tab.
 
 ## Step 7: Deploy
 
-- [ ] Go to your HoundDog application in Coolify
+- [ ] Go to your Quarry application in Coolify
 - [ ] Click **Deploy**
 - [ ] Watch the deployment logs for:
   - [ ] `Building docker image completed.`
   - [ ] `New container started.`
   - [ ] Healthcheck passes (status: `healthy`)
 - [ ] If the healthcheck fails, click **Show Debug Logs** to see container output
-- [ ] Visit `https://hounddog.moravian.edu`
+- [ ] Visit `https://quarry.moravian.edu`
 - [ ] Confirm you are redirected to the Okta login page
 - [ ] Log in with your Moravian credentials
-- [ ] Confirm you land on the HoundDog dashboard with your email and role badge in the top-right corner
+- [ ] Confirm you land on the Quarry dashboard with your email and role badge in the top-right corner
 
 ---
 
@@ -196,12 +198,12 @@ Go to your HoundDog application in Coolify → **Environment Variables** tab.
 
 ## Quick Reference — Role to Group Mapping
 
-| Okta Group Name | HoundDog Role | Access Level |
+| Okta Group Name | Quarry Role | Access Level |
 |---|---|---|
-| `hounddog_admin` | admin | Everything |
-| `hounddog_supervisor` | supervisor | Dashboard + operations |
-| `hounddog_finance` | finance | Finance + bursar import |
-| `hounddog_officer` | officer | Dashboard + basic views |
+| `quarry_admin` | admin | Everything |
+| `quarry_supervisor` | supervisor | Dashboard + operations |
+| `quarry_finance` | finance | Finance + bursar import |
+| `quarry_officer` | officer | Dashboard + basic views |
 | (no group / default) | officer | Dashboard + basic views |
 
 ---
@@ -210,10 +212,10 @@ Go to your HoundDog application in Coolify → **Environment Variables** tab.
 
 | Symptom | Fix |
 |---|---|
-| Healthcheck fails / `Connection refused` on port 8000 | `HOUNDDOG_DATABASE_URL` is wrong or PostgreSQL hasn't started. Check the Internal URL on the database resource page. Make sure you used `postgresql+asyncpg://` not `postgresql://`. |
+| Healthcheck fails / `Connection refused` on port 8000 | `QUARRY_DATABASE_URL` is wrong or PostgreSQL hasn't started. Check the Internal URL on the database resource page. Make sure you used `postgresql+asyncpg://` not `postgresql://`. |
 | `Application startup failed` in container logs | Same as above — database connection issue. The app retries 10 times (30s total) then exits. |
-| `Token verification failed` | `HOUNDDOG_OKTA_DOMAIN` or `HOUNDDOG_OKTA_CLIENT_ID` is wrong. Or the groups claim wasn't added in Step 4F. |
-| Okta returns `400 Bad Request` after redirect | The Sign-in redirect URI in Okta doesn't match your actual domain. Go to Applications → HoundDog → General and fix the URI. |
-| Finance pages return `403 Forbidden` | Your user isn't in the `hounddog_admin` or `hounddog_finance` Okta group. Check Directory → Groups in Okta. |
+| `Token verification failed` | `QUARRY_OKTA_DOMAIN` or `QUARRY_OKTA_CLIENT_ID` is wrong. Or the groups claim wasn't added in Step 4F. |
+| Okta returns `400 Bad Request` after redirect | The Sign-in redirect URI in Okta doesn't match your actual domain. Go to Applications → Quarry → General and fix the URI. |
+| Finance pages return `403 Forbidden` | Your user isn't in the `quarry_admin` or `quarry_finance` Okta group. Check Directory → Groups in Okta. |
 | `/pay` page asks for login | Should never happen — `/pay` bypasses auth entirely. Verify the URL is exactly `/pay`, not `/payments` or `/finance`. |
 | SSL certificate not working | Coolify auto-provisions via Let's Encrypt. Ensure your DNS A record resolves to the Coolify server IP and port 80/443 are open. |

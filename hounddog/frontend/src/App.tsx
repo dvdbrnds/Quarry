@@ -33,7 +33,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <h1 className="text-lg font-bold tracking-wide text-brass mr-4">
-          HoundDog
+          Quarry
         </h1>
         <NavItem to="/dashboard">Dashboard</NavItem>
         <NavItem to="/permits">Permits</NavItem>

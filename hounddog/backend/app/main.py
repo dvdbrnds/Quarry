@@ -10,7 +10,7 @@ from .config import settings
 from .routers import auth, permits, lots, sync, tickets, payments
 from .websocket import manager
 
-logger = logging.getLogger("hounddog")
+logger = logging.getLogger("quarry")
 
 
 @asynccontextmanager
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="HoundDog",
+    title="Quarry",
     description="Quarry parking management API",
     version="0.1.0",
     lifespan=lifespan,

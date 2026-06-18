@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface TicketResult {
   id: string;
@@ -17,6 +17,40 @@ export default function Pay() {
   const [error, setError] = useState("");
   const [paying, setPaying] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ticketId = params.get("ticket");
+    if (ticketId) {
+      loadTicketById(ticketId);
+    }
+  }, []);
+
+  async function loadTicketById(id: string) {
+    setLoading(true);
+    setError("");
+    setTickets([]);
+    try {
+      const res = await fetch(`/api/payments/lookup/${encodeURIComponent(id)}`);
+      if (res.status === 404) {
+        setError("Ticket not found. It may have been voided or the link is invalid.");
+        return;
+      }
+      if (!res.ok) throw new Error("Lookup failed");
+      const ticket: TicketResult = await res.json();
+      if (ticket.status === "paid") {
+        setError("This ticket has already been paid.");
+      } else if (ticket.status === "voided") {
+        setError("This ticket has been voided. No payment is required.");
+      } else {
+        setTickets([ticket]);
+      }
+    } catch {
+      setError("Unable to load ticket. Please try searching by plate number instead.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!lookup.trim()) return;
@@ -25,16 +59,15 @@ export default function Pay() {
     setTickets([]);
 
     try {
-      const res = await fetch(`/api/tickets?search=${encodeURIComponent(lookup.trim())}&page_size=20`);
+      const res = await fetch(
+        `/api/payments/lookup?plate=${encodeURIComponent(lookup.trim())}`
+      );
       if (!res.ok) throw new Error("Search failed");
       const data = await res.json();
-      const unpaid = data.items.filter(
-        (t: TicketResult) => !["paid", "voided"].includes(t.status)
-      );
-      if (unpaid.length === 0) {
-        setError("No outstanding tickets found for that plate or ticket number.");
+      if (data.tickets.length === 0) {
+        setError("No outstanding tickets found for that plate number.");
       }
-      setTickets(unpaid);
+      setTickets(data.tickets);
     } catch {
       setError("Unable to look up tickets. Please try again.");
     } finally {
@@ -72,7 +105,7 @@ export default function Pay() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-navy">Pay a Parking Ticket</h1>
           <p className="text-ink-mute mt-2">
-            Enter your license plate number or ticket ID to look up and pay outstanding fines.
+            Enter your license plate number to look up and pay outstanding fines.
           </p>
         </div>
 
@@ -81,7 +114,7 @@ export default function Pay() {
             type="text"
             value={lookup}
             onChange={(e) => setLookup(e.target.value.toUpperCase())}
-            placeholder="Plate # or Ticket ID"
+            placeholder="License Plate #"
             className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-center font-mono text-lg tracking-wider focus:ring-2 focus:ring-brass focus:outline-none"
           />
           <button

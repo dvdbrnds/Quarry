@@ -22,7 +22,7 @@ COPY backend/ .
 COPY --from=frontend-build /app/dist /var/www/html
 
 COPY nginx.conf /etc/nginx/sites-available/default
-COPY supervisord.conf /etc/supervisor/conf.d/hounddog.conf
+COPY supervisord.conf /etc/supervisor/conf.d/quarry.conf
 
 RUN mkdir -p /app/uploads
 
@@ -31,4 +31,4 @@ EXPOSE 3200
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
     CMD curl -f http://127.0.0.1:8000/health || exit 1
 
-CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/hounddog.conf"]
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/quarry.conf"]
