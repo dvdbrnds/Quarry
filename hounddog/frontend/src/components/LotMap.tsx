@@ -34,8 +34,9 @@ function MapContent({
   onBoundaryChange,
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
-  const drawing = useMapsLibrary("drawing");
-  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  const drawingLib = useMapsLibrary("drawing");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const drawingManagerRef = useRef<any>(null);
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
   const [drawingActive, setDrawingActive] = useState(false);
@@ -136,9 +137,11 @@ function MapContent({
 
   // Drawing manager for creating new polygons
   useEffect(() => {
-    if (!map || !drawing) return;
+    if (!map || !drawingLib) return;
 
-    const dm = new drawing.DrawingManager({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const DM = (google.maps.drawing as any).DrawingManager;
+    const dm = new DM({
       drawingMode: null,
       drawingControl: false,
       polygonOptions: {
@@ -169,7 +172,7 @@ function MapContent({
     return () => {
       dm.setMap(null);
     };
-  }, [map, drawing, onBoundaryChange]);
+  }, [map, drawingLib, onBoundaryChange]);
 
   const toggleDrawing = useCallback(() => {
     const dm = drawingManagerRef.current;
@@ -179,7 +182,7 @@ function MapContent({
       dm.setDrawingMode(null);
       setDrawingActive(false);
     } else {
-      dm.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
+      dm.setDrawingMode((google.maps.drawing as any).OverlayType.POLYGON);
       setDrawingActive(true);
     }
   }, [drawingActive]);
