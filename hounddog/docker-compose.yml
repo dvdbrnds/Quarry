@@ -23,6 +23,7 @@ services:
       QUARRY_DATABASE_URL: postgresql+asyncpg://quarry:quarry@db:5432/quarry
       QUARRY_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
       QUARRY_DEBUG: "true"
+      QUARRY_GOOGLE_MAPS_API_KEY: "AIzaSyCa5c9Ey7wfcsfGVcwA0-AFsDY8GwV8FZQ"
     depends_on:
       db:
         condition: service_healthy
