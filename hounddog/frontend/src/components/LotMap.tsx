@@ -66,11 +66,11 @@ function MapContent({
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor: color,
+        strokeColor: isSelected ? "#4ade80" : color,
         strokeOpacity: isSelected ? 1 : 0.7,
         strokeWeight: isSelected ? 3 : 2,
-        fillColor: color,
-        fillOpacity: isSelected ? 0.35 : 0.15,
+        fillColor: isSelected ? "#4ade80" : color,
+        fillOpacity: isSelected ? 0.25 : 0.15,
         map,
         clickable: true,
       });
