@@ -1,5 +1,5 @@
 {
-  "name": "hounddog-frontend",
+  "name": "quarry-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@okta/okta-auth-js": "^8.0.1",
+    "@vis.gl/react-google-maps": "^1.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"

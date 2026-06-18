@@ -20,9 +20,45 @@ from ..schemas.payment import (
     CheckoutResponse,
     PaymentRead,
     RevenueReport,
+    TicketLookup,
+    TicketLookupList,
 )
 
 router = APIRouter()
+
+
+@router.get("/lookup", response_model=TicketLookupList)
+async def lookup_by_plate(
+    plate: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint for the pay portal — search unpaid tickets by plate."""
+    normalized = plate.upper().strip()
+    if not normalized:
+        return TicketLookupList(tickets=[])
+
+    result = await db.execute(
+        select(Ticket)
+        .where(
+            Ticket.plate.ilike(f"%{normalized}%"),
+            Ticket.status.notin_(["paid", "voided"]),
+        )
+        .order_by(Ticket.issued_at.desc())
+        .limit(20)
+    )
+    return TicketLookupList(tickets=result.scalars().all())
+
+
+@router.get("/lookup/{ticket_id}", response_model=TicketLookup)
+async def lookup_by_id(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint for QR code deep links — fetch a single ticket for payment."""
+    ticket = await db.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    return ticket
 
 
 @router.post("/checkout", response_model=CheckoutResponse)

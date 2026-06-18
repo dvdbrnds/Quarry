@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: hounddog
-      POSTGRES_PASSWORD: hounddog
-      POSTGRES_DB: hounddog
+      POSTGRES_USER: quarry
+      POSTGRES_PASSWORD: quarry
+      POSTGRES_DB: quarry
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hounddog"]
+      test: ["CMD-SHELL", "pg_isready -U quarry"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -20,9 +20,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      HOUNDDOG_DATABASE_URL: postgresql+asyncpg://hounddog:hounddog@db:5432/hounddog
-      HOUNDDOG_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
-      HOUNDDOG_DEBUG: "true"
+      QUARRY_DATABASE_URL: postgresql+asyncpg://quarry:quarry@db:5432/quarry
+      QUARRY_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+      QUARRY_DEBUG: "true"
     depends_on:
       db:
         condition: service_healthy

@@ -46,6 +46,23 @@ class BursarImportResult(BaseModel):
     errors: list[str] = []
 
 
+class TicketLookup(BaseModel):
+    """Public-facing ticket info for the payment portal (no sensitive fields)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    plate: str
+    lot: str
+    violation_type: str
+    fine_amount: Decimal
+    status: str
+    issued_at: datetime
+
+
+class TicketLookupList(BaseModel):
+    tickets: list[TicketLookup]
+
+
 class RevenueReport(BaseModel):
     total_fines_issued: Decimal
     total_collected: Decimal
