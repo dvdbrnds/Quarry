@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/auth.ts","./src/main.tsx","./src/components/authguard.tsx","./src/components/lotmap.tsx","./src/pages/authcallback.tsx","./src/pages/dashboard.tsx","./src/pages/finance.tsx","./src/pages/lots.tsx","./src/pages/pay.tsx","./src/pages/paysuccess.tsx","./src/pages/permits.tsx","./src/pages/tickets.tsx"],"version":"5.9.3"}
