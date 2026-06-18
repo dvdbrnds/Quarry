@@ -87,12 +87,28 @@ function MapContent({
       poly.addListener("mouseout", () => infoWindow.close());
 
       polygonsRef.current.push(poly);
+
+      if (isSelected) {
+        const bounds = new google.maps.LatLngBounds();
+        lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+        map.fitBounds(bounds, 80);
+      }
     });
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
+
+  // Center map on selected lot
+  useEffect(() => {
+    if (!map || !selectedLotId) return;
+    const lot = lots.find((l) => l.id === selectedLotId);
+    if (!lot || lot.boundary.length < 3) return;
+    const bounds = new google.maps.LatLngBounds();
+    lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+    map.fitBounds(bounds, 80);
+  }, [map, selectedLotId, lots]);
 
   // Render vertex markers for the points being placed
   useEffect(() => {
@@ -136,10 +152,10 @@ function MapContent({
 
     const poly = new google.maps.Polygon({
       paths: editingBoundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-      strokeColor: "#b8860b",
+      strokeColor: "#4ade80",
       strokeWeight: 3,
-      fillColor: "#b8860b",
-      fillOpacity: 0.3,
+      fillColor: "#4ade80",
+      fillOpacity: 0.25,
       editable: true,
       draggable: false,
       map,
@@ -282,6 +298,11 @@ function MapContent({
       {drawingActive && (
         <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-navy max-w-[200px]">
           Click on the map to place boundary points. Place at least 3 points, then click <strong>Done</strong>.
+        </div>
+      )}
+      {editingBoundary !== null && !drawingActive && editingBoundary.length >= 3 && (
+        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-navy max-w-[220px]">
+          Drag the <strong>white squares</strong> on the boundary to adjust points. Drag midpoints to add new vertices.
         </div>
       )}
       <Map
