@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     okta_client_secret: str = ""
     okta_audience: str = ""
 
+    # Okta role mapping
+    admin_okta_groups: str = "Quarry-Admin"
+    staff_okta_groups: str = "Quarry-Staff"
+    okta_claim: str = "groups"
+
     # Google Maps
     google_maps_api_key: str = ""
 

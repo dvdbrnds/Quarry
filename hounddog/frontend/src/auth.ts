@@ -74,6 +74,13 @@ export async function isAuthenticated(): Promise<boolean> {
   return oktaAuth.isAuthenticated();
 }
 
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   const token = await getAccessToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

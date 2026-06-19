@@ -36,14 +36,20 @@ class OktaUser:
         self.groups = groups
 
     @property
+    def is_admin(self) -> bool:
+        return settings.admin_okta_groups in self.groups
+
+    @property
+    def is_staff(self) -> bool:
+        return self.is_admin or settings.staff_okta_groups in self.groups
+
+    @property
     def role(self) -> str:
-        if "admin" in self.groups:
+        if self.is_admin:
             return "admin"
-        if "supervisor" in self.groups:
-            return "supervisor"
-        if "finance" in self.groups:
-            return "finance"
-        return "officer"
+        if settings.staff_okta_groups in self.groups:
+            return "staff"
+        return "none"
 
     def has_role(self, *roles: str) -> bool:
         return self.role in roles
@@ -78,7 +84,7 @@ async def get_current_user(request: Request) -> OktaUser:
         return OktaUser(
             sub=payload.get("sub", ""),
             email=payload.get("email", payload.get("sub", "")),
-            groups=payload.get("groups", []),
+            groups=payload.get(settings.okta_claim, []),
         )
     except JWTError as e:
         raise HTTPException(401, f"Token verification failed: {e}")
@@ -88,5 +94,13 @@ def require_role(*roles: str):
     async def dependency(user: OktaUser = Depends(get_current_user)):
         if not user.has_role(*roles):
             raise HTTPException(403, f"Requires one of: {', '.join(roles)}")
+        return user
+    return dependency
+
+
+def require_admin():
+    async def dependency(user: OktaUser = Depends(get_current_user)):
+        if not user.is_admin:
+            raise HTTPException(403, "Admin access required")
         return user
     return dependency

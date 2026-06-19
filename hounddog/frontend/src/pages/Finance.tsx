@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { authHeaders } from "../auth";
 
 interface RevenueReport {
   total_fines_issued: string;
@@ -23,7 +24,7 @@ export default function Finance() {
 
   const loadReport = useCallback(async () => {
     try {
-      const res = await fetch("/api/payments/revenue");
+      const res = await fetch("/api/payments/revenue", { headers: await authHeaders() });
       if (res.ok) setReport(await res.json());
     } catch {}
   }, []);
@@ -40,8 +41,11 @@ export default function Finance() {
       const formData = new FormData();
       formData.append("file", file);
 
+      const hdrs = await authHeaders();
+      delete hdrs["Content-Type"];
       const res = await fetch("/api/payments/bursar-import-csv", {
         method: "POST",
+        headers: hdrs,
         body: formData,
       });
       if (res.ok) {
