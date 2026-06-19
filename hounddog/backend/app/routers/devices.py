@@ -4,13 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, require_role
+from ..auth.okta import get_current_user, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.device import Device
 from ..schemas.device import DeviceCreate, DeviceRead
 
-router = APIRouter(dependencies=[Depends(require_role("admin", "supervisor"))])
+router = APIRouter(dependencies=[Depends(require_admin())])
 
 
 class DeviceReadWithPairing(DeviceRead):

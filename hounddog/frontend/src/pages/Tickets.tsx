@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { authHeaders } from "../auth";
 
 interface Ticket {
   id: string;
@@ -45,7 +46,7 @@ export default function Tickets() {
     qs.set("page", String(page));
     if (search) qs.set("search", search);
     if (statusFilter) qs.set("status", statusFilter);
-    const res = await fetch(`/api/tickets?${qs}`);
+    const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
     if (res.ok) {
       const data: TicketList = await res.json();
       setTickets(data.items);
@@ -57,7 +58,7 @@ export default function Tickets() {
 
   async function handleVoid(id: string) {
     if (!confirm("Void this ticket?")) return;
-    await fetch(`/api/tickets/${id}/void`, { method: "POST" });
+    await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
     load();
     setSelected(null);
   }
@@ -67,7 +68,7 @@ export default function Tickets() {
     if (!decided_by) return;
     await fetch(`/api/tickets/${id}/appeal/decide`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await authHeaders(),
       body: JSON.stringify({ decision, decided_by }),
     });
     load();

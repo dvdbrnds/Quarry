@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { authHeaders } from "../auth";
 
 interface Pipeline {
   issued: number;
@@ -38,7 +39,7 @@ export default function Dashboard() {
 
   const loadPipeline = useCallback(async () => {
     try {
-      const res = await fetch("/api/tickets/pipeline");
+      const res = await fetch("/api/tickets/pipeline", { headers: await authHeaders() });
       if (res.ok) setPipeline(await res.json());
     } catch {}
   }, []);
