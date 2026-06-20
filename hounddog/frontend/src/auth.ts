@@ -55,8 +55,22 @@ export async function handleCallback(): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
-  if (!oktaAuth) return;
-  await oktaAuth.signOut();
+  if (!oktaAuth) {
+    window.location.href = "/";
+    return;
+  }
+  try {
+    await oktaAuth.revokeAccessToken();
+  } catch {}
+  try {
+    await oktaAuth.revokeRefreshToken();
+  } catch {}
+  await oktaAuth.tokenManager.clear();
+  try {
+    await oktaAuth.signOut({ postLogoutRedirectUri: window.location.origin });
+  } catch {
+    window.location.href = "/";
+  }
 }
 
 export async function getAccessToken(): Promise<string | null> {
