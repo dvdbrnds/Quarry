@@ -7,6 +7,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, Lot } from "../api";
 
 const MORAVIAN_CENTER = { lat: 40.6265, lng: -75.3707 };
+const BRASS = "#C5A55A";
+const LOT_OPEN = "#22C55E";
+const LOT_CLOSED = "#EF4444";
 
 interface LotMapProps {
   apiKey: string;
@@ -17,12 +20,8 @@ interface LotMapProps {
   onBoundaryChange: (coords: Coordinate[]) => void;
 }
 
-function lotColor(index: number): string {
-  const palette = [
-    "#1e3a5f", "#b8860b", "#2e7d32", "#c62828",
-    "#6a1b9a", "#00838f", "#ef6c00", "#4527a0",
-  ];
-  return palette[index % palette.length];
+function lotFillColor(lot: Lot): string {
+  return lot.is_closed ? LOT_CLOSED : LOT_OPEN;
 }
 
 function MapContent({
@@ -64,24 +63,25 @@ function MapContent({
       if (lot.boundary.length < 3) return;
       if (editingBoundary !== null && lot.id === selectedLotId) return;
 
-      const color = lotColor(idx);
+      const fill = lotFillColor(lot);
       const isSelected = lot.id === selectedLotId;
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor: isSelected ? "#4ade80" : color,
+        strokeColor: isSelected ? BRASS : fill,
         strokeOpacity: 1,
         strokeWeight: isSelected ? 3 : 2,
-        fillColor: isSelected ? "#4ade80" : color,
-        fillOpacity: isSelected ? 0.35 : 0.3,
+        fillColor: fill,
+        fillOpacity: isSelected ? 0.4 : 0.3,
         map,
         clickable: true,
       });
 
       poly.addListener("click", () => onSelectLot(lot.id));
 
+      const statusLabel = lot.is_closed ? ' <span style="color:#EF4444;font-weight:bold">CLOSED</span>' : "";
       const infoWindow = new google.maps.InfoWindow({
-        content: `<div style="font-family:system-ui;padding:2px"><strong>${lot.name}</strong></div>`,
+        content: `<div style="font-family:system-ui;padding:2px"><strong>${lot.name}</strong>${statusLabel}</div>`,
       });
       poly.addListener("mouseover", (e: google.maps.MapMouseEvent) => {
         if (e.latLng) infoWindow.setPosition(e.latLng);
@@ -160,7 +160,7 @@ function MapContent({
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 10,
-          fillColor: "#b8860b",
+          fillColor: BRASS,
           fillOpacity: 1,
           strokeColor: "white",
           strokeWeight: 2,
@@ -187,9 +187,9 @@ function MapContent({
 
     const poly = new google.maps.Polygon({
       paths: editingBoundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-      strokeColor: "#4ade80",
+      strokeColor: BRASS,
       strokeWeight: 3,
-      fillColor: "#4ade80",
+      fillColor: BRASS,
       fillOpacity: 0.25,
       editable: true,
       draggable: false,
@@ -230,7 +230,7 @@ function MapContent({
 
     const line = new google.maps.Polyline({
       path,
-      strokeColor: "#b8860b",
+      strokeColor: BRASS,
       strokeWeight: 3,
       strokeOpacity: 0.8,
       map,
