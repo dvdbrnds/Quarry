@@ -23,7 +23,8 @@ from ..models.device import Device
 
 logger = logging.getLogger("quarry.audit")
 
-SKIP_PATHS = {"/health", "/ws", "/docs", "/openapi.json", "/favicon.ico"}
+SKIP_PATHS = {"/health", "/ws", "/docs", "/openapi.json", "/favicon.ico",
+              "/api/auth/me", "/api/auth/logout"}
 SKIP_PREFIXES = ("/static/", "/assets/", "/uploads/")
 
 RESOURCE_PATTERN = re.compile(r"^/api/([^/]+)(?:/([^/]+))?")

@@ -55,6 +55,12 @@ export async function handleCallback(): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
+  // Record logout in audit trail before clearing tokens
+  try {
+    const headers = await authHeaders();
+    await fetch("/api/auth/logout", { method: "POST", headers });
+  } catch {}
+
   if (!oktaAuth) {
     window.location.href = "/";
     return;
