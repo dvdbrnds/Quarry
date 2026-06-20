@@ -1,21 +1,18 @@
 """
 Comprehensive audit middleware for chain of evidence and legal compliance.
-Captures EVERY API request so every interaction with ticket/evidence data is
-traceable -- reads, writes, device syncs, auth events, payments.
 
-User identity is extracted BEFORE the request is processed (from the
-Authorization header) because BaseHTTPMiddleware does not propagate
-request.state changes from the inner app back to the middleware.
+Uses pure ASGI middleware (NOT BaseHTTPMiddleware, which has known issues
+with request.state propagation, body consumption, and asyncio task isolation).
+Every HTTP request is logged unconditionally.
 """
 
 import json
 import logging
 import re
+from io import BytesIO
 
-from sqlalchemy import select
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import Response
+from sqlalchemy import select, text
+from starlette.types import ASGIApp, Receive, Scope, Send, Message
 
 from ..database import async_session
 from ..models.audit_log import AuditLog
@@ -116,10 +113,10 @@ def _generate_summary(method: str, resource_type: str, resource_id: str | None,
     if "appeal" in path:
         return f"Appeal action on {readable_type} {resource_id or ''}".strip()
     if path.startswith("/api/auth"):
-        if "callback" in path:
-            return "OAuth callback"
+        if "logout" in path:
+            return "User signed out"
         if "me" in path:
-            return "Checked auth session"
+            return "User session check"
         if "config" in path:
             return "Loaded auth config"
         return f"Auth {method}"
@@ -138,18 +135,21 @@ def _generate_summary(method: str, resource_type: str, resource_id: str | None,
     return f"{verb} {readable_type}"
 
 
-async def _identify_user(auth_header: str) -> tuple[str | None, str]:
-    """Extract user identity from Authorization header BEFORE the request
-    is processed.  Tries JWT decode first (Okta dashboard user), then
-    falls back to device API-key lookup."""
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None, ""
+async def _identify_user(headers: list[tuple[bytes, bytes]]) -> tuple[str, str]:
+    """Extract user identity from request headers."""
+    auth_value = ""
+    for name, value in headers:
+        if name.lower() == b"authorization":
+            auth_value = value.decode("latin-1", errors="replace")
+            break
 
-    token = auth_header[7:].strip()
+    if not auth_value or not auth_value.startswith("Bearer "):
+        return "anonymous", ""
+
+    token = auth_value[7:].strip()
     if not token:
-        return None, ""
+        return "anonymous", ""
 
-    # JWT tokens have three dot-separated segments
     if token.count(".") == 2:
         try:
             from jose import jwt as jose_jwt
@@ -157,10 +157,9 @@ async def _identify_user(auth_header: str) -> tuple[str | None, str]:
             email = payload.get("email") or payload.get("sub") or "unknown"
             sub = payload.get("sub", "")
             return email, sub
-        except Exception as exc:
-            logger.debug("JWT decode failed, trying API key: %s", exc)
+        except Exception:
+            pass
 
-    # Not a JWT -- treat as device API key
     try:
         async with async_session() as db:
             result = await db.execute(
@@ -169,59 +168,104 @@ async def _identify_user(auth_header: str) -> tuple[str | None, str]:
             row = result.first()
             if row:
                 return f"device:{row[0]}", f"device:{row[1]}"
-    except Exception as exc:
-        logger.debug("Device lookup failed: %s", exc)
+    except Exception:
+        pass
 
-    return None, ""
+    return "anonymous", ""
 
 
-class AuditMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        path = request.url.path
+async def verify_audit_table():
+    """Call at startup to confirm the audit_log table exists and is writable."""
+    try:
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(text("SELECT count(*) FROM audit_log"))
+        logger.info("Audit log table verified OK")
+    except Exception as e:
+        logger.error("AUDIT LOG TABLE CHECK FAILED: %s", e, exc_info=True)
+
+
+class AuditMiddleware:
+    """Pure ASGI middleware -- no BaseHTTPMiddleware."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope["path"]
 
         if path in SKIP_PATHS or any(path.startswith(p) for p in SKIP_PREFIXES):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        # Identify the user BEFORE processing the request.
-        auth_header = request.headers.get("authorization", "")
-        user_email, user_sub = await _identify_user(auth_header)
+        method = scope["method"]
+        headers = scope.get("headers", [])
 
-        if not user_email:
-            user_email = "anonymous"
+        user_email, user_sub = await _identify_user(headers)
 
-        # Read body for mutating requests (before call_next consumes it).
+        # Collect request body for mutating requests
         request_body = None
-        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            body_bytes = await request.body()
-            if body_bytes:
+        body_chunks: list[bytes] = []
+
+        if method in {"POST", "PUT", "PATCH", "DELETE"}:
+            async def receive_wrapper() -> Message:
+                message = await receive()
+                if message["type"] == "http.request":
+                    body_chunks.append(message.get("body", b""))
+                return message
+        else:
+            receive_wrapper = receive
+
+        # Capture response status code
+        response_status = 0
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal response_status
+            if message["type"] == "http.response.start":
+                response_status = message["status"]
+            await send(message)
+
+        # Process the request
+        await self.app(scope, receive_wrapper, send_wrapper)
+
+        # Parse body if captured
+        if body_chunks:
+            raw = b"".join(body_chunks)
+            if raw:
                 try:
-                    request_body = json.loads(body_bytes)
+                    request_body = json.loads(raw)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
 
-        response = await call_next(request)
+        # Extract client IP
+        client = scope.get("client")
+        ip_address = client[0] if client else None
 
         resource_type = _extract_resource_type(path)
         resource_id = _extract_resource_id(path)
 
+        # Write audit entry
         try:
             async with async_session() as session:
                 async with session.begin():
                     session.add(AuditLog(
                         user_email=user_email,
                         user_sub=user_sub,
-                        action=request.method,
+                        action=method,
                         resource_type=resource_type,
                         resource_id=resource_id,
                         endpoint=path,
                         summary=_generate_summary(
-                            request.method, resource_type, resource_id, path),
+                            method, resource_type, resource_id, path),
                         request_body=_sanitize_body(request_body)
-                        if request.method != "GET" else None,
-                        response_status=response.status_code,
-                        ip_address=request.client.host if request.client else None,
+                        if method != "GET" else None,
+                        response_status=response_status,
+                        ip_address=ip_address,
                     ))
         except Exception as e:
-            logger.error("Audit log write failed: %s", e, exc_info=True)
-
-        return response
+            logger.error("AUDIT WRITE FAILED for %s %s: %s", method, path, e,
+                         exc_info=True)
