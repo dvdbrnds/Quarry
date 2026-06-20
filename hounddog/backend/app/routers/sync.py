@@ -114,9 +114,27 @@ async def ticket_creation_test(db: AsyncSession = Depends(get_db)):
         except Exception:
             pass
 
-    # Step 6: Check public_url setting (used for payment QR codes)
+    # Step 6: Check public_url and list actual tickets
     steps["public_url"] = settings.public_url
-    steps["sample_payment_url"] = f"{settings.public_url}/pay?ticket=test-uuid"
+    try:
+        tickets_result = await db.execute(
+            select(
+                Ticket.id, Ticket.plate, Ticket.status, Ticket.issued_at
+            ).order_by(Ticket.issued_at.desc()).limit(5)
+        )
+        recent = []
+        for row in tickets_result.fetchall():
+            tid = str(row[0])
+            recent.append({
+                "id": tid,
+                "plate": row[1],
+                "status": row[2],
+                "issued_at": str(row[3]),
+                "payment_url": f"{settings.public_url}/pay?ticket={tid}",
+            })
+        steps["recent_tickets"] = recent
+    except Exception as e:
+        steps["recent_tickets"] = f"FAILED: {e}"
 
     # Step 7: Check column existence on tickets table
     try:
