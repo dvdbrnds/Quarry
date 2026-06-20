@@ -1,20 +1,25 @@
 """
 Comprehensive audit middleware for chain of evidence and legal compliance.
-Captures EVERY request to the API -- reads, writes, device syncs, auth events,
-payments -- so every interaction with ticket/evidence data is traceable.
+Captures EVERY API request so every interaction with ticket/evidence data is
+traceable -- reads, writes, device syncs, auth events, payments.
+
+User identity is extracted BEFORE the request is processed (from the
+Authorization header) because BaseHTTPMiddleware does not propagate
+request.state changes from the inner app back to the middleware.
 """
 
 import json
 import logging
 import re
-from datetime import datetime, timezone
 
+from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
 from ..database import async_session
 from ..models.audit_log import AuditLog
+from ..models.device import Device
 
 logger = logging.getLogger("quarry.audit")
 
@@ -67,8 +72,7 @@ def _extract_resource_type(path: str) -> str:
     match = RESOURCE_PATTERN.match(path)
     if not match:
         return "unknown"
-    segment = match.group(1)
-    return segment.replace("-", "_")
+    return match.group(1).replace("-", "_")
 
 
 def _extract_resource_id(path: str) -> str | None:
@@ -134,22 +138,39 @@ def _generate_summary(method: str, resource_type: str, resource_id: str | None,
     return f"{verb} {readable_type}"
 
 
-def _extract_user(request: Request) -> tuple[str | None, str]:
-    email = getattr(request.state, "audit_user_email", None)
-    sub = getattr(request.state, "audit_user_sub", None) or ""
-    if email:
-        return email, sub
+async def _identify_user(auth_header: str) -> tuple[str | None, str]:
+    """Extract user identity from Authorization header BEFORE the request
+    is processed.  Tries JWT decode first (Okta dashboard user), then
+    falls back to device API-key lookup."""
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None, ""
 
-    auth_header = request.headers.get("authorization", "")
-    if auth_header.startswith("Bearer ") and len(auth_header) > 20:
+    token = auth_header[7:].strip()
+    if not token:
+        return None, ""
+
+    # JWT tokens have three dot-separated segments
+    if token.count(".") == 2:
         try:
             from jose import jwt as jose_jwt
-            payload = jose_jwt.get_unverified_claims(auth_header[7:])
+            payload = jose_jwt.get_unverified_claims(token)
             email = payload.get("email") or payload.get("sub") or "unknown"
             sub = payload.get("sub", "")
             return email, sub
         except Exception as exc:
-            logger.debug(f"Audit JWT extraction failed: {exc}")
+            logger.debug("JWT decode failed, trying API key: %s", exc)
+
+    # Not a JWT -- treat as device API key
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(Device.name, Device.id).where(Device.api_key == token)
+            )
+            row = result.first()
+            if row:
+                return f"device:{row[0]}", f"device:{row[1]}"
+    except Exception as exc:
+        logger.debug("Device lookup failed: %s", exc)
 
     return None, ""
 
@@ -164,6 +185,14 @@ class AuditMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api"):
             return await call_next(request)
 
+        # Identify the user BEFORE processing the request.
+        auth_header = request.headers.get("authorization", "")
+        user_email, user_sub = await _identify_user(auth_header)
+
+        if not user_email and path.startswith("/api/auth"):
+            user_email = "anonymous"
+
+        # Read body for mutating requests (before call_next consumes it).
         request_body = None
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             body_bytes = await request.body()
@@ -175,22 +204,16 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        user_email, user_sub = _extract_user(request)
-
         if not user_email:
-            if path.startswith("/api/auth"):
-                user_email = "anonymous"
-            else:
-                return response
+            return response
 
         resource_type = _extract_resource_type(path)
         resource_id = _extract_resource_id(path)
-        changes = getattr(request.state, "audit_changes", None)
 
         try:
             async with async_session() as session:
                 async with session.begin():
-                    log_entry = AuditLog(
+                    session.add(AuditLog(
                         user_email=user_email,
                         user_sub=user_sub,
                         action=request.method,
@@ -203,10 +226,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         if request.method != "GET" else None,
                         response_status=response.status_code,
                         ip_address=request.client.host if request.client else None,
-                        changes=changes,
-                    )
-                    session.add(log_entry)
+                    ))
         except Exception as e:
-            logger.error(f"Audit log write failed: {e}", exc_info=True)
+            logger.error("Audit log write failed: %s", e, exc_info=True)
 
         return response
