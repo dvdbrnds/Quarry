@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     from .models import (  # noqa: F401
         Permit, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
-        AuditLog,
+        AuditLog, LotClosure,
     )
     for attempt in range(1, 11):
         try:
@@ -82,6 +82,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS access_schedule JSONB DEFAULT '[]'::jsonb",
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS is_snow_lot BOOLEAN DEFAULT false",
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS notes TEXT",
+            # Permit email
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
+            # Lot closure tracking
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT false",
         ]
         for migration in migrations:
             await conn.execute(text(migration))
@@ -205,7 +209,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Auto-expire on startup failed: {e}")
 
+    from .services.closure_scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+
     yield
+
+    stop_scheduler()
 
 
 app = FastAPI(

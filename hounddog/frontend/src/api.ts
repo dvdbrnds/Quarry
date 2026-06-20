@@ -29,6 +29,7 @@ export interface Permit {
   id: string;
   student_id: string;
   name: string;
+  email: string | null;
   plates: string[];
   lot_assignment: string;
   permit_type: string;
@@ -91,11 +92,28 @@ export interface Lot {
   designation_label: string;
   access_schedule: SeasonSchedule[];
   is_snow_lot: boolean;
+  is_closed: boolean;
   notes: string | null;
   zones?: LotZone[];
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+export interface LotClosure {
+  id: string;
+  lot_id: string;
+  reason: string;
+  closes_at: string;
+  reopens_at: string | null;
+  is_immediate: boolean;
+  notification_sent: boolean;
+  reopen_notification_sent: boolean;
+  created_by: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  lot_name?: string;
 }
 
 export interface ImportResult {
@@ -159,6 +177,23 @@ export const api = {
       request<Lot>(`/lots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/lots/${id}`, { method: "DELETE" }),
+    close: (lotId: string, data: { reason?: string; reopens_at?: string; recipients?: string[] }) =>
+      request<LotClosure>(`/lots/${lotId}/close`, { method: "POST", body: JSON.stringify(data) }),
+    reopen: (lotId: string) =>
+      request<Lot>(`/lots/${lotId}/reopen`, { method: "POST" }),
+    closures: {
+      listAll: (status?: string) => {
+        const qs = status ? `?status=${status}` : "";
+        return request<LotClosure[]>(`/lots/closures/all${qs}`);
+      },
+      listForLot: (lotId: string) => request<LotClosure[]>(`/lots/${lotId}/closures`),
+      schedule: (data: { lot_id: string; reason?: string; closes_at: string; reopens_at?: string; is_immediate?: boolean }) =>
+        request<LotClosure>("/lots/closures", { method: "POST", body: JSON.stringify(data) }),
+      update: (closureId: string, data: Partial<LotClosure>) =>
+        request<LotClosure>(`/lots/closures/${closureId}`, { method: "PUT", body: JSON.stringify(data) }),
+      cancel: (closureId: string) =>
+        request<void>(`/lots/closures/${closureId}`, { method: "DELETE" }),
+    },
     zones: {
       list: (lotId: string) => request<LotZone[]>(`/lots/${lotId}/zones`),
       create: (lotId: string, data: Partial<LotZone>) =>

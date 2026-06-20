@@ -367,6 +367,8 @@ async def import_permits(
         if existing:
             if row.owner_name and row.owner_name != existing.name:
                 existing.name = row.owner_name
+            if row.email:
+                existing.email = row.email
             if row.lot_zone:
                 existing.lot_assignment = row.lot_zone
             if row.permit_type:
@@ -391,6 +393,7 @@ async def import_permits(
 
             permit = Permit(
                 name=row.owner_name or plate,
+                email=row.email or None,
                 plates=[plate],
                 lot_assignment=row.lot_zone,
                 permit_type=row.permit_type,
@@ -446,6 +449,7 @@ async def import_permits_csv(
 
             permit = Permit(
                 name=row.get("owner_name", plate),
+                email=row.get("email") or None,
                 plates=[plate],
                 lot_assignment=row.get("lot_zone", ""),
                 permit_type=row.get("permit_type", "student"),
@@ -474,13 +478,13 @@ async def export_permits(db: AsyncSession = Depends(get_db)):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "id", "student_id", "name", "plates", "lot_assignment",
+        "id", "student_id", "name", "email", "plates", "lot_assignment",
         "permit_type", "status", "start_date", "end_date",
     ])
     for p in permits:
         writer.writerow([
-            str(p.id), p.student_id, p.name, ";".join(p.plates),
-            p.lot_assignment, p.permit_type, p.status,
+            str(p.id), p.student_id, p.name, p.email or "",
+            ";".join(p.plates), p.lot_assignment, p.permit_type, p.status,
             p.start_date.isoformat() if p.start_date else "",
             p.end_date.isoformat() if p.end_date else "",
         ])

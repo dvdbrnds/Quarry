@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Coordinate, Lot, LotZone } from "../api";
+import { api, Coordinate, Lot, LotClosure, LotZone } from "../api";
 import { authHeaders, loadConfig } from "../auth";
 import LotMap from "../components/LotMap";
 
@@ -186,6 +186,107 @@ function ZonePanel({ lotId }: { lotId: string }) {
   );
 }
 
+function CloseLotModal({
+  lot,
+  onClose,
+  onDone,
+}: {
+  lot: Lot;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [reopensAt, setReopensAt] = useState("");
+  const [extraRecipients, setExtraRecipients] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const recipients = extraRecipients
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean);
+      await api.lots.close(lot.id, {
+        reason,
+        reopens_at: reopensAt ? new Date(reopensAt).toISOString() : undefined,
+        recipients,
+      });
+      onDone();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4"
+      >
+        <h3 className="text-lg font-bold text-signal-red">
+          Close {lot.name}
+        </h3>
+        <p className="text-sm text-ink-mute">
+          This will immediately close the lot and send notification emails to
+          all permit holders assigned to this lot plus any additional recipients
+          below.
+        </p>
+        <div>
+          <label className="block text-xs font-medium text-ink-mute mb-1">
+            Reason
+          </label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Snow removal, event, maintenance..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-mute mb-1">
+            Reopens At (optional)
+          </label>
+          <input
+            type="datetime-local"
+            value={reopensAt}
+            onChange={(e) => setReopensAt(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-mute mb-1">
+            Additional Recipients (comma-separated emails)
+          </label>
+          <input
+            value={extraRecipients}
+            onChange={(e) => setExtraRecipients(e.target.value)}
+            placeholder="dean@campus.edu, security@campus.edu"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex-1 px-4 py-2 bg-signal-red text-white font-medium rounded-lg text-sm hover:bg-red-700 transition-colors disabled:opacity-50"
+          >
+            {submitting ? "Closing..." : "Close Lot Now"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-ink-mute hover:text-ink"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function Lots() {
   const [lots, setLots] = useState<Lot[]>([]);
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
@@ -193,6 +294,7 @@ export default function Lots() {
   const [creating, setCreating] = useState(false);
   const [editingBoundary, setEditingBoundary] = useState<Coordinate[] | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
+  const [closingLot, setClosingLot] = useState<Lot | null>(null);
 
   const load = useCallback(async () => {
     setLots(await api.lots.list());
@@ -235,6 +337,12 @@ export default function Lots() {
     load();
   }
 
+  async function handleReopen(lot: Lot) {
+    if (!confirm(`Reopen ${lot.name}?`)) return;
+    await api.lots.reopen(lot.id);
+    load();
+  }
+
   const isEditing = creating || editing !== null;
 
   return (
@@ -272,7 +380,14 @@ export default function Lots() {
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-semibold text-sm">{lot.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-sm">{lot.name}</h3>
+                      {lot.is_closed && (
+                        <span className="inline-block bg-signal-red/10 text-signal-red px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">
+                          Closed
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-ink-mute mt-0.5">
                       {lot.designation_code && (
                         <span className="inline-block bg-navy/10 text-navy px-1.5 py-0.5 rounded text-[10px] font-bold mr-1">
@@ -284,7 +399,18 @@ export default function Lots() {
                     </p>
                   </div>
                   {!isEditing && (
-                    <div className="flex gap-2 ml-2">
+                    <div className="flex gap-2 ml-2 flex-shrink-0">
+                      {lot.is_closed ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleReopen(lot); }}
+                          className="text-emerald-600 hover:text-emerald-700 text-xs font-medium"
+                        >Reopen</button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setClosingLot(lot); }}
+                          className="text-signal-red/60 hover:text-signal-red text-xs"
+                        >Close</button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); startEdit(lot); }}
                         className="text-brass-deep hover:text-brass text-xs"
@@ -326,6 +452,17 @@ export default function Lots() {
           onBoundaryChange={setEditingBoundary}
         />
       </div>
+
+      {closingLot && (
+        <CloseLotModal
+          lot={closingLot}
+          onClose={() => setClosingLot(null)}
+          onDone={() => {
+            setClosingLot(null);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
