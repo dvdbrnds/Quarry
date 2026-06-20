@@ -114,7 +114,11 @@ async def ticket_creation_test(db: AsyncSession = Depends(get_db)):
         except Exception:
             pass
 
-    # Step 6: Check column existence on tickets table
+    # Step 6: Check public_url setting (used for payment QR codes)
+    steps["public_url"] = settings.public_url
+    steps["sample_payment_url"] = f"{settings.public_url}/pay?ticket=test-uuid"
+
+    # Step 7: Check column existence on tickets table
     try:
         from sqlalchemy import text
         col_result = await db.execute(text(
