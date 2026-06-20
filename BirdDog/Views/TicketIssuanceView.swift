@@ -1,0 +1,221 @@
+import SwiftUI
+import CoreImage.CIFilterBuiltins
+import CoreLocation
+
+struct TicketIssuanceView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var geofence = GeofenceService.shared
+    @StateObject private var locationManager = TicketLocationManager()
+
+    @State private var plate = ""
+    @State private var selectedLot = ""
+    @State private var selectedViolation = "no_permit"
+    @State private var vehicleDescription = ""
+    @State private var officerNotes = ""
+    @State private var isSubmitting = false
+    @State private var submittedResult: HoundDogSyncService.TicketUploadResponse?
+    @State private var errorMessage: String?
+
+    var prefilledPlate: String?
+
+    private let violationTypes = [
+        ("no_permit", "No Valid Permit"),
+        ("expired_permit", "Expired Permit"),
+        ("wrong_lot", "Wrong Lot"),
+        ("fire_lane", "Fire Lane"),
+        ("disability_area", "Disability Area (No Placard)"),
+        ("overtime", "Overtime Parking"),
+        ("snow_emergency", "Snow Emergency Violation"),
+        ("loading_zone", "Loading Zone"),
+        ("reserved", "Reserved Space"),
+        ("double_parked", "Double Parked"),
+        ("other", "Other"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            if let result = submittedResult {
+                ticketConfirmation(result)
+            } else {
+                ticketForm
+            }
+        }
+    }
+
+    private var ticketForm: some View {
+        Form {
+            Section("Vehicle") {
+                TextField("License Plate", text: $plate)
+                    .textInputAutocapitalization(.characters)
+                    .font(.system(.title3, design: .monospaced))
+                TextField("Vehicle Description", text: $vehicleDescription)
+                    .textInputAutocapitalization(.sentences)
+            }
+
+            Section("Violation") {
+                Picker("Type", selection: $selectedViolation) {
+                    ForEach(violationTypes, id: \.0) { code, label in
+                        Text(label).tag(code)
+                    }
+                }
+                Picker("Lot", selection: $selectedLot) {
+                    Text("— Select —").tag("")
+                    ForEach(geofence.lots, id: \.id) { lot in
+                        Text(lot.name).tag(lot.name)
+                    }
+                }
+            }
+
+            Section("Notes") {
+                TextEditor(text: $officerNotes)
+                    .frame(minHeight: 80)
+            }
+
+            if let err = errorMessage {
+                Section {
+                    Text(err)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+            }
+        }
+        .navigationTitle("Issue Ticket")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Issue") { submitTicket() }
+                    .disabled(plate.isEmpty || selectedLot.isEmpty || isSubmitting)
+                    .bold()
+            }
+        }
+        .onAppear {
+            if let pre = prefilledPlate { plate = pre }
+            if selectedLot.isEmpty, let current = geofence.currentLotName {
+                selectedLot = current
+            }
+        }
+    }
+
+    private func ticketConfirmation(_ result: HoundDogSyncService.TicketUploadResponse) -> some View {
+        VStack(spacing: 24) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(.green)
+
+            Text("Ticket Issued")
+                .font(.title2.bold())
+
+            VStack(spacing: 8) {
+                Text(plate)
+                    .font(.system(.title, design: .monospaced).bold())
+                Text("Fine: $\(result.fineAmount)")
+                    .font(.headline)
+                if result.offenseNumber > 1 {
+                    Text("Offense #\(result.offenseNumber)")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            if !result.paymentUrl.isEmpty {
+                VStack(spacing: 8) {
+                    Text("Payment QR Code")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let qrImage = generateQRCode(from: result.paymentUrl) {
+                        Image(uiImage: qrImage)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 200, height: 200)
+                            .background(Color.white)
+                            .cornerRadius(8)
+                    }
+                    Text(result.paymentUrl)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            Button("Done") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .padding(.top)
+        }
+        .padding()
+        .navigationTitle("Ticket Issued")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
+            }
+        }
+    }
+
+    private func submitTicket() {
+        isSubmitting = true
+        errorMessage = nil
+
+        let ticket = PendingTicket(
+            plate: plate.uppercased().trimmingCharacters(in: .whitespaces),
+            lot: selectedLot,
+            violationType: selectedViolation,
+            confidence: 1.0,
+            ticketCategory: "parking",
+            locationLat: locationManager.latitude,
+            locationLng: locationManager.longitude,
+            vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
+            officerNotes: officerNotes.isEmpty ? nil : officerNotes
+        )
+
+        Task {
+            do {
+                let result = try await HoundDogSyncService.shared.uploadTicket(ticket)
+                submittedResult = result
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isSubmitting = false
+        }
+    }
+
+    private func generateQRCode(from string: String) -> UIImage? {
+        let context = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.correctionLevel = "M"
+
+        guard let outputImage = filter.outputImage else { return nil }
+        let scale = 250.0 / outputImage.extent.width
+        let scaledImage = outputImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+@MainActor
+final class TicketLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    @Published var latitude: Double?
+    @Published var longitude: Double?
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let loc = locations.last else { return }
+        Task { @MainActor in
+            self.latitude = loc.coordinate.latitude
+            self.longitude = loc.coordinate.longitude
+        }
+    }
+}

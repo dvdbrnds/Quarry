@@ -53,10 +53,46 @@ export interface Coordinate {
   longitude: number;
 }
 
+export interface TimeRule {
+  start: string;
+  end: string;
+  days: string[];
+  allowed_permit_types: string[];
+  label: string;
+}
+
+export interface SeasonSchedule {
+  season: string;
+  label: string;
+  rules: TimeRule[];
+}
+
+export interface LotZone {
+  id: string;
+  lot_id: string;
+  zone_type: string;
+  label: string;
+  space_count: number;
+  boundary: Coordinate[];
+  fine_override: string | null;
+  is_premium: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Lot {
   id: string;
   name: string;
   boundary: Coordinate[];
+  total_spaces: number;
+  handicap_spaces: number;
+  designation_code: string;
+  designation_label: string;
+  access_schedule: SeasonSchedule[];
+  is_snow_lot: boolean;
+  notes: string | null;
+  zones?: LotZone[];
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -105,12 +141,21 @@ export const api = {
   lots: {
     list: () => request<Lot[]>("/lots"),
     get: (id: string) => request<Lot>(`/lots/${id}`),
-    create: (data: { name: string; boundary: Coordinate[] }) =>
+    create: (data: Partial<Lot>) =>
       request<Lot>("/lots", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: { name?: string; boundary?: Coordinate[] }) =>
+    update: (id: string, data: Partial<Lot>) =>
       request<Lot>(`/lots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/lots/${id}`, { method: "DELETE" }),
+    zones: {
+      list: (lotId: string) => request<LotZone[]>(`/lots/${lotId}/zones`),
+      create: (lotId: string, data: Partial<LotZone>) =>
+        request<LotZone>(`/lots/${lotId}/zones`, { method: "POST", body: JSON.stringify(data) }),
+      update: (lotId: string, zoneId: string, data: Partial<LotZone>) =>
+        request<LotZone>(`/lots/${lotId}/zones/${zoneId}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (lotId: string, zoneId: string) =>
+        request<void>(`/lots/${lotId}/zones/${zoneId}`, { method: "DELETE" }),
+    },
   },
   devices: {
     list: () => request<Device[]>("/devices"),

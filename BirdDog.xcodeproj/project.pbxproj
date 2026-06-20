@@ -406,7 +406,7 @@
 				CODE_SIGN_ENTITLEMENTS = BirdDog/App/BirdDog.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
 				INFOPLIST_FILE = BirdDog/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -573,7 +573,7 @@
 				CODE_SIGN_ENTITLEMENTS = BirdDog/App/BirdDog.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
 				INFOPLIST_FILE = BirdDog/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

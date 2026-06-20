@@ -13,6 +13,8 @@ struct ContentView: View {
     @State private var showPasscodeEntry = false
     @State private var showSessionHistory = false
     @State private var showCameraLog = false
+    @State private var showTicketIssuance = false
+    @State private var showMovingViolation = false
     @State private var exportURLs: [URL] = []
     @State private var now = Date()
 
@@ -149,6 +151,12 @@ struct ContentView: View {
                     }
             }
         }
+        .sheet(isPresented: $showTicketIssuance) {
+            TicketIssuanceView()
+        }
+        .sheet(isPresented: $showMovingViolation) {
+            MovingViolationView()
+        }
     }
 
     @ViewBuilder
@@ -262,6 +270,20 @@ struct ContentView: View {
             }
 
             if appSettings.isAdminUnlocked {
+                Button {
+                    showTicketIssuance = true
+                } label: {
+                    Label("Ticket", systemImage: "doc.text")
+                        .font(.subheadline)
+                }
+
+                Button {
+                    showMovingViolation = true
+                } label: {
+                    Label("Citation", systemImage: "car.side")
+                        .font(.subheadline)
+                }
+
                 Button {
                     showDatabase = true
                 } label: {
