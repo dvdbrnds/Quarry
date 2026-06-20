@@ -34,6 +34,7 @@ function MapContent({
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
+  const labelMarkersRef = useRef<google.maps.Marker[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [drawingActive, setDrawingActive] = useState(false);
@@ -56,6 +57,8 @@ function MapContent({
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
+    labelMarkersRef.current.forEach((m) => m.setMap(null));
+    labelMarkersRef.current = [];
 
     lots.forEach((lot, idx) => {
       if (lot.boundary.length < 3) return;
@@ -67,10 +70,10 @@ function MapContent({
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
         strokeColor: isSelected ? "#4ade80" : color,
-        strokeOpacity: isSelected ? 1 : 0.7,
+        strokeOpacity: 1,
         strokeWeight: isSelected ? 3 : 2,
         fillColor: isSelected ? "#4ade80" : color,
-        fillOpacity: isSelected ? 0.25 : 0.15,
+        fillOpacity: isSelected ? 0.35 : 0.3,
         map,
         clickable: true,
       });
@@ -83,14 +86,47 @@ function MapContent({
       poly.addListener("mouseover", (e: google.maps.MapMouseEvent) => {
         if (e.latLng) infoWindow.setPosition(e.latLng);
         infoWindow.open(map);
+        if (!isSelected) {
+          poly.setOptions({ fillOpacity: 0.45, strokeWeight: 3 });
+        }
       });
-      poly.addListener("mouseout", () => infoWindow.close());
+      poly.addListener("mouseout", () => {
+        infoWindow.close();
+        if (!isSelected) {
+          poly.setOptions({ fillOpacity: 0.3, strokeWeight: 2 });
+        }
+      });
 
       polygonsRef.current.push(poly);
+
+      // Center label so lots are identifiable without hovering
+      const bounds = new google.maps.LatLngBounds();
+      lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+      const center = bounds.getCenter();
+
+      const label = new google.maps.Marker({
+        position: center,
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 0,
+        },
+        label: {
+          text: lot.name,
+          color: "white",
+          fontSize: "11px",
+          fontWeight: "bold",
+          className: "lot-map-label",
+        },
+        clickable: true,
+      });
+      label.addListener("click", () => onSelectLot(lot.id));
+      labelMarkersRef.current.push(label);
     });
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
+      labelMarkersRef.current.forEach((m) => m.setMap(null));
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
 
