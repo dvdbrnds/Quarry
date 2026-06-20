@@ -28,6 +28,8 @@ const ACTION_COLORS: Record<string, string> = {
   PUT: "bg-blue-50 text-blue-700",
   PATCH: "bg-amber-50 text-amber-700",
   DELETE: "bg-signal-red/10 text-red-700",
+  LOGIN: "bg-blue-100 text-blue-800",
+  LOGOUT: "bg-orange-100 text-orange-800",
 };
 
 const RESOURCE_TYPES = [
@@ -95,6 +97,8 @@ export default function ActivityLog() {
         <select value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(1); }}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
           <option value="">All Actions</option>
+          <option value="LOGIN">Login</option>
+          <option value="LOGOUT">Logout</option>
           <option value="GET">View</option>
           <option value="POST">Create</option>
           <option value="PUT">Update</option>
