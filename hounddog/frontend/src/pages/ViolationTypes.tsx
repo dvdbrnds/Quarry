@@ -170,11 +170,19 @@ export default function ViolationTypes() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {types.map((vt) => (
-              <tr key={vt.id} className={`hover:bg-bone/50 ${!vt.is_active ? "opacity-50" : ""}`}>
+              <tr key={vt.id} className={`hover:bg-bone/50 ${!vt.is_active ? "opacity-50" : ""} ${
+                vt.category === "moving" ? "border-l-4 border-l-signal-red/60" : "border-l-4 border-l-brass/60"
+              }`}>
                 <td className="px-4 py-3 text-ink-mute">{vt.sort_order}</td>
                 <td className="px-4 py-3 font-mono text-xs">{vt.code}</td>
                 <td className="px-4 py-3">{vt.label}</td>
-                <td className="px-4 py-3 capitalize">{vt.category}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    vt.category === "moving"
+                      ? "bg-signal-red/10 text-signal-red"
+                      : "bg-brass/15 text-brass-deep"
+                  }`}>{vt.category === "moving" ? "Moving" : "Parking"}</span>
+                </td>
                 <td className="px-4 py-3">${Number(vt.fine_first).toFixed(0)}</td>
                 <td className="px-4 py-3 text-ink-mute">{vt.fine_second ? `$${Number(vt.fine_second).toFixed(0)}` : "—"}</td>
                 <td className="px-4 py-3 text-ink-mute">{vt.fine_third_plus ? `$${Number(vt.fine_third_plus).toFixed(0)}` : "—"}</td>

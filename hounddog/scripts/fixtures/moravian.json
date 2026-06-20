@@ -10,7 +10,17 @@
     {"code": "prohibited_time", "label": "Parking During Prohibited Time", "category": "parking", "fine_first": 35, "sort_order": 8},
     {"code": "unauthorized_permit", "label": "Unauthorized Permit Parking", "category": "parking", "fine_first": 35, "sort_order": 9},
     {"code": "posted_signs", "label": "Failure to Obey Posted Signs", "category": "parking", "fine_first": 35, "sort_order": 10},
-    {"code": "no_permit_displayed", "label": "Registered Vehicle, No Permit Displayed", "category": "parking", "fine_first": 35, "sort_order": 11}
+    {"code": "no_permit_displayed", "label": "Registered Vehicle, No Permit Displayed", "category": "parking", "fine_first": 35, "sort_order": 11},
+    {"code": "speeding", "label": "Speeding", "category": "moving", "fine_first": 50, "fine_second": 100, "fine_third_plus": 200, "sort_order": 100},
+    {"code": "stop_sign", "label": "Failure to Stop at Stop Sign", "category": "moving", "fine_first": 50, "fine_second": 100, "fine_third_plus": 200, "sort_order": 101},
+    {"code": "reckless_driving", "label": "Reckless Driving", "category": "moving", "fine_first": 150, "fine_second": 300, "fine_third_plus": 500, "sort_order": 102},
+    {"code": "wrong_way", "label": "Driving Wrong Way / One-Way Violation", "category": "moving", "fine_first": 75, "fine_second": 150, "fine_third_plus": 250, "sort_order": 103},
+    {"code": "pedestrian_failure_yield", "label": "Failure to Yield to Pedestrian", "category": "moving", "fine_first": 75, "fine_second": 150, "fine_third_plus": 250, "sort_order": 104},
+    {"code": "suspended_license", "label": "Driving with Suspended/Revoked License", "category": "moving", "fine_first": 200, "fine_second": 400, "sort_order": 105},
+    {"code": "dui", "label": "Driving Under the Influence", "category": "moving", "fine_first": 500, "sort_order": 106},
+    {"code": "hit_and_run", "label": "Hit and Run / Leaving Scene of Accident", "category": "moving", "fine_first": 300, "sort_order": 107},
+    {"code": "no_headlights", "label": "Operating Without Headlights", "category": "moving", "fine_first": 35, "sort_order": 108},
+    {"code": "cell_phone", "label": "Cell Phone Use While Driving", "category": "moving", "fine_first": 50, "fine_second": 100, "sort_order": 109}
   ],
   "permit_types": [
     {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 249, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "time_restriction": "day_only_X", "is_purchasable_online": true, "sort_order": 1},
