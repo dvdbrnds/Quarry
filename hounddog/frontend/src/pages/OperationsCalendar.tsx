@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Lot, LotClosure } from "../api";
+import { api, AcademicSeason, Lot, LotClosure } from "../api";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -37,6 +37,34 @@ const STATUS_COLORS: Record<string, string> = {
   completed: "bg-emerald-100 text-emerald-700 border-emerald-300",
   cancelled: "bg-gray-100 text-gray-400 border-gray-200 line-through",
 };
+
+const SEASON_PALETTE = [
+  { bg: "bg-indigo-50", border: "border-l-indigo-400", banner: "bg-indigo-100 text-indigo-800", dot: "bg-indigo-400" },
+  { bg: "bg-teal-50", border: "border-l-teal-400", banner: "bg-teal-100 text-teal-800", dot: "bg-teal-400" },
+  { bg: "bg-rose-50", border: "border-l-rose-400", banner: "bg-rose-100 text-rose-800", dot: "bg-rose-400" },
+  { bg: "bg-amber-50", border: "border-l-amber-400", banner: "bg-amber-100 text-amber-800", dot: "bg-amber-400" },
+  { bg: "bg-violet-50", border: "border-l-violet-400", banner: "bg-violet-100 text-violet-800", dot: "bg-violet-400" },
+  { bg: "bg-cyan-50", border: "border-l-cyan-400", banner: "bg-cyan-100 text-cyan-800", dot: "bg-cyan-400" },
+];
+
+function dateInSeason(d: Date, season: AcademicSeason): boolean {
+  const start = new Date(season.start_date + "T00:00:00");
+  const end = new Date(season.end_date + "T23:59:59");
+  return d >= start && d <= end;
+}
+
+function seasonOverlapsMonth(season: AcademicSeason, year: number, month: number): boolean {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+  const sStart = new Date(season.start_date + "T00:00:00");
+  const sEnd = new Date(season.end_date + "T23:59:59");
+  return sStart <= monthEnd && sEnd >= monthStart;
+}
+
+function formatSeasonDate(isoDate: string): string {
+  const d = new Date(isoDate + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 function ScheduleClosureModal({
   lots,
@@ -196,6 +224,7 @@ function ClosureDetailModal({
 export default function OperationsCalendar() {
   const [lots, setLots] = useState<Lot[]>([]);
   const [closures, setClosures] = useState<LotClosure[]>([]);
+  const [seasons, setSeasons] = useState<AcademicSeason[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
   const [scheduling, setScheduling] = useState(false);
@@ -203,12 +232,14 @@ export default function OperationsCalendar() {
   const [filterLotId, setFilterLotId] = useState<string>("");
 
   const load = useCallback(async () => {
-    const [lotsData, closuresData] = await Promise.all([
+    const [lotsData, closuresData, seasonsData] = await Promise.all([
       api.lots.list(),
       api.lots.closures.listAll(),
+      api.academicCalendar.list(),
     ]);
     setLots(lotsData);
     setClosures(closuresData);
+    setSeasons(seasonsData);
   }, []);
 
   useEffect(() => {
@@ -261,6 +292,18 @@ export default function OperationsCalendar() {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
+  const seasonColorMap = new Map<string, (typeof SEASON_PALETTE)[number]>();
+  seasons.forEach((s, i) => {
+    seasonColorMap.set(s.id, SEASON_PALETTE[i % SEASON_PALETTE.length]);
+  });
+
+  const visibleSeasons = seasons.filter((s) => seasonOverlapsMonth(s, year, month));
+
+  function getSeasonForDay(dayNum: number) {
+    const d = new Date(year, month, dayNum);
+    return seasons.find((s) => dateInSeason(d, s)) ?? null;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -293,6 +336,31 @@ export default function OperationsCalendar() {
         </select>
       </div>
 
+      {/* Academic season banner */}
+      <div className="flex flex-wrap gap-2">
+        {visibleSeasons.length > 0 ? (
+          visibleSeasons.map((s) => {
+            const colors = seasonColorMap.get(s.id) ?? SEASON_PALETTE[0];
+            return (
+              <div
+                key={s.id}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${colors.banner}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${colors.dot}`} />
+                <span>{s.label}</span>
+                <span className="opacity-60 font-normal">
+                  {formatSeasonDate(s.start_date)} &ndash; {formatSeasonDate(s.end_date)}
+                </span>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-3 py-2 rounded-lg text-sm text-ink-mute bg-gray-100">
+            No academic season covers this month
+          </div>
+        )}
+      </div>
+
       {/* Calendar grid */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <div className="grid grid-cols-7">
@@ -309,18 +377,27 @@ export default function OperationsCalendar() {
             }
             const dayClosure = getClosuresForDay(dayNum);
             const isToday = sameDay(new Date(year, month, dayNum), today);
+            const daySeason = getSeasonForDay(dayNum);
+            const seasonColors = daySeason ? seasonColorMap.get(daySeason.id) : null;
 
             return (
               <div
                 key={dayNum}
                 className={`min-h-[100px] border-b border-r border-gray-100 p-1.5 ${
-                  isToday ? "bg-brass/5" : ""
-                }`}
+                  seasonColors ? `${seasonColors.bg} border-l-2 ${seasonColors.border}` : ""
+                } ${isToday ? "!bg-brass/10" : ""}`}
               >
-                <div className={`text-xs font-medium mb-1 ${isToday ? "text-brass font-bold" : "text-ink-mute"}`}>
-                  {dayNum}
+                <div className="flex items-center gap-1">
+                  <span className={`text-xs font-medium ${isToday ? "text-brass font-bold" : "text-ink-mute"}`}>
+                    {dayNum}
+                  </span>
+                  {daySeason && (
+                    <span className="text-[8px] text-ink-mute/60 truncate leading-none">
+                      {daySeason.code}
+                    </span>
+                  )}
                 </div>
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 mt-0.5">
                   {dayClosure.slice(0, 3).map((c) => (
                     <button
                       key={c.id}

@@ -133,7 +133,21 @@ export interface Device {
   pairing_payload?: { url: string; key: string; name: string };
 }
 
+export interface AcademicSeason {
+  id: string;
+  code: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = {
+  academicCalendar: {
+    list: () => request<AcademicSeason[]>("/academic-calendar"),
+  },
   permits: {
     list: (params?: { page?: number; search?: string; status?: string; lot?: string; permit_type?: string; sort?: string }) => {
       const qs = new URLSearchParams();
