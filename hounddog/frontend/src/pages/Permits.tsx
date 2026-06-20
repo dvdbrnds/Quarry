@@ -21,12 +21,19 @@ interface LotOption {
   name: string;
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function StatCard({ label, value, color, active, onClick }: {
+  label: string; value: number; color: string; active?: boolean; onClick?: () => void;
+}) {
   return (
-    <div className={`rounded-lg border px-4 py-3 ${color}`}>
+    <button
+      onClick={onClick}
+      className={`rounded-lg border px-4 py-3 text-left transition-all ${color} ${
+        active ? "ring-2 ring-brass shadow-md" : "hover:shadow-sm"
+      } ${onClick ? "cursor-pointer" : ""}`}
+    >
       <div className="text-2xl font-bold">{value}</div>
       <div className="text-xs text-ink-mute">{label}</div>
-    </div>
+    </button>
   );
 }
 
@@ -318,11 +325,16 @@ export default function Permits() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-5 gap-3 mb-4">
-          <StatCard label="Total" value={stats.total} color="bg-white border-gray-200" />
-          <StatCard label="Active" value={stats.active} color="bg-signal-green/5 border-signal-green/20" />
-          <StatCard label="Expiring Soon" value={stats.expiring_soon} color="bg-amber-50 border-amber-200" />
-          <StatCard label="Expired" value={stats.expired} color="bg-signal-red/5 border-signal-red/20" />
-          <StatCard label="Revoked" value={stats.revoked} color="bg-gray-50 border-gray-200" />
+          <StatCard label="Total" value={stats.total} color="bg-white border-gray-200"
+            active={filterStatus === ""} onClick={() => { setFilterStatus(""); setPage(1); }} />
+          <StatCard label="Active" value={stats.active} color="bg-signal-green/5 border-signal-green/20"
+            active={filterStatus === "active"} onClick={() => { setFilterStatus("active"); setPage(1); }} />
+          <StatCard label="Expiring Soon" value={stats.expiring_soon} color="bg-amber-50 border-amber-200"
+            active={filterStatus === "expiring_soon"} onClick={() => { setFilterStatus("expiring_soon"); setPage(1); }} />
+          <StatCard label="Expired" value={stats.expired} color="bg-signal-red/5 border-signal-red/20"
+            active={filterStatus === "expired"} onClick={() => { setFilterStatus("expired"); setPage(1); }} />
+          <StatCard label="Revoked" value={stats.revoked} color="bg-gray-50 border-gray-200"
+            active={filterStatus === "revoked"} onClick={() => { setFilterStatus("revoked"); setPage(1); }} />
         </div>
       )}
 
