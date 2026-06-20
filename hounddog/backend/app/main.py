@@ -80,11 +80,70 @@ async def lifespan(app: FastAPI):
 
     logger.info("Schema migrations applied.")
 
+    # Seed default violation types and permit types if none exist
+    try:
+        from .database import async_session
+        from .models import ViolationType, PermitType
+        from sqlalchemy import select, func
+        from decimal import Decimal
+        async with async_session() as session:
+            vt_count = await session.scalar(select(func.count()).select_from(ViolationType))
+            if vt_count == 0:
+                default_violations = [
+                    {"code": "first_year_unauthorized", "label": "First-Year Student / Unauthorized Vehicle", "category": "parking", "fine_first": 75, "fine_second": 150, "fine_third_plus": 225, "sort_order": 1},
+                    {"code": "disability_area", "label": "Disability Area Violation", "category": "parking", "fine_first": 200, "sort_order": 2},
+                    {"code": "unauthorized_premium", "label": "Unauthorized in Premium/Guaranteed", "category": "parking", "fine_first": 75, "fine_second": 150, "fine_third_plus": 225, "sort_order": 3},
+                    {"code": "fire_hydrant", "label": "Obstructing Fire Hydrant", "category": "parking", "fine_first": 200, "sort_order": 4},
+                    {"code": "reserved_premium_visitor", "label": "Reserved Premium Visitor Area", "category": "parking", "fine_first": 75, "fine_second": 150, "fine_third_plus": 225, "sort_order": 5},
+                    {"code": "reserved_visitor", "label": "Reserved Visitor Space", "category": "parking", "fine_first": 35, "sort_order": 6},
+                    {"code": "prohibited_parking", "label": "Prohibited Parking", "category": "parking", "fine_first": 35, "sort_order": 7},
+                    {"code": "prohibited_time", "label": "Parking During Prohibited Time", "category": "parking", "fine_first": 35, "sort_order": 8},
+                    {"code": "unauthorized_permit", "label": "Unauthorized Permit Parking", "category": "parking", "fine_first": 35, "sort_order": 9},
+                    {"code": "posted_signs", "label": "Failure to Obey Posted Signs", "category": "parking", "fine_first": 35, "sort_order": 10},
+                    {"code": "no_permit_displayed", "label": "Registered Vehicle, No Permit Displayed", "category": "parking", "fine_first": 35, "sort_order": 11},
+                ]
+                for row in default_violations:
+                    session.add(ViolationType(
+                        code=row["code"], label=row["label"], category=row["category"],
+                        fine_first=Decimal(str(row["fine_first"])),
+                        fine_second=Decimal(str(row["fine_second"])) if row.get("fine_second") else None,
+                        fine_third_plus=Decimal(str(row["fine_third_plus"])) if row.get("fine_third_plus") else None,
+                        sort_order=row["sort_order"],
+                    ))
+                await session.commit()
+                logger.info("Seeded 11 default violation types")
+
+            pt_count = await session.scalar(select(func.count()).select_from(PermitType))
+            if pt_count == 0:
+                default_permits = [
+                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 249, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
+                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
+                    {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 35, "valid_days": 365, "lot_assignments": ["W. Laurel St"], "is_purchasable_online": True, "sort_order": 3},
+                    {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 57, "valid_days": 365, "lot_assignments": ["I", "W. Laurel St"], "is_purchasable_online": False, "sort_order": 4},
+                    {"code": "north_guaranteed_resident", "label": "North Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 208, "valid_days": 365, "lot_assignments": ["B", "C", "D", "G", "P", "T"], "is_purchasable_online": False, "sort_order": 5},
+                    {"code": "steel_field_resident", "label": "Steel Field Resident", "eligible": "Resident students", "price": 75, "max_capacity": 42, "valid_days": 365, "lot_assignments": ["Q"], "is_purchasable_online": True, "sort_order": 6},
+                    {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 37, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},
+                    {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 88, "valid_days": 365, "lot_assignments": ["U", "Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 8},
+                    {"code": "south_standalone", "label": "South Standalone", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": True, "sort_order": 9},
+                    {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 730, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10},
+                ]
+                for row in default_permits:
+                    session.add(PermitType(
+                        code=row["code"], label=row["label"], eligible=row["eligible"],
+                        price=Decimal(str(row["price"])), max_capacity=row["max_capacity"],
+                        valid_days=row["valid_days"], lot_assignments=row["lot_assignments"],
+                        is_purchasable_online=row["is_purchasable_online"], sort_order=row["sort_order"],
+                    ))
+                await session.commit()
+                logger.info("Seeded 10 default permit types")
+    except Exception as e:
+        logger.warning(f"Seed defaults on startup failed: {e}")
+
     # Auto-expire permits on startup
     try:
         from .services.permit_lifecycle import auto_expire_permits
-        from .database import async_session
-        async with async_session() as session:
+        from .database import async_session as _session_factory
+        async with _session_factory() as session:
             async with session.begin():
                 count = await auto_expire_permits(session)
                 if count:
