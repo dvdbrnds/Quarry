@@ -178,7 +178,8 @@ final class OfficerAuthService: NSObject, ObservableObject {
                 return
             }
 
-            parseIDToken(idToken)
+            let accessToken = json["access_token"] as? String
+            parseIDToken(idToken, accessToken: accessToken)
 
             UserDefaults.standard.removeObject(forKey: "oidc_code_verifier")
             UserDefaults.standard.removeObject(forKey: "oidc_state")
@@ -187,7 +188,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
         }
     }
 
-    private func parseIDToken(_ token: String) {
+    private func parseIDToken(_ token: String, accessToken: String? = nil) {
         let parts = token.split(separator: ".")
         guard parts.count >= 2 else {
             loginError = "Malformed ID token"
@@ -209,7 +210,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
         let email = claims["email"] as? String
             ?? claims["sub"] as? String
             ?? ""
-        let groups = claims[AppSettings.shared.oktaGroupsClaim] as? [String] ?? []
+        var groups = claims[AppSettings.shared.oktaGroupsClaim] as? [String] ?? []
 
         let expiry: Date
         if let exp = claims["exp"] as? TimeInterval {
@@ -223,7 +224,37 @@ final class OfficerAuthService: NSObject, ObservableObject {
         self.officerGroups = groups
         self.isLoggedIn = true
 
+        if groups.isEmpty, let accessToken {
+            Task {
+                let fetched = await fetchUserInfoGroups(accessToken: accessToken)
+                if !fetched.isEmpty {
+                    self.officerGroups = fetched
+                    self.saveToKeychain(name: name, email: email, groups: fetched, expiry: expiry)
+                }
+            }
+        }
+
         saveToKeychain(name: name, email: email, groups: groups, expiry: expiry)
+    }
+
+    private func fetchUserInfoGroups(accessToken: String) async -> [String] {
+        let settings = AppSettings.shared
+        guard !settings.oktaIssuer.isEmpty else { return [] }
+
+        let userinfoURL = settings.oktaIssuer + "/v1/userinfo"
+        guard let url = URL(string: userinfoURL) else { return [] }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+            return json[settings.oktaGroupsClaim] as? [String] ?? []
+        } catch {
+            return []
+        }
     }
 
     // MARK: - PKCE Helpers
