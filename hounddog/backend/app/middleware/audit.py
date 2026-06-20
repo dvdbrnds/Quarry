@@ -23,9 +23,8 @@ from ..models.device import Device
 
 logger = logging.getLogger("quarry.audit")
 
-SKIP_PATHS = {"/health", "/ws", "/docs", "/openapi.json", "/favicon.ico",
-              "/api/auth/me", "/api/auth/logout"}
-SKIP_PREFIXES = ("/static/", "/assets/", "/uploads/")
+SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/favicon.ico"}
+SKIP_PREFIXES = ("/static/", "/assets/")
 
 RESOURCE_PATTERN = re.compile(r"^/api/([^/]+)(?:/([^/]+))?")
 
@@ -183,14 +182,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
         if path in SKIP_PATHS or any(path.startswith(p) for p in SKIP_PREFIXES):
             return await call_next(request)
 
-        if not path.startswith("/api"):
-            return await call_next(request)
-
         # Identify the user BEFORE processing the request.
         auth_header = request.headers.get("authorization", "")
         user_email, user_sub = await _identify_user(auth_header)
 
-        if not user_email and path.startswith("/api/auth"):
+        if not user_email:
             user_email = "anonymous"
 
         # Read body for mutating requests (before call_next consumes it).
@@ -204,9 +200,6 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     pass
 
         response = await call_next(request)
-
-        if not user_email:
-            return response
 
         resource_type = _extract_resource_type(path)
         resource_id = _extract_resource_id(path)
