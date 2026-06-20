@@ -12,16 +12,16 @@ from ..schemas.audit import AuditLogList, AuditLogRead
 
 logger = logging.getLogger("quarry.audit")
 
+diagnostic_router = APIRouter()
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-@router.get("/diagnostic")
+@diagnostic_router.get("/diagnostic")
 async def audit_diagnostic(
-    user: OktaUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Diagnostic endpoint: tests every piece of the audit chain."""
-    results: dict = {"user": user.email, "steps": {}}
+    """Diagnostic endpoint: tests every piece of the audit chain. No auth required."""
+    results: dict = {"steps": {}}
 
     # 1. Does the table exist?
     try:
@@ -34,24 +34,24 @@ async def audit_diagnostic(
         results["steps"]["table_error"] = f"{type(e).__name__}: {e}"
         return results
 
-    # 2. Can we write to it?
+    # 2. Can we write to it via route session?
     try:
         test_entry = AuditLog(
-            user_email=user.email,
-            user_sub=user.sub,
+            user_email="diagnostic-test",
+            user_sub="",
             action="DIAGNOSTIC",
             resource_type="audit",
             endpoint="/api/audit/diagnostic",
-            summary=f"Audit diagnostic test by {user.email}",
+            summary="Audit diagnostic test (route session)",
             response_status=200,
         )
         db.add(test_entry)
         await db.flush()
-        results["steps"]["write_ok"] = True
+        results["steps"]["route_session_write_ok"] = True
         results["steps"]["test_entry_id"] = str(test_entry.id)
     except Exception as e:
-        results["steps"]["write_ok"] = False
-        results["steps"]["write_error"] = f"{type(e).__name__}: {e}"
+        results["steps"]["route_session_write_ok"] = False
+        results["steps"]["route_session_write_error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
         return results
 
     # 3. Can we read it back?
@@ -76,17 +76,17 @@ async def audit_diagnostic(
         results["steps"]["read_ok"] = False
         results["steps"]["read_error"] = f"{type(e).__name__}: {e}"
 
-    # 4. Can the middleware's async_session write?
+    # 4. Can the middleware's standalone async_session write?
     try:
         async with async_session() as mw_session:
             async with mw_session.begin():
                 mw_entry = AuditLog(
-                    user_email=user.email,
-                    user_sub=user.sub,
+                    user_email="diagnostic-test",
+                    user_sub="",
                     action="DIAGNOSTIC",
                     resource_type="audit",
                     endpoint="/api/audit/diagnostic",
-                    summary=f"Middleware-style write test by {user.email}",
+                    summary="Audit diagnostic test (middleware session)",
                     response_status=200,
                 )
                 mw_session.add(mw_entry)
