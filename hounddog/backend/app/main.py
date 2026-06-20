@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .routers import (
     academic_calendar,
+    audit,
     auth,
     devices,
     enforcement_settings,
@@ -20,6 +21,7 @@ from .routers import (
     tickets,
     violation_types,
 )
+from .middleware.audit import AuditMiddleware
 from .websocket import manager
 
 logger = logging.getLogger("quarry")
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI):
     from .models import (  # noqa: F401
         Permit, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
+        AuditLog,
     )
     for attempt in range(1, 11):
         try:
@@ -76,6 +79,19 @@ async def lifespan(app: FastAPI):
             await conn.execute(text(migration))
 
     logger.info("Schema migrations applied.")
+
+    # Auto-expire permits on startup
+    try:
+        from .services.permit_lifecycle import auto_expire_permits
+        from .database import async_session
+        async with async_session() as session:
+            async with session.begin():
+                count = await auto_expire_permits(session)
+                if count:
+                    logger.info(f"Auto-expired {count} permits on startup")
+    except Exception as e:
+        logger.warning(f"Auto-expire on startup failed: {e}")
+
     yield
 
 
@@ -93,6 +109,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuditMiddleware)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
@@ -105,6 +122,7 @@ app.include_router(violation_types.router, prefix="/api/violation-types", tags=[
 app.include_router(permit_types.router, prefix="/api/permit-types", tags=["permit-types"])
 app.include_router(academic_calendar.router, prefix="/api/academic-calendar", tags=["academic-calendar"])
 app.include_router(enforcement_settings.router, prefix="/api/settings/enforcement", tags=["settings"])
+app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
