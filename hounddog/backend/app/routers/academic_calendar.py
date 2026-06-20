@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..database import get_db
 from ..models.academic_season import AcademicSeason
 from ..schemas.academic_season import (
@@ -15,7 +15,7 @@ from ..schemas.academic_season import (
     ActiveSeasonResponse,
 )
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[AcademicSeasonRead])
@@ -50,7 +50,9 @@ async def get_active_season(db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=AcademicSeasonRead, status_code=201)
 async def create_season(
-    data: AcademicSeasonCreate, db: AsyncSession = Depends(get_db)
+    data: AcademicSeasonCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     if data.is_default:
         await db.execute(
@@ -76,6 +78,7 @@ async def update_season(
     season_id: uuid.UUID,
     data: AcademicSeasonUpdate,
     db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     season = await db.get(AcademicSeason, season_id)
     if not season:
@@ -104,7 +107,11 @@ async def update_season(
 
 
 @router.delete("/{season_id}", status_code=204)
-async def delete_season(season_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_season(
+    season_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
     season = await db.get(AcademicSeason, season_id)
     if not season:
         raise HTTPException(404, "Season not found")

@@ -7,7 +7,7 @@ from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
 from ..schemas.enforcement_settings import EnforcementSettingsRead, EnforcementSettingsUpdate
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 async def _get_or_create_settings(db: AsyncSession) -> EnforcementSettings:
