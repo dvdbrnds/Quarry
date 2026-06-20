@@ -33,5 +33,23 @@
     {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 88, "valid_days": 365, "lot_assignments": ["U", "Lehigh St", "Spring St"], "time_restriction": "after_4pm_U", "is_purchasable_online": false, "sort_order": 8},
     {"code": "south_standalone", "label": "South Standalone", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": true, "sort_order": 9},
     {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 730, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": false, "sort_order": 10}
+  ],
+  "academic_seasons": [
+    {"code": "fall_2025", "label": "Fall 2025", "start_date": "2025-08-25", "end_date": "2025-12-15", "is_default": true},
+    {"code": "winter_break_2025", "label": "Winter Break 2025-26", "start_date": "2025-12-16", "end_date": "2026-01-04", "is_default": false},
+    {"code": "winter_session_2026", "label": "Winter Session 2026", "start_date": "2026-01-05", "end_date": "2026-01-17", "is_default": false},
+    {"code": "spring_2026", "label": "Spring 2026", "start_date": "2026-01-19", "end_date": "2026-05-09", "is_default": false},
+    {"code": "spring_break_2026", "label": "Spring Break 2026", "start_date": "2026-03-08", "end_date": "2026-03-15", "is_default": false},
+    {"code": "may_term_2026", "label": "May Term 2026", "start_date": "2026-05-11", "end_date": "2026-05-30", "is_default": false},
+    {"code": "summer_i_2026", "label": "Summer Session I 2026", "start_date": "2026-06-01", "end_date": "2026-07-11", "is_default": false},
+    {"code": "summer_ii_2026", "label": "Summer Session II 2026", "start_date": "2026-07-13", "end_date": "2026-08-22", "is_default": false},
+    {"code": "fall_2026", "label": "Fall 2026", "start_date": "2026-08-31", "end_date": "2026-12-21", "is_default": false},
+    {"code": "winter_break_2026", "label": "Winter Break 2026-27", "start_date": "2026-12-22", "end_date": "2027-01-03", "is_default": false},
+    {"code": "winter_session_2027", "label": "Winter Session 2027", "start_date": "2027-01-04", "end_date": "2027-01-16", "is_default": false},
+    {"code": "spring_2027", "label": "Spring 2027", "start_date": "2027-01-18", "end_date": "2027-05-08", "is_default": false},
+    {"code": "spring_break_2027", "label": "Spring Break 2027", "start_date": "2027-03-07", "end_date": "2027-03-14", "is_default": false},
+    {"code": "may_term_2027", "label": "May Term 2027", "start_date": "2027-05-10", "end_date": "2027-05-29", "is_default": false},
+    {"code": "summer_i_2027", "label": "Summer Session I 2027", "start_date": "2027-06-01", "end_date": "2027-07-10", "is_default": false},
+    {"code": "summer_ii_2027", "label": "Summer Session II 2027", "start_date": "2027-07-12", "end_date": "2027-08-21", "is_default": false}
   ]
 }
