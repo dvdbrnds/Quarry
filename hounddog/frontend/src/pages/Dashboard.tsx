@@ -56,6 +56,7 @@ export default function Dashboard() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [recentEvents, setRecentEvents] = useState<WSEvent[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const loadPipeline = useCallback(async () => {
@@ -67,12 +68,19 @@ export default function Dashboard() {
 
   const loadRecentAudit = useCallback(async () => {
     try {
-      const res = await fetch("/api/audit?page_size=25", { headers: await authHeaders() });
+      const headers = await authHeaders();
+      const res = await fetch("/api/audit?page_size=25", { headers });
       if (res.ok) {
         const data = await res.json();
         setAuditEntries(data.items || []);
+        setAuditError(null);
+      } else {
+        const text = await res.text();
+        setAuditError(`API ${res.status}: ${text.slice(0, 200)}`);
       }
-    } catch {}
+    } catch (e: any) {
+      setAuditError(`Fetch error: ${e?.message || e}`);
+    }
   }, []);
 
   useEffect(() => {
@@ -171,7 +179,12 @@ export default function Dashboard() {
             <p className="text-xs text-ink-mute">Recent system activity (persistent log)</p>
           </div>
           <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
-            {auditEntries.length === 0 && (
+            {auditError && (
+              <div className="px-5 py-3 bg-red-50 text-red-700 text-xs font-mono break-all">
+                {auditError}
+              </div>
+            )}
+            {!auditError && auditEntries.length === 0 && (
               <div className="px-5 py-8 text-center text-ink-mute text-sm">
                 No audit entries recorded yet.
               </div>
