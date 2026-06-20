@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException, Security
+from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
 async def get_device(
+    request: Request,
     api_key: str | None = Security(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> Device:
@@ -26,6 +27,8 @@ async def get_device(
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     device.last_seen = datetime.now(timezone.utc)
+    request.state.audit_user_email = f"device:{device.name}"
+    request.state.audit_user_sub = f"device:{device.id}"
     return device
 
 

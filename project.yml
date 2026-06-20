@@ -29,6 +29,7 @@ targets:
       - path: BirdDog/Resources/lots.json
     dependencies:
       - package: StarXpand-SDK-iOS
+        product: StarIO10
     entitlements:
       path: BirdDog/App/BirdDog.entitlements
     settings:

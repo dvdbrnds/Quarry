@@ -17,10 +17,16 @@ struct TicketIssuanceView: View {
     @State private var errorMessage: String?
     @State private var isPrinting = false
     @State private var printError: String?
+    @State private var capturedPhotoPath: String?
+    @State private var capturedPhotoImage: UIImage?
+    @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
     @ObservedObject private var officerAuth = OfficerAuthService.shared
 
+    var cameraService: CameraService?
     var prefilledPlate: String?
+    var prefilledEntry: ScannedPlate?
+    var onTicketIssued: ((String) -> Void)?
 
     private let violationTypes = [
         ("no_permit", "No Valid Permit"),
@@ -48,6 +54,42 @@ struct TicketIssuanceView: View {
 
     private var ticketForm: some View {
         Form {
+            if let permit = prefilledEntry?.authStatus.permit {
+                Section {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(prefilledEntry?.text ?? "")
+                                .font(.system(.title2, design: .monospaced, weight: .bold))
+                            if !permit.ownerName.isEmpty {
+                                Label(permit.ownerName, systemImage: "person.fill")
+                                    .font(.subheadline)
+                            }
+                            if !permit.vehicleDescription.isEmpty {
+                                Label(permit.vehicleDescription, systemImage: "car.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if !permit.permitType.isEmpty {
+                                Label("\(permit.displayType) · \(permit.permitStatus)", systemImage: "doc.text.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if !permit.lotZone.isEmpty {
+                                Label("Permit for \(permit.lotZone)", systemImage: "mappin.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: prefilledEntry?.authStatus.systemImage ?? "exclamationmark.triangle.fill")
+                            .font(.title)
+                            .foregroundStyle(prefilledEntry?.authStatus.color ?? .red)
+                    }
+                } header: {
+                    Text("Vehicle on File")
+                }
+            }
+
             Section("Vehicle") {
                 TextField("License Plate", text: $plate)
                     .textInputAutocapitalization(.characters)
@@ -68,6 +110,71 @@ struct TicketIssuanceView: View {
                         Text(lot.name).tag(lot.name)
                     }
                 }
+            }
+
+            Section {
+                if let image = capturedPhotoImage {
+                    VStack(spacing: 8) {
+                        ZStack(alignment: .bottomLeading) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            Text(evidenceTimestampString)
+                                .font(.caption2.monospaced())
+                                .padding(4)
+                                .background(.black.opacity(0.6))
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .padding(6)
+                        }
+
+                        Button {
+                            capturePhoto()
+                        } label: {
+                            Label("Retake Photo", systemImage: "camera.rotate")
+                                .font(.caption)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "camera.slash")
+                            .foregroundStyle(.secondary)
+                        Text("No photo captured")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if cameraService != nil {
+                            Button("Capture") { capturePhoto() }
+                                .font(.caption)
+                        }
+                    }
+                }
+
+                if let lat = locationManager.latitude, let lng = locationManager.longitude {
+                    HStack {
+                        Image(systemName: "location.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                        Text(String(format: "%.5f, %.5f", lat, lng))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack {
+                    Image(systemName: "clock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(evidenceTimestampString)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Evidence")
+            } footer: {
+                Text("Photo is captured automatically when the ticket form opens.")
             }
 
             Section("Notes") {
@@ -96,10 +203,46 @@ struct TicketIssuanceView: View {
             }
         }
         .onAppear {
-            if let pre = prefilledPlate { plate = pre }
+            if let entry = prefilledEntry {
+                plate = entry.text
+                if let permit = entry.authStatus.permit {
+                    vehicleDescription = permit.vehicleDescription
+                    if !permit.lotZone.isEmpty {
+                        selectedLot = permit.lotZone
+                    }
+                }
+                switch entry.authStatus {
+                case .unknown:
+                    selectedViolation = "no_permit"
+                case .wrongLot:
+                    selectedViolation = "wrong_lot"
+                case .expired:
+                    selectedViolation = "expired_permit"
+                default:
+                    break
+                }
+            } else if let pre = prefilledPlate {
+                plate = pre
+            }
             if selectedLot.isEmpty, let current = geofence.currentLotName {
                 selectedLot = current
             }
+            capturePhoto()
+        }
+    }
+
+    private var evidenceTimestampString: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f.string(from: captureTimestamp)
+    }
+
+    private func capturePhoto() {
+        guard let camera = cameraService else { return }
+        captureTimestamp = Date()
+        if let path = camera.captureViolationPhoto() {
+            capturedPhotoPath = path
+            capturedPhotoImage = UIImage(contentsOfFile: path)
         }
     }
 
@@ -198,24 +341,29 @@ struct TicketIssuanceView: View {
         isSubmitting = true
         errorMessage = nil
 
+        let permit = prefilledEntry?.authStatus.permit
         let ticket = PendingTicket(
             plate: plate.uppercased().trimmingCharacters(in: .whitespaces),
             lot: selectedLot,
             violationType: selectedViolation,
             confidence: 1.0,
+            photoPath: capturedPhotoPath,
             ticketCategory: "parking",
             locationLat: locationManager.latitude,
             locationLng: locationManager.longitude,
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
             officerNotes: officerNotes.isEmpty ? nil : officerNotes,
             officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
-            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail
+            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail,
+            ownerName: permit?.ownerName,
+            permitNumber: permit?.permitNumber
         )
 
         Task {
             do {
                 let result = try await HoundDogSyncService.shared.uploadTicket(ticket)
                 submittedResult = result
+                onTicketIssued?(plate.uppercased().trimmingCharacters(in: .whitespaces))
             } catch {
                 errorMessage = error.localizedDescription
             }

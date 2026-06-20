@@ -28,6 +28,8 @@ class Ticket(Base):
     officer_id: Mapped[str] = mapped_column(String(128), default="")
     officer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     officer_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    owner_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    permit_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status: Mapped[str] = mapped_column(String(32), default="issued")
 

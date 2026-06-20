@@ -15,6 +15,7 @@ struct PlateOverlayView: View {
         case .wrongLot: return .orange.opacity(0.8)
         case .expired: return .yellow.opacity(0.75)
         case .unknown: return .red.opacity(0.8)
+        case .ticketed: return .purple.opacity(0.75)
         case .unchecked: return .black.opacity(0.65)
         }
     }

@@ -67,7 +67,7 @@ final class PrinterService: ObservableObject {
                     let dp = DiscoveredPrinter(
                         id: found.connectionSettings.identifier,
                         interfaceType: found.connectionSettings.interfaceType,
-                        model: found.information?.model?.rawValue.description ?? ""
+                        model: found.information?.model.rawValue.description ?? ""
                     )
                     if !self.discoveredPrinters.contains(where: { $0.id == dp.id }) {
                         self.discoveredPrinters.append(dp)

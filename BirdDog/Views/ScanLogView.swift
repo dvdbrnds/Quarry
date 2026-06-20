@@ -8,6 +8,7 @@ struct ScanLogView: View {
     let wrongLotCount: Int
     let expiredCount: Int
     let unknownCount: Int
+    var onIssueTapped: ((ScannedPlate) -> Void)?
 
     @State private var filter: StatusFilter = .all
 
@@ -66,7 +67,17 @@ struct ScanLogView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredLog, id: \ScannedPlate.id) { (entry: ScannedPlate) in
-                            plateRow(entry)
+                            if isTicketable(entry), let action = onIssueTapped {
+                                Button {
+                                    action(entry)
+                                } label: {
+                                    plateRow(entry)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(RowPressStyle())
+                            } else {
+                                plateRow(entry)
+                            }
                             Divider()
                         }
                     }
@@ -143,21 +154,38 @@ struct ScanLogView: View {
 
             Spacer()
 
-            if entry.authStatus != .unchecked {
+            if isTicketable(entry) && onIssueTapped != nil {
+                HStack(spacing: 4) {
+                    Text("ISSUE")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.blue)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.blue.opacity(0.6))
+                }
+            } else if entry.authStatus != .unchecked {
                 Image(systemName: entry.authStatus.systemImage)
                     .font(.caption)
                     .foregroundStyle(entry.authStatus.color)
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
         .background(rowBackground(for: entry.authStatus))
+    }
+
+    private func isTicketable(_ entry: ScannedPlate) -> Bool {
+        switch entry.authStatus {
+        case .unknown, .wrongLot, .expired: return true
+        default: return false
+        }
     }
 
     private func plateTextColor(for status: PlateStatus) -> Color {
         switch status {
         case .unknown: return .red
         case .wrongLot: return .orange
+        case .ticketed: return .purple
         default: return .primary
         }
     }
@@ -171,9 +199,20 @@ struct ScanLogView: View {
                 Color.orange.opacity(0.08)
             case .expired:
                 Color.yellow.opacity(0.06)
+            case .ticketed:
+                Color.purple.opacity(0.08)
             default:
                 Color.clear
             }
+        }
+    }
+
+    private struct RowPressStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.6 : 1)
+                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+                .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
         }
     }
 
@@ -189,6 +228,8 @@ struct ScanLogView: View {
             return "EXPIRED · \([permit.displayType, permit.ownerName].filter { !$0.isEmpty }.joined(separator: " · "))"
         case .unknown:
             return "NOT IN DATABASE"
+        case .ticketed:
+            return "TICKET ISSUED"
         case .unchecked:
             return nil
         }

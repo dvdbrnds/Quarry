@@ -12,6 +12,8 @@ interface Ticket {
   officer_id: string;
   officer_name: string | null;
   officer_email: string | null;
+  owner_name: string | null;
+  permit_number: string | null;
   issued_at: string;
   status: string;
   appeal_note: string | null;
@@ -172,6 +174,8 @@ export default function Tickets() {
               <div><span className="text-ink-mute">Fine:</span> ${Number(selected.fine_amount).toFixed(2)}</div>
               <div><span className="text-ink-mute">Status:</span> {selected.status}</div>
               <div><span className="text-ink-mute">Officer:</span> {selected.officer_name || selected.officer_id}</div>
+              {selected.owner_name && <div><span className="text-ink-mute">Owner:</span> {selected.owner_name}</div>}
+              {selected.permit_number && <div><span className="text-ink-mute">Permit #:</span> {selected.permit_number}</div>}
               <div className="col-span-2"><span className="text-ink-mute">Issued:</span> {new Date(selected.issued_at).toLocaleString()}</div>
             </div>
 

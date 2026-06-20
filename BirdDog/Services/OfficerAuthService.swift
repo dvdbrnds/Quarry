@@ -338,6 +338,8 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
 extension OfficerAuthService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        ASPresentationAnchor()
+        MainActor.assumeIsolated {
+            ASPresentationAnchor()
+        }
     }
 }

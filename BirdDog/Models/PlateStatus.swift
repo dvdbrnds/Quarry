@@ -24,6 +24,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
     case expired(permit: PermitInfo)
     case unknown
     case unchecked
+    case ticketed
 
     var label: String {
         switch self {
@@ -32,6 +33,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         case .expired: return "Expired"
         case .unknown: return "Unknown"
         case .unchecked: return ""
+        case .ticketed: return "Ticketed"
         }
     }
 
@@ -42,6 +44,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         case .expired: return .yellow
         case .unknown: return .red
         case .unchecked: return .white
+        case .ticketed: return .purple
         }
     }
 
@@ -52,6 +55,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         case .expired: return "exclamationmark.triangle.fill"
         case .unknown: return "xmark.shield.fill"
         case .unchecked: return "shield.slash"
+        case .ticketed: return "doc.text.fill"
         }
     }
 
@@ -59,7 +63,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         switch self {
         case .authorized(let p), .wrongLot(let p, _, _), .expired(let p):
             return p
-        case .unknown, .unchecked:
+        case .unknown, .unchecked, .ticketed:
             return nil
         }
     }
