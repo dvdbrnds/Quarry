@@ -396,7 +396,9 @@ export default function Lots() {
                           {lot.designation_code}
                         </span>
                       )}
-                      {lot.total_spaces > 0 ? `${lot.total_spaces} spaces` : "No boundary defined"}
+                      {lot.boundary.length >= 3
+                        ? lot.total_spaces > 0 ? `${lot.total_spaces} spaces` : "Boundary set"
+                        : "No boundary defined"}
                       {lot.is_snow_lot && " · Snow"}
                     </p>
                   </div>
