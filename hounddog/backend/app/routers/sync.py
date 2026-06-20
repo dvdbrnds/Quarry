@@ -4,7 +4,7 @@ import uuid as uuid_mod
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -297,12 +297,27 @@ async def register_push_token(
     await db.flush()
 
 
-@router.post("/tickets", response_model=TicketUploadResponse, status_code=202)
+@router.post("/tickets", status_code=202)
 async def upload_ticket(
     ticket: TicketUpload,
     device: Device = Depends(get_device),
     db: AsyncSession = Depends(get_db),
-):
+) -> TicketUploadResponse:
+    import logging as _logging
+    import traceback as _tb
+    _log = _logging.getLogger("quarry.sync")
+    try:
+        return await _upload_ticket_impl(ticket, device, db)
+    except Exception as exc:
+        _log.error("upload_ticket FAILED: %s\n%s", exc, _tb.format_exc())
+        raise HTTPException(status_code=500, detail=f"Ticket creation failed: {exc}")
+
+
+async def _upload_ticket_impl(
+    ticket: TicketUpload,
+    device: Device,
+    db: AsyncSession,
+) -> TicketUploadResponse:
     # Look up violation type to determine fine
     fine_amount = ticket.fine_amount or Decimal("50.00")
     violation_type_id = None

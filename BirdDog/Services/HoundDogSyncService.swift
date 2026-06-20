@@ -267,7 +267,9 @@ final class HoundDogSyncService: ObservableObject {
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 202 else {
-            throw SyncError.serverError((response as? HTTPURLResponse)?.statusCode ?? 0)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let serverMessage = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw SyncError.serverError(statusCode, detail: serverMessage)
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
@@ -288,11 +290,13 @@ final class HoundDogSyncService: ObservableObject {
     // MARK: - Types
 
     enum SyncError: LocalizedError {
-        case serverError(Int)
+        case serverError(Int, detail: String? = nil)
 
         var errorDescription: String? {
             switch self {
-            case .serverError(let code): return "Server returned HTTP \(code)"
+            case .serverError(let code, let detail):
+                if let detail { return "Server \(code): \(detail)" }
+                return "Server returned HTTP \(code)"
             }
         }
     }
