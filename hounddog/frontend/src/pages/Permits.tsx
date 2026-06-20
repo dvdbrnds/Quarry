@@ -407,12 +407,16 @@ export default function Permits() {
               <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("name")}>
                 Name{sortIcon("name")}
               </th>
+              <th className="px-3 py-3 font-medium">Student ID</th>
               <th className="px-3 py-3 font-medium">Plates</th>
               <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("lot_assignment")}>
                 Lot{sortIcon("lot_assignment")}
               </th>
               <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("permit_type")}>
                 Type{sortIcon("permit_type")}
+              </th>
+              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("start_date")}>
+                Issued{sortIcon("start_date")}
               </th>
               <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("end_date")}>
                 Expires{sortIcon("end_date")}
@@ -432,10 +436,12 @@ export default function Permits() {
                     onChange={() => toggleSelect(p.id)} className="rounded border-gray-300" />
                 </td>
                 <td className="px-3 py-3 font-medium">{p.name}</td>
+                <td className="px-3 py-3 text-xs text-ink-mute">{p.student_id || "—"}</td>
                 <td className="px-3 py-3 font-mono text-xs">{p.plates.join(", ")}</td>
                 <td className="px-3 py-3">{p.lot_assignment}</td>
                 <td className="px-3 py-3 capitalize">{p.permit_type}</td>
-                <td className="px-3 py-3">
+                <td className="px-3 py-3 text-xs">{p.start_date || "—"}</td>
+                <td className="px-3 py-3 text-xs">
                   {p.end_date ? (
                     <span className={isExpiringSoon(p) ? "text-amber-600 font-medium" : ""}>
                       {p.end_date}
@@ -461,7 +467,7 @@ export default function Permits() {
               </tr>
             ))}
             {permits.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-ink-mute">No permits found</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-ink-mute">No permits found</td></tr>
             )}
           </tbody>
         </table>
