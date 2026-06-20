@@ -1,16 +1,20 @@
 import csv
 import io
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func, or_
+from pydantic import BaseModel
+from sqlalchemy import select, func, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user
 from ..database import get_db
+from ..models.audit_log import AuditLog
 from ..models.permit import Permit
+from ..models.ticket import Ticket
+from ..models.payment import Payment
 from ..schemas.permit import (
     PermitCreate,
     PermitList,
@@ -19,9 +23,60 @@ from ..schemas.permit import (
     PermitImportPayload,
     PermitImportResult,
 )
+from ..services.permit_lifecycle import (
+    compute_hold,
+    find_duplicates,
+    get_permit_stats,
+)
 from ..websocket import manager
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+SORTABLE_FIELDS = {
+    "name": Permit.name,
+    "status": Permit.status,
+    "permit_type": Permit.permit_type,
+    "lot_assignment": Permit.lot_assignment,
+    "start_date": Permit.start_date,
+    "end_date": Permit.end_date,
+    "created_at": Permit.created_at,
+}
+
+
+@router.get("/stats")
+async def permit_stats(db: AsyncSession = Depends(get_db)):
+    return await get_permit_stats(db)
+
+
+@router.get("/duplicates")
+async def list_duplicates(db: AsyncSession = Depends(get_db)):
+    """Find all active permits that share a plate with another active permit."""
+    result = await db.execute(
+        select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
+    )
+    all_permits = result.scalars().all()
+
+    plate_map: dict[str, list] = {}
+    for p in all_permits:
+        for plate in p.plates:
+            plate_map.setdefault(plate.upper(), []).append(p)
+
+    duplicates = []
+    seen_ids = set()
+    for plate, permits in plate_map.items():
+        if len(permits) > 1:
+            for p in permits:
+                if p.id not in seen_ids:
+                    seen_ids.add(p.id)
+                    duplicates.append({
+                        "id": str(p.id),
+                        "name": p.name,
+                        "plates": p.plates,
+                        "conflicting_plate": plate,
+                        "lot_assignment": p.lot_assignment,
+                        "permit_type": p.permit_type,
+                    })
+    return duplicates
 
 
 @router.get("", response_model=PermitList)
@@ -31,6 +86,8 @@ async def list_permits(
     search: str | None = None,
     status: str | None = None,
     lot: str | None = None,
+    permit_type: str | None = None,
+    sort: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Permit).where(Permit.deleted_at.is_(None))
@@ -45,16 +102,39 @@ async def list_permits(
             )
         )
     if status:
-        query = query.where(Permit.status == status)
+        if status == "expiring_soon":
+            today = date.today()
+            soon = today + timedelta(days=30)
+            query = query.where(
+                Permit.status == "active",
+                Permit.end_date.isnot(None),
+                Permit.end_date <= soon,
+                Permit.end_date >= today,
+            )
+        else:
+            query = query.where(Permit.status == status)
     if lot:
         query = query.where(Permit.lot_assignment == lot)
+    if permit_type:
+        query = query.where(Permit.permit_type == permit_type)
+
+    order_col = Permit.name
+    order_dir = asc
+    if sort:
+        if sort.startswith("-"):
+            order_dir = desc
+            sort_field = sort[1:]
+        else:
+            sort_field = sort
+        if sort_field in SORTABLE_FIELDS:
+            order_col = SORTABLE_FIELDS[sort_field]
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
 
     items = (
         await db.execute(
-            query.order_by(Permit.name).offset((page - 1) * page_size).limit(page_size)
+            query.order_by(order_dir(order_col)).offset((page - 1) * page_size).limit(page_size)
         )
     ).scalars().all()
 
@@ -104,6 +184,161 @@ async def delete_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     permit.deleted_at = datetime.now(timezone.utc)
     await db.flush()
     await _notify_permit_change("deleted", 1)
+
+
+class BulkStatusRequest(BaseModel):
+    ids: list[str]
+    status: str
+
+
+@router.post("/bulk-status")
+async def bulk_status(
+    data: BulkStatusRequest, db: AsyncSession = Depends(get_db)
+):
+    valid_statuses = {"active", "expired", "revoked", "suspended"}
+    if data.status not in valid_statuses:
+        raise HTTPException(400, f"Invalid status. Must be one of: {valid_statuses}")
+
+    updated = 0
+    for permit_id in data.ids:
+        try:
+            permit = await db.get(Permit, uuid.UUID(permit_id))
+        except ValueError:
+            continue
+        if permit and not permit.deleted_at:
+            permit.status = data.status
+            updated += 1
+
+    await db.flush()
+    if updated:
+        await _notify_permit_change("bulk_status", updated)
+    return {"updated": updated, "status": data.status}
+
+
+@router.post("/{permit_id}/renew", response_model=PermitRead)
+async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    old = await db.get(Permit, permit_id)
+    if not old or old.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    old.status = "renewed"
+
+    valid_days = 365
+    new_start = date.today()
+    new_end = new_start + timedelta(days=valid_days)
+
+    renewed = Permit(
+        name=old.name,
+        student_id=old.student_id,
+        plates=list(old.plates),
+        lot_assignment=old.lot_assignment,
+        permit_type=old.permit_type,
+        beacon_id=old.beacon_id,
+        start_date=new_start,
+        end_date=new_end,
+        status="active",
+    )
+    db.add(renewed)
+    await db.flush()
+    await db.refresh(renewed)
+    await _notify_permit_change("renewed", 1)
+    return renewed
+
+
+@router.get("/{permit_id}/history")
+async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    has_hold, unpaid_amount = await compute_hold(db, permit)
+
+    tickets_result = await db.execute(
+        select(Ticket).where(
+            Ticket.plate.in_(permit.plates)
+        ).order_by(desc(Ticket.issued_at)).limit(50)
+    )
+    tickets = tickets_result.scalars().all()
+
+    payments_result = await db.execute(
+        select(Payment).where(
+            Payment.ticket_id.in_([t.id for t in tickets])
+        ).order_by(desc(Payment.created_at))
+    )
+    payments = payments_result.scalars().all()
+
+    audit_result = await db.execute(
+        select(AuditLog).where(
+            AuditLog.resource_type == "permits",
+            AuditLog.resource_id == str(permit_id),
+        ).order_by(desc(AuditLog.timestamp)).limit(50)
+    )
+    audit_entries = audit_result.scalars().all()
+
+    prior_result = await db.execute(
+        select(Permit).where(
+            Permit.id != permit_id,
+            Permit.deleted_at.is_(None),
+            or_(
+                Permit.student_id == permit.student_id,
+                *[Permit.plates.any(p) for p in permit.plates]
+            ) if permit.student_id else
+            or_(*[Permit.plates.any(p) for p in permit.plates])
+        ).order_by(desc(Permit.created_at)).limit(20)
+    )
+    prior_permits = prior_result.scalars().all()
+
+    duplicates = await find_duplicates(db, permit.plates, exclude_id=permit.id)
+
+    return {
+        "permit": permit,
+        "has_hold": has_hold,
+        "unpaid_amount": str(unpaid_amount),
+        "tickets": [
+            {
+                "id": str(t.id),
+                "plate": t.plate,
+                "lot": t.lot,
+                "violation_type": t.violation_type,
+                "fine_amount": str(t.fine_amount),
+                "status": t.status,
+                "issued_at": t.issued_at.isoformat() if t.issued_at else None,
+            }
+            for t in tickets
+        ],
+        "payments": [
+            {
+                "id": str(p.id),
+                "amount": str(p.amount),
+                "status": p.status,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in payments
+        ],
+        "audit_log": [
+            {
+                "id": str(a.id),
+                "timestamp": a.timestamp.isoformat(),
+                "user_email": a.user_email,
+                "action": a.action,
+                "summary": a.summary,
+                "changes": a.changes,
+            }
+            for a in audit_entries
+        ],
+        "prior_permits": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "permit_type": p.permit_type,
+                "status": p.status,
+                "start_date": p.start_date.isoformat() if p.start_date else None,
+                "end_date": p.end_date.isoformat() if p.end_date else None,
+            }
+            for p in prior_permits
+        ],
+        "duplicates": duplicates,
+    }
 
 
 @router.post("/import", response_model=PermitImportResult)

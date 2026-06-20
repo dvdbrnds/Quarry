@@ -117,12 +117,14 @@ export interface Device {
 
 export const api = {
   permits: {
-    list: (params?: { page?: number; search?: string; status?: string; lot?: string }) => {
+    list: (params?: { page?: number; search?: string; status?: string; lot?: string; permit_type?: string; sort?: string }) => {
       const qs = new URLSearchParams();
       if (params?.page) qs.set("page", String(params.page));
       if (params?.search) qs.set("search", params.search);
       if (params?.status) qs.set("status", params.status);
       if (params?.lot) qs.set("lot", params.lot);
+      if (params?.permit_type) qs.set("permit_type", params.permit_type);
+      if (params?.sort) qs.set("sort", params.sort);
       return request<PermitList>(`/permits?${qs}`);
     },
     get: (id: string) => request<Permit>(`/permits/${id}`),
@@ -137,6 +139,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ permits }),
       }),
+    stats: () => request<{ total: number; active: number; expired: number; expiring_soon: number; revoked: number }>("/permits/stats"),
+    bulkStatus: (ids: string[], status: string) =>
+      request<{ updated: number }>("/permits/bulk-status", {
+        method: "POST",
+        body: JSON.stringify({ ids, status }),
+      }),
+    history: (id: string) => request<any>(`/permits/${id}/history`),
+    renew: (id: string) =>
+      request<Permit>(`/permits/${id}/renew`, { method: "POST" }),
+    duplicates: () => request<any[]>("/permits/duplicates"),
   },
   lots: {
     list: () => request<Lot[]>("/lots"),

@@ -1,4 +1,5 @@
 from .academic_season import AcademicSeason
+from .audit_log import AuditLog
 from .device import Device
 from .enforcement_settings import EnforcementSettings
 from .lot import ParkingLot
@@ -11,6 +12,7 @@ from .violation_type import ViolationType
 
 __all__ = [
     "AcademicSeason",
+    "AuditLog",
     "Device",
     "EnforcementSettings",
     "LotZone",
