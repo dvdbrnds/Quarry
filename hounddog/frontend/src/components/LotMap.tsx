@@ -137,6 +137,23 @@ function MapContent({
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
 
+  // Fit map to all lots on initial load / when no lot is selected
+  useEffect(() => {
+    if (!map || selectedLotId) return;
+    const lotsWithBounds = lots.filter((l) => l.boundary.length >= 3);
+    if (lotsWithBounds.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const bounds = new google.maps.LatLngBounds();
+      lotsWithBounds.forEach((lot) => {
+        lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+      });
+      map.fitBounds(bounds, 60);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [map, lots, selectedLotId]);
+
   // Center map on selected lot
   useEffect(() => {
     if (!map || !selectedLotId) return;

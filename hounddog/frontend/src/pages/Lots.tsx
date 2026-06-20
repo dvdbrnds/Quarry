@@ -295,6 +295,7 @@ export default function Lots() {
   const [editingBoundary, setEditingBoundary] = useState<Coordinate[] | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [closingLot, setClosingLot] = useState<Lot | null>(null);
+  const [deletingLot, setDeletingLot] = useState<Lot | null>(null);
 
   const load = useCallback(async () => {
     setLots(await api.lots.list());
@@ -330,10 +331,11 @@ export default function Lots() {
     load();
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this lot?")) return;
-    await api.lots.delete(id);
-    if (selectedLotId === id) setSelectedLotId(null);
+  async function confirmDelete() {
+    if (!deletingLot) return;
+    await api.lots.delete(deletingLot.id);
+    if (selectedLotId === deletingLot.id) setSelectedLotId(null);
+    setDeletingLot(null);
     load();
   }
 
@@ -416,7 +418,7 @@ export default function Lots() {
                         className="text-brass-deep hover:text-brass text-xs"
                       >Edit</button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(lot.id); }}
+                        onClick={(e) => { e.stopPropagation(); setDeletingLot(lot); }}
                         className="text-signal-red/60 hover:text-signal-red text-xs"
                       >Delete</button>
                     </div>
@@ -462,6 +464,32 @@ export default function Lots() {
             load();
           }}
         />
+      )}
+
+      {deletingLot && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-lg font-bold text-signal-red">Delete {deletingLot.name}?</h3>
+            <p className="text-sm text-ink-mute">
+              This will permanently remove <strong>{deletingLot.name}</strong> and
+              all its zones. This action cannot be undone.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2 bg-signal-red text-white font-medium rounded-lg text-sm hover:bg-red-700 transition-colors"
+              >
+                Delete Lot
+              </button>
+              <button
+                onClick={() => setDeletingLot(null)}
+                className="px-4 py-2 text-sm text-ink-mute hover:text-ink"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
