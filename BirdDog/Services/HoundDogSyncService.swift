@@ -258,6 +258,8 @@ final class HoundDogSyncService: ObservableObject {
         if let notes = ticket.officerNotes { body["officer_notes"] = notes }
         if let name = ticket.driverName { body["driver_name"] = name }
         if let lic = ticket.driverLicense { body["driver_license"] = lic }
+        if let officerName = ticket.officerName { body["officer_name"] = officerName }
+        if let officerEmail = ticket.officerEmail { body["officer_email"] = officerEmail }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

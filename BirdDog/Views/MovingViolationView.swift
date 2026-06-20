@@ -16,6 +16,10 @@ struct MovingViolationView: View {
     @State private var isSubmitting = false
     @State private var submittedResult: HoundDogSyncService.TicketUploadResponse?
     @State private var errorMessage: String?
+    @State private var isPrinting = false
+    @State private var printError: String?
+    @ObservedObject private var printerService = PrinterService.shared
+    @ObservedObject private var officerAuth = OfficerAuthService.shared
 
     private let movingViolations = [
         ("speeding", "Speeding"),
@@ -128,6 +132,16 @@ struct MovingViolationView: View {
                 }
             }
 
+            if !officerAuth.officerName.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.badge.shield.checkmark.fill")
+                        .foregroundStyle(.blue)
+                    Text("Issued by \(officerAuth.officerName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if !result.paymentUrl.isEmpty {
                 VStack(spacing: 8) {
                     Text("Payment QR Code")
@@ -150,6 +164,25 @@ struct MovingViolationView: View {
                 }
             }
 
+            if printerService.isConnected {
+                Button {
+                    printTicket(result)
+                } label: {
+                    HStack {
+                        Image(systemName: "printer.fill")
+                        Text(isPrinting ? "Printing…" : "Print Citation")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isPrinting)
+            }
+
+            if let printError {
+                Text(printError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
             Button("Done") { dismiss() }
                 .buttonStyle(.borderedProminent)
                 .padding(.top)
@@ -160,6 +193,11 @@ struct MovingViolationView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Done") { dismiss() }
+            }
+        }
+        .onAppear {
+            if printerService.autoPrintEnabled && printerService.isConnected {
+                printTicket(result)
             }
         }
     }
@@ -180,7 +218,9 @@ struct MovingViolationView: View {
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
             officerNotes: officerNotes.isEmpty ? nil : officerNotes,
             driverName: driverName.isEmpty ? nil : driverName,
-            driverLicense: driverLicense.isEmpty ? nil : driverLicense
+            driverLicense: driverLicense.isEmpty ? nil : driverLicense,
+            officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
+            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail
         )
 
         Task {
@@ -191,6 +231,48 @@ struct MovingViolationView: View {
                 errorMessage = error.localizedDescription
             }
             isSubmitting = false
+        }
+    }
+
+    private func violationLabel(for code: String) -> String {
+        movingViolations.first(where: { $0.0 == code })?.1 ?? code
+    }
+
+    private func printTicket(_ result: HoundDogSyncService.TicketUploadResponse) {
+        isPrinting = true
+        printError = nil
+
+        let ticketData = TicketReceiptBuilder.TicketData(
+            ticketId: result.ticketId,
+            plate: plate,
+            violationType: selectedViolation,
+            violationLabel: violationLabel(for: selectedViolation),
+            lot: "",
+            fineAmount: result.fineAmount,
+            offenseNumber: result.offenseNumber,
+            paymentUrl: result.paymentUrl,
+            issuedAt: Date(),
+            vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
+            officerNotes: officerNotes.isEmpty ? nil : officerNotes,
+            driverName: driverName.isEmpty ? nil : driverName,
+            driverLicense: driverLicense.isEmpty ? nil : driverLicense,
+            locationText: locationText.isEmpty ? nil : locationText,
+            ticketCategory: "moving",
+            officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
+            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail
+        )
+
+        Task {
+            do {
+                let commands = TicketReceiptBuilder.buildCommands(
+                    ticket: ticketData,
+                    schoolName: AppSettings.shared.schoolName
+                )
+                try await printerService.printCommands(commands)
+            } catch {
+                printError = error.localizedDescription
+            }
+            isPrinting = false
         }
     }
 

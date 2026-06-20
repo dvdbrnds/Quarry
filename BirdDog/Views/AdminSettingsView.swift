@@ -6,6 +6,7 @@ struct AdminSettingsView: View {
     @ObservedObject var cameraService: CameraService
     @ObservedObject private var appSettings = AppSettings.shared
     @ObservedObject private var syncService = HoundDogSyncService.shared
+    @ObservedObject private var officerAuth = OfficerAuthService.shared
     @State private var showPermitImporter = false
     @State private var showLotImporter = false
     @State private var showPasscodeChange = false
@@ -16,9 +17,12 @@ struct AdminSettingsView: View {
 
     var body: some View {
         List {
+            officerSection
             cameraSection
+            printerSection
             schoolSection
             houndDogSection
+            oktaSection
             ocrEngineSection
             dataSection
             securitySection
@@ -49,6 +53,41 @@ struct AdminSettingsView: View {
         }
         .fullScreenCover(isPresented: $showQRScanner) {
             QRScannerView(isPresented: $showQRScanner, onPaired: {})
+        }
+    }
+
+    // MARK: - Officer
+
+    private var officerSection: some View {
+        Section {
+            HStack {
+                Text("Officer")
+                Spacer()
+                Text(officerAuth.officerName)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("Email")
+                Spacer()
+                Text(officerAuth.officerEmail)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            HStack {
+                Text("Role")
+                Spacer()
+                Text(officerAuth.isAdmin ? "Admin" : officerAuth.isStaff ? "Staff" : "Officer")
+                    .foregroundStyle(.secondary)
+            }
+            Button(role: .destructive) {
+                officerAuth.logout()
+            } label: {
+                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+        } header: {
+            Text("Signed-In Officer")
+        } footer: {
+            Text("Officer identity is attached to every ticket as a digital signature.")
         }
     }
 
@@ -85,6 +124,42 @@ struct AdminSettingsView: View {
             Text("Camera")
         } footer: {
             Text("If the external camera is not detected through a USB hub, try Reconnect Camera or unplug and replug the hub.")
+        }
+    }
+
+    // MARK: - Printer
+
+    private var printerSection: some View {
+        Section {
+            NavigationLink {
+                PrinterSettingsView()
+            } label: {
+                HStack {
+                    Label("Thermal Printer", systemImage: "printer.fill")
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(printerStatusColor)
+                            .frame(width: 8, height: 8)
+                        Text(PrinterService.shared.connectionState.rawValue)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } header: {
+            Text("Printer")
+        } footer: {
+            Text("Connect a Star Micronics thermal printer via Bluetooth LE to print tickets in the field.")
+        }
+    }
+
+    private var printerStatusColor: Color {
+        switch PrinterService.shared.connectionState {
+        case .connected: return .green
+        case .connecting: return .orange
+        case .error: return .red
+        case .disconnected: return .gray
         }
     }
 
@@ -190,6 +265,59 @@ struct AdminSettingsView: View {
         case .error: return .red
         case .offline: return .gray
         case .idle: return .gray
+        }
+    }
+
+    // MARK: - Okta SSO
+
+    private var oktaSection: some View {
+        Section {
+            HStack {
+                Text("Issuer URL")
+                Spacer()
+                TextField("https://example.okta.com/oauth2/default", text: $appSettings.oktaIssuer)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+            }
+
+            HStack {
+                Text("Client ID")
+                Spacer()
+                TextField("Okta app client ID", text: $appSettings.oktaClientId)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
+
+            HStack {
+                Text("Redirect URI")
+                Spacer()
+                TextField("edu.moravian.birddog://callback", text: $appSettings.oktaRedirectURI)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
+
+            HStack {
+                Text("Status")
+                Spacer()
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(appSettings.isOktaConfigured ? .green : .gray)
+                        .frame(width: 8, height: 8)
+                    Text(appSettings.isOktaConfigured ? "Configured" : "Not Configured")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Officer Authentication (Okta)")
+        } footer: {
+            Text("Okta SSO settings are normally auto-configured during QR pairing. Create a Native app in Okta with Authorization Code + PKCE grant.")
         }
     }
 

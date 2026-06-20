@@ -113,6 +113,12 @@ struct QRScannerView: View {
         if !payload.name.isEmpty {
             settings.schoolName = payload.name
         }
+        if !payload.oktaIssuer.isEmpty {
+            settings.oktaIssuer = payload.oktaIssuer
+        }
+        if !payload.oktaClientId.isEmpty {
+            settings.oktaClientId = payload.oktaClientId
+        }
 
         HoundDogSyncService.shared.startIfConfigured()
         isPairing = false
@@ -125,16 +131,22 @@ struct PairingPayload: Decodable {
     let url: String
     let key: String
     let name: String
+    let oktaIssuer: String
+    let oktaClientId: String
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.url = try container.decode(String.self, forKey: .url)
         self.key = try container.decode(String.self, forKey: .key)
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.oktaIssuer = try container.decodeIfPresent(String.self, forKey: .oktaIssuer) ?? ""
+        self.oktaClientId = try container.decodeIfPresent(String.self, forKey: .oktaClientId) ?? ""
     }
 
     enum CodingKeys: String, CodingKey {
         case url, key, name
+        case oktaIssuer = "okta_issuer"
+        case oktaClientId = "okta_client_id"
     }
 }
 

@@ -10,6 +10,8 @@ interface Ticket {
   fine_amount: string;
   photo_url: string | null;
   officer_id: string;
+  officer_name: string | null;
+  officer_email: string | null;
   issued_at: string;
   status: string;
   appeal_note: string | null;
@@ -169,7 +171,7 @@ export default function Tickets() {
               <div><span className="text-ink-mute">Violation:</span> {selected.violation_type}</div>
               <div><span className="text-ink-mute">Fine:</span> ${Number(selected.fine_amount).toFixed(2)}</div>
               <div><span className="text-ink-mute">Status:</span> {selected.status}</div>
-              <div><span className="text-ink-mute">Officer:</span> {selected.officer_id}</div>
+              <div><span className="text-ink-mute">Officer:</span> {selected.officer_name || selected.officer_id}</div>
               <div className="col-span-2"><span className="text-ink-mute">Issued:</span> {new Date(selected.issued_at).toLocaleString()}</div>
             </div>
 

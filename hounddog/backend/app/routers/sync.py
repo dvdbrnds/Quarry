@@ -277,6 +277,8 @@ async def upload_ticket(
             f.write(base64.b64decode(ticket.photo_base64))
         photo_url = f"/uploads/photos/{filename}"
 
+    officer_id = ticket.officer_email or ticket.officer_name or device.name
+
     new_ticket = Ticket(
         plate=ticket.plate.upper(),
         lot=ticket.lot,
@@ -285,7 +287,9 @@ async def upload_ticket(
         violation_type_id=violation_type_id,
         fine_amount=fine_amount,
         photo_url=photo_url,
-        officer_id=device.name,
+        officer_id=officer_id,
+        officer_name=ticket.officer_name,
+        officer_email=ticket.officer_email,
         issued_at=ticket.timestamp,
         ticket_category=ticket.ticket_category,
         offense_number=offense_number,

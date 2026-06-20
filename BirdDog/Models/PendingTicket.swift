@@ -23,6 +23,10 @@ final class PendingTicket {
     var driverName: String?
     var driverLicense: String?
 
+    // Officer identity (ticket signature)
+    var officerName: String?
+    var officerEmail: String?
+
     // Response from server
     var paymentUrl: String?
     var fineAmount: String?
@@ -42,7 +46,9 @@ final class PendingTicket {
         vehicleDescription: String? = nil,
         officerNotes: String? = nil,
         driverName: String? = nil,
-        driverLicense: String? = nil
+        driverLicense: String? = nil,
+        officerName: String? = nil,
+        officerEmail: String? = nil
     ) {
         self.ticketId = UUID().uuidString
         self.plate = plate
@@ -61,5 +67,7 @@ final class PendingTicket {
         self.officerNotes = officerNotes
         self.driverName = driverName
         self.driverLicense = driverLicense
+        self.officerName = officerName
+        self.officerEmail = officerEmail
     }
 }
