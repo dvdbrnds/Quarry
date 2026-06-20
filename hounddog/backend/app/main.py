@@ -151,6 +151,40 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Seed defaults on startup failed: {e}")
 
+    # Seed academic calendar if empty
+    try:
+        from .models import AcademicSeason
+        from datetime import date as _date
+        async with async_session() as session:
+            ac_count = await session.scalar(select(func.count()).select_from(AcademicSeason))
+            if ac_count == 0:
+                default_seasons = [
+                    # 2025-2026
+                    {"code": "fall_2025", "label": "Fall 2025", "start_date": _date(2025, 8, 25), "end_date": _date(2025, 12, 15), "is_default": True},
+                    {"code": "winter_break_2025", "label": "Winter Break 2025-26", "start_date": _date(2025, 12, 16), "end_date": _date(2026, 1, 4), "is_default": False},
+                    {"code": "winter_session_2026", "label": "Winter Session 2026", "start_date": _date(2026, 1, 5), "end_date": _date(2026, 1, 17), "is_default": False},
+                    {"code": "spring_2026", "label": "Spring 2026", "start_date": _date(2026, 1, 19), "end_date": _date(2026, 5, 9), "is_default": False},
+                    {"code": "spring_break_2026", "label": "Spring Break 2026", "start_date": _date(2026, 3, 8), "end_date": _date(2026, 3, 15), "is_default": False},
+                    {"code": "may_term_2026", "label": "May Term 2026", "start_date": _date(2026, 5, 11), "end_date": _date(2026, 5, 30), "is_default": False},
+                    {"code": "summer_i_2026", "label": "Summer Session I 2026", "start_date": _date(2026, 6, 1), "end_date": _date(2026, 7, 11), "is_default": False},
+                    {"code": "summer_ii_2026", "label": "Summer Session II 2026", "start_date": _date(2026, 7, 13), "end_date": _date(2026, 8, 22), "is_default": False},
+                    # 2026-2027
+                    {"code": "fall_2026", "label": "Fall 2026", "start_date": _date(2026, 8, 31), "end_date": _date(2026, 12, 21), "is_default": False},
+                    {"code": "winter_break_2026", "label": "Winter Break 2026-27", "start_date": _date(2026, 12, 22), "end_date": _date(2027, 1, 3), "is_default": False},
+                    {"code": "winter_session_2027", "label": "Winter Session 2027", "start_date": _date(2027, 1, 4), "end_date": _date(2027, 1, 16), "is_default": False},
+                    {"code": "spring_2027", "label": "Spring 2027", "start_date": _date(2027, 1, 18), "end_date": _date(2027, 5, 8), "is_default": False},
+                    {"code": "spring_break_2027", "label": "Spring Break 2027", "start_date": _date(2027, 3, 7), "end_date": _date(2027, 3, 14), "is_default": False},
+                    {"code": "may_term_2027", "label": "May Term 2027", "start_date": _date(2027, 5, 10), "end_date": _date(2027, 5, 29), "is_default": False},
+                    {"code": "summer_i_2027", "label": "Summer Session I 2027", "start_date": _date(2027, 6, 1), "end_date": _date(2027, 7, 10), "is_default": False},
+                    {"code": "summer_ii_2027", "label": "Summer Session II 2027", "start_date": _date(2027, 7, 12), "end_date": _date(2027, 8, 21), "is_default": False},
+                ]
+                for row in default_seasons:
+                    session.add(AcademicSeason(**row))
+                await session.commit()
+                logger.info(f"Seeded {len(default_seasons)} academic seasons")
+    except Exception as e:
+        logger.warning(f"Seed academic calendar on startup failed: {e}")
+
     # Auto-expire permits on startup
     try:
         from .services.permit_lifecycle import auto_expire_permits
