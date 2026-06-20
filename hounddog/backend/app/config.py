@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_publishable_key: str = ""
 
+    # SMTP Email
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_address: str = ""
+    smtp_from_name: str = "Quarry Parking"
+    smtp_use_tls: bool = True
+    lot_closure_mailing_list: str = ""
+    citation_from_address: str = ""
+
     # APNs (Push Notifications)
     apns_key_path: str = ""
     apns_key_id: str = ""

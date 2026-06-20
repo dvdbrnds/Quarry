@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 class PermitBase(BaseModel):
     student_id: str = ""
     name: str
+    email: str | None = None
     plates: list[str] = []
     lot_assignment: str = ""
     permit_type: str = "student"
@@ -23,6 +24,7 @@ class PermitCreate(PermitBase):
 class PermitUpdate(BaseModel):
     student_id: str | None = None
     name: str | None = None
+    email: str | None = None
     plates: list[str] | None = None
     lot_assignment: str | None = None
     permit_type: str | None = None
@@ -46,6 +48,7 @@ class PermitImportRow(BaseModel):
     plate_raw: str = ""
     plate_state: str = ""
     owner_name: str = ""
+    email: str = ""
     permit_number: str = ""
     permit_type: str = "student"
     permit_status: str = "active"

@@ -20,6 +20,7 @@ class ParkingLot(Base):
     designation_label: Mapped[str] = mapped_column(String(256), default="")
     access_schedule: Mapped[list] = mapped_column(JSON, default=list)
     is_snow_lot: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

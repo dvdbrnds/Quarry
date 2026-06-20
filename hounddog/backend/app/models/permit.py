@@ -14,6 +14,7 @@ class Permit(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[str] = mapped_column(String(64), default="")
     name: Mapped[str] = mapped_column(String(256))
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     plates: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     lot_assignment: Mapped[str] = mapped_column(String(128), default="")
     permit_type: Mapped[str] = mapped_column(String(64), default="student")

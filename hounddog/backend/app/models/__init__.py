@@ -3,6 +3,7 @@ from .audit_log import AuditLog
 from .device import Device
 from .enforcement_settings import EnforcementSettings
 from .lot import ParkingLot
+from .lot_closure import LotClosure
 from .lot_zone import LotZone
 from .payment import Payment
 from .permit import Permit
@@ -15,6 +16,7 @@ __all__ = [
     "AuditLog",
     "Device",
     "EnforcementSettings",
+    "LotClosure",
     "LotZone",
     "ParkingLot",
     "Payment",

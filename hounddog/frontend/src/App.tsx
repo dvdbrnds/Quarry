@@ -6,6 +6,7 @@ import Tickets from "./pages/Tickets";
 import Pay from "./pages/Pay";
 import PaySuccess from "./pages/PaySuccess";
 import Finance from "./pages/Finance";
+import OperationsCalendar from "./pages/OperationsCalendar";
 import Settings from "./pages/Settings";
 import PermitDetail from "./pages/PermitDetail";
 import AuthCallback from "./pages/AuthCallback";
@@ -43,6 +44,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
         <NavItem to="/dashboard">Dashboard</NavItem>
         <NavItem to="/permits">Permits</NavItem>
         <NavItem to="/lots">Lots</NavItem>
+        <NavItem to="/calendar">Calendar</NavItem>
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/finance">Finance</NavItem>
         <NavItem to="/settings">Settings</NavItem>
@@ -67,6 +69,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/permits" element={<Permits />} />
           <Route path="/lots" element={<Lots />} />
+          <Route path="/calendar" element={<OperationsCalendar />} />
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/finance" element={<Finance />} />
           <Route path="/settings" element={<Settings />} />
