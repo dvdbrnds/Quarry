@@ -1,9 +1,10 @@
+import uuid
 from datetime import datetime
 from pydantic import BaseModel
 
 
 class AuditLogRead(BaseModel):
-    id: str
+    id: uuid.UUID
     timestamp: datetime
     user_email: str
     user_sub: str
