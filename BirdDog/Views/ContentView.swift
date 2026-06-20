@@ -7,7 +7,6 @@ struct ContentView: View {
     @ObservedObject private var officerAuth = OfficerAuthService.shared
     @State private var showExportSheet = false
     @State private var showClearConfirm = false
-    @State private var showExportOptions = false
     @State private var showDatabase = false
     @State private var showLotManagement = false
     @State private var showAdminSettings = false
@@ -15,6 +14,8 @@ struct ContentView: View {
     @State private var showCameraLog = false
     @State private var showTicketIssuance = false
     @State private var showMovingViolation = false
+    @State private var ticketPrefilledPlate: String?
+    @State private var ticketPrefilledEntry: ScannedPlate?
     @State private var exportURLs: [URL] = []
     @State private var now = Date()
 
@@ -105,7 +106,12 @@ struct ContentView: View {
                         authorizedCount: viewModel.authorizedCount,
                         wrongLotCount: viewModel.wrongLotCount,
                         expiredCount: viewModel.expiredCount,
-                        unknownCount: viewModel.unknownCount
+                        unknownCount: viewModel.unknownCount,
+                        onIssueTapped: officerAuth.isStaff ? { entry in
+                            ticketPrefilledEntry = entry
+                            ticketPrefilledPlate = entry.text
+                            showTicketIssuance = true
+                        } : nil
                     )
 
                     Divider()
@@ -149,10 +155,21 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showTicketIssuance) {
-            TicketIssuanceView()
+            TicketIssuanceView(
+                cameraService: viewModel.cameraService,
+                prefilledPlate: ticketPrefilledPlate,
+                prefilledEntry: ticketPrefilledEntry,
+                onTicketIssued: { plate in
+                    viewModel.markPlateTicketed(plate)
+                }
+            )
+            .onDisappear {
+                ticketPrefilledPlate = nil
+                ticketPrefilledEntry = nil
+            }
         }
         .sheet(isPresented: $showMovingViolation) {
-            MovingViolationView()
+            MovingViolationView(cameraService: viewModel.cameraService)
         }
     }
 
@@ -250,7 +267,7 @@ struct ContentView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
+        HStack(spacing: 16) {
             Text(sessionDuration)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -262,73 +279,58 @@ struct ContentView: View {
                 viewModel.audioAlertsEnabled.toggle()
             } label: {
                 Image(systemName: viewModel.audioAlertsEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                    .font(.subheadline)
+                    .font(.body)
                     .foregroundStyle(viewModel.audioAlertsEnabled ? .primary : .secondary)
             }
 
             if officerAuth.isStaff {
-                Button {
-                    showTicketIssuance = true
+                Menu {
+                    Button {
+                        ticketPrefilledPlate = nil
+                        ticketPrefilledEntry = nil
+                        showTicketIssuance = true
+                    } label: {
+                        Label("Parking Ticket", systemImage: "doc.text")
+                    }
+                    Button { showMovingViolation = true } label: {
+                        Label("Moving Citation", systemImage: "car.side")
+                    }
                 } label: {
-                    Label("Ticket", systemImage: "doc.text")
-                        .font(.subheadline)
-                }
-
-                Button {
-                    showMovingViolation = true
-                } label: {
-                    Label("Citation", systemImage: "car.side")
-                        .font(.subheadline)
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
                 }
             }
 
             if officerAuth.isAdmin {
-                Button {
-                    showDatabase = true
+                Menu {
+                    Button { showDatabase = true } label: {
+                        Label("Database", systemImage: "server.rack")
+                    }
+                    Button { showLotManagement = true } label: {
+                        Label("Lots", systemImage: "map")
+                    }
+                    Button { showAdminSettings = true } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
                 } label: {
-                    Label("Database", systemImage: "server.rack")
-                        .font(.subheadline)
-                }
-
-                Button {
-                    showLotManagement = true
-                } label: {
-                    Label("Lots", systemImage: "map")
-                        .font(.subheadline)
-                }
-
-                Button {
-                    showAdminSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                        .font(.subheadline)
+                    Image(systemName: "gearshape")
+                        .font(.body)
                 }
             }
 
-            Button {
-                showSessionHistory = true
-            } label: {
-                Label("Archive", systemImage: "archivebox")
-                    .font(.subheadline)
-            }
-
-            Button {
-                showClearConfirm = true
-            } label: {
-                Label("Clear", systemImage: "trash")
-                    .font(.subheadline)
-            }
-            .disabled(viewModel.scanLog.isEmpty)
-
-            Button {
-                showExportOptions = true
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
-                    .font(.subheadline)
-            }
-            .disabled(viewModel.scanLog.isEmpty)
-            .confirmationDialog("Export Options", isPresented: $showExportOptions) {
-                Button("Plates + Diagnostics (CSV)") {
+            Menu {
+                Button { showSessionHistory = true } label: {
+                    Label("Session History", systemImage: "archivebox")
+                }
+                Button(role: .destructive) {
+                    showClearConfirm = true
+                } label: {
+                    Label("Clear Log", systemImage: "trash")
+                }
+                .disabled(viewModel.scanLog.isEmpty)
+                Divider()
+                Button {
                     var urls: [URL] = []
                     if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
                     if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
@@ -336,8 +338,11 @@ struct ContentView: View {
                         exportURLs = urls
                         showExportSheet = true
                     }
+                } label: {
+                    Label("Export CSV", systemImage: "tablecells")
                 }
-                Button("Performance Summary") {
+                .disabled(viewModel.scanLog.isEmpty)
+                Button {
                     var urls: [URL] = []
                     if let summary = LogExporter.exportSessionSummary(from: viewModel.scanLog) { urls.append(summary) }
                     if let csv = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(csv) }
@@ -345,14 +350,18 @@ struct ContentView: View {
                         exportURLs = urls
                         showExportSheet = true
                     }
+                } label: {
+                    Label("Performance Summary", systemImage: "chart.bar")
                 }
-                Button("Cancel", role: .cancel) {}
+                .disabled(viewModel.scanLog.isEmpty)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.body)
             }
 
             Menu {
                 Text(officerAuth.officerName)
                 Text(officerAuth.officerEmail)
-                    .font(.caption)
                 Divider()
                 Button(role: .destructive) {
                     officerAuth.logout()
@@ -361,7 +370,7 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "person.crop.circle.fill")
-                    .font(.subheadline)
+                    .font(.body)
                     .foregroundStyle(.green)
             }
         }

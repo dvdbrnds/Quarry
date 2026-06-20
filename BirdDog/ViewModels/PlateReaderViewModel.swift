@@ -66,6 +66,7 @@ final class PlateReaderViewModel: ObservableObject {
     private let hapticMedium = UIImpactFeedbackGenerator(style: .medium)
     private let hapticHeavy = UIImpactFeedbackGenerator(style: .heavy)
     private let hapticLight = UIImpactFeedbackGenerator(style: .light)
+    private(set) var ticketedPlates: Set<String> = []
     private var seenPlates: [(text: String, time: Date)] = []
     private let confirmationThreshold = 2
     private let dedupWindow: TimeInterval = 30
@@ -165,9 +166,33 @@ final class PlateReaderViewModel: ObservableObject {
         candidateCounts.removeAll()
         candidateVoter.removeAll()
         diagnosticLog.removeAll()
+        ticketedPlates.removeAll()
         currentPlates = []
         latestAuthStatus = .unchecked
         deletePersistedScanLog()
+    }
+
+    func markPlateTicketed(_ plate: String) {
+        let normalized = plate.uppercased().trimmingCharacters(in: .whitespaces)
+        ticketedPlates.insert(normalized)
+
+        for i in scanLog.indices where scanLog[i].text.uppercased() == normalized {
+            let old = scanLog[i]
+            scanLog[i] = ScannedPlate(
+                text: old.text,
+                timestamp: old.timestamp,
+                confidence: old.confidence,
+                framesConfirmed: old.framesConfirmed,
+                authStatus: .ticketed,
+                matchMethod: old.matchMethod,
+                matchedPlate: old.matchedPlate,
+                cameraName: old.cameraName,
+                detectionLatency: old.detectionLatency,
+                violationPhotoPath: old.violationPhotoPath
+            )
+        }
+
+        persistScanLog()
     }
 
     func startNewSession() {
@@ -286,7 +311,10 @@ final class PlateReaderViewModel: ObservableObject {
             candidateFirstSeen.removeAll()
 
             let authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
-            latestAuthStatus = authResult.status
+
+            let normalizedPlate = consensusText.uppercased().trimmingCharacters(in: .whitespaces)
+            let effectiveStatus = ticketedPlates.contains(normalizedPlate) ? .ticketed : authResult.status
+            latestAuthStatus = effectiveStatus
 
             if authResult.matchedPlate != consensusText {
                 seenPlates.append((text: authResult.matchedPlate, time: now))
@@ -300,7 +328,7 @@ final class PlateReaderViewModel: ObservableObject {
                     timestamp: now,
                     confidence: bestConf,
                     framesConfirmed: frames,
-                    authStatus: authResult.status,
+                    authStatus: effectiveStatus,
                     matchMethod: authResult.matchMethod,
                     matchedPlate: authResult.matchedPlate,
                     cameraName: camName,
@@ -349,6 +377,9 @@ final class PlateReaderViewModel: ObservableObject {
         case .unchecked:
             hapticMedium.impactOccurred()
             hapticMedium.prepare()
+        case .ticketed:
+            hapticLight.impactOccurred()
+            hapticLight.prepare()
         }
     }
 

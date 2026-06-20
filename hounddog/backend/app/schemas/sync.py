@@ -71,6 +71,8 @@ class TicketUpload(BaseModel):
     driver_license: str | None = None
     officer_name: str | None = None
     officer_email: str | None = None
+    owner_name: str | None = None
+    permit_number: str | None = None
     confidence: float = 0.0
     camera_name: str = ""
     timestamp: datetime

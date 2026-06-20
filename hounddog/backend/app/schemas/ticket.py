@@ -19,6 +19,8 @@ class TicketCreate(BaseModel):
     officer_id: str = ""
     officer_name: str | None = None
     officer_email: str | None = None
+    owner_name: str | None = None
+    permit_number: str | None = None
     ticket_category: str = "parking"
     location_lat: float | None = None
     location_lng: float | None = None
@@ -56,6 +58,8 @@ class TicketRead(BaseModel):
     officer_id: str
     officer_name: str | None = None
     officer_email: str | None = None
+    owner_name: str | None = None
+    permit_number: str | None = None
     issued_at: datetime
     status: str
     ticket_category: str = "parking"

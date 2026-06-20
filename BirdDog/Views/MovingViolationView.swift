@@ -18,8 +18,13 @@ struct MovingViolationView: View {
     @State private var errorMessage: String?
     @State private var isPrinting = false
     @State private var printError: String?
+    @State private var capturedPhotoPath: String?
+    @State private var capturedPhotoImage: UIImage?
+    @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
     @ObservedObject private var officerAuth = OfficerAuthService.shared
+
+    var cameraService: CameraService?
 
     private let movingViolations = [
         ("speeding", "Speeding"),
@@ -82,6 +87,51 @@ struct MovingViolationView: View {
                 }
             }
 
+            Section {
+                if let image = capturedPhotoImage {
+                    VStack(spacing: 8) {
+                        ZStack(alignment: .bottomLeading) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            Text(evidenceTimestampString)
+                                .font(.caption2.monospaced())
+                                .padding(4)
+                                .background(.black.opacity(0.6))
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .padding(6)
+                        }
+
+                        Button {
+                            capturePhoto()
+                        } label: {
+                            Label("Retake Photo", systemImage: "camera.rotate")
+                                .font(.caption)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "camera.slash")
+                            .foregroundStyle(.secondary)
+                        Text("No photo captured")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if cameraService != nil {
+                            Button("Capture") { capturePhoto() }
+                                .font(.caption)
+                        }
+                    }
+                }
+            } header: {
+                Text("Evidence Photo")
+            } footer: {
+                Text("Photo is captured automatically when the citation form opens.")
+            }
+
             Section("Officer Notes") {
                 TextEditor(text: $officerNotes)
                     .frame(minHeight: 100)
@@ -106,6 +156,24 @@ struct MovingViolationView: View {
                     .disabled(plate.isEmpty || driverName.isEmpty || isSubmitting)
                     .bold()
             }
+        }
+        .onAppear {
+            capturePhoto()
+        }
+    }
+
+    private var evidenceTimestampString: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f.string(from: captureTimestamp)
+    }
+
+    private func capturePhoto() {
+        guard let camera = cameraService else { return }
+        captureTimestamp = Date()
+        if let path = camera.captureViolationPhoto() {
+            capturedPhotoPath = path
+            capturedPhotoImage = UIImage(contentsOfFile: path)
         }
     }
 
@@ -211,6 +279,7 @@ struct MovingViolationView: View {
             lot: "",
             violationType: selectedViolation,
             confidence: 1.0,
+            photoPath: capturedPhotoPath,
             ticketCategory: "moving",
             locationLat: locationManager.latitude,
             locationLng: locationManager.longitude,

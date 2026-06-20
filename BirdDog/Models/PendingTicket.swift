@@ -27,6 +27,10 @@ final class PendingTicket {
     var officerName: String?
     var officerEmail: String?
 
+    // Permit holder info (when available from scan)
+    var ownerName: String?
+    var permitNumber: String?
+
     // Response from server
     var paymentUrl: String?
     var fineAmount: String?
@@ -48,7 +52,9 @@ final class PendingTicket {
         driverName: String? = nil,
         driverLicense: String? = nil,
         officerName: String? = nil,
-        officerEmail: String? = nil
+        officerEmail: String? = nil,
+        ownerName: String? = nil,
+        permitNumber: String? = nil
     ) {
         self.ticketId = UUID().uuidString
         self.plate = plate
@@ -69,5 +75,7 @@ final class PendingTicket {
         self.driverLicense = driverLicense
         self.officerName = officerName
         self.officerEmail = officerEmail
+        self.ownerName = ownerName
+        self.permitNumber = permitNumber
     }
 }

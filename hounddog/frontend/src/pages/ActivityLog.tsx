@@ -23,6 +23,7 @@ interface AuditListResponse {
 }
 
 const ACTION_COLORS: Record<string, string> = {
+  GET: "bg-gray-100 text-gray-600",
   POST: "bg-signal-green/10 text-green-700",
   PUT: "bg-blue-50 text-blue-700",
   PATCH: "bg-amber-50 text-amber-700",
@@ -30,8 +31,9 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 const RESOURCE_TYPES = [
-  "permits", "tickets", "lots", "devices", "violation_types",
-  "permit_types", "academic_calendar", "settings", "payments",
+  "tickets", "permits", "lots", "devices", "sync",
+  "violation_types", "permit_types", "academic_calendar",
+  "settings", "payments", "auth", "audit",
 ];
 
 export default function ActivityLog() {
@@ -93,10 +95,11 @@ export default function ActivityLog() {
         <select value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(1); }}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
           <option value="">All Actions</option>
+          <option value="GET">View</option>
           <option value="POST">Create</option>
           <option value="PUT">Update</option>
-          <option value="DELETE">Delete</option>
           <option value="PATCH">Patch</option>
+          <option value="DELETE">Delete</option>
         </select>
         {(filterUser || filterResource || filterAction || search) && (
           <button onClick={() => { setFilterUser(""); setFilterResource(""); setFilterAction(""); setSearch(""); setPage(1); }}

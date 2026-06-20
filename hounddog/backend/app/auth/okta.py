@@ -105,11 +105,14 @@ async def get_current_user(request: Request) -> OktaUser:
         if not groups:
             groups = await _fetch_userinfo_groups(token)
 
-        return OktaUser(
+        user = OktaUser(
             sub=payload.get("sub", ""),
             email=email,
             groups=groups,
         )
+        request.state.audit_user_email = user.email
+        request.state.audit_user_sub = user.sub
+        return user
     except JWTError as e:
         raise HTTPException(401, f"Token verification failed: {e}")
 

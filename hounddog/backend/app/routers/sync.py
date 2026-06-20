@@ -279,8 +279,26 @@ async def upload_ticket(
 
     officer_id = ticket.officer_email or ticket.officer_name or device.name
 
+    # Look up permit by plate to link ticket
+    permit_id = None
+    owner_name = ticket.owner_name
+    permit_number = ticket.permit_number
+    permit_result = await db.execute(
+        select(Permit).where(
+            Permit.plates.contains([ticket.plate.upper()])
+        ).order_by(Permit.end_date.desc()).limit(1)
+    )
+    permit = permit_result.scalar()
+    if permit:
+        permit_id = permit.id
+        if not owner_name:
+            owner_name = permit.name
+        if not permit_number:
+            permit_number = permit.student_id
+
     new_ticket = Ticket(
         plate=ticket.plate.upper(),
+        permit_id=permit_id,
         lot=ticket.lot,
         zone=ticket.zone,
         violation_type=ticket.violation_type or "unknown",
@@ -290,6 +308,8 @@ async def upload_ticket(
         officer_id=officer_id,
         officer_name=ticket.officer_name,
         officer_email=ticket.officer_email,
+        owner_name=owner_name,
+        permit_number=permit_number,
         issued_at=ticket.timestamp,
         ticket_category=ticket.ticket_category,
         offense_number=offense_number,
