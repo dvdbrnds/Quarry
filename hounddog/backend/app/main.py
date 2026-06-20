@@ -235,6 +235,7 @@ app.include_router(violation_types.router, prefix="/api/violation-types", tags=[
 app.include_router(permit_types.router, prefix="/api/permit-types", tags=["permit-types"])
 app.include_router(academic_calendar.router, prefix="/api/academic-calendar", tags=["academic-calendar"])
 app.include_router(enforcement_settings.router, prefix="/api/settings/enforcement", tags=["settings"])
+app.include_router(audit.diagnostic_router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 
 import os as _os
