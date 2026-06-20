@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -17,7 +17,7 @@ from ..schemas.permit_type import (
     PermitTypeWithCount,
 )
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[PermitTypeWithCount])
@@ -53,7 +53,9 @@ async def list_permit_types(
 
 @router.post("", response_model=PermitTypeRead, status_code=201)
 async def create_permit_type(
-    data: PermitTypeCreate, db: AsyncSession = Depends(get_db)
+    data: PermitTypeCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     existing = await db.execute(
         select(PermitType).where(PermitType.code == data.code)
@@ -73,6 +75,7 @@ async def update_permit_type(
     ptype_id: uuid.UUID,
     data: PermitTypeUpdate,
     db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     ptype = await db.get(PermitType, ptype_id)
     if not ptype:
@@ -88,7 +91,9 @@ async def update_permit_type(
 
 @router.delete("/{ptype_id}", status_code=204)
 async def deactivate_permit_type(
-    ptype_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     ptype = await db.get(PermitType, ptype_id)
     if not ptype:
@@ -99,7 +104,9 @@ async def deactivate_permit_type(
 
 @router.post("/import", response_model=PermitTypeImportResult)
 async def import_permit_types(
-    payload: PermitTypeImportPayload, db: AsyncSession = Depends(get_db)
+    payload: PermitTypeImportPayload,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     created = 0
     updated = 0

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..database import get_db
 from ..models.violation_type import ViolationType
 from ..schemas.violation_type import (
@@ -15,7 +15,7 @@ from ..schemas.violation_type import (
     ViolationTypeUpdate,
 )
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[ViolationTypeRead])
@@ -32,7 +32,9 @@ async def list_violation_types(
 
 @router.post("", response_model=ViolationTypeRead, status_code=201)
 async def create_violation_type(
-    data: ViolationTypeCreate, db: AsyncSession = Depends(get_db)
+    data: ViolationTypeCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     existing = await db.execute(
         select(ViolationType).where(ViolationType.code == data.code)
@@ -52,6 +54,7 @@ async def update_violation_type(
     vtype_id: uuid.UUID,
     data: ViolationTypeUpdate,
     db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     vtype = await db.get(ViolationType, vtype_id)
     if not vtype:
@@ -67,7 +70,9 @@ async def update_violation_type(
 
 @router.delete("/{vtype_id}", status_code=204)
 async def deactivate_violation_type(
-    vtype_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+    vtype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     vtype = await db.get(ViolationType, vtype_id)
     if not vtype:
@@ -78,7 +83,9 @@ async def deactivate_violation_type(
 
 @router.post("/import", response_model=ViolationTypeImportResult)
 async def import_violation_types(
-    payload: ViolationTypeImportPayload, db: AsyncSession = Depends(get_db)
+    payload: ViolationTypeImportPayload,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     created = 0
     updated = 0
