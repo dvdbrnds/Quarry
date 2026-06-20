@@ -36,6 +36,7 @@ function MapContent({
   const labelMarkersRef = useRef<google.maps.Marker[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [drawingActive, setDrawingActive] = useState(false);
 
   const syncEditPolygon = useCallback(() => {
@@ -79,19 +80,26 @@ function MapContent({
 
       poly.addListener("click", () => onSelectLot(lot.id));
 
-      const statusLabel = lot.is_closed ? ' <span style="color:#EF4444;font-weight:bold">CLOSED</span>' : "";
-      const infoWindow = new google.maps.InfoWindow({
-        content: `<div style="font-family:system-ui;padding:2px"><strong>${lot.name}</strong>${statusLabel}</div>`,
-      });
-      poly.addListener("mouseover", (e: google.maps.MapMouseEvent) => {
-        if (e.latLng) infoWindow.setPosition(e.latLng);
-        infoWindow.open(map);
+      poly.addListener("mouseover", () => {
+        if (tooltipRef.current) {
+          const closed = lot.is_closed ? ' · <span style="color:#EF4444">CLOSED</span>' : "";
+          tooltipRef.current.innerHTML = `<strong>${lot.name}</strong>${closed}`;
+          tooltipRef.current.style.display = "block";
+        }
         if (!isSelected) {
           poly.setOptions({ fillOpacity: 0.45, strokeWeight: 3 });
         }
       });
+      poly.addListener("mousemove", (e: google.maps.MapMouseEvent) => {
+        if (tooltipRef.current && e.domEvent instanceof MouseEvent) {
+          tooltipRef.current.style.left = `${e.domEvent.offsetX + 12}px`;
+          tooltipRef.current.style.top = `${e.domEvent.offsetY + 12}px`;
+        }
+      });
       poly.addListener("mouseout", () => {
-        infoWindow.close();
+        if (tooltipRef.current) {
+          tooltipRef.current.style.display = "none";
+        }
         if (!isSelected) {
           poly.setOptions({ fillOpacity: 0.3, strokeWeight: 2 });
         }
@@ -118,9 +126,8 @@ function MapContent({
           fontWeight: "bold",
           className: "lot-map-label",
         },
-        clickable: true,
+        clickable: false,
       });
-      label.addListener("click", () => onSelectLot(lot.id));
       labelMarkersRef.current.push(label);
     });
 
@@ -354,6 +361,11 @@ function MapContent({
         onClick={() => {
           if (!drawingActive) onSelectLot(null);
         }}
+      />
+      <div
+        ref={tooltipRef}
+        style={{ display: "none" }}
+        className="absolute z-20 pointer-events-none px-2 py-1 rounded bg-navy/90 text-white text-xs font-medium whitespace-nowrap shadow"
       />
     </>
   );
