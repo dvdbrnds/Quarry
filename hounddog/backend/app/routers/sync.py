@@ -36,6 +36,97 @@ from ..services.email import send_citation_email
 from ..websocket import manager
 
 router = APIRouter()
+diagnostic_router = APIRouter()
+
+
+@diagnostic_router.get("/ticket-test")
+async def ticket_creation_test(db: AsyncSession = Depends(get_db)):
+    """Public endpoint that tests every step of ticket creation without actually creating one."""
+    import traceback
+    steps = {}
+
+    # Step 1: Can we query ViolationType?
+    try:
+        vt_result = await db.execute(
+            select(ViolationType).where(
+                ViolationType.code == "no_permit",
+                ViolationType.is_active.is_(True),
+            )
+        )
+        vtype = vt_result.scalar()
+        steps["violation_type_query"] = f"ok (found={'yes' if vtype else 'no'})"
+    except Exception as e:
+        steps["violation_type_query"] = f"FAILED: {e}"
+        steps["violation_type_traceback"] = traceback.format_exc()
+
+    # Step 2: Can we query EnforcementSettings?
+    try:
+        es_result = await db.execute(
+            select(EnforcementSettings).where(EnforcementSettings.id == 1)
+        )
+        es = es_result.scalar()
+        steps["enforcement_settings"] = f"ok (found={'yes' if es else 'no'})"
+    except Exception as e:
+        steps["enforcement_settings"] = f"FAILED: {e}"
+
+    # Step 3: Can we query Permit?
+    try:
+        p_result = await db.execute(
+            select(Permit).limit(1)
+        )
+        p = p_result.scalar()
+        steps["permit_query"] = f"ok (has_permits={'yes' if p else 'no'})"
+    except Exception as e:
+        steps["permit_query"] = f"FAILED: {e}"
+        steps["permit_traceback"] = traceback.format_exc()
+
+    # Step 4: Can we query Ticket (count)?
+    try:
+        tc_result = await db.execute(
+            select(func.count()).select_from(Ticket)
+        )
+        tc = tc_result.scalar()
+        steps["ticket_count"] = f"ok (count={tc})"
+    except Exception as e:
+        steps["ticket_count"] = f"FAILED: {e}"
+        steps["ticket_traceback"] = traceback.format_exc()
+
+    # Step 5: Can we create and rollback a test ticket?
+    try:
+        test_ticket = Ticket(
+            plate="DIAG_TEST",
+            lot="test",
+            violation_type="no_permit",
+            fine_amount=Decimal("0.00"),
+            officer_id="diagnostic",
+            ticket_category="parking",
+        )
+        db.add(test_ticket)
+        await db.flush()
+        test_id = str(test_ticket.id)
+        await db.rollback()
+        steps["ticket_insert"] = f"ok (test_id={test_id})"
+    except Exception as e:
+        steps["ticket_insert"] = f"FAILED: {e}"
+        steps["ticket_insert_traceback"] = traceback.format_exc()
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    # Step 6: Check column existence on tickets table
+    try:
+        from sqlalchemy import text
+        col_result = await db.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'tickets' ORDER BY ordinal_position"
+        ))
+        cols = [r[0] for r in col_result.fetchall()]
+        steps["ticket_columns"] = cols
+    except Exception as e:
+        steps["ticket_columns"] = f"FAILED: {e}"
+
+    return {"steps": steps}
 
 
 @router.get("/permits", response_model=SyncPermitsResponse)
