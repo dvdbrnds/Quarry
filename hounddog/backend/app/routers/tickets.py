@@ -78,36 +78,39 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
         "violation_type": ticket.violation_type,
     })
 
-    if ticket.plate:
-        permit_result = await db.execute(
-            select(Permit).where(
-                Permit.plates.contains([ticket.plate.upper()]),
-                Permit.email.isnot(None),
-                Permit.deleted_at.is_(None),
-            ).limit(1)
-        )
-        permit = permit_result.scalar()
-        if permit and permit.email:
-            vtype_label = ticket.violation_type or "Parking Violation"
-            if ticket.violation_type:
-                vt_row = await db.execute(
-                    select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
-                )
-                vt_lbl = vt_row.scalar()
-                if vt_lbl:
-                    vtype_label = vt_lbl
-            payment_url = f"{settings.public_url}/pay?ticket={ticket.id}"
-            await send_citation_email(
-                recipient_email=permit.email,
-                plate=ticket.plate,
-                lot=ticket.lot or "",
-                violation_label=vtype_label,
-                fine_amount=str(ticket.fine_amount),
-                payment_url=payment_url,
-                officer_name=ticket.officer_name,
-                issued_at=ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if ticket.issued_at else "",
-                ticket_id=str(ticket.id),
+    try:
+        if ticket.plate:
+            permit_result = await db.execute(
+                select(Permit).where(
+                    Permit.plates.contains([ticket.plate.upper()]),
+                    Permit.deleted_at.is_(None),
+                ).limit(1)
             )
+            permit = permit_result.scalar()
+            if permit and getattr(permit, "email", None):
+                vtype_label = ticket.violation_type or "Parking Violation"
+                if ticket.violation_type:
+                    vt_row = await db.execute(
+                        select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+                    )
+                    vt_lbl = vt_row.scalar()
+                    if vt_lbl:
+                        vtype_label = vt_lbl
+                payment_url = f"{settings.public_url}/pay?ticket={ticket.id}"
+                await send_citation_email(
+                    recipient_email=permit.email,
+                    plate=ticket.plate,
+                    lot=ticket.lot or "",
+                    violation_label=vtype_label,
+                    fine_amount=str(ticket.fine_amount),
+                    payment_url=payment_url,
+                    officer_name=ticket.officer_name,
+                    issued_at=ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if ticket.issued_at else "",
+                    ticket_id=str(ticket.id),
+                )
+    except Exception as e:
+        import logging
+        logging.getLogger("quarry.tickets").warning("Citation email failed (non-fatal): %s", e)
 
     return ticket
 
