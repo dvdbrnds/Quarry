@@ -3,15 +3,11 @@ import Permits from "./pages/Permits";
 import Lots from "./pages/Lots";
 import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
-import Devices from "./pages/Devices";
 import Pay from "./pages/Pay";
 import PaySuccess from "./pages/PaySuccess";
 import Finance from "./pages/Finance";
-import ViolationTypes from "./pages/ViolationTypes";
-import PermitTypes from "./pages/PermitTypes";
 import Settings from "./pages/Settings";
 import PermitDetail from "./pages/PermitDetail";
-import ActivityLog from "./pages/ActivityLog";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout } from "./auth";
@@ -46,11 +42,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
         <NavItem to="/lots">Lots</NavItem>
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/finance">Finance</NavItem>
-        <NavItem to="/devices">Devices</NavItem>
-        <NavItem to="/violation-types">Violations</NavItem>
-        <NavItem to="/permit-types">Permit Types</NavItem>
         <NavItem to="/settings">Settings</NavItem>
-        <NavItem to="/activity">Activity</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-bone/70">{user.email}</span>
@@ -74,12 +66,8 @@ function DashboardShell({ user }: { user: AuthUser }) {
           <Route path="/lots" element={<Lots />} />
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/finance" element={<Finance />} />
-          <Route path="/devices" element={<Devices />} />
-          <Route path="/violation-types" element={<ViolationTypes />} />
-          <Route path="/permit-types" element={<PermitTypes />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
-          <Route path="/activity" element={<ActivityLog />} />
         </Routes>
       </main>
     </div>
