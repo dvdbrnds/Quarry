@@ -41,6 +41,10 @@ async def lifespan(app: FastAPI):
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("Database connected and tables created.")
+
+            from .middleware.audit import verify_audit_table
+            await verify_audit_table()
+
             break
         except Exception as exc:
             logger.warning("DB connect attempt %d/10 failed: %s", attempt, exc)
