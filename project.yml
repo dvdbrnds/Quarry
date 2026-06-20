@@ -10,6 +10,10 @@ settings:
   TARGETED_DEVICE_FAMILY: "1,2"
   INFOPLIST_FILE: BirdDog/App/Info.plist
   GENERATE_INFOPLIST_FILE: false
+packages:
+  StarXpand-SDK-iOS:
+    url: https://github.com/star-micronics/StarXpand-SDK-iOS
+    from: "2.6.0"
 targets:
   BirdDog:
     type: application
@@ -23,6 +27,8 @@ targets:
       - path: BirdDog/Resources/Assets.xcassets
       - path: BirdDog/Resources/permits.json
       - path: BirdDog/Resources/lots.json
+    dependencies:
+      - package: StarXpand-SDK-iOS
     entitlements:
       path: BirdDog/App/BirdDog.entitlements
     settings:

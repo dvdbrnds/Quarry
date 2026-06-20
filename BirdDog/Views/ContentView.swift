@@ -4,13 +4,13 @@ struct ContentView: View {
 
     @StateObject private var viewModel = PlateReaderViewModel()
     @ObservedObject private var appSettings = AppSettings.shared
+    @ObservedObject private var officerAuth = OfficerAuthService.shared
     @State private var showExportSheet = false
     @State private var showClearConfirm = false
     @State private var showExportOptions = false
     @State private var showDatabase = false
     @State private var showLotManagement = false
     @State private var showAdminSettings = false
-    @State private var showPasscodeEntry = false
     @State private var showSessionHistory = false
     @State private var showCameraLog = false
     @State private var showTicketIssuance = false
@@ -44,9 +44,6 @@ struct ContentView: View {
             }
             .navigationDestination(isPresented: $showAdminSettings) {
                 AdminSettingsView(cameraService: viewModel.cameraService)
-            }
-            .sheet(isPresented: $showPasscodeEntry) {
-                AdminPasscodeView(appSettings: appSettings)
             }
         }
         .onAppear { viewModel.checkPermissionAndStart() }
@@ -269,7 +266,7 @@ struct ContentView: View {
                     .foregroundStyle(viewModel.audioAlertsEnabled ? .primary : .secondary)
             }
 
-            if appSettings.isAdminUnlocked {
+            if officerAuth.isStaff {
                 Button {
                     showTicketIssuance = true
                 } label: {
@@ -283,7 +280,9 @@ struct ContentView: View {
                     Label("Citation", systemImage: "car.side")
                         .font(.subheadline)
                 }
+            }
 
+            if officerAuth.isAdmin {
                 Button {
                     showDatabase = true
                 } label: {
@@ -350,16 +349,20 @@ struct ContentView: View {
                 Button("Cancel", role: .cancel) {}
             }
 
-            Button {
-                if appSettings.isAdminUnlocked {
-                    appSettings.lock()
-                } else {
-                    showPasscodeEntry = true
+            Menu {
+                Text(officerAuth.officerName)
+                Text(officerAuth.officerEmail)
+                    .font(.caption)
+                Divider()
+                Button(role: .destructive) {
+                    officerAuth.logout()
+                } label: {
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             } label: {
-                Image(systemName: appSettings.isAdminUnlocked ? "lock.open.fill" : "lock.fill")
+                Image(systemName: "person.crop.circle.fill")
                     .font(.subheadline)
-                    .foregroundStyle(appSettings.isAdminUnlocked ? .green : .secondary)
+                    .foregroundStyle(.green)
             }
         }
     }

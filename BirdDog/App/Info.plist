@@ -42,6 +42,19 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Okta SSO Callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>edu.moravian.birddog</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bird Dog uses Bluetooth to communicate with thermal printers for printing parking tickets.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

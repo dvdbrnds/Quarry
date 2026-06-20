@@ -37,6 +37,13 @@ async def create_device(data: DeviceCreate, db: AsyncSession = Depends(get_db)):
         "name": settings.school_name,
     }
 
+    if settings.okta_domain and settings.okta_client_id:
+        okta_issuer = f"https://{settings.okta_domain}/oauth2/default"
+        if settings.okta_domain.startswith("https://"):
+            okta_issuer = f"{settings.okta_domain}/oauth2/default"
+        pairing_payload["okta_issuer"] = okta_issuer
+        pairing_payload["okta_client_id"] = settings.okta_client_id
+
     return DeviceReadWithPairing(
         id=device.id,
         name=device.name,

@@ -11,7 +11,11 @@ final class AppSettings: ObservableObject {
     private static let useCloudOCRKey = "AppSettings.useCloudOCR"
     private static let houndDogURLKey = "AppSettings.houndDogURL"
     private static let houndDogAPIKeyKey = "AppSettings.houndDogAPIKey"
+    private static let oktaIssuerKey = "AppSettings.oktaIssuer"
+    private static let oktaClientIdKey = "AppSettings.oktaClientId"
+    private static let oktaRedirectURIKey = "AppSettings.oktaRedirectURI"
     private static let defaultPasscode = "1234"
+    private static let defaultRedirectURI = "edu.moravian.birddog://callback"
 
     @Published var isAdminUnlocked = false
 
@@ -39,6 +43,26 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(houndDogAPIKey, forKey: Self.houndDogAPIKeyKey) }
     }
 
+    @Published var oktaIssuer: String {
+        didSet { UserDefaults.standard.set(oktaIssuer, forKey: Self.oktaIssuerKey) }
+    }
+
+    @Published var oktaClientId: String {
+        didSet { UserDefaults.standard.set(oktaClientId, forKey: Self.oktaClientIdKey) }
+    }
+
+    @Published var oktaRedirectURI: String {
+        didSet { UserDefaults.standard.set(oktaRedirectURI, forKey: Self.oktaRedirectURIKey) }
+    }
+
+    var oktaRedirectScheme: String {
+        oktaRedirectURI.components(separatedBy: "://").first ?? "edu.moravian.birddog"
+    }
+
+    var oktaAdminGroup: String { "Quarry-Admin" }
+    var oktaStaffGroup: String { "Quarry-Staff" }
+    var oktaGroupsClaim: String { "groups" }
+
     private init() {
         self.adminPasscode = UserDefaults.standard.string(forKey: Self.passcodeKey) ?? Self.defaultPasscode
         self.schoolName = UserDefaults.standard.string(forKey: Self.schoolNameKey) ?? ""
@@ -46,6 +70,9 @@ final class AppSettings: ObservableObject {
         self.useCloudOCR = UserDefaults.standard.bool(forKey: Self.useCloudOCRKey)
         self.houndDogURL = UserDefaults.standard.string(forKey: Self.houndDogURLKey) ?? ""
         self.houndDogAPIKey = UserDefaults.standard.string(forKey: Self.houndDogAPIKeyKey) ?? ""
+        self.oktaIssuer = UserDefaults.standard.string(forKey: Self.oktaIssuerKey) ?? ""
+        self.oktaClientId = UserDefaults.standard.string(forKey: Self.oktaClientIdKey) ?? ""
+        self.oktaRedirectURI = UserDefaults.standard.string(forKey: Self.oktaRedirectURIKey) ?? Self.defaultRedirectURI
     }
 
     func attemptUnlock(with code: String) -> Bool {
@@ -66,6 +93,10 @@ final class AppSettings: ObservableObject {
 
     var isServerConfigured: Bool {
         !houndDogURL.isEmpty && !houndDogAPIKey.isEmpty
+    }
+
+    var isOktaConfigured: Bool {
+        !oktaIssuer.isEmpty && !oktaClientId.isEmpty
     }
 
     var needsOnboarding: Bool {

@@ -6,6 +6,7 @@ import UIKit
 struct BirdDogApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appSettings = AppSettings.shared
+    @StateObject private var officerAuth = OfficerAuthService.shared
     @State private var onboardingComplete = false
 
     init() {
@@ -16,13 +17,15 @@ struct BirdDogApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if appSettings.isServerConfigured || onboardingComplete {
-                ContentView()
-            } else {
+            if !(appSettings.isServerConfigured || onboardingComplete) {
                 OnboardingView {
                     onboardingComplete = true
                     HoundDogSyncService.shared.startIfConfigured()
                 }
+            } else if !officerAuth.isLoggedIn {
+                OfficerLoginView()
+            } else {
+                ContentView()
             }
         }
         .modelContainer(PlateDatabase.shared.container)
