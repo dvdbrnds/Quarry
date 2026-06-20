@@ -210,7 +210,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
         let email = claims["email"] as? String
             ?? claims["sub"] as? String
             ?? ""
-        var groups = claims[AppSettings.shared.oktaGroupsClaim] as? [String] ?? []
+        let groups = claims[AppSettings.shared.oktaGroupsClaim] as? [String] ?? []
 
         let expiry: Date
         if let exp = claims["exp"] as? TimeInterval {
