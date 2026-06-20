@@ -68,19 +68,24 @@ final class CameraService: NSObject, ObservableObject {
             self.session.startRunning()
             self.isRunning = true
 
-            // USB cameras through hubs often enumerate slowly after an app
-            // install. If we didn't find an external camera on the first try,
-            // wait briefly and retry once before falling back to polling.
+            // Start immediately with whatever camera was found (usually built-in).
+            // Check for external camera asynchronously after a short delay so
+            // USB hub devices have time to enumerate without blocking startup.
             if !self.isUsingExternalCamera {
-                self.log("No external camera on first pass — retrying in 1.5s")
-                Thread.sleep(forTimeInterval: 1.5)
-                if let ext = self.findExternalCamera() {
-                    self.log("Found external on retry: \(ext.localizedName)")
-                    self.switchToCamera(ext)
+                self.log("No external camera on first pass — will check again shortly")
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.sessionQueue.async {
+                        guard let self, self.isRunning, !self.isUsingExternalCamera else { return }
+                        if let ext = self.findExternalCamera() {
+                            self.log("Found external on deferred check: \(ext.localizedName)")
+                            self.switchToCamera(ext)
+                        }
+                        self.startPollingIfNeeded()
+                    }
                 }
+            } else {
+                self.startPollingIfNeeded()
             }
-
-            self.startPollingIfNeeded()
         }
     }
 

@@ -231,18 +231,31 @@ struct TicketIssuanceView: View {
         }
     }
 
-    private var evidenceTimestampString: String {
+    private static let timestampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return f.string(from: captureTimestamp)
+        return f
+    }()
+
+    private var evidenceTimestampString: String {
+        Self.timestampFormatter.string(from: captureTimestamp)
     }
 
+    @State private var isCapturingPhoto = false
+
     private func capturePhoto() {
-        guard let camera = cameraService else { return }
-        captureTimestamp = Date()
-        if let path = camera.captureViolationPhoto() {
-            capturedPhotoPath = path
-            capturedPhotoImage = UIImage(contentsOfFile: path)
+        guard let camera = cameraService, !isCapturingPhoto else { return }
+        isCapturingPhoto = true
+        let timestamp = Date()
+        Task.detached(priority: .userInitiated) {
+            let path = camera.captureViolationPhoto()
+            let image: UIImage? = if let path { UIImage(contentsOfFile: path) } else { nil }
+            await MainActor.run {
+                captureTimestamp = timestamp
+                capturedPhotoPath = path
+                capturedPhotoImage = image
+                isCapturingPhoto = false
+            }
         }
     }
 

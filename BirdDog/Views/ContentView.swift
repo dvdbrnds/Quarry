@@ -171,6 +171,14 @@ struct ContentView: View {
         .sheet(isPresented: $showMovingViolation) {
             MovingViolationView(cameraService: viewModel.cameraService)
         }
+        .onChange(of: showTicketIssuance) { _, isOpen in
+            if isOpen { viewModel.stopScanning() }
+            else if viewModel.cameraPermission == .authorized { viewModel.startScanning() }
+        }
+        .onChange(of: showMovingViolation) { _, isOpen in
+            if isOpen { viewModel.stopScanning() }
+            else if viewModel.cameraPermission == .authorized { viewModel.startScanning() }
+        }
     }
 
     @ViewBuilder

@@ -337,26 +337,30 @@ async def upload_ticket(
 
     payment_url = f"{settings.public_url}/pay?ticket={new_ticket.id}"
 
-    if permit and permit.email:
-        vtype_label = ticket.violation_type or "Parking Violation"
-        if ticket.violation_type:
-            vt_row = await db.execute(
-                select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+    try:
+        if permit and getattr(permit, "email", None):
+            vtype_label = ticket.violation_type or "Parking Violation"
+            if ticket.violation_type:
+                vt_row = await db.execute(
+                    select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+                )
+                vt_label_row = vt_row.scalar()
+                if vt_label_row:
+                    vtype_label = vt_label_row
+            await send_citation_email(
+                recipient_email=permit.email,
+                plate=new_ticket.plate,
+                lot=new_ticket.lot or "",
+                violation_label=vtype_label,
+                fine_amount=str(fine_amount),
+                payment_url=payment_url,
+                officer_name=new_ticket.officer_name,
+                issued_at=new_ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if new_ticket.issued_at else "",
+                ticket_id=str(new_ticket.id),
             )
-            vt_label_row = vt_row.scalar()
-            if vt_label_row:
-                vtype_label = vt_label_row
-        await send_citation_email(
-            recipient_email=permit.email,
-            plate=new_ticket.plate,
-            lot=new_ticket.lot or "",
-            violation_label=vtype_label,
-            fine_amount=str(fine_amount),
-            payment_url=payment_url,
-            officer_name=new_ticket.officer_name,
-            issued_at=new_ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if new_ticket.issued_at else "",
-            ticket_id=str(new_ticket.id),
-        )
+    except Exception as e:
+        import logging
+        logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
 
     return TicketUploadResponse(
         status="accepted",
