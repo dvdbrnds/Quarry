@@ -34,6 +34,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 SORTABLE_FIELDS = {
     "name": Permit.name,
+    "student_id": Permit.student_id,
     "status": Permit.status,
     "permit_type": Permit.permit_type,
     "lot_assignment": Permit.lot_assignment,
