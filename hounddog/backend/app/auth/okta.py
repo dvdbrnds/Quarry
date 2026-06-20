@@ -22,6 +22,23 @@ async def _get_jwks() -> dict:
         return _jwks_cache
 
 
+async def _fetch_userinfo_groups(access_token: str) -> list[str]:
+    """Fetch groups from Okta's /userinfo endpoint when the access token
+    doesn't contain the groups claim (common default configuration)."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://{settings.okta_domain}/oauth2/default/v1/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if resp.status_code == 200:
+                info = resp.json()
+                return info.get(settings.okta_claim, [])
+    except Exception:
+        pass
+    return []
+
+
 def _extract_token(request: Request) -> str | None:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
@@ -81,10 +98,17 @@ async def get_current_user(request: Request) -> OktaUser:
             audience=settings.okta_audience or settings.okta_client_id,
             issuer=f"https://{settings.okta_domain}/oauth2/default",
         )
+
+        groups = payload.get(settings.okta_claim, [])
+        email = payload.get("email", payload.get("sub", ""))
+
+        if not groups:
+            groups = await _fetch_userinfo_groups(token)
+
         return OktaUser(
             sub=payload.get("sub", ""),
-            email=payload.get("email", payload.get("sub", "")),
-            groups=payload.get(settings.okta_claim, []),
+            email=email,
+            groups=groups,
         )
     except JWTError as e:
         raise HTTPException(401, f"Token verification failed: {e}")
