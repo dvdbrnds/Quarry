@@ -212,32 +212,73 @@ final class HoundDogSyncService: ObservableObject {
         }
     }
 
-    // MARK: - Ticket Upload (stub for Phase 2)
+    // MARK: - Ticket Upload
 
-    func uploadTicket(plate: String, lot: String, violationType: String, confidence: Double) async throws {
+    struct TicketUploadResponse {
+        let ticketId: String
+        let paymentUrl: String
+        let fineAmount: String
+        let offenseNumber: Int
+    }
+
+    func uploadTicket(_ ticket: PendingTicket) async throws -> TicketUploadResponse {
         let settings = AppSettings.shared
-        guard !settings.houndDogURL.isEmpty else { return }
+        guard !settings.houndDogURL.isEmpty else {
+            throw SyncError.serverError(0)
+        }
 
-        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/tickets") else { return }
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/tickets") else {
+            throw SyncError.serverError(0)
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
-            "plate": plate,
-            "lot": lot,
-            "violation_type": violationType,
-            "confidence": confidence,
-            "camera_name": "",
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
+        var body: [String: Any] = [
+            "plate": ticket.plate,
+            "lot": ticket.lot,
+            "violation_type": ticket.violationType,
+            "confidence": ticket.confidence,
+            "camera_name": ticket.cameraName,
+            "timestamp": ISO8601DateFormatter().string(from: ticket.issuedAt),
+            "ticket_category": ticket.ticketCategory,
         ]
+
+        if let photoPath = ticket.photoPath,
+           let imageData = try? Data(contentsOf: URL(fileURLWithPath: photoPath)) {
+            body["photo_base64"] = imageData.base64EncodedString()
+        }
+
+        if let lat = ticket.locationLat { body["location_lat"] = lat }
+        if let lng = ticket.locationLng { body["location_lng"] = lng }
+        if let text = ticket.locationText { body["location_text"] = text }
+        if let desc = ticket.vehicleDescription { body["vehicle_description"] = desc }
+        if let notes = ticket.officerNotes { body["officer_notes"] = notes }
+        if let name = ticket.driverName { body["driver_name"] = name }
+        if let lic = ticket.driverLicense { body["driver_license"] = lic }
+
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 202 else {
             throw SyncError.serverError((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
+
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        return TicketUploadResponse(
+            ticketId: json["ticket_id"] as? String ?? ticket.ticketId,
+            paymentUrl: json["payment_url"] as? String ?? "",
+            fineAmount: json["fine_amount"] as? String ?? "0.00",
+            offenseNumber: json["offense_number"] as? Int ?? 1
+        )
+    }
+
+    @available(*, deprecated, message: "Use uploadTicket(_ ticket:) instead")
+    func uploadTicket(plate: String, lot: String, violationType: String, confidence: Double) async throws {
+        let ticket = PendingTicket(plate: plate, lot: lot, violationType: violationType, confidence: confidence)
+        _ = try await uploadTicket(ticket)
     }
 
     // MARK: - Types

@@ -57,6 +57,8 @@ class TicketLookup(BaseModel):
     fine_amount: Decimal
     status: str
     issued_at: datetime
+    ticket_category: str = "parking"
+    vehicle_description: str | None = None
 
 
 class TicketLookupList(BaseModel):
@@ -70,3 +72,52 @@ class RevenueReport(BaseModel):
     collection_rate: float
     by_method: dict[str, Decimal]
     by_status: dict[str, int]
+
+
+# --- Public Dispute ---
+
+
+class DisputeRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    explanation: str
+
+
+class DisputeResponse(BaseModel):
+    status: str = "received"
+    ticket_id: uuid.UUID
+    message: str
+
+
+# --- Permit Purchase ---
+
+
+class AvailablePermitType(BaseModel):
+    id: uuid.UUID
+    code: str
+    label: str
+    price: Decimal
+    remaining: int
+    lot_assignments: list[str]
+    valid_days: int
+
+
+class AvailablePermitsResponse(BaseModel):
+    permit_types: list[AvailablePermitType]
+    ticket_fine_after_purchase: Decimal
+
+
+class PermitPurchaseRequest(BaseModel):
+    ticket_id: uuid.UUID
+    permit_type_id: uuid.UUID
+    student_name: str
+    plate: str
+    email: str
+    success_url: str = "/pay/success"
+    cancel_url: str = "/pay"
+
+
+class PermitPurchaseResponse(BaseModel):
+    checkout_url: str
+    session_id: str

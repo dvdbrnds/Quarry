@@ -7,7 +7,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .routers import auth, devices, permits, lots, sync, tickets, payments
+from .routers import (
+    academic_calendar,
+    auth,
+    devices,
+    enforcement_settings,
+    lots,
+    payments,
+    permit_types,
+    permits,
+    sync,
+    tickets,
+    violation_types,
+)
 from .websocket import manager
 
 logger = logging.getLogger("quarry")
@@ -17,7 +29,10 @@ logger = logging.getLogger("quarry")
 async def lifespan(app: FastAPI):
     from sqlalchemy import text
     from .database import engine, Base
-    from .models import Permit, ParkingLot, Device, Ticket, Payment  # noqa: F401
+    from .models import (  # noqa: F401
+        Permit, ParkingLot, Device, Ticket, Payment,
+        ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
+    )
     for attempt in range(1, 11):
         try:
             async with engine.begin() as conn:
@@ -30,10 +45,36 @@ async def lifespan(app: FastAPI):
                 raise
             await asyncio.sleep(3)
 
+    # Schema migrations for columns added after initial table creation
     async with engine.begin() as conn:
-        await conn.execute(text("""
-            ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)
-        """))
+        migrations = [
+            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
+            # Ticket enhancements
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_category VARCHAR(32) DEFAULT 'parking'",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS offense_number INTEGER DEFAULT 1",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS location_lat DOUBLE PRECISION",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS location_lng DOUBLE PRECISION",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS location_text VARCHAR(512)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS vehicle_description VARCHAR(256)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS officer_notes TEXT",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS driver_name VARCHAR(256)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS driver_license VARCHAR(64)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS violation_type_id UUID",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS dispute_name VARCHAR(256)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS dispute_email VARCHAR(256)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS dispute_phone VARCHAR(32)",
+            # Lot enhancements
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS total_spaces INTEGER DEFAULT 0",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS handicap_spaces INTEGER DEFAULT 0",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS designation_code VARCHAR(32) DEFAULT ''",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS designation_label VARCHAR(256) DEFAULT ''",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS access_schedule JSONB DEFAULT '[]'::jsonb",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS is_snow_lot BOOLEAN DEFAULT false",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS notes TEXT",
+        ]
+        for migration in migrations:
+            await conn.execute(text(migration))
+
     logger.info("Schema migrations applied.")
     yield
 
@@ -41,7 +82,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Quarry",
     description="Quarry parking management API",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -60,6 +101,10 @@ app.include_router(lots.router, prefix="/api/lots", tags=["lots"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
+app.include_router(violation_types.router, prefix="/api/violation-types", tags=["violation-types"])
+app.include_router(permit_types.router, prefix="/api/permit-types", tags=["permit-types"])
+app.include_router(academic_calendar.router, prefix="/api/academic-calendar", tags=["academic-calendar"])
+app.include_router(enforcement_settings.router, prefix="/api/settings/enforcement", tags=["settings"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

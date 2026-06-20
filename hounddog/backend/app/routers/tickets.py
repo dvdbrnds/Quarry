@@ -21,7 +21,7 @@ from ..schemas.ticket import (
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
-VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided"}
+VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit"}
 
 
 @router.get("", response_model=TicketList)
@@ -91,6 +91,7 @@ async def ticket_pipeline(db: AsyncSession = Depends(get_db)):
         appealed=counts.get("appealed", 0),
         escalated=counts.get("escalated", 0),
         voided=counts.get("voided", 0),
+        resolved_permit=counts.get("resolved_permit", 0),
         total=total,
     )
 
