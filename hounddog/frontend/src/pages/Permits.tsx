@@ -407,7 +407,9 @@ export default function Permits() {
               <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("name")}>
                 Name{sortIcon("name")}
               </th>
-              <th className="px-3 py-3 font-medium">Student ID</th>
+              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("student_id")}>
+                Student ID{sortIcon("student_id")}
+              </th>
               <th className="px-3 py-3 font-medium">Plates</th>
               <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("lot_assignment")}>
                 Lot{sortIcon("lot_assignment")}
