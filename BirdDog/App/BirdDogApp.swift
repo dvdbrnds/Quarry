@@ -10,9 +10,13 @@ struct BirdDogApp: App {
     @State private var onboardingComplete = false
 
     init() {
-        GeofenceService.shared.configure(container: PlateDatabase.shared.container)
+        let container = PlateDatabase.shared.container
+        GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
         HoundDogSyncService.shared.startIfConfigured()
+        Task.detached(priority: .utility) { @MainActor in
+            PlateDatabase.shared.pruneExpiredPermits()
+        }
     }
 
     var body: some Scene {
