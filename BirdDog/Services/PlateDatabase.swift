@@ -25,33 +25,30 @@ final class PlateDatabase {
                 let schema = Schema([PermitRecord.self, ParkingLotRecord.self])
                 let config = ModelConfiguration(schema: schema)
                 container = try ModelContainer(for: schema, configurations: [config])
-            } catch {
-                fatalError("Failed to create permit database after store reset: \(error)")
-            }
+        } catch {
+            fatalError("Failed to create permit database after store reset: \(error)")
+        }
         }
         seedIfNeeded()
-        pruneExpiredPermits()
     }
 
     private static let retentionYears = 10
 
-    private func pruneExpiredPermits() {
+    func pruneExpiredPermits() {
         let calendar = Calendar.current
         guard let cutoff = calendar.date(byAdding: .year, value: -Self.retentionYears, to: Date()) else { return }
-        let descriptor = FetchDescriptor<PermitRecord>()
-        guard let all = try? context.fetch(descriptor) else { return }
-        var pruned = 0
-        for record in all {
-            if let exp = record.expirationDate, exp < cutoff {
-                context.delete(record)
-                pruned += 1
-            }
+        let predicate = #Predicate<PermitRecord> { record in
+            record.expirationDate != nil && record.expirationDate! < cutoff
         }
-        if pruned > 0 {
-            try? context.save()
-            recordsByLengthCache.removeAll()
-            print("Pruned \(pruned) permits expired before \(cutoff)")
+        var descriptor = FetchDescriptor<PermitRecord>(predicate: predicate)
+        descriptor.fetchLimit = 500
+        guard let expired = try? context.fetch(descriptor), !expired.isEmpty else { return }
+        for record in expired {
+            context.delete(record)
         }
+        try? context.save()
+        recordsByLengthCache.removeAll()
+        print("Pruned \(expired.count) permits expired before \(cutoff)")
     }
 
     private static func deleteStoreFiles() {

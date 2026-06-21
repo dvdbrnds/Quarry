@@ -53,6 +53,8 @@ final class CameraService: NSObject, ObservableObject {
 
     func start() {
         if !isRunning {
+            logFileHandle?.closeFile()
+            logFileHandle = nil
             try? FileManager.default.removeItem(at: Self.logFileURL)
         }
         log("START called (isRunning=\(isRunning))")
@@ -95,6 +97,8 @@ final class CameraService: NSObject, ObservableObject {
             guard let self, self.isRunning else { return }
             self.session.stopRunning()
             self.isRunning = false
+            self.logFileHandle?.closeFile()
+            self.logFileHandle = nil
         }
     }
 
@@ -603,20 +607,26 @@ final class CameraService: NSObject, ObservableObject {
         return docs.appendingPathComponent("camera_debug.log")
     }()
 
-    private func log(_ message: String) {
-        let ts = ISO8601DateFormatter().string(from: Date())
-        let line = "[\(ts)] \(message)"
-        print("CameraService: \(message)")
+    private static let logDateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        return f
+    }()
 
-        let logLine = line + "\n"
-        if let data = logLine.data(using: .utf8) {
-            if let fh = try? FileHandle(forWritingTo: Self.logFileURL) {
-                fh.seekToEndOfFile()
-                fh.write(data)
-                fh.closeFile()
-            } else {
-                try? data.write(to: Self.logFileURL, options: .atomic)
+    private var logFileHandle: FileHandle?
+
+    private func log(_ message: String) {
+        let ts = Self.logDateFormatter.string(from: Date())
+        let line = "[\(ts)] \(message)"
+
+        if let data = (line + "\n").data(using: .utf8) {
+            if logFileHandle == nil {
+                if !FileManager.default.fileExists(atPath: Self.logFileURL.path) {
+                    FileManager.default.createFile(atPath: Self.logFileURL.path, contents: nil)
+                }
+                logFileHandle = try? FileHandle(forWritingTo: Self.logFileURL)
+                logFileHandle?.seekToEndOfFile()
             }
+            logFileHandle?.write(data)
         }
 
         DispatchQueue.main.async { [weak self] in
