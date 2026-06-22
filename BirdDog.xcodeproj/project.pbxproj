@@ -46,6 +46,9 @@
 		A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D365FD04C9B93E301AA01 /* ScanSession.swift */; };
 		A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */ = {isa = PBXBuildFile; fileRef = C42BDC169688489AFC03AF14 /* lots.json */; };
 		A1B2C3D4E5F60718BEAC0001 /* BeaconPermitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */; };
+		A1B2C3D4E5F60718BEAC0003 /* CalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0004 /* CalendarStore.swift */; };
+		A1B2C3D4E5F60718BEAC0005 /* EnforcementSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0006 /* EnforcementSettingsStore.swift */; };
+		A1B2C3D4E5F60718BEAC0007 /* ViolationTypeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0008 /* ViolationTypeStore.swift */; };
 		ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E381758AC904764909D151F /* GeofenceService.swift */; };
 		AD14C162989528A1823FFEBC /* PushTokenService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B5520F9040D8218B1B7166 /* PushTokenService.swift */; };
 		AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */; };
@@ -80,6 +83,9 @@
 		25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognizerService.swift; sourceTree = "<group>"; };
 		2A42B55C539B3FC8C46FA926 /* BirdDog.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BirdDog.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeaconPermitService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718BEAC0004 /* CalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718BEAC0006 /* EnforcementSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnforcementSettingsStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718BEAC0008 /* ViolationTypeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViolationTypeStore.swift; sourceTree = "<group>"; };
 		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
@@ -167,8 +173,10 @@
 			children = (
 				4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */,
 				A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */,
+				A1B2C3D4E5F60718BEAC0004 /* CalendarStore.swift */,
 				737FD3F7D372AFD77737EE09 /* CameraService.swift */,
 				72F5636944CED0E09729E861 /* DataProvider.swift */,
+				A1B2C3D4E5F60718BEAC0006 /* EnforcementSettingsStore.swift */,
 				2E381758AC904764909D151F /* GeofenceService.swift */,
 				61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */,
 				6B998945CBE0A6AA9B29E85F /* OfficerAuthService.swift */,
@@ -180,6 +188,7 @@
 				93B5520F9040D8218B1B7166 /* PushTokenService.swift */,
 				18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */,
 				E4F388DD2760B3DE754574DE /* TicketReceiptBuilder.swift */,
+				A1B2C3D4E5F60718BEAC0008 /* ViolationTypeStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -397,6 +406,7 @@
 				4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */,
 				A1B2C3D4E5F60718BEAC0001 /* BeaconPermitService.swift in Sources */,
 				BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */,
+				A1B2C3D4E5F60718BEAC0003 /* CalendarStore.swift in Sources */,
 				4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */,
 				AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */,
 				69CAE303D623B0FF8901592F /* CameraService.swift in Sources */,
@@ -404,6 +414,7 @@
 				1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */,
 				08974B307700E90A8928F832 /* DataProvider.swift in Sources */,
 				B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */,
+				A1B2C3D4E5F60718BEAC0005 /* EnforcementSettingsStore.swift in Sources */,
 				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
 				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,
 				5994879595E847E9856A1071 /* LogExporter.swift in Sources */,
@@ -434,6 +445,7 @@
 				8F5F5EE340D5F20CF18E7E40 /* SessionHistoryView.swift in Sources */,
 				5B1EB054A758DA6ECE742D69 /* TicketIssuanceView.swift in Sources */,
 				1E92882A49F81E47B67DE436 /* TicketReceiptBuilder.swift in Sources */,
+				A1B2C3D4E5F60718BEAC0007 /* ViolationTypeStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
