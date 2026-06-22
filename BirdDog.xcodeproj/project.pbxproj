@@ -45,6 +45,7 @@
 		9F99C1DDA5B19ED739F4E5BD /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56771E1D5749AF106C7BF205 /* QRScannerView.swift */; };
 		A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D365FD04C9B93E301AA01 /* ScanSession.swift */; };
 		A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */ = {isa = PBXBuildFile; fileRef = C42BDC169688489AFC03AF14 /* lots.json */; };
+		A1B2C3D4E5F60718BEAC0001 /* BeaconPermitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */; };
 		ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E381758AC904764909D151F /* GeofenceService.swift */; };
 		AD14C162989528A1823FFEBC /* PushTokenService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B5520F9040D8218B1B7166 /* PushTokenService.swift */; };
 		AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */; };
@@ -78,6 +79,7 @@
 		2505471792A29EC48A7FD322 /* ScannedPlate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannedPlate.swift; sourceTree = "<group>"; };
 		25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognizerService.swift; sourceTree = "<group>"; };
 		2A42B55C539B3FC8C46FA926 /* BirdDog.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BirdDog.entitlements; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeaconPermitService.swift; sourceTree = "<group>"; };
 		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
@@ -164,6 +166,7 @@
 			isa = PBXGroup;
 			children = (
 				4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */,
+				A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */,
 				737FD3F7D372AFD77737EE09 /* CameraService.swift */,
 				72F5636944CED0E09729E861 /* DataProvider.swift */,
 				2E381758AC904764909D151F /* GeofenceService.swift */,
@@ -392,6 +395,7 @@
 				50D3CFDA5BB31F7ADF11E3ED /* AdminPasscodeView.swift in Sources */,
 				3FFD378444F1F788A2ADF916 /* AdminSettingsView.swift in Sources */,
 				4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */,
+				A1B2C3D4E5F60718BEAC0001 /* BeaconPermitService.swift in Sources */,
 				BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */,
 				4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */,
 				AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */,
