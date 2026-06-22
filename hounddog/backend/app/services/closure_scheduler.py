@@ -129,7 +129,16 @@ async def _run_loop():
         try:
             await _process_closures()
         except Exception as e:
-            logger.error("Scheduler tick failed: %s", e, exc_info=True)
+            logger.error("Scheduler tick (closures) failed: %s", e, exc_info=True)
+
+        try:
+            from .permit_lifecycle import auto_escalate_tickets
+            async with async_session() as db:
+                async with db.begin():
+                    await auto_escalate_tickets(db)
+        except Exception as e:
+            logger.error("Scheduler tick (escalation) failed: %s", e, exc_info=True)
+
         await asyncio.sleep(60)
 
 

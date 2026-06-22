@@ -9,6 +9,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.api_key import get_device
+from ..auth.okta import OktaUser, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.academic_season import AcademicSeason
@@ -40,7 +41,10 @@ diagnostic_router = APIRouter()
 
 
 @diagnostic_router.get("/ticket-test")
-async def ticket_creation_test(db: AsyncSession = Depends(get_db)):
+async def ticket_creation_test(
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
+):
     """Public endpoint that tests every step of ticket creation without actually creating one."""
     import traceback
     steps = {}

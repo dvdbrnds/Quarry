@@ -32,6 +32,8 @@ export default function EnforcementSettings() {
   const [saved, setSaved] = useState(false);
   const [newSeason, setNewSeason] = useState(false);
   const [seasonForm, setSeasonForm] = useState({ code: "", label: "", start_date: "", end_date: "", is_default: false });
+  const [editingSeason, setEditingSeason] = useState<AcademicSeason | null>(null);
+  const [editSeasonForm, setEditSeasonForm] = useState({ code: "", label: "", start_date: "", end_date: "", is_default: false });
 
   const load = useCallback(async () => {
     const [settingsRes, seasonsRes] = await Promise.all([
@@ -73,6 +75,23 @@ export default function EnforcementSettings() {
   async function handleDeleteSeason(id: string) {
     if (!confirm("Delete this season?")) return;
     await fetch(`/api/academic-calendar/${id}`, { method: "DELETE", headers: await authHeaders() });
+    load();
+  }
+
+  function startEditSeason(s: AcademicSeason) {
+    setEditingSeason(s);
+    setEditSeasonForm({ code: s.code, label: s.label, start_date: s.start_date, end_date: s.end_date, is_default: s.is_default });
+  }
+
+  async function handleUpdateSeason(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingSeason) return;
+    await fetch(`/api/academic-calendar/${editingSeason.id}`, {
+      method: "PUT",
+      headers: await authHeaders(),
+      body: JSON.stringify(editSeasonForm),
+    });
+    setEditingSeason(null);
     load();
   }
 
@@ -236,14 +255,45 @@ export default function EnforcementSettings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {seasons.map((s) => (
+              {seasons.map((s) => editingSeason?.id === s.id ? (
+                <tr key={s.id} className="bg-brass/5">
+                  <td className="px-2 py-2">
+                    <input value={editSeasonForm.code} onChange={(e) => setEditSeasonForm({ ...editSeasonForm, code: e.target.value })}
+                      className="w-full border border-brass rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brass" />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input value={editSeasonForm.label} onChange={(e) => setEditSeasonForm({ ...editSeasonForm, label: e.target.value })}
+                      className="w-full border border-brass rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brass" />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input type="date" value={editSeasonForm.start_date} onChange={(e) => setEditSeasonForm({ ...editSeasonForm, start_date: e.target.value })}
+                      className="w-full border border-brass rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brass" />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input type="date" value={editSeasonForm.end_date} onChange={(e) => setEditSeasonForm({ ...editSeasonForm, end_date: e.target.value })}
+                      className="w-full border border-brass rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brass" />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input type="checkbox" checked={editSeasonForm.is_default} onChange={(e) => setEditSeasonForm({ ...editSeasonForm, is_default: e.target.checked })}
+                      className="rounded border-gray-300 text-brass focus:ring-brass" />
+                  </td>
+                  <td className="px-2 py-2">
+                    <form onSubmit={handleUpdateSeason} className="flex gap-1">
+                      <button type="submit" className="text-brass-deep hover:text-brass text-xs font-medium">Save</button>
+                      <button type="button" onClick={() => setEditingSeason(null)} className="text-ink-mute hover:text-ink text-xs">✕</button>
+                    </form>
+                  </td>
+                </tr>
+              ) : (
                 <tr key={s.id} className="hover:bg-bone/50">
                   <td className="px-4 py-3 font-mono text-xs">{s.code}</td>
                   <td className="px-4 py-3">{s.label}</td>
                   <td className="px-4 py-3">{s.start_date}</td>
                   <td className="px-4 py-3">{s.end_date}</td>
                   <td className="px-4 py-3">{s.is_default ? "Yes" : ""}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 flex gap-2">
+                    <button onClick={() => startEditSeason(s)}
+                      className="text-brass-deep hover:text-brass text-xs">Edit</button>
                     <button onClick={() => handleDeleteSeason(s.id)}
                       className="text-signal-red/70 hover:text-signal-red text-xs">Delete</button>
                   </td>

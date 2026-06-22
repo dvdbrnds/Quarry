@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://quarry:quarry@localhost:5432/quarry"
     cors_origins: list[str] = ["http://localhost:5173"]
     api_key_header: str = "Authorization"
-    secret_key: str = "change-me-in-production"
+    secret_key: str = ""
     debug: bool = False
 
     # Instance identity (used in QR pairing payload)
@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     # Google Maps
     google_maps_api_key: str = ""
+    campus_lat: float = 40.6265
+    campus_lng: float = -75.3707
 
     # Stripe (Phase 3)
     stripe_secret_key: str = ""

@@ -15,14 +15,14 @@ final class PlateDatabase {
 
     private init() {
         do {
-            let schema = Schema([PermitRecord.self, ParkingLotRecord.self])
+            let schema = Schema([PermitRecord.self, ParkingLotRecord.self, PendingTicket.self])
             let config = ModelConfiguration(schema: schema)
             container = try ModelContainer(for: schema, configurations: [config])
         } catch {
             print("Database init failed, deleting corrupt store and retrying: \(error)")
             Self.deleteStoreFiles()
             do {
-                let schema = Schema([PermitRecord.self, ParkingLotRecord.self])
+                let schema = Schema([PermitRecord.self, ParkingLotRecord.self, PendingTicket.self])
                 let config = ModelConfiguration(schema: schema)
                 container = try ModelContainer(for: schema, configurations: [config])
         } catch {
@@ -281,6 +281,54 @@ final class PlateDatabase {
         return grouped[length] ?? []
     }
 
+    /// Upsert a single `PermitRecord` keyed on `entry.plateNormalized`.
+    /// Updates all fields if a record already exists; inserts otherwise.
+    func upsertRecord(_ entry: PermitEntry) throws {
+        let plate = entry.plateNormalized.trimmingCharacters(in: .whitespaces)
+        guard !plate.isEmpty else { return }
+
+        if let existing = lookup(normalizedPlate: plate) {
+            existing.plateRaw = entry.plateRaw
+            existing.plateState = entry.plateState
+            existing.ownerName = entry.ownerName
+            existing.permitNumber = entry.permitNumber
+            existing.permitType = entry.permitType
+            existing.permitStatus = entry.permitStatus
+            existing.lotZone = entry.lotZone
+            existing.vehicleDescription = entry.vehicleDescription
+            existing.issuedDate = entry.parsedIssuedDate
+            existing.expirationDate = entry.parsedExpirationDate
+            existing.beaconId = entry.beaconId
+            existing.importedAt = Date()
+        } else {
+            let record = PermitRecord(
+                plateNormalized: plate,
+                plateRaw: entry.plateRaw,
+                plateState: entry.plateState,
+                ownerName: entry.ownerName,
+                permitNumber: entry.permitNumber,
+                permitType: entry.permitType,
+                permitStatus: entry.permitStatus,
+                lotZone: entry.lotZone,
+                vehicleDescription: entry.vehicleDescription,
+                issuedDate: entry.parsedIssuedDate,
+                expirationDate: entry.parsedExpirationDate,
+                beaconId: entry.beaconId
+            )
+            context.insert(record)
+        }
+        try context.save()
+        recordsByLengthCache.removeAll()
+    }
+
+    /// Delete a record by normalised plate, if it exists.
+    func deleteRecord(normalizedPlate: String) {
+        guard let record = lookup(normalizedPlate: normalizedPlate) else { return }
+        context.delete(record)
+        try? context.save()
+        recordsByLengthCache.removeAll()
+    }
+
     func deleteAll() throws {
         try context.delete(model: PermitRecord.self)
         try context.save()
@@ -303,6 +351,30 @@ final class PlateDatabase {
 
     var isEmpty: Bool {
         totalCount() == 0
+    }
+
+    // MARK: - Pending Ticket Queue
+
+    func savePendingTicket(_ ticket: PendingTicket) throws {
+        context.insert(ticket)
+        try context.save()
+    }
+
+    func pendingTickets() -> [PendingTicket] {
+        let descriptor = FetchDescriptor<PendingTicket>(
+            predicate: #Predicate<PendingTicket> { !$0.uploaded }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    func markTicketUploaded(_ ticket: PendingTicket) {
+        ticket.uploaded = true
+        try? context.save()
+    }
+
+    func deletePendingTicket(_ ticket: PendingTicket) {
+        context.delete(ticket)
+        try? context.save()
     }
 
     func allRecords(matching search: String = "") -> [PermitRecord] {
@@ -337,6 +409,7 @@ struct PermitEntry: Decodable {
     let vehicleDescription: String
     let issuedDate: String
     let expirationDate: String?
+    let beaconId: String?
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()

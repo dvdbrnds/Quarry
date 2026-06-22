@@ -72,6 +72,45 @@ class OktaUser:
         return self.role in roles
 
 
+async def verify_token_string(token: str) -> OktaUser:
+    """Verify a raw bearer token string. Used for WebSocket auth where there is no Request object."""
+    if not settings.okta_domain:
+        return OktaUser(sub="dev", email="dev@local", groups=["admin"])
+
+    try:
+        jwks = await _get_jwks()
+        unverified_header = jwt.get_unverified_header(token)
+        key = None
+        for k in jwks.get("keys", []):
+            if k["kid"] == unverified_header.get("kid"):
+                key = k
+                break
+        if not key:
+            raise ValueError("Invalid token key")
+
+        payload = jwt.decode(
+            token,
+            key,
+            algorithms=["RS256"],
+            audience=settings.okta_audience or settings.okta_client_id,
+            issuer=f"https://{settings.okta_domain}/oauth2/default",
+        )
+
+        groups = payload.get(settings.okta_claim, [])
+        email = payload.get("email", payload.get("sub", ""))
+
+        if not groups:
+            groups = await _fetch_userinfo_groups(token)
+
+        return OktaUser(
+            sub=payload.get("sub", ""),
+            email=email,
+            groups=groups,
+        )
+    except JWTError as e:
+        raise ValueError(f"Token verification failed: {e}")
+
+
 async def get_current_user(request: Request) -> OktaUser:
     if not settings.okta_domain:
         return OktaUser(sub="dev", email="dev@local", groups=["admin"])

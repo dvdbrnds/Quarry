@@ -32,12 +32,29 @@ function LotForm({
   const [designationCode, setDesignationCode] = useState(initial?.designation_code ?? "");
   const [isSnowLot, setIsSnowLot] = useState(initial?.is_snow_lot ?? false);
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [accessScheduleJson, setAccessScheduleJson] = useState(
+    initial?.access_schedule && initial.access_schedule.length > 0
+      ? JSON.stringify(initial.access_schedule, null, 2)
+      : ""
+  );
+  const [scheduleError, setScheduleError] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setScheduleError("");
     const designLabel = DESIGNATION_OPTIONS.find(d => d.code === designationCode)?.label.split(" — ")[1] || "";
+    let parsedSchedule = undefined;
+    if (accessScheduleJson.trim()) {
+      try {
+        parsedSchedule = JSON.parse(accessScheduleJson);
+      } catch {
+        setScheduleError("Invalid JSON in access schedule");
+        setSaving(false);
+        return;
+      }
+    }
     try {
       const data = {
         name,
@@ -48,6 +65,7 @@ function LotForm({
         designation_label: designLabel,
         is_snow_lot: isSnowLot,
         notes: notes || null,
+        ...(parsedSchedule !== undefined ? { access_schedule: parsedSchedule } : {}),
       };
       if (initial) {
         await api.lots.update(initial.id, data);
@@ -98,6 +116,23 @@ function LotForm({
           placeholder="EV charging, flood risk, etc."
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
       </div>
+      <div>
+        <label className="block text-xs font-medium text-ink-mute mb-1">
+          Access Schedule (JSON)
+          <span className="ml-1 font-normal opacity-60">optional</span>
+        </label>
+        <textarea
+          value={accessScheduleJson}
+          onChange={(e) => { setAccessScheduleJson(e.target.value); setScheduleError(""); }}
+          rows={4}
+          placeholder={'[\n  {\n    "season": "fall_spring",\n    "label": "Fall/Spring",\n    "rules": [{"start": "07:00", "end": "22:00", "days": ["Mon","Tue","Wed","Thu","Fri"], "allowed_permit_types": ["FS"], "label": "Weekday"}]\n  }\n]'}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-brass focus:outline-none resize-y"
+        />
+        {scheduleError && <p className="text-xs text-signal-red mt-1">{scheduleError}</p>}
+        <p className="text-xs text-ink-mute mt-1">
+          Array of season schedules. Each entry: <code className="bg-gray-100 px-1 rounded">season</code>, <code className="bg-gray-100 px-1 rounded">label</code>, <code className="bg-gray-100 px-1 rounded">rules[]</code>
+        </p>
+      </div>
       <p className="text-xs text-ink-mute">
         {boundary.length === 0
           ? 'Click "Draw Boundary" on the map, then click to place points. Double-click to finish.'
@@ -115,12 +150,65 @@ function LotForm({
   );
 }
 
+const ZONE_TYPE_OPTIONS = [
+  { value: "disability", label: "Disability" },
+  { value: "fire_lane", label: "Fire Lane" },
+  { value: "visitor", label: "Visitor" },
+  { value: "admissions_visitor", label: "Admissions Visitor (Premium)" },
+  { value: "loading", label: "Loading Zone" },
+  { value: "ev_charging", label: "EV Charging" },
+  { value: "reserved_tenant", label: "Reserved Tenant" },
+];
+
+type ZoneFormState = { zone_type: string; label: string; space_count: number; fine_override: string; is_premium: boolean; notes: string };
+const EMPTY_ZONE_FORM: ZoneFormState = { zone_type: "disability", label: "", space_count: 0, fine_override: "", is_premium: false, notes: "" };
+
+function ZoneForm({ initial, onSubmit, onCancel }: {
+  initial?: ZoneFormState;
+  onSubmit: (data: ZoneFormState) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState<ZoneFormState>(initial ?? EMPTY_ZONE_FORM);
+  const [saving, setSaving] = useState(false);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try { await onSubmit(form); } finally { setSaving(false); }
+  }
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 space-y-2 bg-brass/5 rounded-lg p-2">
+      <select value={form.zone_type} onChange={(e) => setForm({ ...form, zone_type: e.target.value })}
+        className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
+        {ZONE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })}
+        placeholder="Label (optional)" className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
+      <div className="flex gap-2">
+        <input type="number" value={form.space_count} onChange={(e) => setForm({ ...form, space_count: Number(e.target.value) })}
+          placeholder="# spaces" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs" />
+        <input value={form.fine_override} onChange={(e) => setForm({ ...form, fine_override: e.target.value })}
+          placeholder="Fine $" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs" />
+      </div>
+      <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
+        placeholder="Notes" className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
+      <label className="flex items-center gap-1 text-xs">
+        <input type="checkbox" checked={form.is_premium} onChange={(e) => setForm({ ...form, is_premium: e.target.checked })} />
+        Premium
+      </label>
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving} className="px-2 py-1 bg-brass text-navy-deep text-xs rounded disabled:opacity-50">
+          {saving ? "..." : initial ? "Update" : "Add"}
+        </button>
+        <button type="button" onClick={onCancel} className="px-2 py-1 text-xs text-ink-mute">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 function ZonePanel({ lotId }: { lotId: string }) {
   const [zones, setZones] = useState<LotZone[]>([]);
   const [adding, setAdding] = useState(false);
-  const [zoneType, setZoneType] = useState("disability");
-  const [zoneLabel, setZoneLabel] = useState("");
-  const [spaceCount, setSpaceCount] = useState(0);
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setZones(await api.lots.zones.list(lotId));
@@ -128,16 +216,29 @@ function ZonePanel({ lotId }: { lotId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleAdd(data: ZoneFormState) {
     await api.lots.zones.create(lotId, {
-      zone_type: zoneType,
-      label: zoneLabel || zoneType.replace(/_/g, " "),
-      space_count: spaceCount,
+      zone_type: data.zone_type,
+      label: data.label || data.zone_type.replace(/_/g, " "),
+      space_count: data.space_count,
+      fine_override: data.fine_override || null,
+      is_premium: data.is_premium,
+      notes: data.notes || null,
     });
     setAdding(false);
-    setZoneLabel("");
-    setSpaceCount(0);
+    load();
+  }
+
+  async function handleUpdate(zoneId: string, data: ZoneFormState) {
+    await api.lots.zones.update(lotId, zoneId, {
+      zone_type: data.zone_type,
+      label: data.label || data.zone_type.replace(/_/g, " "),
+      space_count: data.space_count,
+      fine_override: data.fine_override || null,
+      is_premium: data.is_premium,
+      notes: data.notes || null,
+    });
+    setEditingZoneId(null);
     load();
   }
 
@@ -153,35 +254,30 @@ function ZonePanel({ lotId }: { lotId: string }) {
         <h4 className="text-xs font-bold uppercase text-ink-mute tracking-wide">Zones</h4>
         <button onClick={() => setAdding(true)} className="text-xs text-brass-deep hover:text-brass">+ Add</button>
       </div>
-      {zones.map(z => (
+      {zones.map(z => editingZoneId === z.id ? (
+        <ZoneForm
+          key={z.id}
+          initial={{ zone_type: z.zone_type, label: z.label, space_count: z.space_count, fine_override: z.fine_override ?? "", is_premium: z.is_premium, notes: z.notes ?? "" }}
+          onSubmit={(data) => handleUpdate(z.id, data)}
+          onCancel={() => setEditingZoneId(null)}
+        />
+      ) : (
         <div key={z.id} className="flex items-center justify-between text-xs py-1">
-          <span className="capitalize">{z.zone_type.replace(/_/g, " ")} ({z.space_count})</span>
-          <button onClick={() => handleDelete(z.id)} className="text-signal-red/60 hover:text-signal-red">Remove</button>
+          <span className="capitalize">
+            {z.zone_type.replace(/_/g, " ")} ({z.space_count})
+            {z.is_premium && <span className="ml-1 text-[10px] bg-brass/20 text-brass-deep px-1 rounded">Premium</span>}
+            {z.fine_override && <span className="ml-1 text-ink-mute">${z.fine_override}</span>}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={() => setEditingZoneId(z.id)} className="text-brass-deep hover:text-brass">Edit</button>
+            <button onClick={() => handleDelete(z.id)} className="text-signal-red/60 hover:text-signal-red">Remove</button>
+          </div>
         </div>
       ))}
       {zones.length === 0 && !adding && (
         <p className="text-xs text-ink-mute">No special zones defined</p>
       )}
-      {adding && (
-        <form onSubmit={handleAdd} className="mt-2 space-y-2">
-          <select value={zoneType} onChange={(e) => setZoneType(e.target.value)}
-            className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
-            <option value="disability">Disability</option>
-            <option value="fire_lane">Fire Lane</option>
-            <option value="visitor">Visitor</option>
-            <option value="admissions_visitor">Admissions Visitor (Premium)</option>
-            <option value="loading">Loading Zone</option>
-            <option value="ev_charging">EV Charging</option>
-            <option value="reserved_tenant">Reserved Tenant</option>
-          </select>
-          <input type="number" value={spaceCount} onChange={(e) => setSpaceCount(Number(e.target.value))}
-            placeholder="# spaces" className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
-          <div className="flex gap-2">
-            <button type="submit" className="px-2 py-1 bg-brass text-navy-deep text-xs rounded">Add</button>
-            <button type="button" onClick={() => setAdding(false)} className="px-2 py-1 text-xs text-ink-mute">Cancel</button>
-          </div>
-        </form>
-      )}
+      {adding && <ZoneForm onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
     </div>
   );
 }
@@ -294,6 +390,7 @@ export default function Lots() {
   const [creating, setCreating] = useState(false);
   const [editingBoundary, setEditingBoundary] = useState<Coordinate[] | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
+  const [campusCenter, setCampusCenter] = useState({ lat: 40.6265, lng: -75.3707 });
   const [closingLot, setClosingLot] = useState<Lot | null>(null);
   const [deletingLot, setDeletingLot] = useState<Lot | null>(null);
 
@@ -303,7 +400,12 @@ export default function Lots() {
 
   useEffect(() => {
     load();
-    loadConfig().then((cfg) => setMapsApiKey(cfg.google_maps_api_key || ""));
+    loadConfig().then((cfg) => {
+      setMapsApiKey(cfg.google_maps_api_key || "");
+      if (cfg.campus_lat && cfg.campus_lng) {
+        setCampusCenter({ lat: cfg.campus_lat, lng: cfg.campus_lng });
+      }
+    });
   }, [load]);
 
   function startCreate() {
@@ -454,6 +556,7 @@ export default function Lots() {
           }}
           editingBoundary={editingBoundary}
           onBoundaryChange={setEditingBoundary}
+          defaultCenter={campusCenter}
         />
       </div>
 

@@ -162,14 +162,100 @@ function ScheduleClosureModal({
   );
 }
 
+function toLocalDatetimeValue(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function EditClosureModal({
+  closure,
+  onClose,
+  onSaved,
+}: {
+  closure: LotClosure;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [reason, setReason] = useState(closure.reason ?? "");
+  const [closesAt, setClosesAt] = useState(toLocalDatetimeValue(closure.closes_at));
+  const [reopensAt, setReopensAt] = useState(closure.reopens_at ? toLocalDatetimeValue(closure.reopens_at) : "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.lots.closures.update(closure.id, {
+        reason: reason || null,
+        closes_at: new Date(closesAt).toISOString(),
+        reopens_at: reopensAt ? new Date(reopensAt).toISOString() : null,
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <h3 className="text-lg font-bold">Edit Closure</h3>
+        <div>
+          <label className="block text-xs font-medium text-ink-mute mb-1">Reason</label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Snow removal, event, maintenance..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-mute mb-1">Closes At</label>
+          <input
+            type="datetime-local"
+            value={closesAt}
+            onChange={(e) => setClosesAt(e.target.value)}
+            required
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-mute mb-1">Reopens At (optional)</label>
+          <input
+            type="datetime-local"
+            value={reopensAt}
+            onChange={(e) => setReopensAt(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex-1 px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-mute hover:text-ink">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ClosureDetailModal({
   closure,
   onClose,
   onCancel,
+  onEdit,
 }: {
   closure: LotClosure;
   onClose: () => void;
   onCancel: (id: string) => void;
+  onEdit: (closure: LotClosure) => void;
 }) {
   const closes = new Date(closure.closes_at);
   const reopens = closure.reopens_at ? new Date(closure.reopens_at) : null;
@@ -202,12 +288,20 @@ function ClosureDetailModal({
         </div>
         <div className="flex gap-2 pt-3">
           {(closure.status === "scheduled" || closure.status === "active") && (
-            <button
-              onClick={() => onCancel(closure.id)}
-              className="px-4 py-2 bg-signal-red/10 text-signal-red font-medium rounded-lg text-sm hover:bg-signal-red/20 transition-colors"
-            >
-              Cancel Closure
-            </button>
+            <>
+              <button
+                onClick={() => onEdit(closure)}
+                className="px-4 py-2 bg-brass/10 text-brass-deep font-medium rounded-lg text-sm hover:bg-brass/20 transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onCancel(closure.id)}
+                className="px-4 py-2 bg-signal-red/10 text-signal-red font-medium rounded-lg text-sm hover:bg-signal-red/20 transition-colors"
+              >
+                Cancel Closure
+              </button>
+            </>
           )}
           <button
             onClick={onClose}
@@ -229,6 +323,7 @@ export default function OperationsCalendar() {
   const [month, setMonth] = useState(new Date().getMonth());
   const [scheduling, setScheduling] = useState(false);
   const [selectedClosure, setSelectedClosure] = useState<LotClosure | null>(null);
+  const [editingClosure, setEditingClosure] = useState<LotClosure | null>(null);
   const [filterLotId, setFilterLotId] = useState<string>("");
 
   const load = useCallback(async () => {
@@ -470,11 +565,24 @@ export default function OperationsCalendar() {
         />
       )}
 
-      {selectedClosure && (
+      {selectedClosure && !editingClosure && (
         <ClosureDetailModal
           closure={selectedClosure}
           onClose={() => setSelectedClosure(null)}
           onCancel={handleCancelClosure}
+          onEdit={(c) => setEditingClosure(c)}
+        />
+      )}
+
+      {editingClosure && (
+        <EditClosureModal
+          closure={editingClosure}
+          onClose={() => setEditingClosure(null)}
+          onSaved={() => {
+            setEditingClosure(null);
+            setSelectedClosure(null);
+            load();
+          }}
         />
       )}
     </div>

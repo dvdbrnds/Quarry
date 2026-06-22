@@ -13,6 +13,7 @@ import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout } from "./auth";
 import type { AuthUser } from "./auth";
+import { UserContext } from "./UserContext";
 
 function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   return (
@@ -104,7 +105,11 @@ export default function App() {
 
   return (
     <AuthGuard>
-      {(user) => <DashboardShell user={user} />}
+      {(user) => (
+        <UserContext.Provider value={user}>
+          <DashboardShell user={user} />
+        </UserContext.Provider>
+      )}
     </AuthGuard>
   );
 }

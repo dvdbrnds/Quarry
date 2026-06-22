@@ -1,7 +1,7 @@
-"""Permit lifecycle: auto-expiration, hold computation, duplicate detection."""
+"""Permit lifecycle: auto-expiration, hold computation, duplicate detection, ticket escalation."""
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select, func, and_
@@ -34,6 +34,59 @@ async def auto_expire_permits(db: AsyncSession) -> int:
         await db.flush()
         logger.info(f"Auto-expired {count} permits")
     return count
+
+
+async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
+    """Transition ticket statuses based on enforcement settings.
+
+    - issued   → overdue   after payment_due_days from issued_at
+    - overdue  → escalated after another payment_due_days (2× total)
+
+    Returns (overdue_count, escalated_count).
+    """
+    settings_result = await db.execute(
+        select(EnforcementSettings).where(EnforcementSettings.id == 1)
+    )
+    settings = settings_result.scalar()
+    due_days = settings.payment_due_days if settings else 5
+
+    now = datetime.now(timezone.utc)
+    overdue_cutoff = now - timedelta(days=due_days)
+    escalated_cutoff = now - timedelta(days=due_days * 2)
+
+    # issued → overdue
+    issued_result = await db.execute(
+        select(Ticket).where(
+            Ticket.status == "issued",
+            Ticket.issued_at <= overdue_cutoff,
+        )
+    )
+    issued_tickets = issued_result.scalars().all()
+    for t in issued_tickets:
+        t.status = "overdue"
+    overdue_count = len(issued_tickets)
+
+    # overdue → escalated
+    overdue_result = await db.execute(
+        select(Ticket).where(
+            Ticket.status == "overdue",
+            Ticket.issued_at <= escalated_cutoff,
+        )
+    )
+    overdue_tickets = overdue_result.scalars().all()
+    for t in overdue_tickets:
+        t.status = "escalated"
+    escalated_count = len(overdue_tickets)
+
+    if overdue_count or escalated_count:
+        await db.flush()
+        logger.info(
+            "Ticket escalation: %d issued→overdue, %d overdue→escalated",
+            overdue_count,
+            escalated_count,
+        )
+
+    return overdue_count, escalated_count
 
 
 async def compute_hold(db: AsyncSession, permit: Permit) -> tuple[bool, Decimal]:

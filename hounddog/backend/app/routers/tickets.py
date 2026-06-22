@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import get_current_user
 from ..config import settings
 from ..database import get_db
+from ..models.enforcement_settings import EnforcementSettings
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
@@ -189,6 +190,26 @@ async def appeal_ticket(
         raise HTTPException(404, "Ticket not found")
     if ticket.status in ("paid", "voided"):
         raise HTTPException(400, f"Cannot appeal a {ticket.status} ticket")
+
+    # Enforce appeal window from EnforcementSettings
+    es_result = await db.execute(
+        select(EnforcementSettings).where(EnforcementSettings.id == 1)
+    )
+    es = es_result.scalar()
+    appeal_window_days = es.appeal_window_days if es else 5
+
+    if ticket.issued_at:
+        from datetime import timedelta
+        issued = ticket.issued_at
+        if issued.tzinfo is None:
+            issued = issued.replace(tzinfo=timezone.utc)
+        deadline = issued + timedelta(days=appeal_window_days)
+        if datetime.now(timezone.utc) > deadline:
+            raise HTTPException(
+                400,
+                f"Appeal window has closed. Appeals must be submitted within "
+                f"{appeal_window_days} day(s) of issuance.",
+            )
 
     ticket.status = "appealed"
     ticket.appeal_note = appeal.note

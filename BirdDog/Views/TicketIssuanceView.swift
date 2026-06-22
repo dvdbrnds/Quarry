@@ -22,25 +22,16 @@ struct TicketIssuanceView: View {
     @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
     @ObservedObject private var officerAuth = OfficerAuthService.shared
+    @ObservedObject private var violationTypeStore = ViolationTypeStore.shared
 
     var cameraService: CameraService?
     var prefilledPlate: String?
     var prefilledEntry: ScannedPlate?
     var onTicketIssued: ((String) -> Void)?
 
-    private let violationTypes = [
-        ("no_permit", "No Valid Permit"),
-        ("expired_permit", "Expired Permit"),
-        ("wrong_lot", "Wrong Lot"),
-        ("fire_lane", "Fire Lane"),
-        ("disability_area", "Disability Area (No Placard)"),
-        ("overtime", "Overtime Parking"),
-        ("snow_emergency", "Snow Emergency Violation"),
-        ("loading_zone", "Loading Zone"),
-        ("reserved", "Reserved Space"),
-        ("double_parked", "Double Parked"),
-        ("other", "Other"),
-    ]
+    private var violationTypes: [(String, String)] {
+        violationTypeStore.types.map { ($0.code, $0.label) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -372,13 +363,18 @@ struct TicketIssuanceView: View {
             permitNumber: permit?.permitNumber
         )
 
+        // Persist the ticket immediately so it survives an upload failure.
+        try? PlateDatabase.shared.savePendingTicket(ticket)
+
         Task {
             do {
                 let result = try await HoundDogSyncService.shared.uploadTicket(ticket)
+                PlateDatabase.shared.markTicketUploaded(ticket)
                 submittedResult = result
                 onTicketIssued?(plate.uppercased().trimmingCharacters(in: .whitespaces))
             } catch {
-                errorMessage = error.localizedDescription
+                // Ticket stays in the queue with uploaded = false for later retry.
+                errorMessage = "\(error.localizedDescription)\nTicket saved — will retry when back online."
             }
             isSubmitting = false
         }

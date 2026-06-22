@@ -14,8 +14,11 @@ final class AppSettings: ObservableObject {
     private static let oktaIssuerKey = "AppSettings.oktaIssuer"
     private static let oktaClientIdKey = "AppSettings.oktaClientId"
     private static let oktaRedirectURIKey = "AppSettings.oktaRedirectURI"
+    private static let wildcardZonesKey = "AppSettings.wildcardZones"
     private static let defaultPasscode = "1234"
     private static let defaultRedirectURI = "edu.moravian.birddog://callback"
+    /// Default wildcard zone labels — permits with these lot-zone strings are valid in any lot.
+    private static let defaultWildcardZones = "PARKING LOTS,ALL MORAVIAN COLLEGE OWNED PROPERTY,NORTH CAMPUS,SOUTH CAMPUS,COMMUTER"
 
     @Published var isAdminUnlocked = false
 
@@ -55,6 +58,16 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(oktaRedirectURI, forKey: Self.oktaRedirectURIKey) }
     }
 
+    /// Comma-separated list of lot-zone values that authorise a permit to park anywhere.
+    @Published var wildcardZones: String {
+        didSet { UserDefaults.standard.set(wildcardZones, forKey: Self.wildcardZonesKey) }
+    }
+
+    /// Parsed set of normalised wildcard zone labels.
+    var wildcardZoneSet: Set<String> {
+        Set(wildcardZones.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).uppercased() })
+    }
+
     var oktaRedirectScheme: String {
         oktaRedirectURI.components(separatedBy: "://").first ?? "edu.moravian.birddog"
     }
@@ -73,6 +86,7 @@ final class AppSettings: ObservableObject {
         self.oktaIssuer = UserDefaults.standard.string(forKey: Self.oktaIssuerKey) ?? ""
         self.oktaClientId = UserDefaults.standard.string(forKey: Self.oktaClientIdKey) ?? ""
         self.oktaRedirectURI = UserDefaults.standard.string(forKey: Self.oktaRedirectURIKey) ?? Self.defaultRedirectURI
+        self.wildcardZones = UserDefaults.standard.string(forKey: Self.wildcardZonesKey) ?? Self.defaultWildcardZones
     }
 
     func attemptUnlock(with code: String) -> Bool {
