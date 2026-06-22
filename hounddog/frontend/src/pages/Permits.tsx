@@ -3,6 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { api, Permit, ImportResult } from "../api";
 import { authHeaders } from "../auth";
 
+async function downloadWithAuth(url: string, filename: string) {
+  const res = await fetch(url, { headers: await authHeaders() });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 interface PermitStats {
   total: number;
   active: number;
@@ -53,6 +64,8 @@ function PermitForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [plates, setPlates] = useState(initial?.plates.join(", ") ?? "");
   const [studentId, setStudentId] = useState(initial?.student_id ?? "");
+  const [email, setEmail] = useState((initial as { email?: string })?.email ?? "");
+  const [beaconId, setBeaconId] = useState((initial as { beacon_id?: string })?.beacon_id ?? "");
   const [lot, setLot] = useState(initial?.lot_assignment ?? "");
   const [permitType, setPermitType] = useState(initial?.permit_type ?? "");
   const [status, setStatus] = useState(initial?.status ?? "active");
@@ -67,6 +80,8 @@ function PermitForm({
       name,
       plates: plates.split(",").map((p) => p.trim().toUpperCase()).filter(Boolean),
       student_id: studentId,
+      email: email || null,
+      beacon_id: beaconId || null,
       lot_assignment: lot,
       permit_type: permitType,
       status,
@@ -136,6 +151,18 @@ function PermitForm({
       <div>
         <label className="block text-xs font-medium text-ink-mute mb-1">End Date</label>
         <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-ink-mute mb-1">Email</label>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="student@university.edu"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-ink-mute mb-1">Beacon ID (SheepDog)</label>
+        <input value={beaconId} onChange={(e) => setBeaconId(e.target.value)}
+          placeholder="optional hangtag beacon ID"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
       </div>
       <div className="col-span-2 flex gap-3 justify-end">
@@ -222,6 +249,8 @@ export default function Permits() {
   const [lots, setLots] = useState<LotOption[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState("");
+  const [duplicateGroups, setDuplicateGroups] = useState<Array<{ shared_plate: string; permits: Array<{ id: string; name: string; student_id: string; lot_assignment: string; permit_type: string }> }>>([]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
 
   const load = useCallback(async () => {
     const data = await api.permits.list({
@@ -237,14 +266,16 @@ export default function Permits() {
   }, [page, search, filterStatus, filterType, filterLot, sort]);
 
   const loadMeta = useCallback(async () => {
-    const [s, ptRes, lotsRes] = await Promise.all([
+    const [s, ptRes, lotsRes, dupRes] = await Promise.all([
       api.permits.stats(),
       fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
       api.lots.list(),
+      fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
     ]);
     setStats(s);
     setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label })));
     setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
+    setDuplicateGroups(dupRes.duplicate_groups ?? []);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -311,10 +342,11 @@ export default function Permits() {
             className="px-4 py-2 border border-brass text-brass-deep rounded-lg text-sm hover:bg-brass/10">
             Import CSV
           </button>
-          <a href="/api/permits/export/csv" target="_blank"
+          <button
+            onClick={() => downloadWithAuth("/api/permits/export/csv", "permits.csv")}
             className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
             Export CSV
-          </a>
+          </button>
           <button onClick={() => { setCreating(true); setEditing(null); }}
             className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep">
             + New Permit
@@ -335,6 +367,53 @@ export default function Permits() {
             active={filterStatus === "expired"} onClick={() => { setFilterStatus("expired"); setPage(1); }} />
           <StatCard label="Revoked" value={stats.revoked} color="bg-gray-50 border-gray-200"
             active={filterStatus === "revoked"} onClick={() => { setFilterStatus("revoked"); setPage(1); }} />
+        </div>
+      )}
+
+      {/* Duplicate Permits Alert */}
+      {duplicateGroups.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-700 font-semibold text-sm">
+                ⚠ {duplicateGroups.length} duplicate plate conflict{duplicateGroups.length > 1 ? "s" : ""} detected
+              </span>
+              <span className="text-xs text-amber-600">Multiple active permits share the same plate</span>
+            </div>
+            <button
+              onClick={() => setShowDuplicates(!showDuplicates)}
+              className="text-xs text-amber-700 hover:underline"
+            >
+              {showDuplicates ? "Hide" : "Review"}
+            </button>
+          </div>
+          {showDuplicates && (
+            <div className="mt-3 space-y-3">
+              {duplicateGroups.map((group) => (
+                <div key={group.shared_plate} className="bg-white rounded-lg border border-amber-200 p-3">
+                  <div className="text-xs font-mono font-bold text-amber-800 mb-2">
+                    Shared plate: {group.shared_plate}
+                  </div>
+                  <div className="space-y-1">
+                    {group.permits.map((p) => (
+                      <div key={p.id} className="flex items-center gap-3 text-xs">
+                        <span className="font-medium">{p.name}</span>
+                        {p.student_id && <span className="text-ink-mute">{p.student_id}</span>}
+                        <span className="text-ink-mute">{p.lot_assignment}</span>
+                        <span className="text-ink-mute capitalize">{p.permit_type}</span>
+                        <button
+                          onClick={() => navigate(`/permits/${p.id}`)}
+                          className="ml-auto text-brass hover:underline"
+                        >
+                          View
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

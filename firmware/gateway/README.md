@@ -7,7 +7,7 @@ Listens for BLE advertisements from SheepDog occupancy sensors (XIAO nRF52840), 
 ## Setup
 
 ```bash
-ssh dvdbrnds@quarrypi.local
+ssh <pi-user>@<pi-hostname>.local
 
 sudo apt update && sudo apt install -y python3-pip
 pip3 install -r requirements.txt --break-system-packages
@@ -40,7 +40,7 @@ Description=SheepDog BLE Gateway
 After=network.target bluetooth.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/dvdbrnds/gateway.py --target http://<iPad-IP>:8080/api/occupancy
+ExecStart=/usr/bin/python3 /home/<pi-user>/gateway.py --target http://<iPad-IP>:8080/api/occupancy
 Restart=always
 User=root
 
@@ -54,11 +54,11 @@ sudo systemctl start sheepdog-gw
 
 ## Networking
 
-The Pi connects to WiFi networks in priority order. Configured networks:
-- `dvdbrnds` (iPhone hotspot) — for development/SSH
-- `Fruauff-WPA2` (campus) — for lot deployment
-- Home network — for bench testing
+The Pi connects to WiFi networks in priority order. Configure networks for your deployment:
+- Personal hotspot — for development/SSH
+- Campus WiFi — for lot deployment
+- Home/lab network — for bench testing
 
 Add networks: `sudo nmcli device wifi connect "SSID" password 'password'`
 
-SSH: `ssh dvdbrnds@quarrypi.local`
+SSH: `ssh <pi-user>@<pi-hostname>.local`

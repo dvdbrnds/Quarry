@@ -99,6 +99,10 @@ final class HoundDogSyncService: ObservableObject {
         do {
             try await syncPermits()
             try await syncLots()
+            try await syncViolationTypes()
+            try await syncCalendar()
+            try await syncEnforcementSettings()
+            await retryPendingTickets()
             syncState = .synced
             lastSyncDate = Date()
         } catch {
@@ -131,32 +135,120 @@ final class HoundDogSyncService: ObservableObject {
         let syncResponse = try decoder.decode(PermitSyncResponse.self, from: data)
 
         let db = PlateDatabase.shared
+        let allPlatesRaw = syncResponse.permits.flatMap { $0.plates }.joined(separator: ";")
+
         if syncResponse.fullSync {
+            // Full sync: delete everything and re-seed from expanded plates
             try db.deleteAll()
+            var entries: [PermitEntry] = []
+            for permit in syncResponse.permits {
+                guard permit.deletedAt == nil else { continue }
+                for plate in permit.plates {
+                    let normalized = plate.uppercased().replacingOccurrences(of: " ", with: "")
+                    guard !normalized.isEmpty else { continue }
+                    entries.append(makePermitEntry(permit, plateNormalized: normalized))
+                }
+            }
+            let count = try db.seedFromPayload(PermitPayload(permits: entries))
+            permitCount = db.totalCount()
+            lastPermitSync = syncResponse.serverTimestamp
+            print("[HoundDog] Full sync: \(count) plate records from \(syncResponse.permits.count) permits")
+        } else {
+            // Incremental sync: upsert updated permits, delete removed ones
+            var upserted = 0
+            var deleted = 0
+            for permit in syncResponse.permits {
+                let plateNormalized = permit.plates.map {
+                    $0.uppercased().replacingOccurrences(of: " ", with: "")
+                }
+                if permit.deletedAt != nil {
+                    for plate in plateNormalized {
+                        db.deleteRecord(normalizedPlate: plate)
+                        deleted += 1
+                    }
+                } else {
+                    for plate in plateNormalized {
+                        guard !plate.isEmpty else { continue }
+                        try db.upsertRecord(makePermitEntry(permit, plateNormalized: plate))
+                        upserted += 1
+                    }
+                }
+            }
+            permitCount = db.totalCount()
+            lastPermitSync = syncResponse.serverTimestamp
+            if upserted > 0 || deleted > 0 {
+                print("[HoundDog] Incremental sync: \(upserted) upserted, \(deleted) deleted")
+            }
         }
+        _ = allPlatesRaw  // suppress unused warning
+    }
 
-        let payload = PermitPayload(permits: syncResponse.permits.map { permit in
-            PermitEntry(
-                plateNormalized: permit.plates.first ?? "",
-                plateRaw: permit.plates.joined(separator: ";"),
-                plateState: "",
-                ownerName: permit.name,
-                permitNumber: permit.studentId,
-                permitType: permit.permitType,
-                permitStatus: permit.status,
-                lotZone: permit.lotAssignment,
-                vehicleDescription: "",
-                issuedDate: permit.startDate,
-                expirationDate: permit.endDate
-            )
-        })
-        let count = try db.seedFromPayload(payload)
-        permitCount = db.totalCount()
-        lastPermitSync = syncResponse.serverTimestamp
+    private func makePermitEntry(_ permit: SyncPermit, plateNormalized: String) -> PermitEntry {
+        PermitEntry(
+            plateNormalized: plateNormalized,
+            plateRaw: permit.plates.joined(separator: ";"),
+            plateState: "",
+            ownerName: permit.name,
+            permitNumber: permit.studentId,
+            permitType: permit.permitType,
+            permitStatus: permit.status,
+            lotZone: permit.lotAssignment,
+            vehicleDescription: "",
+            issuedDate: permit.startDate,
+            expirationDate: permit.endDate,
+            beaconId: permit.beaconId
+        )
+    }
 
-        if count > 0 {
-            print("[HoundDog] Synced \(count) permits (full=\(syncResponse.fullSync))")
-        }
+    // MARK: - Violation Types
+
+    private func syncViolationTypes() async throws {
+        let settings = AppSettings.shared
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/violation-types") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let syncResponse = try decoder.decode(ViolationTypesSyncResponse.self, from: data)
+        ViolationTypeStore.shared.update(from: syncResponse.violationTypes)
+    }
+
+    // MARK: - Academic Calendar
+
+    private func syncCalendar() async throws {
+        let settings = AppSettings.shared
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/calendar") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let syncResponse = try decoder.decode(CalendarSyncResponse.self, from: data)
+        CalendarStore.shared.update(from: syncResponse)
+    }
+
+    // MARK: - Enforcement Settings
+
+    private func syncEnforcementSettings() async throws {
+        let settings = AppSettings.shared
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/settings") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let syncResponse = try decoder.decode(SettingsSyncResponse.self, from: data)
+        EnforcementSettingsStore.shared.update(from: syncResponse.settings)
     }
 
     // MARK: - Lots
@@ -209,6 +301,22 @@ final class HoundDogSyncService: ObservableObject {
 
         if !syncResponse.lots.isEmpty {
             print("[HoundDog] Synced \(syncResponse.lots.count) lots (full=\(syncResponse.fullSync))")
+        }
+    }
+
+    // MARK: - Pending Ticket Retry
+
+    private func retryPendingTickets() async {
+        let pending = PlateDatabase.shared.pendingTickets()
+        guard !pending.isEmpty else { return }
+        print("[HoundDog] Retrying \(pending.count) pending ticket(s)...")
+        for ticket in pending {
+            do {
+                _ = try await uploadTicket(ticket)
+                PlateDatabase.shared.markTicketUploaded(ticket)
+            } catch {
+                print("[HoundDog] Retry failed for ticket \(ticket.ticketId): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -326,6 +434,8 @@ struct SyncPermit: Decodable {
     let startDate: String
     let endDate: String?
     let status: String
+    let beaconId: String?
+    let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -336,6 +446,8 @@ struct SyncPermit: Decodable {
         case startDate = "start_date"
         case endDate = "end_date"
         case status
+        case beaconId = "beacon_id"
+        case deletedAt = "deleted_at"
     }
 }
 
@@ -366,4 +478,85 @@ struct SyncLot: Decodable {
 struct SyncCoordinate: Decodable {
     let latitude: Double
     let longitude: Double
+}
+
+// MARK: - Violation Types sync models
+
+struct SyncViolationType: Decodable {
+    let code: String
+    let label: String
+    let category: String
+    let fineFirst: String
+
+    enum CodingKeys: String, CodingKey {
+        case code, label, category
+        case fineFirst = "fine_first"
+    }
+}
+
+struct ViolationTypesSyncResponse: Decodable {
+    let violationTypes: [SyncViolationType]
+    let serverTimestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case violationTypes = "violation_types"
+        case serverTimestamp = "server_timestamp"
+    }
+}
+
+// MARK: - Calendar sync models
+
+struct SyncAcademicSeason: Decodable {
+    let code: String
+    let label: String
+    let startDate: String
+    let endDate: String
+    let isDefault: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case code, label
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case isDefault = "is_default"
+    }
+}
+
+struct CalendarSyncResponse: Decodable {
+    let seasons: [SyncAcademicSeason]
+    let activeSeason: SyncAcademicSeason?
+    let serverTimestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case seasons
+        case activeSeason = "active_season"
+        case serverTimestamp = "server_timestamp"
+    }
+}
+
+// MARK: - Enforcement settings sync models
+
+struct SyncEnforcementSettings: Decodable {
+    let paymentDueDays: Int
+    let appealWindowDays: Int
+    let escalationThreshold: Int
+    let towingEnabled: Bool
+    let snowEmergencyActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case paymentDueDays = "payment_due_days"
+        case appealWindowDays = "appeal_window_days"
+        case escalationThreshold = "escalation_threshold"
+        case towingEnabled = "towing_enabled"
+        case snowEmergencyActive = "snow_emergency_active"
+    }
+}
+
+struct SettingsSyncResponse: Decodable {
+    let settings: SyncEnforcementSettings
+    let serverTimestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case settings
+        case serverTimestamp = "server_timestamp"
+    }
 }

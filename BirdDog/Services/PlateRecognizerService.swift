@@ -31,6 +31,8 @@ final class PlateRecognizerService {
             completion(RecognitionResult(plates: [], diagnostics: []))
             return
         }
+        let imageWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let imageHeight = CVPixelBufferGetHeight(pixelBuffer)
 
         lock.lock()
         if inFlight {
@@ -98,7 +100,7 @@ final class PlateRecognizerService {
             }
 
             do {
-                let result = try self.parseResponse(data)
+                let result = try self.parseResponse(data, imageWidth: imageWidth, imageHeight: imageHeight)
                 print("[PlateRecognizer] Found \(result.plates.count) plates")
                 completion(result)
             } catch {
@@ -112,7 +114,7 @@ final class PlateRecognizerService {
         task.resume()
     }
 
-    private func parseResponse(_ data: Data) throws -> RecognitionResult {
+    private func parseResponse(_ data: Data, imageWidth: Int = 1920, imageHeight: Int = 1080) throws -> RecognitionResult {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("[PlateRecognizer] Could not parse JSON")
             return RecognitionResult(plates: [], diagnostics: [])
@@ -149,7 +151,9 @@ final class PlateRecognizerService {
             let ymax = (box["ymax"] as? Double) ?? 0
             let w = xmax - xmin
             let h = ymax - ymin
-            let boundingBox = CGRect(x: xmin / 1920, y: ymin / 1080, width: w / 1920, height: h / 1080)
+            let imgW = Double(imageWidth > 0 ? imageWidth : 1920)
+            let imgH = Double(imageHeight > 0 ? imageHeight : 1080)
+            let boundingBox = CGRect(x: xmin / imgW, y: ymin / imgH, width: w / imgW, height: h / imgH)
             let aspect = h > 0 ? w / h : 0
 
             let candidates = (result["candidates"] as? [[String: Any]]) ?? []

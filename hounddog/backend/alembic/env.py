@@ -6,7 +6,11 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.database import Base
-from app.models import Permit, ParkingLot, Device, Ticket, Payment  # noqa: F401
+from app.models import (  # noqa: F401
+    Permit, ParkingLot, Device, Ticket, Payment,
+    ViolationType, PermitType, AcademicSeason, LotZone,
+    EnforcementSettings, AuditLog, LotClosure,
+)
 
 config = context.config
 if config.config_file_name is not None:

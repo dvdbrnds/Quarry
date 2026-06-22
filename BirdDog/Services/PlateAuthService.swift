@@ -21,13 +21,9 @@ protocol PlateCheckable: Sendable {
 final class PlateAuthService: PlateCheckable {
     private let database: PlateDatabase
 
-    private static let wildcardZones: Set<String> = [
-        "PARKING LOTS",
-        "ALL MORAVIAN COLLEGE OWNED PROPERTY",
-        "NORTH CAMPUS",
-        "SOUTH CAMPUS",
-        "COMMUTER",
-    ]
+    private var wildcardZones: Set<String> {
+        AppSettings.shared.wildcardZoneSet
+    }
 
     init() {
         self.database = PlateDatabase.shared
@@ -93,7 +89,7 @@ final class PlateAuthService: PlateCheckable {
 
         if normalizedPermit == normalizedLot { return true }
 
-        if Self.wildcardZones.contains(normalizedPermit) { return true }
+        if wildcardZones.contains(normalizedPermit) { return true }
 
         if normalizedPermit.contains(",") {
             let zones = normalizedPermit.split(separator: ",").map {

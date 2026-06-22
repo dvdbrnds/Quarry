@@ -13,6 +13,7 @@ from ..auth.okta import OktaUser, get_current_user
 from ..database import get_db
 from ..models.audit_log import AuditLog
 from ..models.permit import Permit
+from ..models.permit_type import PermitType
 from ..models.ticket import Ticket
 from ..models.payment import Payment
 from ..schemas.permit import (
@@ -225,6 +226,14 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     old.status = "renewed"
 
     valid_days = 365
+    if old.permit_type:
+        pt_result = await db.execute(
+            select(PermitType).where(PermitType.code == old.permit_type)
+        )
+        pt = pt_result.scalar()
+        if pt and pt.valid_days:
+            valid_days = pt.valid_days
+
     new_start = date.today()
     new_end = new_start + timedelta(days=valid_days)
 
@@ -310,8 +319,11 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
         "payments": [
             {
                 "id": str(p.id),
+                "ticket_id": str(p.ticket_id),
                 "amount": str(p.amount),
-                "status": p.status,
+                "method": p.method,
+                "status": "paid",
+                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in payments
@@ -495,6 +507,49 @@ async def export_permits(db: AsyncSession = Depends(get_db)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=permits.csv"},
     )
+
+
+@router.get("/duplicates")
+async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
+    """Return groups of active permits that share at least one plate."""
+    result = await db.execute(
+        select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
+    )
+    active = result.scalars().all()
+
+    plate_map: dict[str, list[Permit]] = {}
+    for permit in active:
+        for plate in permit.plates:
+            key = plate.upper().strip()
+            if key:
+                plate_map.setdefault(key, []).append(permit)
+
+    groups: list[dict] = []
+    seen_ids: set = set()
+    for plate, permits_for_plate in plate_map.items():
+        if len(permits_for_plate) < 2:
+            continue
+        ids = tuple(sorted(str(p.id) for p in permits_for_plate))
+        if ids in seen_ids:
+            continue
+        seen_ids.add(ids)
+        groups.append({
+            "shared_plate": plate,
+            "permits": [
+                {
+                    "id": str(p.id),
+                    "name": p.name,
+                    "student_id": p.student_id,
+                    "plates": p.plates,
+                    "lot_assignment": p.lot_assignment,
+                    "permit_type": p.permit_type,
+                    "status": p.status,
+                }
+                for p in permits_for_plate
+            ],
+        })
+
+    return {"duplicate_groups": groups, "total": len(groups)}
 
 
 async def _notify_permit_change(action: str, count: int):

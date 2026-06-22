@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { authHeaders } from "../auth";
+import { authHeaders, getAccessToken } from "../auth";
 
 interface Pipeline {
   issued: number;
@@ -91,28 +91,43 @@ export default function Dashboard() {
   }, [loadPipeline, loadRecentAudit]);
 
   useEffect(() => {
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
-    wsRef.current = ws;
+    let cancelled = false;
 
-    ws.onmessage = (e) => {
-      try {
-        const event: WSEvent = JSON.parse(e.data);
-        setRecentEvents((prev) => [event, ...prev].slice(0, 50));
-        loadPipeline();
-        loadRecentAudit();
-      } catch {}
+    const connect = async () => {
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const token = await getAccessToken();
+      const url = token
+        ? `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
+        : `${proto}//${window.location.host}/ws`;
+
+      if (cancelled) return;
+
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onmessage = (e) => {
+        try {
+          const event: WSEvent = JSON.parse(e.data);
+          setRecentEvents((prev) => [event, ...prev].slice(0, 50));
+          loadPipeline();
+          loadRecentAudit();
+        } catch {}
+      };
+
+      ws.onerror = () => {};
+      ws.onclose = () => {
+        if (!cancelled) {
+          setTimeout(() => connect(), 3000);
+        }
+      };
     };
 
-    ws.onerror = () => {};
-    ws.onclose = () => {
-      setTimeout(() => {
-        const newWs = new WebSocket(`${proto}//${window.location.host}/ws`);
-        wsRef.current = newWs;
-      }, 3000);
-    };
+    connect();
 
-    return () => ws.close();
+    return () => {
+      cancelled = true;
+      wsRef.current?.close();
+    };
   }, [loadPipeline, loadRecentAudit]);
 
   return (

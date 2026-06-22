@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 
+async function downloadWithAuth(url: string, filename: string) {
+  const res = await fetch(url, { headers: await authHeaders() });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 interface RevenueReport {
   total_fines_issued: string;
   total_collected: string;
@@ -65,10 +76,11 @@ export default function Finance() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Finance & Reconciliation</h2>
         <div className="flex gap-3">
-          <a href="/api/payments/export/csv" target="_blank"
+          <button
+            onClick={() => downloadWithAuth("/api/payments/export/csv", "payments.csv")}
             className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
             Export CSV
-          </a>
+          </button>
         </div>
       </div>
 

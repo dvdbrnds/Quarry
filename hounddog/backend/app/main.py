@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -36,6 +36,13 @@ async def lifespan(app: FastAPI):
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
         AuditLog, LotClosure,
     )
+    # Fail fast if secret_key was not overridden from the default
+    if not settings.secret_key:
+        raise RuntimeError(
+            "QUARRY_SECRET_KEY is not set. "
+            "Set it to a strong random value before starting the server."
+        )
+
     for attempt in range(1, 11):
         try:
             async with engine.begin() as conn:
@@ -264,7 +271,21 @@ async def health():
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+):
+    from .auth.okta import verify_token_string
+    if settings.okta_domain:
+        if not token:
+            await websocket.close(code=4001, reason="Missing token")
+            return
+        try:
+            await verify_token_string(token)
+        except ValueError:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+
     await manager.connect(websocket)
     try:
         while True:

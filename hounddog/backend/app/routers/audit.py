@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, OktaUser
+from ..auth.okta import get_current_user, OktaUser, require_admin
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
 from ..schemas.audit import AuditLogList, AuditLogRead
@@ -19,6 +19,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 @diagnostic_router.get("/diagnostic")
 async def audit_diagnostic(
     db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
 ):
     """Diagnostic endpoint: tests every piece of the audit chain. No auth required."""
     results: dict = {"steps": {}}

@@ -6,7 +6,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, Lot } from "../api";
 
-const MORAVIAN_CENTER = { lat: 40.6265, lng: -75.3707 };
+const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
 const BRASS = "#C5A55A";
 const LOT_OPEN = "#22C55E";
 const LOT_CLOSED = "#EF4444";
@@ -18,6 +18,7 @@ interface LotMapProps {
   onSelectLot: (id: string | null) => void;
   editingBoundary: Coordinate[] | null;
   onBoundaryChange: (coords: Coordinate[]) => void;
+  defaultCenter?: { lat: number; lng: number };
 }
 
 function lotFillColor(lot: Lot): string {
@@ -30,6 +31,7 @@ function MapContent({
   onSelectLot,
   editingBoundary,
   onBoundaryChange,
+  defaultCenter,
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
@@ -365,7 +367,7 @@ function MapContent({
         </div>
       )}
       <Map
-        defaultCenter={MORAVIAN_CENTER}
+        defaultCenter={defaultCenter ?? DEFAULT_CENTER}
         defaultZoom={16}
         mapTypeId="satellite"
         gestureHandling="greedy"

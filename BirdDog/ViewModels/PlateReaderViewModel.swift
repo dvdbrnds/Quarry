@@ -551,6 +551,10 @@ final class PlateReaderViewModel: ObservableObject {
                 scanLog = todayOnly
                 for entry in todayOnly {
                     seenPlates.append((text: entry.text, time: entry.timestamp))
+                    // Reconstruct ticketedPlates so the UI correctly marks already-ticketed plates.
+                    if case .ticketed = entry.authStatus {
+                        ticketedPlates.insert(entry.text.uppercased().trimmingCharacters(in: .whitespaces))
+                    }
                 }
             }
             if todayOnly.count < restored.count {

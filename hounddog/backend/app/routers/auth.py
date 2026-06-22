@@ -21,6 +21,8 @@ async def public_config():
         "okta_client_id": settings.okta_client_id,
         "auth_enabled": bool(settings.okta_domain),
         "google_maps_api_key": settings.google_maps_api_key,
+        "campus_lat": settings.campus_lat,
+        "campus_lng": settings.campus_lng,
     }
 
 

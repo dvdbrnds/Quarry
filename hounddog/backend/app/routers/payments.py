@@ -272,6 +272,39 @@ async def purchase_permit(
     return PermitPurchaseResponse(checkout_url=session.url, session_id=session.id)
 
 
+@router.get("/verify-session")
+async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Public endpoint — verify a Stripe checkout session's payment status for the PaySuccess page."""
+    if not settings.stripe_secret_key:
+        return {"status": "unknown", "payment_status": "unknown"}
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        payment_status = session.get("payment_status", "unknown")
+        metadata = session.get("metadata", {})
+        ticket_id = metadata.get("ticket_id")
+        payment_type = metadata.get("type", "ticket_payment")
+
+        ticket_plate = None
+        if ticket_id:
+            ticket = await db.get(Ticket, uuid.UUID(ticket_id))
+            if ticket:
+                ticket_plate = ticket.plate
+
+        return {
+            "status": "ok",
+            "payment_status": payment_status,
+            "payment_type": payment_type,
+            "ticket_id": ticket_id,
+            "ticket_plate": ticket_plate,
+        }
+    except Exception as e:
+        return {"status": "error", "payment_status": "unknown", "detail": str(e)}
+
+
 @router.post("/webhook")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     import stripe
@@ -495,7 +528,11 @@ async def revenue_report(
 
 
 @router.get("/ticket/{ticket_id}", response_model=list[PaymentRead])
-async def payments_for_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def payments_for_ticket(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(get_current_user),
+):
     result = await db.execute(
         select(Payment).where(Payment.ticket_id == ticket_id).order_by(Payment.paid_at)
     )

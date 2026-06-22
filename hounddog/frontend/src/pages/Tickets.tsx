@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "../auth";
+import { useCurrentUser } from "../UserContext";
 
 interface Ticket {
   id: string;
@@ -19,6 +20,9 @@ interface Ticket {
   appeal_note: string | null;
   appeal_decision: string | null;
   appeal_decided_by: string | null;
+  dispute_name: string | null;
+  dispute_email: string | null;
+  dispute_phone: string | null;
 }
 
 interface TicketList {
@@ -38,6 +42,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function Tickets() {
+  const user = useCurrentUser();
+  const isAdmin = user?.role === "admin";
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -61,6 +67,7 @@ export default function Tickets() {
   useEffect(() => { load(); }, [load]);
 
   async function handleVoid(id: string) {
+    if (!isAdmin) return;
     if (!confirm("Void this ticket?")) return;
     await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
     load();
@@ -68,8 +75,8 @@ export default function Tickets() {
   }
 
   async function handleAppealDecision(id: string, decision: string) {
-    const decided_by = prompt("Your name for the record:");
-    if (!decided_by) return;
+    if (!isAdmin) return;
+    const decided_by = user?.email || "admin";
     await fetch(`/api/tickets/${id}/appeal/decide`, {
       method: "POST",
       headers: await authHeaders(),
@@ -137,7 +144,7 @@ export default function Tickets() {
                   {new Date(t.issued_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
-                  {!["paid", "voided"].includes(t.status) && (
+                  {isAdmin && !["paid", "voided"].includes(t.status) && (
                     <button onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}
                       className="text-signal-red/70 hover:text-signal-red text-xs">Void</button>
                   )}
@@ -187,6 +194,15 @@ export default function Tickets() {
               <div className="bg-yellow-50 rounded-lg p-3 mb-4 text-sm">
                 <div className="font-medium text-yellow-800 mb-1">Appeal Note</div>
                 <p>{selected.appeal_note}</p>
+                {(selected.dispute_name || selected.dispute_email || selected.dispute_phone) && (
+                  <div className="mt-2 pt-2 border-t border-yellow-200 text-xs text-ink-mute space-y-0.5">
+                    {selected.dispute_name && <div>Name: <span className="text-ink">{selected.dispute_name}</span></div>}
+                    {selected.dispute_email && (
+                      <div>Email: <a href={`mailto:${selected.dispute_email}`} className="text-brass hover:underline">{selected.dispute_email}</a></div>
+                    )}
+                    {selected.dispute_phone && <div>Phone: <span className="text-ink">{selected.dispute_phone}</span></div>}
+                  </div>
+                )}
                 {selected.appeal_decision && (
                   <div className="mt-2 text-xs text-ink-mute">
                     Decision: <strong>{selected.appeal_decision}</strong>
@@ -198,7 +214,7 @@ export default function Tickets() {
 
             <div className="flex gap-3 justify-end">
               <button onClick={() => setSelected(null)} className="px-4 py-2 text-sm text-ink-mute">Close</button>
-              {selected.appeal_decision === "pending" && (
+              {isAdmin && selected.appeal_decision === "pending" && (
                 <>
                   <button onClick={() => handleAppealDecision(selected.id, "approved")}
                     className="px-4 py-2 bg-signal-green text-white rounded-lg text-sm">Approve Appeal</button>
@@ -206,7 +222,7 @@ export default function Tickets() {
                     className="px-4 py-2 bg-signal-red text-white rounded-lg text-sm">Deny Appeal</button>
                 </>
               )}
-              {!["paid", "voided"].includes(selected.status) && (
+              {isAdmin && !["paid", "voided"].includes(selected.status) && (
                 <button onClick={() => handleVoid(selected.id)}
                   className="px-4 py-2 bg-signal-red/80 text-white rounded-lg text-sm">Void Ticket</button>
               )}

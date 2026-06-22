@@ -12,6 +12,8 @@ export interface AppConfig {
   okta_client_id: string;
   auth_enabled: boolean;
   google_maps_api_key: string;
+  campus_lat: number;
+  campus_lng: number;
 }
 
 let oktaAuth: OktaAuth | null = null;
