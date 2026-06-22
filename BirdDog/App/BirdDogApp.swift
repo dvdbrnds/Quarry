@@ -14,6 +14,7 @@ struct BirdDogApp: App {
         GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
         HoundDogSyncService.shared.startIfConfigured()
+        BeaconPermitService.shared.startRanging()
         Task.detached(priority: .utility) { @MainActor in
             PlateDatabase.shared.pruneExpiredPermits()
         }
