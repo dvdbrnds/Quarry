@@ -187,9 +187,9 @@ function EditClosureModal({
     setSaving(true);
     try {
       await api.lots.closures.update(closure.id, {
-        reason: reason || null,
+        reason: reason || undefined,
         closes_at: new Date(closesAt).toISOString(),
-        reopens_at: reopensAt ? new Date(reopensAt).toISOString() : null,
+        reopens_at: reopensAt ? new Date(reopensAt).toISOString() : undefined,
       });
       onSaved();
     } finally {
