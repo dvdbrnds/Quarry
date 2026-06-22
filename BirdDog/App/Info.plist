@@ -55,10 +55,13 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Bird Dog uses Bluetooth to communicate with thermal printers for printing parking tickets.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Bird Dog uses your location to determine which parking lot you are in and to detect nearby permit beacons.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 		<string>fetch</string>
+		<string>location</string>
 	</array>
 </dict>
 </plist>

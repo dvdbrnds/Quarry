@@ -4,6 +4,7 @@ enum MatchMethod: String, Sendable, Codable {
     case exact
     case fuzzy
     case smart
+    case beaconAssisted
     case none
 }
 

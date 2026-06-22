@@ -58,6 +58,7 @@ final class PlateReaderViewModel: ObservableObject {
 
     let cameraService = CameraService()
     let geofenceService = GeofenceService.shared
+    let beaconService = BeaconPermitService.shared
     private let authService = PlateAuthService()
     private let sessionManager = SessionHistoryManager.shared
 
@@ -280,6 +281,11 @@ final class PlateReaderViewModel: ObservableObject {
                 }
             }
 
+            // Beacon-assisted instant confirm: nearby beacon pre-resolved this plate
+            if newCount == 1 && beaconService.preloadedMatch(forPlate: voterKey) != nil {
+                threshold = 1
+            }
+
             guard newCount >= threshold else { continue }
 
             var consensusText = candidateVoter.consensus(for: voterKey) ?? voterKey
@@ -310,7 +316,17 @@ final class PlateReaderViewModel: ObservableObject {
             candidateVoter.removeAll()
             candidateFirstSeen.removeAll()
 
-            let authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
+            var authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
+
+            // Beacon-assisted: if a nearby beacon's permit matches this plate, upgrade match method
+            if let beaconMatch = beaconService.preloadedMatch(forPlate: consensusText) {
+                if case .authorized = authResult.status {
+                    authResult = AuthResult(status: authResult.status, matchMethod: .beaconAssisted, matchedPlate: authResult.matchedPlate)
+                    print("[BeaconPermit] Confirmed plate \(consensusText) via beacon minor=\(beaconMatch.minor)")
+                }
+            } else if let mismatch = beaconService.hasMismatch(forPlate: consensusText) {
+                print("[BeaconPermit] MISMATCH: plate \(consensusText) near beacon minor=\(mismatch.minor) (expected \(mismatch.plate))")
+            }
 
             let normalizedPlate = consensusText.uppercased().trimmingCharacters(in: .whitespaces)
             let effectiveStatus = ticketedPlates.contains(normalizedPlate) ? .ticketed : authResult.status
