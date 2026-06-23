@@ -158,7 +158,7 @@ async def dashboard(
         since = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
         avg_days = 7
     elif period == "week":
-        since = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time(), tzinfo=timezone.utc)
+        since = datetime.combine(today - timedelta(days=6), datetime.min.time(), tzinfo=timezone.utc)
         avg_days = 28
     else:
         since = datetime.combine(today.replace(day=1), datetime.min.time(), tzinfo=timezone.utc)

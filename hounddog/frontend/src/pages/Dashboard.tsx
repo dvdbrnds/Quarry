@@ -66,7 +66,7 @@ interface DashboardData {
 
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Today",
-  week: "This week",
+  week: "Last 7 days",
   month: "This month",
 };
 
