@@ -24,6 +24,8 @@ struct CameraPreviewView: UIViewRepresentable {
         private var sessionObserver: NSObjectProtocol?
         private var retryTimer: Timer?
 
+        private var configObserver: NSObjectProtocol?
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
 
@@ -32,7 +34,14 @@ struct CameraPreviewView: UIViewRepresentable {
                 object: previewLayer.session,
                 queue: .main
             ) { [weak self] _ in
-                // Retry a few times -- connection may not be ready immediately
+                self?.configureWithRetries()
+            }
+
+            configObserver = NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("BirdDogCameraDidChange"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
                 self?.configureWithRetries()
             }
 
@@ -42,6 +51,9 @@ struct CameraPreviewView: UIViewRepresentable {
         deinit {
             retryTimer?.invalidate()
             if let observer = sessionObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            if let observer = configObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
         }

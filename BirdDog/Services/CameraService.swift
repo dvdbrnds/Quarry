@@ -227,6 +227,8 @@ final class CameraService: NSObject, ObservableObject {
                     self.publishCameraInfo(camera)
                     DispatchQueue.main.async { [weak self] in
                         self?.cameraStatus = .externalActive
+                        self?.cameraSwitchCount += 1
+                        NotificationCenter.default.post(name: NSNotification.Name("BirdDogCameraDidChange"), object: nil)
                     }
                     connected = true
                     break
