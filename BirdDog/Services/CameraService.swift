@@ -66,26 +66,30 @@ final class CameraService: NSObject, ObservableObject {
                 self?.log("START: already running, skipping")
                 return
             }
+
+            // Vehicle-mount iPad: wait for the external camera to enumerate
+            // through the USB hub before configuring the session. Poll up to
+            // 3 seconds so the external camera becomes the default from the
+            // start instead of briefly showing the built-in.
+            var external: AVCaptureDevice? = self.findExternalCamera()
+            if external == nil {
+                self.log("No external camera yet — waiting for USB hub enumeration")
+                for attempt in 1...6 {
+                    Thread.sleep(forTimeInterval: 0.5)
+                    external = self.findExternalCamera()
+                    if external != nil {
+                        self.log("External camera found after \(attempt * 500)ms")
+                        break
+                    }
+                }
+            }
+
             self.configureSession()
             self.session.startRunning()
             self.isRunning = true
 
-            // Start immediately with whatever camera was found (usually built-in).
-            // Check for external camera asynchronously after a short delay so
-            // USB hub devices have time to enumerate without blocking startup.
             if !self.isUsingExternalCamera {
-                self.log("No external camera on first pass — will check again shortly")
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    self?.sessionQueue.async {
-                        guard let self, self.isRunning, !self.isUsingExternalCamera else { return }
-                        if let ext = self.findExternalCamera() {
-                            self.log("Found external on deferred check: \(ext.localizedName)")
-                            self.switchToCamera(ext)
-                        }
-                        self.startPollingIfNeeded()
-                    }
-                }
-            } else {
+                self.log("No external camera after startup — polling")
                 self.startPollingIfNeeded()
             }
         }
