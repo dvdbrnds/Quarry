@@ -66,6 +66,18 @@ export default function PermitDetail() {
               <span>Lot: {p.lot_assignment}</span>
               <span className="capitalize">Type: {p.permit_type}</span>
             </div>
+            <div className="flex gap-3 mt-1 text-sm text-ink-mute">
+              {p.email && <span>Email: {p.email}</span>}
+              {p.phone && <span>Phone: {p.phone}</span>}
+              <span>
+                SMS:{" "}
+                {p.sms_opt_in ? (
+                  <span className="text-green-600 font-medium">Opted In</span>
+                ) : (
+                  <span className="text-gray-400">Not opted in</span>
+                )}
+              </span>
+            </div>
             <div className="flex gap-2 mt-3">
               <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                 p.status === "active" ? "bg-signal-green/15 text-green-700" :

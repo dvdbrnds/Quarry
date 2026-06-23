@@ -8,6 +8,8 @@ class PermitBase(BaseModel):
     student_id: str = ""
     name: str
     email: str | None = None
+    phone: str | None = None
+    sms_opt_in: bool = False
     plates: list[str] = []
     lot_assignment: str = ""
     permit_type: str = "student"
@@ -25,6 +27,8 @@ class PermitUpdate(BaseModel):
     student_id: str | None = None
     name: str | None = None
     email: str | None = None
+    phone: str | None = None
+    sms_opt_in: bool | None = None
     plates: list[str] | None = None
     lot_assignment: str | None = None
     permit_type: str | None = None

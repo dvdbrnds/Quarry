@@ -85,6 +85,7 @@ async def send_lot_closure_notification(
         closed lot may be subject to towing.</p>
         <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
         <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
+        {{preference_footer}}
     </div>
     """
 
@@ -102,6 +103,17 @@ async def send_lot_closure_notification(
     )
 
     return await send_email(recipients, subject, body_html, body_text)
+
+
+def build_preference_footer(token: str) -> str:
+    """Build an HTML footer linking to the notification preferences page."""
+    if not token:
+        return ""
+    url = f"{settings.public_url}/notifications/{token}"
+    return (
+        f'<p style="font-size: 11px; color: #aaa; margin-top: 8px;">'
+        f'<a href="{url}" style="color: #aaa;">Manage notification preferences</a></p>'
+    )
 
 
 async def send_lot_reopen_notification(

@@ -5,14 +5,16 @@ import PermitTypes from "./PermitTypes";
 import Devices from "./Devices";
 import ActivityLog from "./ActivityLog";
 import EnforcementSettings from "./EnforcementSettings";
+import Messaging from "./Messaging";
 
-type SettingsTab = "enforcement" | "violations" | "permit-types" | "devices" | "activity";
+type SettingsTab = "enforcement" | "violations" | "permit-types" | "devices" | "messaging" | "activity";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "enforcement", label: "Enforcement" },
   { id: "violations", label: "Violation Types" },
   { id: "permit-types", label: "Permit Types" },
   { id: "devices", label: "Devices" },
+  { id: "messaging", label: "Messaging" },
   { id: "activity", label: "Activity Log" },
 ];
 
@@ -47,6 +49,7 @@ export default function Settings() {
       {tab === "violations" && <ViolationTypes />}
       {tab === "permit-types" && <PermitTypes />}
       {tab === "devices" && <Devices />}
+      {tab === "messaging" && <Messaging />}
       {tab === "activity" && <ActivityLog />}
     </div>
   );

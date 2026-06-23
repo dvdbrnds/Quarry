@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     lot_closure_mailing_list: str = ""
     citation_from_address: str = ""
 
+    # Twilio SMS
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+
     # APNs (Push Notifications)
     apns_key_path: str = ""
     apns_key_id: str = ""
