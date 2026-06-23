@@ -12,6 +12,7 @@ from ..models.lot_closure import LotClosure
 from ..models.permit import Permit
 from ..config import settings
 from .email import send_lot_closure_notification, send_lot_reopen_notification
+from .sms import send_bulk_sms
 
 logger = logging.getLogger("quarry.scheduler")
 
@@ -38,6 +39,47 @@ async def _get_recipients_for_lot(lot_name: str, db) -> list[str]:
         if email:
             recipients.add(email)
     return list(recipients)
+
+
+async def _get_sms_recipients_for_lot(
+    lot_name: str, is_emergency: bool, db
+) -> list[str]:
+    """Get phone numbers for SMS. Emergency = all with phone, else only opted-in."""
+    q = select(Permit.phone, Permit.sms_opt_in).where(
+        Permit.lot_assignment == lot_name,
+        Permit.phone.isnot(None),
+        Permit.status == "active",
+        Permit.deleted_at.is_(None),
+    )
+    if not is_emergency:
+        q = q.where(Permit.sms_opt_in.is_(True))
+
+    result = await db.execute(q)
+    return [row.phone for row in result.all() if row.phone]
+
+
+async def _get_sms_body_for_closure(lot_name: str, reason: str, closes_at: str, reopens_at: str | None) -> str | None:
+    """Try to find a matching SMS template for the closure reason."""
+    from ..models.message_template import MessageTemplate
+    async with async_session() as db:
+        result = await db.execute(
+            select(MessageTemplate).where(
+                MessageTemplate.is_active.is_(True),
+            )
+        )
+        templates = result.scalars().all()
+
+    school = settings.school_name or "Campus"
+    reason_lower = reason.lower()
+
+    for tmpl in templates:
+        if tmpl.reason_code.lower() in reason_lower or reason_lower in tmpl.reason_label.lower():
+            body = tmpl.sms_body
+            for k, v in {"lot_name": lot_name, "reason": reason, "closes_at": closes_at, "reopens_at": reopens_at or "TBD", "school": school}.items():
+                body = body.replace(f"{{{k}}}", v or "")
+            return body
+
+    return f"{school} Parking: {lot_name} closed {closes_at}. Reason: {reason}."
 
 
 async def _process_closures():
@@ -68,18 +110,32 @@ async def _process_closures():
                     if closure.reopens_at
                     else None
                 )
+                closes_str = closure.closes_at.strftime("%b %d, %Y %I:%M %p %Z")
                 sent = await send_lot_closure_notification(
                     lot_name=lot.name,
                     reason=closure.reason,
                     recipients=recipients,
-                    closes_at=closure.closes_at.strftime("%b %d, %Y %I:%M %p %Z"),
+                    closes_at=closes_str,
                     reopens_at=reopens_str,
                 )
                 closure.notification_sent = sent
                 logger.info(
-                    "Closure activated: lot=%s, recipients=%d, sent=%s",
+                    "Closure activated: lot=%s, email_recipients=%d, sent=%s",
                     lot.name, len(recipients), sent,
                 )
+
+                is_emergency = "emergency" in (closure.reason or "").lower() or "snow" in (closure.reason or "").lower()
+                sms_phones = await _get_sms_recipients_for_lot(lot.name, is_emergency, db)
+                if sms_phones:
+                    sms_body = await _get_sms_body_for_closure(
+                        lot.name, closure.reason or "", closes_str, reopens_str
+                    )
+                    if sms_body:
+                        sms_count = send_bulk_sms(sms_phones, sms_body)
+                        logger.info(
+                            "SMS sent for closure: lot=%s, sent=%d/%d, emergency=%s",
+                            lot.name, sms_count, len(sms_phones), is_emergency,
+                        )
 
         active_with_reopen = (
             await db.execute(

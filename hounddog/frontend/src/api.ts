@@ -30,6 +30,8 @@ export interface Permit {
   student_id: string;
   name: string;
   email: string | null;
+  phone: string | null;
+  sms_opt_in: boolean;
   plates: string[];
   lot_assignment: string;
   permit_type: string;
@@ -40,6 +42,51 @@ export interface Permit {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+export interface MessageTemplate {
+  id: string;
+  reason_code: string;
+  reason_label: string;
+  is_emergency: boolean;
+  email_subject: string;
+  email_body: string;
+  sms_body: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SendMessagePreview {
+  email_recipient_count: number;
+  sms_recipient_count: number;
+  sms_opted_in_count: number;
+  sms_total_with_phone: number;
+  is_emergency: boolean;
+  rendered_email_subject: string;
+  rendered_sms_body: string;
+}
+
+export interface SendMessageResult {
+  emails_sent: number;
+  sms_sent: number;
+}
+
+export interface PermitNotificationStatus {
+  permit_id: string;
+  name: string;
+  lot_assignment: string;
+  email: string | null;
+  phone: string | null;
+  sms_opt_in: boolean;
+  preference_url: string;
+}
+
+export interface NotificationPreferenceRead {
+  first_name: string;
+  phone: string | null;
+  sms_opt_in: boolean;
+  email_always_on: boolean;
 }
 
 export interface PermitList {
@@ -224,5 +271,38 @@ export const api = {
       request<Device>("/devices", { method: "POST", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/devices/${id}`, { method: "DELETE" }),
+  },
+  messaging: {
+    templates: {
+      list: () => request<MessageTemplate[]>("/messaging/templates"),
+      create: (data: Partial<MessageTemplate>) =>
+        request<MessageTemplate>("/messaging/templates", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<MessageTemplate>) =>
+        request<MessageTemplate>(`/messaging/templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request<void>(`/messaging/templates/${id}`, { method: "DELETE" }),
+    },
+    preview: (params: { template_id?: string; lot_id?: string }) => {
+      const qs = new URLSearchParams();
+      if (params.template_id) qs.set("template_id", params.template_id);
+      if (params.lot_id) qs.set("lot_id", params.lot_id);
+      return request<SendMessagePreview>(`/messaging/send/preview?${qs}`);
+    },
+    send: (data: {
+      template_id?: string;
+      lot_id?: string;
+      custom_email_subject?: string;
+      custom_email_body?: string;
+      custom_sms_body?: string;
+      send_email?: boolean;
+      send_sms?: boolean;
+      extra_emails?: string[];
+      extra_phones?: string[];
+    }) =>
+      request<SendMessageResult>("/messaging/send", { method: "POST", body: JSON.stringify(data) }),
+    preferences: (lot?: string) => {
+      const qs = lot ? `?lot=${encodeURIComponent(lot)}` : "";
+      return request<PermitNotificationStatus[]>(`/messaging/preferences${qs}`);
+    },
   },
 };

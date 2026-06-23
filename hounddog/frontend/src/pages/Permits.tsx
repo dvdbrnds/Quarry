@@ -65,6 +65,7 @@ function PermitForm({
   const [plates, setPlates] = useState(initial?.plates.join(", ") ?? "");
   const [studentId, setStudentId] = useState(initial?.student_id ?? "");
   const [email, setEmail] = useState((initial as { email?: string })?.email ?? "");
+  const [phone, setPhone] = useState((initial as { phone?: string })?.phone ?? "");
   const [beaconId, setBeaconId] = useState((initial as { beacon_id?: string })?.beacon_id ?? "");
   const [lot, setLot] = useState(initial?.lot_assignment ?? "");
   const [permitType, setPermitType] = useState(initial?.permit_type ?? "");
@@ -81,6 +82,7 @@ function PermitForm({
       plates: plates.split(",").map((p) => p.trim().toUpperCase()).filter(Boolean),
       student_id: studentId,
       email: email || null,
+      phone: phone || null,
       beacon_id: beaconId || null,
       lot_assignment: lot,
       permit_type: permitType,
@@ -157,6 +159,12 @@ function PermitForm({
         <label className="block text-xs font-medium text-ink-mute mb-1">Email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
           placeholder="student@university.edu"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-ink-mute mb-1">Phone</label>
+        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+          placeholder="+1 (555) 123-4567"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
       </div>
       <div>

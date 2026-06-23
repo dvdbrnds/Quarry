@@ -14,6 +14,8 @@ from .routers import (
     devices,
     enforcement_settings,
     lots,
+    messaging,
+    notification_preferences,
     payments,
     permit_types,
     permits,
@@ -34,7 +36,7 @@ async def lifespan(app: FastAPI):
     from .models import (  # noqa: F401
         Permit, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
-        AuditLog, LotClosure,
+        AuditLog, LotClosure, MessageTemplate, NotificationPreference,
     )
     # Fail fast if secret_key was not overridden from the default
     if not settings.secret_key:
@@ -97,6 +99,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
             # Lot closure tracking
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT false",
+            # Messaging / SMS fields
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS phone VARCHAR(32)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS sms_opt_in BOOLEAN DEFAULT false",
         ]
         for migration in migrations:
             await conn.execute(text(migration))
@@ -208,6 +213,69 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Seed academic calendar on startup failed: {e}")
 
+    # Seed default message templates if none exist
+    try:
+        from .models import MessageTemplate
+        async with async_session() as session:
+            mt_count = await session.scalar(select(func.count()).select_from(MessageTemplate))
+            if mt_count == 0:
+                default_templates = [
+                    {
+                        "reason_code": "snow",
+                        "reason_label": "Snow Emergency",
+                        "is_emergency": True,
+                        "email_subject": "URGENT: {lot_name} Closed — Snow Emergency",
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #c0392b;">Snow Emergency — Lot Closure</h2><p><strong>{lot_name}</strong> at {school} is closed for snow removal effective <strong>{closes_at}</strong>.</p><p><strong>Move your vehicle immediately.</strong> Vehicles remaining may be towed.</p><p>Expected reopening: {reopens_at}</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "sms_body": "{school} Parking: {lot_name} closed for snow removal effective {closes_at}. Move your vehicle immediately.",
+                    },
+                    {
+                        "reason_code": "repaving",
+                        "reason_label": "Repaving",
+                        "is_emergency": False,
+                        "email_subject": "Parking Lot Closed: {lot_name} — Repaving",
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Repaving</h2><p><strong>{lot_name}</strong> at {school} will be closed for repaving effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "sms_body": "{school} Parking: {lot_name} closed for repaving {closes_at}. Reopens {reopens_at}.",
+                    },
+                    {
+                        "reason_code": "tree_cutting",
+                        "reason_label": "Tree Maintenance",
+                        "is_emergency": False,
+                        "email_subject": "Parking Lot Closed: {lot_name} — Tree Maintenance",
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Tree Maintenance</h2><p><strong>{lot_name}</strong> at {school} will be closed for tree work effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "sms_body": "{school} Parking: {lot_name} closed for tree work {closes_at}. Reopens {reopens_at}.",
+                    },
+                    {
+                        "reason_code": "event",
+                        "reason_label": "Campus Event",
+                        "is_emergency": False,
+                        "email_subject": "Parking Lot Closed: {lot_name} — Campus Event",
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Campus Event</h2><p><strong>{lot_name}</strong> at {school} will be closed for a campus event effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "sms_body": "{school} Parking: {lot_name} closed for campus event {closes_at}. Reopens {reopens_at}.",
+                    },
+                    {
+                        "reason_code": "emergency",
+                        "reason_label": "Emergency",
+                        "is_emergency": True,
+                        "email_subject": "URGENT: {lot_name} Closed — Emergency",
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #c0392b;">Emergency Lot Closure</h2><p><strong>{lot_name}</strong> at {school} has been closed immediately.</p><p><strong>Reason:</strong> {reason}</p><p>Please avoid the area. Vehicles remaining may be towed.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "sms_body": "{school} Parking: {lot_name} closed immediately. {reason}. Avoid the area.",
+                    },
+                    {
+                        "reason_code": "general",
+                        "reason_label": "General Closure",
+                        "is_emergency": False,
+                        "email_subject": "Parking Lot Closed: {lot_name}",
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure Notice</h2><p><strong>{lot_name}</strong> at {school} has been closed effective <strong>{closes_at}</strong>.</p><p><strong>Reason:</strong> {reason}</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "sms_body": "{school} Parking: {lot_name} closed {closes_at}. Reason: {reason}.",
+                    },
+                ]
+                for tmpl in default_templates:
+                    session.add(MessageTemplate(**tmpl))
+                await session.commit()
+                logger.info("Seeded %d default message templates", len(default_templates))
+    except Exception as e:
+        logger.warning(f"Seed message templates on startup failed: {e}")
+
     # Auto-expire permits on startup
     try:
         from .services.permit_lifecycle import auto_expire_permits
@@ -258,6 +326,8 @@ app.include_router(academic_calendar.router, prefix="/api/academic-calendar", ta
 app.include_router(enforcement_settings.router, prefix="/api/settings/enforcement", tags=["settings"])
 app.include_router(audit.diagnostic_router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
+app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])
+app.include_router(notification_preferences.router, prefix="/api/notifications", tags=["notifications"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

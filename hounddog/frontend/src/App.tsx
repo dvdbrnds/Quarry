@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
 import Pay from "./pages/Pay";
 import PaySuccess from "./pages/PaySuccess";
+import NotificationPreferences from "./pages/NotificationPreferences";
 import Finance from "./pages/Finance";
 import OperationsCalendar from "./pages/OperationsCalendar";
 import Settings from "./pages/Settings";
@@ -84,6 +85,7 @@ function DashboardShell({ user }: { user: AuthUser }) {
 export default function App() {
   const location = useLocation();
   const isPayRoute = location.pathname.startsWith("/pay");
+  const isNotificationsRoute = location.pathname.startsWith("/notifications/");
   const isAuthCallback = location.pathname === "/auth/callback";
 
   if (isAuthCallback) {
@@ -99,6 +101,14 @@ export default function App() {
       <Routes>
         <Route path="/pay" element={<Pay />} />
         <Route path="/pay/success" element={<PaySuccess />} />
+      </Routes>
+    );
+  }
+
+  if (isNotificationsRoute) {
+    return (
+      <Routes>
+        <Route path="/notifications/:token" element={<NotificationPreferences />} />
       </Routes>
     );
   }
