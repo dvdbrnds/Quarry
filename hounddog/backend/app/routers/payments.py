@@ -166,11 +166,12 @@ async def available_permits(
     es = es_result.scalar()
     fine_reduction = es.permit_fine_reduction if es else Decimal("0.00")
 
-    # Get purchasable permit types
+    # Get purchasable permit types (exclude lottery types — those go through /student/permits)
     result = await db.execute(
         select(PermitType).where(
             PermitType.is_active.is_(True),
             PermitType.is_purchasable_online.is_(True),
+            PermitType.requires_lottery.is_(False),
         ).order_by(PermitType.sort_order)
     )
     permit_types = result.scalars().all()
@@ -329,6 +330,8 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             await _handle_ticket_payment(session, metadata, db)
         elif payment_type == "permit_purchase":
             await _handle_permit_purchase(session, metadata, db)
+        elif payment_type == "lottery_permit":
+            await _handle_lottery_permit(session, metadata, db)
 
     return {"status": "ok"}
 
@@ -402,6 +405,48 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     es = es_result.scalar()
     ticket.fine_amount = es.permit_fine_reduction if es else Decimal("0.00")
     ticket.status = "resolved_permit"
+    await db.flush()
+
+
+async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession):
+    """Handle payment for a lottery-won permit application."""
+    from ..models.permit_application import PermitApplication
+    from ..models.permit_type import PermitType as PT
+
+    app_id = metadata.get("application_id")
+    if not app_id:
+        return
+
+    app = await db.get(PermitApplication, uuid.UUID(app_id))
+    if not app or app.status != "selected":
+        return
+
+    permit_type_code = metadata.get("permit_type_code", "")
+    student_name = metadata.get("student_name", "")
+    plate = metadata.get("plate", "")
+    valid_days = int(metadata.get("valid_days", "365"))
+    email = metadata.get("email", "")
+
+    lot_assignment = ""
+    permit_type_id = metadata.get("permit_type_id")
+    if permit_type_id:
+        pt = await db.get(PT, uuid.UUID(permit_type_id))
+        if pt and pt.lot_assignments:
+            lot_assignment = ",".join(pt.lot_assignments)
+
+    new_permit = Permit(
+        name=student_name,
+        email=email,
+        plates=[plate],
+        permit_type=permit_type_code,
+        lot_assignment=lot_assignment,
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=valid_days),
+        status="active",
+    )
+    db.add(new_permit)
+
+    app.status = "accepted"
     await db.flush()
 
 

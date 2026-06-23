@@ -9,6 +9,7 @@ from .message_template import MessageTemplate
 from .notification_preference import NotificationPreference
 from .payment import Payment
 from .permit import Permit
+from .permit_application import PermitApplication
 from .permit_type import PermitType
 from .ticket import Ticket
 from .violation_type import ViolationType
@@ -25,6 +26,7 @@ __all__ = [
     "ParkingLot",
     "Payment",
     "Permit",
+    "PermitApplication",
     "PermitType",
     "Ticket",
     "ViolationType",
