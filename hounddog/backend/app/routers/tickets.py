@@ -177,17 +177,16 @@ async def dashboard(
         escalated=action_counts.get("escalated", 0),
     )
 
-    # Issued count within period
+    # Issued count within period (all tickets created, regardless of current status)
     issued_q = await db.execute(
         select(func.count()).select_from(Ticket)
-        .where(Ticket.status == "issued", Ticket.issued_at >= since)
+        .where(Ticket.issued_at >= since)
     )
     issued_total = issued_q.scalar() or 0
 
     avg_q = await db.execute(
         select(func.count()).select_from(Ticket)
         .where(
-            Ticket.status == "issued",
             Ticket.issued_at >= datetime.combine(today - timedelta(days=avg_days), datetime.min.time(), tzinfo=timezone.utc),
         )
     )
@@ -241,10 +240,10 @@ async def dashboard(
         ActionItem.model_validate(t) for t in items_q.scalars().all()
     ]
 
-    # Activity: recent ticket lifecycle changes within period
+    # Activity: tickets created or updated within the period
     activity_q = await db.execute(
         select(Ticket)
-        .where(Ticket.updated_at >= since)
+        .where(or_(Ticket.issued_at >= since, Ticket.updated_at >= since))
         .order_by(Ticket.updated_at.desc())
         .limit(30)
     )
