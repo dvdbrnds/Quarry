@@ -76,21 +76,8 @@ final class CameraService: NSObject, ObservableObject {
             self.isRunning = true
 
             if !self.isUsingExternalCamera {
-                self.log("Started with built-in — scheduling external camera acquisition")
-                // Give the USB hub time to fully initialize with the session
-                // running, then do a full teardown/rebuild which handles the
-                // XPC timing reliably. The 2s delay lets the hub settle.
-                // forceReconnect dispatches to sessionQueue so we schedule
-                // from a different queue to avoid deadlocking.
-                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                    guard let self, self.isRunning, !self.isUsingExternalCamera else { return }
-                    if self.findExternalCamera() != nil {
-                        self.log("External camera visible — forcing full reconnect")
-                        self.forceReconnect()
-                    } else {
-                        self.startPollingIfNeeded()
-                    }
-                }
+                self.log("Started with built-in — waiting for external camera")
+                self.startPollingIfNeeded()
             }
         }
     }
@@ -146,65 +133,130 @@ final class CameraService: NSObject, ObservableObject {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.isReconnecting = true
+
+            // 1. Full teardown: stop session, strip all inputs/outputs,
+            //    nil every device reference so the system can release the
+            //    USB device's XPC connection completely.
             self.session.stopRunning()
+            self.session.beginConfiguration()
+            for input in self.session.inputs { self.session.removeInput(input) }
+            for output in self.session.outputs { self.session.removeOutput(output) }
+            self.session.commitConfiguration()
+            self.currentInput = nil
+            self.currentDevice = nil
+            self.videoOutput = nil
+            self.isUsingExternalCamera = false
 
-            self.tearDownSession()
+            // 2. Start the session empty. An empty running session keeps
+            //    the AVCaptureSession's USB subsystem active, which primes
+            //    the hub's transaction translator for the device.
+            self.session.startRunning()
+            self.log("RECONNECT: session running empty, waiting for hub to settle")
+            Thread.sleep(forTimeInterval: 3.0)
 
-            // USB cameras through powered hubs need the session fully
-            // released before re-enumeration works. Longer delays with
-            // frame verification prevent the "input added but XPC dead"
-            // state that causes FigCaptureSourceRemote errors.
-            let delays: [TimeInterval] = [2, 3, 4, 5]
+            // 3. Now try adding the camera to the running session.
+            //    Fresh discovery after the sleep gives the hub time to
+            //    fully re-enumerate the device and its endpoints.
+            let maxAttempts = 5
             var connected = false
-            for (idx, delay) in delays.enumerated() {
-                let attempt = idx + 1
-                self.log("RECONNECT: waiting \(Int(delay))s before attempt \(attempt)/\(delays.count)...")
-                Thread.sleep(forTimeInterval: delay)
+            for attempt in 1...maxAttempts {
+                let discovery = AVCaptureDevice.DiscoverySession(
+                    deviceTypes: [.external],
+                    mediaType: .video,
+                    position: .unspecified
+                )
+                guard let camera = discovery.devices.first else {
+                    self.log("RECONNECT attempt \(attempt)/\(maxAttempts): no external camera visible")
+                    Thread.sleep(forTimeInterval: 2.0)
+                    continue
+                }
 
-                self.configureSession()
+                self.log("RECONNECT attempt \(attempt)/\(maxAttempts): found \(camera.localizedName), adding to running session")
 
-                if self.isUsingExternalCamera {
-                    // Start running and verify frames actually arrive.
-                    self.lastFrameTime = nil
-                    self.session.startRunning()
-                    Thread.sleep(forTimeInterval: 1.5)
+                guard let input = try? AVCaptureDeviceInput(device: camera) else {
+                    self.log("RECONNECT attempt \(attempt)/\(maxAttempts): AVCaptureDeviceInput failed")
+                    Thread.sleep(forTimeInterval: 2.0)
+                    continue
+                }
 
-                    if self.lastFrameTime != nil {
-                        self.log("RECONNECT: external camera producing frames on attempt \(attempt)")
-                        connected = true
-                        break
-                    } else {
-                        self.log("RECONNECT: attempt \(attempt) — camera added but no frames, tearing down")
-                        self.session.stopRunning()
-                        self.tearDownSession()
+                self.session.beginConfiguration()
+                // Remove stale inputs/outputs from any previous attempt
+                for i in self.session.inputs { self.session.removeInput(i) }
+                for o in self.session.outputs { self.session.removeOutput(o) }
+
+                guard self.session.canAddInput(input) else {
+                    self.log("RECONNECT attempt \(attempt)/\(maxAttempts): canAddInput refused")
+                    self.session.commitConfiguration()
+                    Thread.sleep(forTimeInterval: 2.0)
+                    continue
+                }
+                self.session.addInput(input)
+                self.currentInput = input
+                self.currentDevice = camera
+
+                self.session.sessionPreset = .inputPriority
+                self.configureCameraForStreetUse(camera, isExternal: true)
+                self.cachedOrientation = .up
+                self.frameSkip = 2
+
+                let output = AVCaptureVideoDataOutput()
+                output.alwaysDiscardsLateVideoFrames = true
+                output.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                ]
+                output.setSampleBufferDelegate(self, queue: self.outputQueue)
+                if self.session.canAddOutput(output) {
+                    self.session.addOutput(output)
+                    self.videoOutput = output
+                    if let conn = output.connection(with: .video), conn.isVideoMirroringSupported {
+                        conn.automaticallyAdjustsVideoMirroring = false
+                        conn.isVideoMirrored = false
                     }
+                }
+                self.session.commitConfiguration()
+
+                // 4. Verify frames arrive — the definitive test that the
+                //    XPC pipe is actually working.
+                self.lastFrameTime = nil
+                self.log("RECONNECT attempt \(attempt)/\(maxAttempts): config committed, verifying frames...")
+                Thread.sleep(forTimeInterval: 2.0)
+
+                if self.lastFrameTime != nil {
+                    self.isUsingExternalCamera = true
+                    self.log("RECONNECT: external camera LIVE on attempt \(attempt)")
+                    self.publishCameraInfo(camera)
+                    DispatchQueue.main.async { [weak self] in
+                        self?.cameraStatus = .externalActive
+                    }
+                    connected = true
+                    break
                 } else {
-                    self.log("RECONNECT: attempt \(attempt) — no external camera found, will retry")
-                    self.tearDownSession()
+                    self.log("RECONNECT attempt \(attempt)/\(maxAttempts): no frames — XPC pipe dead, retrying")
+                    // Strip the dead input so next attempt starts clean
+                    self.session.beginConfiguration()
+                    for i in self.session.inputs { self.session.removeInput(i) }
+                    for o in self.session.outputs { self.session.removeOutput(o) }
+                    self.session.commitConfiguration()
+                    self.currentInput = nil
+                    self.currentDevice = nil
+                    self.videoOutput = nil
+                    Thread.sleep(forTimeInterval: 1.0)
                 }
             }
 
             if !connected {
-                self.log("RECONNECT: all attempts exhausted, starting with best available camera")
+                self.log("RECONNECT: external camera unavailable after \(maxAttempts) attempts, falling back")
+                // Fall back to built-in camera on the already-running session
+                self.session.stopRunning()
                 self.configureSession()
                 self.session.startRunning()
             }
 
             self.isRunning = true
             self.isReconnecting = false
+            self.stopPolling()
             self.startPollingIfNeeded()
         }
-    }
-
-    private func tearDownSession() {
-        session.beginConfiguration()
-        for input in session.inputs { session.removeInput(input) }
-        for output in session.outputs { session.removeOutput(output) }
-        session.commitConfiguration()
-        currentInput = nil
-        currentDevice = nil
-        videoOutput = nil
-        isUsingExternalCamera = false
     }
 
     private var lastFrameTime: Date?
@@ -268,7 +320,25 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     private var isReconnecting = false
+    private var hubReconnectWork: DispatchWorkItem?
     private var pollIteration = 0
+
+    /// Debounced reconnect for hot-plug through USB hubs.
+    /// When a camera is plugged in, multiple observers fire in rapid
+    /// succession while the hub is still initializing the device's
+    /// streaming endpoints. This coalesces them into a single attempt
+    /// after a 5-second delay to let the hub fully enumerate.
+    private func scheduleHubReconnect() {
+        hubReconnectWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isRunning, !self.isUsingExternalCamera else { return }
+            self.log("Hub settle delay elapsed — starting reconnect")
+            self.forceReconnect()
+        }
+        hubReconnectWork = work
+        log("Reconnect scheduled in 5s (hub enumeration delay)")
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 5.0, execute: work)
+    }
 
     private func pollForExternalCamera() {
         sessionQueue.async { [weak self] in
@@ -308,12 +378,9 @@ final class CameraService: NSObject, ObservableObject {
             }
 
             if let external = externalDevices.first {
-                self.log("POLL: found \(external.localizedName) — full session rebuild required for USB cameras")
-                self.isReconnecting = true
+                self.log("POLL: found \(external.localizedName) — scheduling hub reconnect")
                 self.stopPolling()
-                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    self?.forceReconnect()
-                }
+                self.scheduleHubReconnect()
             }
         }
     }
@@ -396,8 +463,8 @@ final class CameraService: NSObject, ObservableObject {
             guard let self else { return }
             guard let newCamera = AVCaptureDevice.systemPreferredCamera else { return }
             if newCamera.deviceType == .external, !self.isUsingExternalCamera, !self.isReconnecting {
-                self.log("System preferred external camera — full reconnect")
-                self.forceReconnect()
+                self.log("System preferred external camera — scheduling reconnect")
+                self.scheduleHubReconnect()
             } else if newCamera.deviceType != .external {
                 self.sessionQueue.async {
                     self.switchToCamera(newCamera)
@@ -425,8 +492,8 @@ final class CameraService: NSObject, ObservableObject {
             if let external {
                 AVCaptureDevice.userPreferredCamera = external
                 if !self.isUsingExternalCamera, !self.isReconnecting {
-                    self.log("External camera appeared — full reconnect")
-                    self.forceReconnect()
+                    self.log("External camera appeared — scheduling reconnect")
+                    self.scheduleHubReconnect()
                 }
             } else {
                 let best = devices.first(where: { $0.position == .back }) ?? devices.first
