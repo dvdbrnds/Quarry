@@ -1,27 +1,36 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
+from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
 from ..services.email import send_citation_email
 from ..websocket import manager
 from ..schemas.ticket import (
+    ActionItem,
+    ActivityEvent,
     AppealDecision,
     AppealRequest,
+    DashboardData,
+    IssuedCount,
+    NeedsAction,
+    ResolutionRate,
+    Revenue,
     TicketCreate,
     TicketList,
     TicketPipeline,
     TicketRead,
     TicketUpdate,
+    TrendDay,
 )
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -132,6 +141,146 @@ async def ticket_pipeline(db: AsyncSession = Depends(get_db)):
         voided=counts.get("voided", 0),
         resolved_permit=counts.get("resolved_permit", 0),
         total=total,
+    )
+
+
+TERMINAL_STATUSES = {"paid", "voided", "resolved_permit"}
+
+
+@router.get("/dashboard", response_model=DashboardData)
+async def dashboard(
+    period: str = Query("today", pattern="^(today|week|month)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    if period == "today":
+        since = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+        avg_days = 7
+    elif period == "week":
+        since = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time(), tzinfo=timezone.utc)
+        avg_days = 28
+    else:
+        since = datetime.combine(today.replace(day=1), datetime.min.time(), tzinfo=timezone.utc)
+        avg_days = 90
+
+    # Needs action (all time — these are currently open)
+    action_q = await db.execute(
+        select(Ticket.status, func.count())
+        .where(Ticket.status.in_(["appealed", "escalated"]))
+        .group_by(Ticket.status)
+    )
+    action_counts = dict(action_q.all())
+    needs_action = NeedsAction(
+        total=sum(action_counts.values()),
+        appealed=action_counts.get("appealed", 0),
+        escalated=action_counts.get("escalated", 0),
+    )
+
+    # Issued count within period
+    issued_q = await db.execute(
+        select(func.count()).select_from(Ticket)
+        .where(Ticket.status == "issued", Ticket.issued_at >= since)
+    )
+    issued_total = issued_q.scalar() or 0
+
+    avg_q = await db.execute(
+        select(func.count()).select_from(Ticket)
+        .where(
+            Ticket.status == "issued",
+            Ticket.issued_at >= datetime.combine(today - timedelta(days=avg_days), datetime.min.time(), tzinfo=timezone.utc),
+        )
+    )
+    avg_raw = avg_q.scalar() or 0
+    daily_avg = round(avg_raw / avg_days, 1) if avg_days > 0 else 0
+
+    issued_count = IssuedCount(total=issued_total, daily_avg=daily_avg)
+
+    # Revenue within period
+    collected_q = await db.execute(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+        .where(Payment.paid_at >= since)
+    )
+    collected = collected_q.scalar()
+
+    pending_q = await db.execute(
+        select(func.count(), func.coalesce(func.sum(Ticket.fine_amount), 0))
+        .select_from(Ticket)
+        .where(Ticket.status == "pending_payment", Ticket.issued_at >= since)
+    )
+    pending_row = pending_q.one()
+    revenue = Revenue(
+        collected=collected,
+        pending_count=pending_row[0],
+        pending_amount=pending_row[1],
+    )
+
+    # Resolution rate within period
+    period_total_q = await db.execute(
+        select(func.count()).select_from(Ticket).where(Ticket.issued_at >= since)
+    )
+    period_total = period_total_q.scalar() or 0
+
+    resolved_q = await db.execute(
+        select(func.count()).select_from(Ticket)
+        .where(Ticket.issued_at >= since, Ticket.status.in_(list(TERMINAL_STATUSES)))
+    )
+    resolved = resolved_q.scalar() or 0
+
+    rate = round(resolved / period_total * 100, 1) if period_total > 0 else 0
+    resolution_rate = ResolutionRate(rate=rate, resolved=resolved, total=period_total)
+
+    # Action items (appealed/escalated, oldest first)
+    items_q = await db.execute(
+        select(Ticket)
+        .where(Ticket.status.in_(["appealed", "escalated"]))
+        .order_by(Ticket.issued_at.asc())
+        .limit(20)
+    )
+    action_items = [
+        ActionItem.model_validate(t) for t in items_q.scalars().all()
+    ]
+
+    # Activity: recent ticket lifecycle changes within period
+    activity_q = await db.execute(
+        select(Ticket)
+        .where(Ticket.updated_at >= since)
+        .order_by(Ticket.updated_at.desc())
+        .limit(30)
+    )
+    activity = [
+        ActivityEvent.model_validate(t) for t in activity_q.scalars().all()
+    ]
+
+    # 7-day trend
+    trend_start = today - timedelta(days=6)
+    trend_q = await db.execute(
+        select(
+            cast(Ticket.issued_at, Date).label("day"),
+            func.count().label("cnt"),
+        )
+        .where(Ticket.issued_at >= datetime.combine(trend_start, datetime.min.time(), tzinfo=timezone.utc))
+        .group_by("day")
+        .order_by("day")
+    )
+    counts_by_day = {row[0]: row[1] for row in trend_q.all()}
+    trend = []
+    for i in range(7):
+        d = trend_start + timedelta(days=i)
+        trend.append(TrendDay(
+            date=d.isoformat(),
+            day=d.strftime("%a"),
+            count=counts_by_day.get(d, 0),
+        ))
+
+    return DashboardData(
+        needs_action=needs_action,
+        issued_count=issued_count,
+        revenue=revenue,
+        resolution_rate=resolution_rate,
+        action_items=action_items,
+        activity=activity,
+        trend=trend,
     )
 
 

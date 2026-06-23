@@ -111,3 +111,67 @@ class TicketList(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class NeedsAction(BaseModel):
+    total: int = 0
+    appealed: int = 0
+    escalated: int = 0
+
+
+class IssuedCount(BaseModel):
+    total: int = 0
+    daily_avg: float = 0.0
+
+
+class Revenue(BaseModel):
+    collected: Decimal = Decimal("0.00")
+    pending_count: int = 0
+    pending_amount: Decimal = Decimal("0.00")
+
+
+class ResolutionRate(BaseModel):
+    rate: float = 0.0
+    resolved: int = 0
+    total: int = 0
+
+
+class ActionItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    plate: str
+    lot: str
+    status: str
+    appeal_note: str | None = None
+    issued_at: datetime
+    created_at: datetime
+
+
+class ActivityEvent(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    plate: str
+    lot: str
+    status: str
+    violation_type: str
+    fine_amount: Decimal
+    issued_at: datetime
+    updated_at: datetime
+
+
+class TrendDay(BaseModel):
+    date: str
+    day: str
+    count: int = 0
+
+
+class DashboardData(BaseModel):
+    needs_action: NeedsAction
+    issued_count: IssuedCount
+    revenue: Revenue
+    resolution_rate: ResolutionRate
+    action_items: list[ActionItem]
+    activity: list[ActivityEvent]
+    trend: list[TrendDay]
