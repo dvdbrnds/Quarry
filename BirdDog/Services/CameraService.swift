@@ -740,7 +740,6 @@ final class CameraService: NSObject, ObservableObject {
         let allFormats = camera.formats
         log("external camera: \(allFormats.count) formats total")
 
-        // Log every format so we can see exactly what the camera offers
         for (i, f) in allFormats.enumerated() {
             let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
             let fps = f.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0
@@ -767,20 +766,28 @@ final class CameraService: NSObject, ObservableObject {
             return Candidate(format: format, width: dims.width, height: dims.height, maxFPS: maxFPS)
         }
 
-        // Priority 1: 4K at 24+ fps — more pixels = better OCR at distance
-        let uhd4k = candidates.filter { $0.height >= 2160 && $0.maxFPS >= 24 }
-            .max { $0.maxFPS < $1.maxFPS }
-        // Priority 2: 1080p at highest fps
-        let hd1080_best = candidates.filter { $0.height == 1080 }.max { $0.maxFPS < $1.maxFPS }
-        // Priority 3: 720p at high fps (e-con does 120fps at 720p)
-        let hd720_fast = candidates.filter { $0.height == 720 && $0.maxFPS >= 60 }.max { $0.maxFPS < $1.maxFPS }
-        // Priority 4: highest resolution that can do 24+ fps
-        let highRes = candidates.filter { $0.maxFPS >= 24 }
+        // USB cameras through hubs share bandwidth with other devices
+        // (printer, beacon, etc). 1080p@30fps is the sweet spot: enough
+        // resolution for plate OCR while staying well within USB 2.0 hub
+        // bandwidth limits. 4K or high-fps modes saturate the hub and
+        // cause FigCaptureSourceRemote XPC pipe failures.
+        //
+        // Priority order: 1080p@30 > 1080p@any > 720p@30 > best sub-1080p
+        let hd1080_30 = candidates
+            .filter { $0.height == 1080 && $0.maxFPS >= 30 }
+            .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
+        let hd1080_any = candidates
+            .filter { $0.height == 1080 }
+            .min { $0.maxFPS < $1.maxFPS }
+        let hd720_30 = candidates
+            .filter { $0.height == 720 && $0.maxFPS >= 30 }
+            .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
+        let subHD = candidates
+            .filter { $0.height <= 1080 && $0.maxFPS >= 15 }
             .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
-        // Priority 5: whatever has the most pixels
         let fallback = candidates.max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
 
-        let pick = uhd4k ?? hd1080_best ?? hd720_fast ?? highRes ?? fallback
+        let pick = hd1080_30 ?? hd1080_any ?? hd720_30 ?? subHD ?? fallback
 
         guard let pick else {
             log("NO usable format found")
@@ -789,9 +796,10 @@ final class CameraService: NSObject, ObservableObject {
 
         camera.activeFormat = pick.format
 
-        // Cap at 60fps — higher than that burns USB bandwidth for marginal gain
-        // since Vision OCR can't keep up with 120fps anyway.
-        let targetFPS = min(pick.maxFPS, 60)
+        // Lock to 30fps — this is the bandwidth-safe ceiling for USB hubs.
+        // Vision OCR processes one frame at a time anyway so higher fps
+        // just wastes bandwidth.
+        let targetFPS = min(pick.maxFPS, 30)
         camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
         camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
 
