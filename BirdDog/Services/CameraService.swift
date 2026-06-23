@@ -148,55 +148,66 @@ final class CameraService: NSObject, ObservableObject {
             self.isReconnecting = true
             self.session.stopRunning()
 
-            self.session.beginConfiguration()
-            for input in self.session.inputs { self.session.removeInput(input) }
-            for output in self.session.outputs { self.session.removeOutput(output) }
-            self.session.commitConfiguration()
+            self.tearDownSession()
 
-            self.currentInput = nil
-            self.currentDevice = nil
-            self.videoOutput = nil
-            self.isUsingExternalCamera = false
-
-            // USB devices through hubs need time to re-enumerate after
-            // the session releases them. Retry up to 3 times with increasing delays.
+            // USB cameras through powered hubs need the session fully
+            // released before re-enumeration works. Longer delays with
+            // frame verification prevent the "input added but XPC dead"
+            // state that causes FigCaptureSourceRemote errors.
+            let delays: [TimeInterval] = [2, 3, 4, 5]
             var connected = false
-            for attempt in 1...3 {
-                let delay = TimeInterval(attempt)
-                self.log("RECONNECT: waiting \(Int(delay))s before attempt \(attempt)...")
+            for (idx, delay) in delays.enumerated() {
+                let attempt = idx + 1
+                self.log("RECONNECT: waiting \(Int(delay))s before attempt \(attempt)/\(delays.count)...")
                 Thread.sleep(forTimeInterval: delay)
 
                 self.configureSession()
 
                 if self.isUsingExternalCamera {
-                    self.log("RECONNECT: external camera acquired on attempt \(attempt)")
-                    connected = true
-                    break
+                    // Start running and verify frames actually arrive.
+                    self.lastFrameTime = nil
+                    self.session.startRunning()
+                    Thread.sleep(forTimeInterval: 1.5)
+
+                    if self.lastFrameTime != nil {
+                        self.log("RECONNECT: external camera producing frames on attempt \(attempt)")
+                        connected = true
+                        break
+                    } else {
+                        self.log("RECONNECT: attempt \(attempt) — camera added but no frames, tearing down")
+                        self.session.stopRunning()
+                        self.tearDownSession()
+                    }
                 } else {
-                    self.log("RECONNECT: attempt \(attempt) — no external camera, will retry")
-                    // Tear down again for a clean retry
-                    self.session.beginConfiguration()
-                    for input in self.session.inputs { self.session.removeInput(input) }
-                    for output in self.session.outputs { self.session.removeOutput(output) }
-                    self.session.commitConfiguration()
-                    self.currentInput = nil
-                    self.currentDevice = nil
-                    self.videoOutput = nil
+                    self.log("RECONNECT: attempt \(attempt) — no external camera found, will retry")
+                    self.tearDownSession()
                 }
             }
 
             if !connected {
-                self.log("RECONNECT: all attempts failed, falling back to built-in")
+                self.log("RECONNECT: all attempts exhausted, starting with best available camera")
                 self.configureSession()
+                self.session.startRunning()
             }
 
-            self.session.startRunning()
             self.isRunning = true
             self.isReconnecting = false
             self.startPollingIfNeeded()
         }
     }
 
+    private func tearDownSession() {
+        session.beginConfiguration()
+        for input in session.inputs { session.removeInput(input) }
+        for output in session.outputs { session.removeOutput(output) }
+        session.commitConfiguration()
+        currentInput = nil
+        currentDevice = nil
+        videoOutput = nil
+        isUsingExternalCamera = false
+    }
+
+    private var lastFrameTime: Date?
     private var burstUntil: Date = .distantPast
 
     func markProcessingComplete(elapsed: TimeInterval) {
@@ -822,6 +833,7 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         latestSampleBuffer = sampleBuffer
+        lastFrameTime = Date()
         frameCount += 1
 
         if isUsingExternalCamera && frameCount % 4 == 0,
