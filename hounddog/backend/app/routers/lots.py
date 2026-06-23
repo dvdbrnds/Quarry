@@ -80,7 +80,7 @@ async def list_all_closures(
 ):
     q = select(LotClosure, ParkingLot.name).join(
         ParkingLot, LotClosure.lot_id == ParkingLot.id
-    )
+    ).where(ParkingLot.deleted_at.is_(None))
     if status:
         q = q.where(LotClosure.status == status)
     q = q.order_by(LotClosure.closes_at.desc())
@@ -204,6 +204,18 @@ async def delete_lot(lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     if not lot or lot.deleted_at:
         raise HTTPException(404, "Lot not found")
     lot.deleted_at = datetime.now(timezone.utc)
+
+    open_closures = (
+        await db.execute(
+            select(LotClosure).where(
+                LotClosure.lot_id == lot_id,
+                LotClosure.status.in_(["scheduled", "active"]),
+            )
+        )
+    ).scalars().all()
+    for closure in open_closures:
+        closure.status = "cancelled"
+
     await db.flush()
 
 
