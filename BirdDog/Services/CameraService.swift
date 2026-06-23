@@ -67,37 +67,29 @@ final class CameraService: NSObject, ObservableObject {
                 return
             }
 
-            // Vehicle-mount iPad: wait for the external camera to fully
-            // initialize through the USB hub. The device appears in the
-            // discovery session before its XPC pipe is ready, so we verify
-            // it can actually be opened as a capture input before proceeding.
-            var externalReady = false
-            for attempt in 1...10 {
-                if let ext = self.findExternalCamera() {
-                    if (try? AVCaptureDeviceInput(device: ext)) != nil {
-                        self.log("External camera ready after \(attempt * 500)ms: \(ext.localizedName)")
-                        externalReady = true
-                        break
-                    } else {
-                        self.log("External camera found but not ready (attempt \(attempt)) — waiting")
-                    }
-                } else if attempt == 1 {
-                    self.log("No external camera yet — waiting for USB hub enumeration")
-                }
-                Thread.sleep(forTimeInterval: 0.5)
-            }
-
+            // Start immediately with built-in camera for fast launch.
+            // External cameras through USB hubs need the session running
+            // before the XPC pipe stabilizes — discovery and even input
+            // creation succeed before the hardware is actually usable.
             self.configureSession()
             self.session.startRunning()
             self.isRunning = true
 
             if !self.isUsingExternalCamera {
-                if externalReady {
-                    self.log("External was ready but configureSession missed it — forcing reconnect")
-                    self.forceReconnect()
-                } else {
-                    self.log("No external camera after startup — polling")
-                    self.startPollingIfNeeded()
+                self.log("Started with built-in — scheduling external camera acquisition")
+                // Give the USB hub time to fully initialize with the session
+                // running, then do a full teardown/rebuild which handles the
+                // XPC timing reliably. The 2s delay lets the hub settle.
+                // forceReconnect dispatches to sessionQueue so we schedule
+                // from a different queue to avoid deadlocking.
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    guard let self, self.isRunning, !self.isUsingExternalCamera else { return }
+                    if self.findExternalCamera() != nil {
+                        self.log("External camera visible — forcing full reconnect")
+                        self.forceReconnect()
+                    } else {
+                        self.startPollingIfNeeded()
+                    }
                 }
             }
         }
