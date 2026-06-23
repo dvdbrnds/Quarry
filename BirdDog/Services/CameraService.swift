@@ -67,21 +67,24 @@ final class CameraService: NSObject, ObservableObject {
                 return
             }
 
-            // Vehicle-mount iPad: wait for the external camera to enumerate
-            // through the USB hub before configuring the session. Poll up to
-            // 3 seconds so the external camera becomes the default from the
-            // start instead of briefly showing the built-in.
-            var external: AVCaptureDevice? = self.findExternalCamera()
-            if external == nil {
-                self.log("No external camera yet — waiting for USB hub enumeration")
-                for attempt in 1...6 {
-                    Thread.sleep(forTimeInterval: 0.5)
-                    external = self.findExternalCamera()
-                    if external != nil {
-                        self.log("External camera found after \(attempt * 500)ms")
+            // Vehicle-mount iPad: wait for the external camera to fully
+            // initialize through the USB hub. The device appears in the
+            // discovery session before its XPC pipe is ready, so we verify
+            // it can actually be opened as a capture input before proceeding.
+            var externalReady = false
+            for attempt in 1...10 {
+                if let ext = self.findExternalCamera() {
+                    if (try? AVCaptureDeviceInput(device: ext)) != nil {
+                        self.log("External camera ready after \(attempt * 500)ms: \(ext.localizedName)")
+                        externalReady = true
                         break
+                    } else {
+                        self.log("External camera found but not ready (attempt \(attempt)) — waiting")
                     }
+                } else if attempt == 1 {
+                    self.log("No external camera yet — waiting for USB hub enumeration")
                 }
+                Thread.sleep(forTimeInterval: 0.5)
             }
 
             self.configureSession()
@@ -89,8 +92,13 @@ final class CameraService: NSObject, ObservableObject {
             self.isRunning = true
 
             if !self.isUsingExternalCamera {
-                self.log("No external camera after startup — polling")
-                self.startPollingIfNeeded()
+                if externalReady {
+                    self.log("External was ready but configureSession missed it — forcing reconnect")
+                    self.forceReconnect()
+                } else {
+                    self.log("No external camera after startup — polling")
+                    self.startPollingIfNeeded()
+                }
             }
         }
     }
