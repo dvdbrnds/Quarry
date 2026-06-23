@@ -297,20 +297,11 @@ final class CameraService: NSObject, ObservableObject {
             }
 
             if let external = externalDevices.first {
-                self.log("POLL: found \(external.localizedName) — attempting switch")
-
-                Thread.sleep(forTimeInterval: 0.5)
-                self.switchToCamera(external)
-
-                if self.isUsingExternalCamera {
-                    self.log("POLL: switch succeeded")
-                    self.stopPolling()
-                } else {
-                    self.log("POLL: switch failed, queuing full reconnect")
-                    self.isReconnecting = true
-                    DispatchQueue.main.async { [weak self] in
-                        self?.forceReconnect()
-                    }
+                self.log("POLL: found \(external.localizedName) — full session rebuild required for USB cameras")
+                self.isReconnecting = true
+                self.stopPolling()
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.forceReconnect()
                 }
             }
         }
@@ -366,14 +357,8 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     @objc private func sessionInterruptionEnded(_ notification: Notification) {
-        log("SESSION INTERRUPTION ENDED — checking for external camera")
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            if let external = self.findExternalCamera() {
-                self.switchToCamera(external)
-            }
-            self.startPollingIfNeeded()
-        }
+        log("SESSION INTERRUPTION ENDED — full reconnect to reacquire camera")
+        forceReconnect()
     }
 
     // MARK: - Hot-Plug Camera Detection
@@ -399,8 +384,13 @@ final class CameraService: NSObject, ObservableObject {
         ) { [weak self] _ in
             guard let self else { return }
             guard let newCamera = AVCaptureDevice.systemPreferredCamera else { return }
-            self.sessionQueue.async {
-                self.switchToCamera(newCamera)
+            if newCamera.deviceType == .external, !self.isUsingExternalCamera, !self.isReconnecting {
+                self.log("System preferred external camera — full reconnect")
+                self.forceReconnect()
+            } else if newCamera.deviceType != .external {
+                self.sessionQueue.async {
+                    self.switchToCamera(newCamera)
+                }
             }
         }
 
@@ -418,15 +408,22 @@ final class CameraService: NSObject, ObservableObject {
             guard let self else { return }
             let devices = session.devices
             let external = devices.first(where: { $0.deviceType == .external })
-            let best = external ?? devices.first(where: { $0.position == .back }) ?? devices.first
 
-            if let best {
-                AVCaptureDevice.userPreferredCamera = best
-                self.sessionQueue.async {
-                    self.switchToCamera(best)
+            self.log("DEVICES CHANGED: \(devices.map { "\($0.localizedName) (\($0.deviceType == .external ? "EXTERNAL" : "built-in"))" }.joined(separator: ", "))")
+
+            if let external {
+                AVCaptureDevice.userPreferredCamera = external
+                if !self.isUsingExternalCamera, !self.isReconnecting {
+                    self.log("External camera appeared — full reconnect")
+                    self.forceReconnect()
+                }
+            } else {
+                let best = devices.first(where: { $0.position == .back }) ?? devices.first
+                if let best {
+                    AVCaptureDevice.userPreferredCamera = best
+                    self.sessionQueue.async { self.switchToCamera(best) }
                 }
             }
-            self.log("DEVICES CHANGED: \(devices.map { "\($0.localizedName) (\($0.deviceType == .external ? "EXTERNAL" : "built-in"))" }.joined(separator: ", "))")
         }
     }
 
