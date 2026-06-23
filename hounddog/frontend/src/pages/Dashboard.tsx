@@ -367,10 +367,17 @@ export default function Dashboard() {
                     {eventDescription(ev)}
                   </div>
                   <span className="text-xs text-ink-mute shrink-0 whitespace-nowrap">
-                    {new Date(ev.updated_at).toLocaleTimeString([], {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    {period === "today"
+                      ? new Date(ev.updated_at).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : new Date(ev.updated_at).toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
                   </span>
                 </div>
               ))}
