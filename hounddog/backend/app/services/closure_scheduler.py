@@ -179,6 +179,68 @@ async def _process_closures():
         await db.commit()
 
 
+async def _expire_lottery_offers():
+    """Expire overdue lottery offers and advance waitlisted applicants."""
+    from datetime import timedelta
+    from ..models.permit_application import PermitApplication
+    from ..models.permit_type import PermitType
+
+    now = datetime.now(timezone.utc)
+    async with async_session() as db:
+        expired_result = await db.execute(
+            select(PermitApplication).where(
+                PermitApplication.status == "selected",
+                PermitApplication.offer_expires_at.isnot(None),
+                PermitApplication.offer_expires_at < now,
+            )
+        )
+        expired = expired_result.scalars().all()
+        if not expired:
+            return
+
+        type_ids_affected: set = set()
+        for app in expired:
+            app.status = "expired"
+            type_ids_affected.add(app.permit_type_id)
+
+        for pt_id in type_ids_affected:
+            pt = await db.get(PermitType, pt_id)
+            if not pt:
+                continue
+
+            next_app = (await db.execute(
+                select(PermitApplication)
+                .where(
+                    PermitApplication.permit_type_id == pt_id,
+                    PermitApplication.status == "waitlisted",
+                )
+                .order_by(PermitApplication.waitlist_position.asc())
+                .limit(1)
+            )).scalar()
+
+            if next_app:
+                next_app.status = "selected"
+                next_app.offer_expires_at = now + timedelta(days=pt.offer_window_days)
+
+                from .email import send_email
+                await send_email(
+                    to=[next_app.student_email],
+                    subject=f"Parking Permit Offer — {pt.label}",
+                    body_html=(
+                        f"<p>A spot has opened up for <strong>{pt.label}</strong>.</p>"
+                        f"<p>Log in to the student portal to accept your offer before "
+                        f"<strong>{next_app.offer_expires_at.strftime('%b %d, %Y')}</strong>.</p>"
+                    ),
+                )
+                logger.info(
+                    "Lottery waitlist advanced: type=%s, promoted=%s",
+                    pt.code, next_app.student_email,
+                )
+
+        await db.commit()
+        logger.info("Expired %d lottery offers", len(expired))
+
+
 async def _run_loop():
     logger.info("Closure scheduler started (60s interval)")
     while True:
@@ -194,6 +256,11 @@ async def _run_loop():
                     await auto_escalate_tickets(db)
         except Exception as e:
             logger.error("Scheduler tick (escalation) failed: %s", e, exc_info=True)
+
+        try:
+            await _expire_lottery_offers()
+        except Exception as e:
+            logger.error("Scheduler tick (lottery offers) failed: %s", e, exc_info=True)
 
         await asyncio.sleep(60)
 

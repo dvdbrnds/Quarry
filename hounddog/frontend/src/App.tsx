@@ -10,6 +10,7 @@ import Finance from "./pages/Finance";
 import OperationsCalendar from "./pages/OperationsCalendar";
 import Settings from "./pages/Settings";
 import PermitDetail from "./pages/PermitDetail";
+import StudentPermits from "./pages/StudentPermits";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout } from "./auth";
@@ -33,7 +34,7 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   );
 }
 
-function DashboardShell({ user }: { user: AuthUser }) {
+function AdminShell({ user }: { user: AuthUser }) {
   return (
     <div className="min-h-screen">
       <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
@@ -76,6 +77,40 @@ function DashboardShell({ user }: { user: AuthUser }) {
           <Route path="/finance" element={<Finance />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
+          <Route path="/student/permits" element={<StudentPermits />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+function StudentShell({ user }: { user: AuthUser }) {
+  return (
+    <div className="min-h-screen">
+      <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
+        <div className="flex items-center gap-2 mr-4">
+          <img src="/quarry-logo.png" alt="Quarry" className="h-8 w-auto" />
+          <h1 className="text-lg font-bold tracking-wide text-brass">
+            Quarry
+          </h1>
+        </div>
+        <NavItem to="/student/permits">My Permits</NavItem>
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-bone/70">{user.email}</span>
+          <button
+            onClick={() => logout()}
+            className="text-xs text-bone/50 hover:text-bone transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <Routes>
+          <Route path="/" element={<Navigate to="/student/permits" replace />} />
+          <Route path="/student/permits" element={<StudentPermits />} />
         </Routes>
       </main>
     </div>
@@ -117,7 +152,11 @@ export default function App() {
     <AuthGuard>
       {(user) => (
         <UserContext.Provider value={user}>
-          <DashboardShell user={user} />
+          {user.role === "admin" || user.role === "staff" ? (
+            <AdminShell user={user} />
+          ) : (
+            <StudentShell user={user} />
+          )}
         </UserContext.Provider>
       )}
     </AuthGuard>

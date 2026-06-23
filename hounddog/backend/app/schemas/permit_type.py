@@ -17,6 +17,10 @@ class PermitTypeBase(BaseModel):
     is_purchasable_online: bool = False
     is_active: bool = True
     sort_order: int = 0
+    requires_lottery: bool = False
+    application_opens_at: datetime | None = None
+    application_closes_at: datetime | None = None
+    offer_window_days: int = 5
 
 
 class PermitTypeCreate(PermitTypeBase):
@@ -35,12 +39,17 @@ class PermitTypeUpdate(BaseModel):
     is_purchasable_online: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = None
+    requires_lottery: bool | None = None
+    application_opens_at: datetime | None = None
+    application_closes_at: datetime | None = None
+    offer_window_days: int | None = None
 
 
 class PermitTypeRead(PermitTypeBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    lottery_run_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

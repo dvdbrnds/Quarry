@@ -19,6 +19,7 @@ from .routers import (
     payments,
     permit_types,
     permits,
+    student_permits,
     sync,
     tickets,
     violation_types,
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
     from sqlalchemy import text
     from .database import engine, Base
     from .models import (  # noqa: F401
-        Permit, ParkingLot, Device, Ticket, Payment,
+        Permit, PermitApplication, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
         AuditLog, LotClosure, MessageTemplate, NotificationPreference,
     )
@@ -102,6 +103,12 @@ async def lifespan(app: FastAPI):
             # Messaging / SMS fields
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS phone VARCHAR(32)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS sms_opt_in BOOLEAN DEFAULT false",
+            # Permit application lottery fields
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS requires_lottery BOOLEAN DEFAULT false",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS application_opens_at TIMESTAMPTZ",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS application_closes_at TIMESTAMPTZ",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS offer_window_days INTEGER DEFAULT 5",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_run_at TIMESTAMPTZ",
         ]
         for migration in migrations:
             await conn.execute(text(migration))
@@ -328,6 +335,7 @@ app.include_router(audit.diagnostic_router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])
 app.include_router(notification_preferences.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(student_permits.router, prefix="/api/student/permits", tags=["student-permits"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
