@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import require_admin
+from ..auth.okta import require_role
 from ..config import settings
 from ..database import get_db
 from ..models.lot import ParkingLot
@@ -24,7 +24,7 @@ from ..schemas.messaging import (
 from ..services.email import send_email
 from ..services.sms import send_bulk_sms
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(require_role("admin", "staff"))])
 
 
 def _render_template(text: str, context: dict[str, str]) -> str:
