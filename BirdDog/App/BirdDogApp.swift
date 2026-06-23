@@ -48,6 +48,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        // Info.plist declares all orientations (Apple requirement) but the
+        // enforcement UI is portrait-only. Allow upside-down for the vehicle
+        // mount where the iPad is inverted.
+        return [.portrait, .portraitUpsideDown]
+    }
+
+    func application(
+        _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
