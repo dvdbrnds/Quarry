@@ -314,6 +314,14 @@ final class OfficerAuthService: NSObject, ObservableObject {
         let groupsStr = getKeychainValue(account: Self.keychainAccountGroups) ?? ""
         let groups = groupsStr.isEmpty ? [] : groupsStr.components(separatedBy: ",")
 
+        if groups.isEmpty {
+            // Session was saved without group data (e.g. logged in before
+            // groups claim was configured). Force re-login to pick up groups
+            // which control staff/admin access.
+            clearKeychain()
+            return
+        }
+
         self.officerName = name
         self.officerEmail = email
         self.officerGroups = groups
