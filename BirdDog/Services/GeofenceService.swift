@@ -62,6 +62,16 @@ final class GeofenceService: NSObject, ObservableObject {
     func addLot(_ lot: ParkingLot) {
         guard let container else { return }
         let context = ModelContext(container)
+
+        let lotId = lot.id
+        var descriptor = FetchDescriptor<ParkingLotRecord>(
+            predicate: #Predicate<ParkingLotRecord> { $0.lotId == lotId }
+        )
+        descriptor.fetchLimit = 1
+        if let stale = try? context.fetch(descriptor).first {
+            context.delete(stale)
+        }
+
         let record = ParkingLotRecord(lotId: lot.id, name: lot.name, boundary: lot.boundary, spotCount: lot.spotCount, hasSheepDog: lot.hasSheepDog)
         context.insert(record)
         try? context.save()
