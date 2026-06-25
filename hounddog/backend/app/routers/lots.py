@@ -53,6 +53,13 @@ async def create_lot(data: LotCreate, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(409, f"Lot '{data.name}' already exists")
 
+    stale = await db.execute(
+        select(ParkingLot).where(ParkingLot.name == data.name, ParkingLot.deleted_at.isnot(None))
+    )
+    for old in stale.scalars().all():
+        await db.delete(old)
+    await db.flush()
+
     lot = ParkingLot(
         name=data.name,
         boundary=[c.model_dump() for c in data.boundary],
