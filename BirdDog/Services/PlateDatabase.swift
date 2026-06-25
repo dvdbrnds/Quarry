@@ -15,14 +15,14 @@ final class PlateDatabase {
 
     private init() {
         do {
-            let schema = Schema([PermitRecord.self, ParkingLotRecord.self, PendingTicket.self])
+            let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
             let config = ModelConfiguration(schema: schema)
             container = try ModelContainer(for: schema, configurations: [config])
         } catch {
             print("Database init failed, deleting corrupt store and retrying: \(error)")
             Self.deleteStoreFiles()
             do {
-                let schema = Schema([PermitRecord.self, ParkingLotRecord.self, PendingTicket.self])
+                let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
                 let config = ModelConfiguration(schema: schema)
                 container = try ModelContainer(for: schema, configurations: [config])
         } catch {
