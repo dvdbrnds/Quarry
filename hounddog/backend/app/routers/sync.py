@@ -1,10 +1,14 @@
 import base64
+import logging
 import os
 import uuid as uuid_mod
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+logger = logging.getLogger("quarry.sync")
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,10 +21,12 @@ from ..models.device import Device
 from ..models.enforcement_settings import EnforcementSettings
 from ..models.lot import ParkingLot
 from ..models.lot_zone import LotZone
+from ..models.parking_spot import ParkingSpot
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
 from ..schemas.lot import LotZoneRead
+from ..schemas.parking_spot import SpotRead
 from ..schemas.sync import (
     PushTokenRegister,
     SyncCalendarResponse,
@@ -204,8 +210,15 @@ async def sync_lots(
             select(LotZone).where(LotZone.lot_id == lot.id)
         )
         zones = zones_result.scalars().all()
+
+        spots_result = await db.execute(
+            select(ParkingSpot).where(ParkingSpot.lot_id == lot.id).order_by(ParkingSpot.number)
+        )
+        spots = spots_result.scalars().all()
+
         lot_data = SyncLotWithZones.model_validate(lot)
         lot_data.zones = [LotZoneRead.model_validate(z) for z in zones]
+        lot_data.spots = [SpotRead.model_validate(s) for s in spots]
         result_lots.append(lot_data)
 
     return SyncLotsResponse(
@@ -213,6 +226,44 @@ async def sync_lots(
         server_timestamp=datetime.now(timezone.utc),
         full_sync=full_sync,
     )
+
+
+class OccupancyReport(BaseModel):
+    sensor_id: str
+    type: str = "occupancy"
+    payload: str  # "occupied" or "vacant"
+    rssi: int | None = None
+    timestamp: str | None = None
+
+
+class OccupancyResponse(BaseModel):
+    accepted: int = 0
+    unknown: list[str] = []
+
+
+@router.post("/occupancy", response_model=OccupancyResponse)
+async def report_occupancy(
+    reports: list[OccupancyReport],
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gateway POSTs batched occupancy readings from SheepDog pucks."""
+    accepted = 0
+    unknown = []
+
+    for report in reports:
+        result = await db.execute(
+            select(ParkingSpot).where(ParkingSpot.sensor_id == report.sensor_id)
+        )
+        spot = result.scalar_one_or_none()
+        if not spot:
+            unknown.append(report.sensor_id)
+            continue
+        accepted += 1
+
+    await db.flush()
+    logger.info("[SheepDog] Occupancy from %s: %d accepted, %d unknown", device.name, accepted, len(unknown))
+    return OccupancyResponse(accepted=accepted, unknown=unknown)
 
 
 @router.get("/violation-types", response_model=SyncViolationTypesResponse)

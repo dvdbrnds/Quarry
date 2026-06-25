@@ -66,6 +66,7 @@ class LotBase(BaseModel):
     access_schedule: list[SeasonSchedule] = []
     is_snow_lot: bool = False
     is_closed: bool = False
+    has_sheepdog: bool = False
     notes: str | None = None
 
 
@@ -82,6 +83,7 @@ class LotUpdate(BaseModel):
     designation_label: str | None = None
     access_schedule: list[SeasonSchedule] | None = None
     is_snow_lot: bool | None = None
+    has_sheepdog: bool | None = None
     notes: str | None = None
 
 

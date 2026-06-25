@@ -11,6 +11,7 @@ from ..database import get_db
 from ..models.lot import ParkingLot
 from ..models.lot_closure import LotClosure
 from ..models.lot_zone import LotZone
+from ..models.parking_spot import ParkingSpot
 from ..models.permit import Permit
 from ..schemas.lot import (
     LotCreate,
@@ -21,6 +22,7 @@ from ..schemas.lot import (
     LotZoneRead,
     LotZoneUpdate,
 )
+from ..schemas.parking_spot import SpotCreate, SpotRead, SpotUpdate
 from ..schemas.lot_closure import (
     CloseLotNow,
     LotClosureCreate,
@@ -69,6 +71,7 @@ async def create_lot(data: LotCreate, db: AsyncSession = Depends(get_db)):
         designation_label=data.designation_label,
         access_schedule=[s.model_dump() for s in data.access_schedule],
         is_snow_lot=data.is_snow_lot,
+        has_sheepdog=data.has_sheepdog,
         notes=data.notes,
     )
     db.add(lot)
@@ -197,6 +200,8 @@ async def update_lot(
         lot.access_schedule = [s.model_dump() for s in data.access_schedule]
     if data.is_snow_lot is not None:
         lot.is_snow_lot = data.is_snow_lot
+    if data.has_sheepdog is not None:
+        lot.has_sheepdog = data.has_sheepdog
     if data.notes is not None:
         lot.notes = data.notes
 
@@ -296,6 +301,74 @@ async def delete_zone(
     if not zone or zone.lot_id != lot_id:
         raise HTTPException(404, "Zone not found")
     await db.delete(zone)
+    await db.flush()
+
+
+# --- Spot CRUD (SheepDog puck assignments) ---
+
+
+@router.get("/{lot_id}/spots", response_model=list[SpotRead])
+async def list_spots(lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    lot = await db.get(ParkingLot, lot_id)
+    if not lot or lot.deleted_at:
+        raise HTTPException(404, "Lot not found")
+
+    result = await db.execute(
+        select(ParkingSpot).where(ParkingSpot.lot_id == lot_id).order_by(ParkingSpot.number)
+    )
+    return result.scalars().all()
+
+
+@router.post("/{lot_id}/spots", response_model=SpotRead, status_code=201)
+async def create_spot(
+    lot_id: uuid.UUID, data: SpotCreate, db: AsyncSession = Depends(get_db)
+):
+    lot = await db.get(ParkingLot, lot_id)
+    if not lot or lot.deleted_at:
+        raise HTTPException(404, "Lot not found")
+
+    spot = ParkingSpot(
+        lot_id=lot_id,
+        number=data.number,
+        label=data.label,
+        sensor_id=data.sensor_id,
+        latitude=data.latitude,
+        longitude=data.longitude,
+    )
+    db.add(spot)
+    await db.flush()
+    await db.refresh(spot)
+    return spot
+
+
+@router.put("/{lot_id}/spots/{spot_id}", response_model=SpotRead)
+async def update_spot(
+    lot_id: uuid.UUID,
+    spot_id: uuid.UUID,
+    data: SpotUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    spot = await db.get(ParkingSpot, spot_id)
+    if not spot or spot.lot_id != lot_id:
+        raise HTTPException(404, "Spot not found")
+
+    updates = data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(spot, field, value)
+
+    await db.flush()
+    await db.refresh(spot)
+    return spot
+
+
+@router.delete("/{lot_id}/spots/{spot_id}", status_code=204)
+async def delete_spot(
+    lot_id: uuid.UUID, spot_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    spot = await db.get(ParkingSpot, spot_id)
+    if not spot or spot.lot_id != lot_id:
+        raise HTTPException(404, "Spot not found")
+    await db.delete(spot)
     await db.flush()
 
 

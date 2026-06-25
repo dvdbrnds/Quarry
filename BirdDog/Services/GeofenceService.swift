@@ -120,7 +120,7 @@ final class GeofenceService: NSObject, ObservableObject {
     func spotsForLot(_ lotId: String) -> [ParkingSpot] {
         guard let container else { return [] }
         let context = ModelContext(container)
-        var descriptor = FetchDescriptor<ParkingSpotRecord>(
+        let descriptor = FetchDescriptor<ParkingSpotRecord>(
             predicate: #Predicate<ParkingSpotRecord> { $0.lotId == lotId },
             sortBy: [SortDescriptor(\.number)]
         )

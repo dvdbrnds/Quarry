@@ -129,6 +129,18 @@ export interface LotZone {
   updated_at: string;
 }
 
+export interface ParkingSpot {
+  id: string;
+  lot_id: string;
+  number: number;
+  label: string | null;
+  sensor_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Lot {
   id: string;
   name: string;
@@ -140,6 +152,7 @@ export interface Lot {
   access_schedule: SeasonSchedule[];
   is_snow_lot: boolean;
   is_closed: boolean;
+  has_sheepdog: boolean;
   notes: string | null;
   zones?: LotZone[];
   created_at: string;
@@ -263,6 +276,15 @@ export const api = {
         request<LotZone>(`/lots/${lotId}/zones/${zoneId}`, { method: "PUT", body: JSON.stringify(data) }),
       delete: (lotId: string, zoneId: string) =>
         request<void>(`/lots/${lotId}/zones/${zoneId}`, { method: "DELETE" }),
+    },
+    spots: {
+      list: (lotId: string) => request<ParkingSpot[]>(`/lots/${lotId}/spots`),
+      create: (lotId: string, data: Partial<ParkingSpot>) =>
+        request<ParkingSpot>(`/lots/${lotId}/spots`, { method: "POST", body: JSON.stringify(data) }),
+      update: (lotId: string, spotId: string, data: Partial<ParkingSpot>) =>
+        request<ParkingSpot>(`/lots/${lotId}/spots/${spotId}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (lotId: string, spotId: string) =>
+        request<void>(`/lots/${lotId}/spots/${spotId}`, { method: "DELETE" }),
     },
   },
   devices: {

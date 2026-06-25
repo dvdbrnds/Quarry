@@ -152,7 +152,7 @@ final class CameraService: NSObject, ObservableObject {
             //    the hub's transaction translator for the device.
             self.session.startRunning()
             self.log("RECONNECT: session running empty, waiting for hub to settle")
-            Thread.sleep(forTimeInterval: 3.0)
+            Thread.sleep(forTimeInterval: 1.5)
 
             // 3. Now try adding the camera to the running session.
             //    Fresh discovery after the sleep gives the hub time to
@@ -308,7 +308,7 @@ final class CameraService: NSObject, ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.cameraStatus = .searchingExternal
-            self.pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            self.pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
                 self?.pollForExternalCamera()
             }
         }
@@ -338,8 +338,8 @@ final class CameraService: NSObject, ObservableObject {
             self.forceReconnect()
         }
         hubReconnectWork = work
-        log("Reconnect scheduled in 5s (hub enumeration delay)")
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 5.0, execute: work)
+        log("Reconnect scheduled in 2s (hub enumeration delay)")
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 2.0, execute: work)
     }
 
     private func pollForExternalCamera() {

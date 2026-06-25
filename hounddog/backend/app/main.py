@@ -100,6 +100,19 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
             # Lot closure tracking
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT false",
+            # SheepDog occupancy sensing
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS has_sheepdog BOOLEAN DEFAULT false",
+            """CREATE TABLE IF NOT EXISTS parking_spots (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                lot_id UUID NOT NULL REFERENCES parking_lots(id) ON DELETE CASCADE,
+                number INTEGER NOT NULL,
+                label VARCHAR(256),
+                sensor_id VARCHAR(16),
+                latitude DOUBLE PRECISION,
+                longitude DOUBLE PRECISION,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
             # Messaging / SMS fields
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS phone VARCHAR(32)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS sms_opt_in BOOLEAN DEFAULT false",
