@@ -15,6 +15,16 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
     let id: String
     let name: String
     let boundary: [Coordinate]
+    var spotCount: Int
+    var hasSheepDog: Bool
+
+    init(id: String, name: String, boundary: [Coordinate], spotCount: Int = 0, hasSheepDog: Bool = false) {
+        self.id = id
+        self.name = name
+        self.boundary = boundary
+        self.spotCount = spotCount
+        self.hasSheepDog = hasSheepDog
+    }
 
     /// Ray-casting point-in-polygon test. O(n) where n = corner count.
     func contains(_ point: CLLocationCoordinate2D) -> Bool {
@@ -42,11 +52,15 @@ final class ParkingLotRecord {
     @Attribute(.unique) var lotId: String
     var name: String
     var boundaryJSON: Data
+    var spotCount: Int
+    var hasSheepDog: Bool
 
-    init(lotId: String, name: String, boundary: [Coordinate]) {
+    init(lotId: String, name: String, boundary: [Coordinate], spotCount: Int = 0, hasSheepDog: Bool = false) {
         self.lotId = lotId
         self.name = name
         self.boundaryJSON = (try? JSONEncoder().encode(boundary)) ?? Data()
+        self.spotCount = spotCount
+        self.hasSheepDog = hasSheepDog
     }
 
     var boundary: [Coordinate] {
@@ -54,6 +68,6 @@ final class ParkingLotRecord {
     }
 
     var parkingLot: ParkingLot {
-        ParkingLot(id: lotId, name: name, boundary: boundary)
+        ParkingLot(id: lotId, name: name, boundary: boundary, spotCount: spotCount, hasSheepDog: hasSheepDog)
     }
 }

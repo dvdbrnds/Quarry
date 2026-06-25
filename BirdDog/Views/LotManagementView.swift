@@ -66,7 +66,21 @@ struct LotManagementView: View {
                     Text(lot.name)
                         .font(.headline)
                         .foregroundStyle(.primary)
+
+                    if lot.hasSheepDog {
+                        Image(systemName: "pawprint.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+
                     Spacer()
+
+                    if lot.spotCount > 0 {
+                        Text("\(lot.spotCount) spots")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Text("\(lot.boundary.count) corners")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -170,6 +184,8 @@ struct LotEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
     @State private var cornerRows: [CornerRow] = []
+    @State private var spotCount: Int = 0
+    @State private var hasSheepDog: Bool = false
     @State private var newLat: String = ""
     @State private var newLng: String = ""
 
@@ -200,6 +216,8 @@ struct LotEditorView: View {
         self.onSave = onSave
         _name = State(initialValue: lot?.name ?? "")
         _cornerRows = State(initialValue: lot?.boundary.map { CornerRow(coordinate: $0) } ?? [])
+        _spotCount = State(initialValue: lot?.spotCount ?? 0)
+        _hasSheepDog = State(initialValue: lot?.hasSheepDog ?? false)
     }
 
     private var validCoordinates: [Coordinate] {
@@ -246,6 +264,58 @@ struct LotEditorView: View {
                 }
             } footer: {
                 Text("Tap any coordinate to edit it. Add corners in order walking the perimeter. Get lat/lng from Google Earth.")
+            }
+
+            Section("Parking Spots") {
+                Stepper("Number of Spots: \(spotCount)", value: $spotCount, in: 0...999)
+            }
+
+            Section {
+                Toggle("SheepDog Monitoring", isOn: $hasSheepDog)
+            } header: {
+                Text("Occupancy Sensing")
+            } footer: {
+                Text("Enable if this lot has SheepDog pucks installed. Spot details are managed in HoundDog and synced automatically.")
+            }
+
+            if hasSheepDog, let existingLot = lot {
+                let spots = GeofenceService.shared.spotsForLot(existingLot.id)
+                if !spots.isEmpty {
+                    Section {
+                        ForEach(spots) { spot in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("#\(spot.number)")
+                                        .font(.caption.bold().monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 36, alignment: .leading)
+                                    Text(spot.label ?? "Spot \(spot.number)")
+                                        .font(.subheadline)
+                                    Spacer()
+                                    if let sid = spot.sensorId {
+                                        Text(sid)
+                                            .font(.caption.monospaced())
+                                            .foregroundStyle(.orange)
+                                    }
+                                }
+                                if let lat = spot.latitude, let lng = spot.longitude {
+                                    Text(String(format: "%.8f, %.8f", lat, lng))
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } header: {
+                        HStack {
+                            Image(systemName: "pawprint.fill")
+                                .foregroundStyle(.orange)
+                            Text("Puck Assignments (\(spots.count))")
+                        }
+                    } footer: {
+                        Text("Synced from HoundDog. Edit spot labels, sensor IDs, and GPS coordinates in the admin dashboard.")
+                    }
+                }
             }
 
             if validCoordinates.count >= 3 {
@@ -302,7 +372,7 @@ struct LotEditorView: View {
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let id = lot?.id ?? trimmedName.uppercased().replacingOccurrences(of: " ", with: "_")
-        let newLot = ParkingLot(id: id, name: trimmedName.uppercased(), boundary: validCoordinates)
+        let newLot = ParkingLot(id: id, name: trimmedName.uppercased(), boundary: validCoordinates, spotCount: spotCount, hasSheepDog: hasSheepDog)
         onSave(newLot)
         dismiss()
     }

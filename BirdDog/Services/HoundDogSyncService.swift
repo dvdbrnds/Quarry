@@ -283,7 +283,10 @@ final class HoundDogSyncService: ObservableObject {
 
         for lot in syncResponse.lots {
             let boundary = lot.boundary.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
-            let parkingLot = ParkingLot(id: lot.id, name: lot.name, boundary: boundary)
+            let parkingLot = ParkingLot(
+                id: lot.id, name: lot.name, boundary: boundary,
+                spotCount: lot.spotCount ?? 0, hasSheepDog: lot.hasSheepDog ?? false
+            )
 
             if geofence.lots.contains(where: { $0.id == lot.id }) {
                 if lot.deletedAt != nil {
@@ -293,6 +296,15 @@ final class HoundDogSyncService: ObservableObject {
                 }
             } else if lot.deletedAt == nil {
                 geofence.addLot(parkingLot)
+            }
+
+            if let syncSpots = lot.spots, lot.deletedAt == nil {
+                let spots = syncSpots.map { s in
+                    ParkingSpot(id: s.id, lotId: lot.id, number: s.number,
+                                label: s.label, sensorId: s.sensorId,
+                                latitude: s.latitude, longitude: s.longitude)
+                }
+                geofence.replaceSpots(forLotId: lot.id, with: spots)
             }
         }
 
@@ -467,11 +479,30 @@ struct SyncLot: Decodable {
     let id: String
     let name: String
     let boundary: [SyncCoordinate]
+    let spotCount: Int?
+    let hasSheepDog: Bool?
+    let spots: [SyncSpot]?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, boundary
+        case id, name, boundary, spots
+        case spotCount = "spot_count"
+        case hasSheepDog = "has_sheepdog"
         case deletedAt = "deleted_at"
+    }
+}
+
+struct SyncSpot: Decodable {
+    let id: String
+    let number: Int
+    let label: String?
+    let sensorId: String?
+    let latitude: Double?
+    let longitude: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, number, label, latitude, longitude
+        case sensorId = "sensor_id"
     }
 }
 
