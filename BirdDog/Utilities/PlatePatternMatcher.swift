@@ -88,10 +88,17 @@ enum PlatePatternMatcher {
         // OCR misreads of model badges
         "6S330", "6S350", "6S300",
         "ES330",
-        // Dealer/sticker/business text
+        // Dealer/sticker/business text and plate frame noise
         "10CCA", "1OCCA",
         "GR8UP", "GR8UE", "GR8UF",
-        "DEALER",
+        "DEALER", "SALES", "GROUP", "STORE",
+        "CHEVROLE", "CHRYSLE", "FORDOF",
+        "AUTOOF", "AUTOSA", "CARSOF",
+        "KOONS", "FAULK", "HENDRI",
+        "CARMAX", "CARVANA",
+        "STATEPA", "STATENJ", "STATENY",
+        "FREECOM", "DOTCOM", "COMWWW",
+        "WWWCOM", "ORGWWW", "NETWWW",
         // OCR noise from specific vehicles/stickers at Moravian
         "TYLER", "TVLER", "TYLEI", "TVLEI", "IYLEI",
         "PTVLEI", "PTVLER", "TILEI",
@@ -144,6 +151,10 @@ enum PlatePatternMatcher {
         "SURENC", "SALAFO", "CUTEACI", "CUTEACK", "SUTEACK",
         "RREGAI", "FREGAI",
         "MYWAYTO", "MYWAITO",
+        // Electronic component model numbers (from sensor boards, etc.)
+        "QMC5883", "BME280", "BMP280", "MPU6050",
+        // Garbled reads from scan logs — confirmed non-plates
+        "800URRF", "660JPLU", "ILBC611",
     ]
 
     enum RejectionReason: String {
@@ -177,7 +188,9 @@ enum PlatePatternMatcher {
         let letterCount = cleaned.filter(\.isLetter).count
         let digitCount = cleaned.filter(\.isNumber).count
 
-        let isAllDigit = letterCount == 0 && digitCount == 6
+        // 6-digit all-numeric = Delaware format. Reject if leading zeros
+        // (permit stickers, serial numbers) or if it looks like a time.
+        let isAllDigit = letterCount == 0 && digitCount == 6 && !cleaned.hasPrefix("00")
         let isAllLetter = digitCount == 0 && letterCount >= 5
 
         if !isAllDigit && !isAllLetter {
@@ -191,13 +204,19 @@ enum PlatePatternMatcher {
 
         if rejectList.contains(cleaned) { return .rejectList }
 
+        if cleaned.hasPrefix("WWW") || cleaned.hasSuffix("COM")
+            || cleaned.hasSuffix("ORG") || cleaned.hasSuffix("NET") {
+            return .rejectList
+        }
+
         if cleaned.hasPrefix("ONE") || cleaned.hasPrefix("0NE") {
             return .rejectList
         }
 
-        if cleaned.hasSuffix("AM") || cleaned.hasSuffix("PM") {
-            let prefix = String(cleaned.dropLast(2))
-            if prefix.allSatisfy(\.isNumber) { return .noFormatMatch }
+        // Time strings: "0PM1200", "11000PM", "770DAM" etc.
+        if cleaned.contains("AM") || cleaned.contains("PM") {
+            let stripped = cleaned.replacingOccurrences(of: "AM", with: "").replacingOccurrences(of: "PM", with: "")
+            if stripped.allSatisfy(\.isNumber) { return .noFormatMatch }
         }
 
         if isAllLetter {

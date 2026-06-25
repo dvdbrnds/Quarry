@@ -36,6 +36,8 @@ final class PlateRecognitionService {
         return CGRect(x: 0, y: minY, width: 1.0, height: maxY - minY)
     }
 
+    private var enhancedBuffer: CVPixelBuffer?
+
     func recognizePlates(in sampleBuffer: CMSampleBuffer,
                          orientation: CGImagePropertyOrientation,
                          completion: @escaping (RecognitionResult) -> Void) {
@@ -49,10 +51,10 @@ final class PlateRecognitionService {
         requestQueue.async { [self] in
             let roi = useExternal ? externalScanRegion : builtInScanRegion
 
-            func runOCR(on buffer: CVPixelBuffer) -> [VNRecognizedTextObservation] {
+            func runOCR(on buffer: CVPixelBuffer, level: VNRequestTextRecognitionLevel = .accurate) -> [VNRecognizedTextObservation] {
                 let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation)
                 let req = VNRecognizeTextRequest()
-                req.recognitionLevel = .accurate
+                req.recognitionLevel = level
                 req.usesLanguageCorrection = false
                 req.revision = VNRecognizeTextRequestRevision3
                 req.regionOfInterest = roi
@@ -60,20 +62,34 @@ final class PlateRecognitionService {
                 return req.results ?? []
             }
 
-            // Primary pass on raw frame (best for white PA plates)
             let rawObs = runOCR(on: pixelBuffer)
 
-            // For external cameras, also run on grayscale (helps yellow NJ plates)
-            // then merge: use whichever pass produces more plate-like candidates.
+            // Only fall back to enhanced grayscale if the fast pass found nothing
+            // — avoids doubling OCR cost on every single frame.
             let observations: [VNRecognizedTextObservation]
-            if useExternal, let enhanced = enhanceFrame(pixelBuffer) {
+            if useExternal && rawObs.isEmpty, let enhanced = enhanceFrameReusing(pixelBuffer) {
                 let grayObs = runOCR(on: enhanced)
-                observations = mergeObservations(primary: rawObs, secondary: grayObs)
+                observations = grayObs
+            } else if useExternal && !rawObs.isEmpty {
+                let hasPlateCandidate = rawObs.contains { obs in
+                    guard let text = obs.topCandidates(1).first?.string else { return false }
+                    let norm = PlatePatternMatcher.normalize(text)
+                    return PlatePatternMatcher.evaluatePlate(norm) == nil
+                }
+                if hasPlateCandidate {
+                    observations = rawObs
+                } else if let enhanced = enhanceFrameReusing(pixelBuffer) {
+                    let grayObs = runOCR(on: enhanced)
+                    observations = mergeObservations(primary: rawObs, secondary: grayObs)
+                } else {
+                    observations = rawObs
+                }
             } else {
                 observations = rawObs
             }
 
             guard !observations.isEmpty else {
+                self.consecutiveEmptyFrames += 1
                 completion(RecognitionResult(plates: [], diagnostics: []))
                 return
             }
@@ -81,6 +97,7 @@ final class PlateRecognitionService {
             let dominant = dominantTextPerCluster(observations)
             let now = Date()
             var plates: [RecognizedPlate] = []
+            var plateObservations: [VNRecognizedTextObservation] = []
             var diagnostics: [DiagnosticEntry] = []
 
             for observation in observations {
@@ -90,14 +107,24 @@ final class PlateRecognitionService {
                 let rawText = candidate.string
                 let normalized = PlatePatternMatcher.normalize(rawText)
                 let box = observation.boundingBox
-                let aspect = box.height > 0 ? box.width / box.height : 0
+                let aspect: CGFloat
+                if useExternal {
+                    aspect = quadrilateralAspect(observation)
+                } else {
+                    aspect = box.height > 0 ? box.width / box.height : 0
+                }
                 let isDominant = dominant.contains(where: { $0 === observation })
 
                 var reason = ""
                 var accepted = false
-                let minConfidence: Float = useExternal ? 0.7 : 0.8
 
-                let minAspect: CGFloat = useExternal ? 0.4 : 1.2
+                // Distant plates produce smaller bounding boxes and lower
+                // confidence scores. Scale the threshold down for small detections.
+                let boxArea = box.width * box.height
+                let isDistant = useExternal && boxArea < 0.005
+                let minConfidence: Float = isDistant ? 0.50 : (useExternal ? 0.65 : 0.8)
+
+                let minAspect: CGFloat = useExternal ? 0.15 : 1.2
                 let maxAspect: CGFloat = 10.0
                 let passesAspect = aspect > minAspect && aspect < maxAspect
 
@@ -106,9 +133,13 @@ final class PlateRecognitionService {
                     return norm != normalized ? norm : nil
                 }
 
-                let plateText: String
+                var plateText: String
                 let rejection = PlatePatternMatcher.evaluatePlate(normalized)
                 if rejection == .tooLong, normalized.count >= 8 {
+                    plateText = self.trimToPlate(normalized) ?? normalized
+                } else if rejection == .noFormatMatch || rejection == .noDigits || rejection == .tooFewDigits {
+                    // Rim text merged with plate (e.g. "BKABC1234", "ABC1234PA")
+                    // — try extracting a valid substring
                     plateText = self.trimToPlate(normalized) ?? normalized
                 } else {
                     plateText = normalized
@@ -122,7 +153,12 @@ final class PlateRecognitionService {
                 }
 
                 let matchesFormat = PlatePatternMatcher.evaluatePlate(plateText) == nil
-                let effectiveMinConf: Float = matchesFormat ? (useExternal ? 0.55 : 0.6) : minConfidence
+                let effectiveMinConf: Float
+                if matchesFormat {
+                    effectiveMinConf = isDistant ? 0.40 : (useExternal ? 0.50 : 0.6)
+                } else {
+                    effectiveMinConf = minConfidence
+                }
 
                 if candidate.confidence < effectiveMinConf {
                     reason = PlatePatternMatcher.RejectionReason.lowConfidence.rawValue
@@ -141,6 +177,7 @@ final class PlateRecognitionService {
                         timestamp: now,
                         alternates: alternates
                     ))
+                    plateObservations.append(observation)
                 }
 
                 diagnostics.append(DiagnosticEntry(
@@ -155,14 +192,27 @@ final class PlateRecognitionService {
                 ))
             }
 
+            // Re-crop verification only for low-confidence plates
             if useExternal && !plates.isEmpty {
                 var verifiedPlates = plates
                 for (i, plate) in plates.enumerated() {
-                    if let reCropText = self.reCropAndOCR(
-                        pixelBuffer: pixelBuffer,
-                        boundingBox: plate.boundingBox,
-                        orientation: orientation
-                    ), reCropText != plate.text,
+                    guard plate.confidence < 0.85 else { continue }
+                    let obs = i < plateObservations.count ? plateObservations[i] : nil
+                    let reCropText: String?
+                    if let obs {
+                        reCropText = self.perspectiveCorrectedReCropAndOCR(
+                            pixelBuffer: pixelBuffer,
+                            observation: obs,
+                            orientation: orientation
+                        )
+                    } else {
+                        reCropText = self.reCropAndOCR(
+                            pixelBuffer: pixelBuffer,
+                            boundingBox: plate.boundingBox,
+                            orientation: orientation
+                        )
+                    }
+                    if let reCropText, reCropText != plate.text,
                        PlatePatternMatcher.evaluatePlate(reCropText) == nil {
                         var newAlts = plate.alternates
                         if !newAlts.contains(reCropText) {
@@ -193,14 +243,13 @@ final class PlateRecognitionService {
         }
     }
 
-    /// When OCR returns 8+ characters (e.g. "ZRA46341"), try stripping
-    /// leading/trailing chars to find a valid 5-7 char plate substring.
-    /// Only accepts results with both letters AND digits to avoid
-    /// creating vanity-plate-like strings from sign text.
-    /// Prefers rightmost substrings since leading characters are typically
-    /// noise from adjacent text picked up by OCR (e.g. "LLBK0636" → "LBK0636").
+    /// Extracts a valid plate substring from OCR text that may include
+    /// rim/frame text merged with the actual plate number. Scans all
+    /// 5-7 character windows, preferring longer matches and rightmost
+    /// position (rim text is usually a prefix from dealer name above).
     private func trimToPlate(_ text: String) -> String? {
         let chars = Array(text)
+        guard chars.count >= 5 else { return nil }
         var best: String?
         var bestLen = 0
 
@@ -225,13 +274,11 @@ final class PlateRecognitionService {
     }
 
     /// High-contrast grayscale pipeline tuned for colored plates (yellow NJ,
-    /// green specialty). Aggressive contrast pushes the light plate background
-    /// toward white and dark text toward black, making OCR much more reliable
-    /// on non-white plates. The raw color pass handles white PA plates.
-    private func enhanceFrame(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
+    /// green specialty). Reuses a single pixel buffer across frames to avoid
+    /// allocating ~8MB of BGRA memory on every call.
+    private func enhanceFrameReusing(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
 
-        // Step 1: full desaturation
         guard let grayscale = CIFilter(name: "CIColorControls", parameters: [
             kCIInputImageKey: ciImage,
             "inputSaturation": 0.0,
@@ -239,9 +286,6 @@ final class PlateRecognitionService {
             "inputBrightness": 0.0,
         ])?.outputImage else { return nil }
 
-        // Step 2: aggressive contrast curve via tone mapping — pushes
-        // mid-grays apart so yellow-turned-gray background goes white
-        // and dark text goes fully black.
         guard let highContrast = CIFilter(name: "CIToneCurve", parameters: [
             kCIInputImageKey: grayscale,
             "inputPoint0": CIVector(x: 0.0, y: 0.0),
@@ -251,17 +295,23 @@ final class PlateRecognitionService {
             "inputPoint4": CIVector(x: 1.0, y: 1.0),
         ])?.outputImage else { return nil }
 
-        var output: CVPixelBuffer?
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        let attrs: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-        ]
-        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &output)
 
-        guard let output else { return nil }
+        if enhancedBuffer == nil
+            || CVPixelBufferGetWidth(enhancedBuffer!) != width
+            || CVPixelBufferGetHeight(enhancedBuffer!) != height {
+            let attrs: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+            ]
+            var buf: CVPixelBuffer?
+            CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &buf)
+            enhancedBuffer = buf
+        }
+
+        guard let output = enhancedBuffer else { return nil }
         ciContext.render(highContrast, to: output)
         return output
     }
@@ -372,27 +422,82 @@ final class PlateRecognitionService {
         return score
     }
 
+    // MARK: - Quadrilateral Aspect Ratio
+
+    /// Computes aspect ratio from the observation's actual corner points
+    /// rather than the axis-aligned bounding box. This gives an accurate
+    /// width/height ratio even when the plate is keystoned by the camera angle.
+    private func quadrilateralAspect(_ observation: VNRecognizedTextObservation) -> CGFloat {
+        let tl = observation.topLeft
+        let tr = observation.topRight
+        let bl = observation.bottomLeft
+        let br = observation.bottomRight
+
+        let topWidth = hypot(tr.x - tl.x, tr.y - tl.y)
+        let bottomWidth = hypot(br.x - bl.x, br.y - bl.y)
+        let leftHeight = hypot(tl.x - bl.x, tl.y - bl.y)
+        let rightHeight = hypot(tr.x - br.x, tr.y - br.y)
+
+        let avgWidth = (topWidth + bottomWidth) / 2
+        let avgHeight = (leftHeight + rightHeight) / 2
+        guard avgHeight > 0 else { return 0 }
+        return avgWidth / avgHeight
+    }
+
     // MARK: - Re-crop Verification
 
-    /// Crops the frame to a plate's bounding box and re-runs OCR for a second opinion.
+    /// Crops the frame to a plate's bounding box and re-runs OCR.
+    /// For external cameras, applies perspective correction to dewarp
+    /// keystoned plates before the second OCR pass.
     private func reCropAndOCR(pixelBuffer: CVPixelBuffer, boundingBox: CGRect, orientation: CGImagePropertyOrientation) -> String? {
+        reCropAndOCR(pixelBuffer: pixelBuffer, boundingBox: boundingBox, observation: nil, orientation: orientation)
+    }
+
+    private func perspectiveCorrectedReCropAndOCR(pixelBuffer: CVPixelBuffer, observation: VNRecognizedTextObservation, orientation: CGImagePropertyOrientation) -> String? {
+        reCropAndOCR(pixelBuffer: pixelBuffer, boundingBox: observation.boundingBox, observation: observation, orientation: orientation)
+    }
+
+    private func reCropAndOCR(pixelBuffer: CVPixelBuffer, boundingBox: CGRect, observation: VNRecognizedTextObservation?, orientation: CGImagePropertyOrientation) -> String? {
         let width = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
         let height = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
 
-        let pad: CGFloat = 0.03
-        let cropRect = CGRect(
-            x: max(0, boundingBox.origin.x - pad) * width,
-            y: max(0, boundingBox.origin.y - pad) * height,
-            width: min(1.0, boundingBox.width + pad * 2) * width,
-            height: min(1.0, boundingBox.height + pad * 2) * height
-        )
+        let ciImage: CIImage
 
-        guard cropRect.width > 20, cropRect.height > 10 else { return nil }
+        if let obs = observation {
+            let pad: CGFloat = 0.04
+            let tl = CGPoint(x: max(0, obs.topLeft.x - pad) * width,
+                             y: max(0, obs.topLeft.y - pad) * height)
+            let tr = CGPoint(x: min(1, obs.topRight.x + pad) * width,
+                             y: max(0, obs.topRight.y - pad) * height)
+            let bl = CGPoint(x: max(0, obs.bottomLeft.x - pad) * width,
+                             y: min(1, obs.bottomLeft.y + pad) * height)
+            let br = CGPoint(x: min(1, obs.bottomRight.x + pad) * width,
+                             y: min(1, obs.bottomRight.y + pad) * height)
 
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer).cropped(to: cropRect)
+            let source = CIImage(cvPixelBuffer: pixelBuffer)
+            guard let corrected = CIFilter(name: "CIPerspectiveCorrection", parameters: [
+                kCIInputImageKey: source,
+                "inputTopLeft": CIVector(cgPoint: tl),
+                "inputTopRight": CIVector(cgPoint: tr),
+                "inputBottomLeft": CIVector(cgPoint: bl),
+                "inputBottomRight": CIVector(cgPoint: br),
+            ])?.outputImage else { return nil }
+            ciImage = corrected
+        } else {
+            let pad: CGFloat = 0.03
+            let cropRect = CGRect(
+                x: max(0, boundingBox.origin.x - pad) * width,
+                y: max(0, boundingBox.origin.y - pad) * height,
+                width: min(1.0, boundingBox.width + pad * 2) * width,
+                height: min(1.0, boundingBox.height + pad * 2) * height
+            )
+            guard cropRect.width > 20, cropRect.height > 10 else { return nil }
+            ciImage = CIImage(cvPixelBuffer: pixelBuffer).cropped(to: cropRect)
+        }
+
         let handler = VNImageRequestHandler(ciImage: ciImage, orientation: orientation)
         let req = VNRecognizeTextRequest()
-        req.recognitionLevel = .accurate
+        req.recognitionLevel = .fast
         req.usesLanguageCorrection = false
         req.revision = VNRecognizeTextRequestRevision3
         try? handler.perform([req])

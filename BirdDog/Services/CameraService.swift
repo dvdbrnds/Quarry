@@ -48,7 +48,7 @@ final class CameraService: NSObject, ObservableObject {
     private var discoverySession: AVCaptureDevice.DiscoverySession?
     private var hasSetInitialPreference = false
     private var pollTimer: Timer?
-    private let sharpnessThreshold: Double = 30.0
+    private let sharpnessThreshold: Double = 12.0
     private var lastFrameSharpness: Double = 999
 
     func start() {
@@ -84,6 +84,8 @@ final class CameraService: NSObject, ObservableObject {
 
     func stop() {
         stopPolling()
+        exposureLockTimer?.invalidate()
+        exposureRefreshTimer?.invalidate()
         sessionQueue.async { [weak self] in
             guard let self, self.isRunning else { return }
             self.session.stopRunning()
@@ -766,14 +768,47 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     private var exposureLockTimer: Timer?
+    private var exposureRefreshTimer: Timer?
 
     private func scheduleExposureLock(for camera: AVCaptureDevice) {
         exposureLockTimer?.invalidate()
+        exposureRefreshTimer?.invalidate()
         DispatchQueue.main.async { [weak self] in
             self?.exposureLocked = false
         }
-        exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+        exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
             self?.lockExposure(camera)
+            self?.startExposureRefreshCycle(for: camera)
+        }
+    }
+
+    private func startExposureRefreshCycle(for camera: AVCaptureDevice) {
+        exposureRefreshTimer?.invalidate()
+        exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: 45.0, repeats: true) { [weak self] _ in
+            self?.refreshExposure(camera)
+        }
+    }
+
+    /// Briefly unlock auto-exposure to adapt to lighting changes
+    /// (sun/shade transitions, clouds), then re-lock.
+    private func refreshExposure(_ camera: AVCaptureDevice) {
+        sessionQueue.async { [weak self] in
+            guard let self, self.isUsingExternalCamera else { return }
+            guard camera.isExposureModeSupported(.continuousAutoExposure),
+                  camera.isExposureModeSupported(.locked) else { return }
+
+            try? camera.lockForConfiguration()
+            camera.exposureMode = .continuousAutoExposure
+            camera.unlockForConfiguration()
+            self.log("exposure: unlocked for refresh")
+
+            DispatchQueue.main.async { [weak self] in
+                self?.exposureLocked = false
+            }
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                self?.lockExposure(camera)
+            }
         }
     }
 
@@ -787,7 +822,7 @@ final class CameraService: NSObject, ObservableObject {
             try? camera.lockForConfiguration()
             camera.exposureMode = .locked
             camera.unlockForConfiguration()
-            self.log("exposure: LOCKED at current level")
+            self.log("exposure: LOCKED at current level (ISO=\(camera.iso), shutter=\(camera.exposureDuration.seconds)s)")
             DispatchQueue.main.async {
                 self.exposureLocked = true
             }
@@ -800,8 +835,19 @@ final class CameraService: NSObject, ObservableObject {
             try? camera.lockForConfiguration()
             let clamped = max(camera.minExposureTargetBias, min(self.exposureBias, camera.maxExposureTargetBias))
             camera.setExposureTargetBias(clamped, completionHandler: nil)
+
+            if camera.isExposureModeSupported(.continuousAutoExposure) {
+                camera.exposureMode = .continuousAutoExposure
+            }
             camera.unlockForConfiguration()
-            self.log("exposure bias → \(clamped)")
+            self.log("exposure bias → \(clamped), re-evaluating")
+
+            DispatchQueue.main.async { [weak self] in
+                self?.exposureLocked = false
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                self?.lockExposure(camera)
+            }
         }
     }
 

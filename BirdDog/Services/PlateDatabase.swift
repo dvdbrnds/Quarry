@@ -195,14 +195,14 @@ final class PlateDatabase {
         let plate = normalizedPlate
         let chars = Array(plate)
 
-        // 1. Transposition: swap each adjacent pair and try exact + fuzzy
+        // 1. Transposition: swap each adjacent pair and try exact only.
+        //    (Transposition + fuzzy = 3 cumulative changes, too loose.)
         if chars.count >= 5 {
             for i in 0..<(chars.count - 1) {
                 var swapped = chars
                 swapped.swapAt(i, i + 1)
                 let variant = String(swapped)
                 if let record = lookup(normalizedPlate: variant) { return record }
-                if let record = fuzzyLookup(normalizedPlate: variant) { return record }
             }
         }
 
@@ -221,10 +221,13 @@ final class PlateDatabase {
             }
         }
 
-        // 3. Truncation recovery: if 5-6 chars, try prepending/appending common leading chars
+        // 3. Truncation recovery: if 5-6 chars, try prepending/appending common leading chars.
+        //    The 40-degree camera angle often clips the first or last character.
         if chars.count >= 5 && chars.count <= 6 {
-            let prefixes: [Character] = ["L", "M", "K", "N", "H", "Z", "1", "I"]
-            let suffixes: [Character] = ["1", "7", "0", "8", "4"]
+            let prefixes: [Character] = ["L", "M", "K", "N", "H", "Z", "J", "A",
+                                          "G", "V", "W", "R", "B", "C", "D", "E",
+                                          "F", "S", "T", "P", "1", "I", "0"]
+            let suffixes: [Character] = ["1", "7", "0", "8", "4", "3", "9", "2", "6", "5"]
             for prefix in prefixes {
                 let variant = String(prefix) + plate
                 if let record = lookup(normalizedPlate: variant) { return record }
@@ -238,13 +241,14 @@ final class PlateDatabase {
         }
 
         // 4. Edit-distance scan: scan all DB plates of the same length (5-7 chars).
-        //    Require confusableDistance <= 1.5 to catch multi-char OCR errors
-        //    (H/M, P/R, N/M, 5/S combos) while avoiding false positives.
+        //    Tight threshold: confusableDistance <= 0.7 means at most 2 confusable
+        //    character swaps (2 × 0.3 = 0.6). Combined with max 1 digit difference,
+        //    this catches genuine OCR errors without matching unrelated plates.
         if chars.count >= 5 && chars.count <= 7 {
             let plateDigits = plate.filter(\.isNumber)
             let allPlates = allRecordsOfLength(chars.count)
             var bestRecord: PermitRecord?
-            var bestDist: Float = 1.6
+            var bestDist: Float = 0.71
             for record in allPlates {
                 let recDigits = record.plateNormalized.filter(\.isNumber)
                 let digitDiffs: Int
@@ -253,14 +257,14 @@ final class PlateDatabase {
                 } else {
                     digitDiffs = abs(recDigits.count - plateDigits.count)
                 }
-                guard digitDiffs <= 2 else { continue }
+                guard digitDiffs <= 1 else { continue }
                 let dist = PlatePatternMatcher.confusableDistance(plate, record.plateNormalized)
                 if dist < bestDist {
                     bestDist = dist
                     bestRecord = record
                 }
             }
-            if let bestRecord, bestDist <= 1.5 {
+            if let bestRecord, bestDist <= 0.7 {
                 return bestRecord
             }
         }
