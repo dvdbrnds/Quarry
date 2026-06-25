@@ -27,7 +27,14 @@ final class HoundDogSyncService: ObservableObject {
     private static let lastPermitSyncKey = "HoundDogSync.lastPermitSync"
     private static let lastLotSyncKey = "HoundDogSync.lastLotSync"
     private static let isEnabledKey = "HoundDogSync.isEnabled"
-    private static let syncIntervalSeconds: TimeInterval = 30
+    private static let syncIntervalSeconds: TimeInterval = 60
+
+    private static let jsonDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+    private static let isoFormatter = ISO8601DateFormatter()
 
     private var syncTimer: Timer?
     private let monitor = NWPathMonitor()
@@ -117,7 +124,7 @@ final class HoundDogSyncService: ObservableObject {
         let settings = AppSettings.shared
         var urlString = "\(settings.houndDogURL)/api/sync/permits"
         if let since = lastPermitSync {
-            let ts = ISO8601DateFormatter().string(from: since)
+            let ts = Self.isoFormatter.string(from: since)
             urlString += "?since=\(ts)"
         }
 
@@ -130,9 +137,7 @@ final class HoundDogSyncService: ObservableObject {
             throw SyncError.serverError((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let syncResponse = try decoder.decode(PermitSyncResponse.self, from: data)
+        let syncResponse = try Self.jsonDecoder.decode(PermitSyncResponse.self, from: data)
 
         let db = PlateDatabase.shared
         let allPlatesRaw = syncResponse.permits.flatMap { $0.plates }.joined(separator: ";")
@@ -211,9 +216,7 @@ final class HoundDogSyncService: ObservableObject {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let syncResponse = try decoder.decode(ViolationTypesSyncResponse.self, from: data)
+        let syncResponse = try Self.jsonDecoder.decode(ViolationTypesSyncResponse.self, from: data)
         ViolationTypeStore.shared.update(from: syncResponse.violationTypes)
     }
 
@@ -228,9 +231,7 @@ final class HoundDogSyncService: ObservableObject {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let syncResponse = try decoder.decode(CalendarSyncResponse.self, from: data)
+        let syncResponse = try Self.jsonDecoder.decode(CalendarSyncResponse.self, from: data)
         CalendarStore.shared.update(from: syncResponse)
     }
 
@@ -245,9 +246,7 @@ final class HoundDogSyncService: ObservableObject {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let syncResponse = try decoder.decode(SettingsSyncResponse.self, from: data)
+        let syncResponse = try Self.jsonDecoder.decode(SettingsSyncResponse.self, from: data)
         EnforcementSettingsStore.shared.update(from: syncResponse.settings)
     }
 
@@ -257,7 +256,7 @@ final class HoundDogSyncService: ObservableObject {
         let settings = AppSettings.shared
         var urlString = "\(settings.houndDogURL)/api/sync/lots"
         if let since = lastLotSync {
-            let ts = ISO8601DateFormatter().string(from: since)
+            let ts = Self.isoFormatter.string(from: since)
             urlString += "?since=\(ts)"
         }
 
@@ -270,9 +269,7 @@ final class HoundDogSyncService: ObservableObject {
             throw SyncError.serverError((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let syncResponse = try decoder.decode(LotSyncResponse.self, from: data)
+        let syncResponse = try Self.jsonDecoder.decode(LotSyncResponse.self, from: data)
 
         let geofence = GeofenceService.shared
         if syncResponse.fullSync {
@@ -362,7 +359,7 @@ final class HoundDogSyncService: ObservableObject {
             "violation_type": ticket.violationType,
             "confidence": ticket.confidence,
             "camera_name": ticket.cameraName,
-            "timestamp": ISO8601DateFormatter().string(from: ticket.issuedAt),
+            "timestamp": Self.isoFormatter.string(from: ticket.issuedAt),
             "ticket_category": ticket.ticketCategory,
         ]
 

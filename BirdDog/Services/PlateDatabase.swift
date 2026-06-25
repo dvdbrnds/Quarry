@@ -152,24 +152,6 @@ final class PlateDatabase {
         return try? context.fetch(descriptor).first
     }
 
-    /// Look up a permit by beacon minor value. Checks `beaconId` first, then `permitNumber`.
-    func lookupByBeaconMinor(_ minor: String) -> PermitRecord? {
-        let m = minor
-        var descriptor = FetchDescriptor<PermitRecord>(
-            predicate: #Predicate<PermitRecord> { $0.beaconId == m }
-        )
-        descriptor.fetchLimit = 1
-        if let record = try? context.fetch(descriptor).first {
-            return record
-        }
-
-        descriptor = FetchDescriptor<PermitRecord>(
-            predicate: #Predicate<PermitRecord> { $0.permitNumber == m }
-        )
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-
     func fuzzyLookup(normalizedPlate: String) -> PermitRecord? {
         for (i, char) in normalizedPlate.enumerated() {
             guard let alts = PlatePatternMatcher.confusables[char] else { continue }

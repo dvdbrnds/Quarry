@@ -15,6 +15,7 @@
 		1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3E09DFE576A65B9E6C3329 /* ContentView.swift */; };
 		1E92882A49F81E47B67DE436 /* TicketReceiptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4F388DD2760B3DE754574DE /* TicketReceiptBuilder.swift */; };
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
+		A1B2C3D4E5F60718091A2B3C /* ParkingSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F6071809A1B2C3D4E5F6 /* ParkingSpot.swift */; };
 		2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */; };
 		2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */; };
 		28BAF0B4445935525197A945 /* PrinterSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */; };
@@ -44,7 +45,6 @@
 		9F6ED9D0556F74E906B630E1 /* MovingViolationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A4B5A485C2EE7AAE00AFF3 /* MovingViolationView.swift */; };
 		9F99C1DDA5B19ED739F4E5BD /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56771E1D5749AF106C7BF205 /* QRScannerView.swift */; };
 		A12C4A182ADC62EA59ED062B /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D365FD04C9B93E301AA01 /* ScanSession.swift */; };
-		A1B2C3D4E5F60718BEAC0001 /* BeaconPermitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */; };
 		A1B2C3D4E5F60718BEAC0003 /* CalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0004 /* CalendarStore.swift */; };
 		A1B2C3D4E5F60718BEAC0005 /* EnforcementSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0006 /* EnforcementSettingsStore.swift */; };
 		A1B2C3D4E5F60718BEAC0007 /* ViolationTypeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEAC0008 /* ViolationTypeStore.swift */; };
@@ -84,6 +84,7 @@
 		2A42B55C539B3FC8C46FA926 /* BirdDog.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BirdDog.entitlements; sourceTree = "<group>"; };
 		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
+		D4E5F6071809A1B2C3D4E5F6 /* ParkingSpot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingSpot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
 		4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketIssuanceView.swift; sourceTree = "<group>"; };
 		433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterSettingsView.swift; sourceTree = "<group>"; };
@@ -108,7 +109,6 @@
 		995B0C59C443E480C6E8929E /* AdminSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminSettingsView.swift; sourceTree = "<group>"; };
 		9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9C892FB471FBA100CC681F7F /* BirdDog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BirdDog.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeaconPermitService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718BEAC0004 /* CalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718BEAC0006 /* EnforcementSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnforcementSettingsStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718BEAC0008 /* ViolationTypeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViolationTypeStore.swift; sourceTree = "<group>"; };
@@ -149,6 +149,7 @@
 			isa = PBXGroup;
 			children = (
 				2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */,
+				D4E5F6071809A1B2C3D4E5F6 /* ParkingSpot.swift */,
 				AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */,
 				85B823FB184EA9720E86DF1E /* PermitRecord.swift */,
 				0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */,
@@ -172,7 +173,6 @@
 			isa = PBXGroup;
 			children = (
 				4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */,
-				A1B2C3D4E5F60718BEAC0002 /* BeaconPermitService.swift */,
 				A1B2C3D4E5F60718BEAC0004 /* CalendarStore.swift */,
 				737FD3F7D372AFD77737EE09 /* CameraService.swift */,
 				72F5636944CED0E09729E861 /* DataProvider.swift */,
@@ -404,7 +404,6 @@
 				50D3CFDA5BB31F7ADF11E3ED /* AdminPasscodeView.swift in Sources */,
 				3FFD378444F1F788A2ADF916 /* AdminSettingsView.swift in Sources */,
 				4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */,
-				A1B2C3D4E5F60718BEAC0001 /* BeaconPermitService.swift in Sources */,
 				BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */,
 				A1B2C3D4E5F60718BEAC0003 /* CalendarStore.swift in Sources */,
 				4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */,
@@ -424,6 +423,7 @@
 				3FD6221EF507FE56F79C1635 /* OfficerLoginView.swift in Sources */,
 				48B2B22D2F94299902405993 /* OnboardingView.swift in Sources */,
 				23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */,
+				A1B2C3D4E5F60718091A2B3C /* ParkingSpot.swift in Sources */,
 				F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */,
 				58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */,
 				7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */,

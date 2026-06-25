@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Coordinate, Lot, LotClosure, LotZone } from "../api";
+import { api, Coordinate, Lot, LotClosure, LotZone, ParkingSpot } from "../api";
 import { authHeaders, loadConfig } from "../auth";
 import LotMap from "../components/LotMap";
 
@@ -31,6 +31,7 @@ function LotForm({
   const [handicapSpaces, setHandicapSpaces] = useState(initial?.handicap_spaces ?? 0);
   const [designationCode, setDesignationCode] = useState(initial?.designation_code ?? "");
   const [isSnowLot, setIsSnowLot] = useState(initial?.is_snow_lot ?? false);
+  const [hasSheepDog, setHasSheepDog] = useState(initial?.has_sheepdog ?? false);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [accessScheduleJson, setAccessScheduleJson] = useState(
     initial?.access_schedule && initial.access_schedule.length > 0
@@ -64,6 +65,7 @@ function LotForm({
         designation_code: designationCode,
         designation_label: designLabel,
         is_snow_lot: isSnowLot,
+        has_sheepdog: hasSheepDog,
         notes: notes || null,
         ...(parsedSchedule !== undefined ? { access_schedule: parsedSchedule } : {}),
       };
@@ -109,6 +111,11 @@ function LotForm({
         <input type="checkbox" checked={isSnowLot} onChange={(e) => setIsSnowLot(e.target.checked)}
           className="rounded border-gray-300 text-brass focus:ring-brass" />
         Snow lot (prohibited 11pm-7am during snow regulations)
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={hasSheepDog} onChange={(e) => setHasSheepDog(e.target.checked)}
+          className="rounded border-gray-300 text-amber-500 focus:ring-amber-500" />
+        SheepDog occupancy monitoring
       </label>
       <div>
         <label className="block text-xs font-medium text-ink-mute mb-1">Notes</label>
@@ -278,6 +285,133 @@ function ZonePanel({ lotId }: { lotId: string }) {
         <p className="text-xs text-ink-mute">No special zones defined</p>
       )}
       {adding && <ZoneForm onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
+    </div>
+  );
+}
+
+type SpotFormState = { number: number; label: string; sensor_id: string; latitude: string; longitude: string };
+const EMPTY_SPOT_FORM: SpotFormState = { number: 1, label: "", sensor_id: "", latitude: "", longitude: "" };
+
+function SpotForm({ initial, onSubmit, onCancel }: {
+  initial?: SpotFormState;
+  onSubmit: (data: SpotFormState) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState<SpotFormState>(initial ?? EMPTY_SPOT_FORM);
+  const [saving, setSaving] = useState(false);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try { await onSubmit(form); } finally { setSaving(false); }
+  }
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 space-y-2 bg-amber-50 rounded-lg p-2">
+      <div className="flex gap-2">
+        <input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: Number(e.target.value) })}
+          placeholder="#" className="w-16 border border-gray-300 rounded px-2 py-1 text-xs" />
+        <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })}
+          placeholder="Label (e.g. Dave's Office)" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs" />
+      </div>
+      <input value={form.sensor_id} onChange={(e) => setForm({ ...form, sensor_id: e.target.value })}
+        placeholder="Sensor ID (e.g. A-001)" className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
+      <div className="flex gap-2">
+        <input value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+          placeholder="Latitude" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
+        <input value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+          placeholder="Longitude" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving} className="px-2 py-1 bg-amber-500 text-white text-xs rounded disabled:opacity-50">
+          {saving ? "..." : initial ? "Update" : "Add"}
+        </button>
+        <button type="button" onClick={onCancel} className="px-2 py-1 text-xs text-ink-mute">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function SpotPanel({ lotId }: { lotId: string }) {
+  const [spots, setSpots] = useState<ParkingSpot[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setSpots(await api.lots.spots.list(lotId));
+  }, [lotId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAdd(data: SpotFormState) {
+    await api.lots.spots.create(lotId, {
+      number: data.number,
+      label: data.label || null,
+      sensor_id: data.sensor_id || null,
+      latitude: data.latitude ? parseFloat(data.latitude) : null,
+      longitude: data.longitude ? parseFloat(data.longitude) : null,
+    });
+    setAdding(false);
+    load();
+  }
+
+  async function handleUpdate(spotId: string, data: SpotFormState) {
+    await api.lots.spots.update(lotId, spotId, {
+      number: data.number,
+      label: data.label || null,
+      sensor_id: data.sensor_id || null,
+      latitude: data.latitude ? parseFloat(data.latitude) : null,
+      longitude: data.longitude ? parseFloat(data.longitude) : null,
+    });
+    setEditingSpotId(null);
+    load();
+  }
+
+  async function handleDelete(spotId: string) {
+    if (!confirm("Remove this spot?")) return;
+    await api.lots.spots.delete(lotId, spotId);
+    load();
+  }
+
+  return (
+    <div className="p-4 border-t border-amber-200 bg-amber-50/30">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-bold uppercase text-amber-700 tracking-wide flex items-center gap-1">
+          <span>🐾</span> SheepDog Spots
+        </h4>
+        <button onClick={() => setAdding(true)} className="text-xs text-amber-600 hover:text-amber-700">+ Add Spot</button>
+      </div>
+      {spots.map(s => editingSpotId === s.id ? (
+        <SpotForm
+          key={s.id}
+          initial={{
+            number: s.number,
+            label: s.label ?? "",
+            sensor_id: s.sensor_id ?? "",
+            latitude: s.latitude != null ? String(s.latitude) : "",
+            longitude: s.longitude != null ? String(s.longitude) : "",
+          }}
+          onSubmit={(data) => handleUpdate(s.id, data)}
+          onCancel={() => setEditingSpotId(null)}
+        />
+      ) : (
+        <div key={s.id} className="flex items-center justify-between text-xs py-1">
+          <span>
+            <span className="font-mono font-bold text-amber-700">#{s.number}</span>
+            {s.label && <span className="ml-1">{s.label}</span>}
+            {s.sensor_id && <span className="ml-1.5 font-mono bg-amber-100 text-amber-700 px-1 rounded text-[10px]">{s.sensor_id}</span>}
+            {s.latitude != null && s.longitude != null && (
+              <span className="ml-1.5 text-[10px] text-ink-mute font-mono">{s.latitude.toFixed(6)}, {s.longitude.toFixed(6)}</span>
+            )}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={() => setEditingSpotId(s.id)} className="text-amber-600 hover:text-amber-700">Edit</button>
+            <button onClick={() => handleDelete(s.id)} className="text-signal-red/60 hover:text-signal-red">Remove</button>
+          </div>
+        </div>
+      ))}
+      {spots.length === 0 && !adding && (
+        <p className="text-xs text-ink-mute">No spots assigned. Add spots to assign SheepDog pucks.</p>
+      )}
+      {adding && <SpotForm onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
     </div>
   );
 }
@@ -486,6 +620,11 @@ export default function Lots() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-sm">{lot.name}</h3>
+                      {lot.has_sheepdog && (
+                        <span className="inline-block bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                          🐾
+                        </span>
+                      )}
                       {lot.is_closed && (
                         <span className="inline-block bg-signal-red/10 text-signal-red px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">
                           Closed
@@ -529,7 +668,12 @@ export default function Lots() {
                   )}
                 </div>
               </div>
-              {lot.id === selectedLotId && !isEditing && <ZonePanel lotId={lot.id} />}
+              {lot.id === selectedLotId && !isEditing && (
+                <>
+                  <ZonePanel lotId={lot.id} />
+                  {lot.has_sheepdog && <SpotPanel lotId={lot.id} />}
+                </>
+              )}
             </div>
           ))}
         </div>

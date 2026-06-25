@@ -75,7 +75,6 @@ struct ContentView: View {
                             liveStatsBadge
                             dbStatusBanner
                             currentLotBadge
-                            beaconBadge
                             if appSettings.useCloudOCR {
                                 HStack(spacing: 4) {
                                     Image(systemName: "cloud.fill")
@@ -273,23 +272,6 @@ struct ContentView: View {
         )
         .foregroundStyle(status == .searchingExternal ? .black : .white)
         .onTapGesture { showCameraLog = true }
-    }
-
-    @ViewBuilder
-    private var beaconBadge: some View {
-        let count = viewModel.beaconService.nearbyPermits.count
-        if viewModel.beaconService.isRanging && count > 0 {
-            HStack(spacing: 4) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.caption2)
-                Text("\(count) BLE")
-                    .font(.caption2.bold())
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .foregroundStyle(.white)
-            .background(.indigo, in: Capsule())
-        }
     }
 
     private var bottomBar: some View {

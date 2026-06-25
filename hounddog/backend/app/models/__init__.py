@@ -5,6 +5,7 @@ from .enforcement_settings import EnforcementSettings
 from .lot import ParkingLot
 from .lot_closure import LotClosure
 from .lot_zone import LotZone
+from .parking_spot import ParkingSpot
 from .message_template import MessageTemplate
 from .notification_preference import NotificationPreference
 from .payment import Payment
@@ -24,6 +25,7 @@ __all__ = [
     "MessageTemplate",
     "NotificationPreference",
     "ParkingLot",
+    "ParkingSpot",
     "Payment",
     "Permit",
     "PermitApplication",
