@@ -204,6 +204,45 @@ export interface AcademicSeason {
   updated_at: string;
 }
 
+export interface AlertSubscriber {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  sms_enabled: boolean;
+  email_enabled: boolean;
+  categories: string[];
+  unsubscribe_token: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertSendPreview {
+  category: string;
+  email_recipient_count: number;
+  sms_recipient_count: number;
+  total_subscribers: number;
+}
+
+export interface AlertSendResult {
+  emails_sent: number;
+  sms_sent: number;
+  alert_id: string;
+}
+
+export interface AlertLogEntry {
+  id: string;
+  category: string;
+  subject: string;
+  body_text: string;
+  body_sms: string;
+  sent_by: string;
+  email_count: number;
+  sms_count: number;
+  sent_at: string;
+}
+
 export const api = {
   academicCalendar: {
     list: () => request<AcademicSeason[]>("/academic-calendar"),
@@ -326,5 +365,61 @@ export const api = {
       const qs = lot ? `?lot=${encodeURIComponent(lot)}` : "";
       return request<PermitNotificationStatus[]>(`/messaging/preferences${qs}`);
     },
+  },
+  alerts: {
+    preview: (category: string) =>
+      request<AlertSendPreview>(`/alerts/send/preview?category=${encodeURIComponent(category)}`),
+    send: (data: {
+      category: string;
+      subject: string;
+      body_text?: string;
+      body_sms?: string;
+      send_email?: boolean;
+      send_sms?: boolean;
+    }) =>
+      request<AlertSendResult>("/alerts/send", { method: "POST", body: JSON.stringify(data) }),
+    history: (params?: { limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.limit) qs.set("limit", String(params.limit));
+      if (params?.offset) qs.set("offset", String(params.offset));
+      return request<AlertLogEntry[]>(`/alerts/history?${qs}`);
+    },
+    subscribers: {
+      list: (params?: { search?: string; category?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.search) qs.set("search", params.search);
+        if (params?.category) qs.set("category", params.category);
+        return request<AlertSubscriber[]>(`/alerts/subscribers?${qs}`);
+      },
+      create: (data: Partial<AlertSubscriber>) =>
+        request<AlertSubscriber>("/alerts/subscribers", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<AlertSubscriber>) =>
+        request<AlertSubscriber>(`/alerts/subscribers/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request<void>(`/alerts/subscribers/${id}`, { method: "DELETE" }),
+      importCsv: async (file: File) => {
+        const token = await getAccessToken();
+        const form = new FormData();
+        form.append("file", file);
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const res = await fetch(`${BASE}/alerts/subscribers/import`, { method: "POST", headers, body: form });
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        return res.json() as Promise<{ created: number; skipped: number }>;
+      },
+      exportUrl: `${BASE}/alerts/subscribers/export`,
+    },
+    subscribe: (data: { name: string; email?: string; phone?: string; categories?: string[] }) =>
+      fetch(`${BASE}/alerts/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`${res.status}: ${body}`);
+        }
+        return res.json() as Promise<{ message: string; subscriber_id: string }>;
+      }),
   },
 };

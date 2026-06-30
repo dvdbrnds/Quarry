@@ -9,6 +9,9 @@ import NotificationPreferences from "./pages/NotificationPreferences";
 import Finance from "./pages/Finance";
 import OperationsCalendar from "./pages/OperationsCalendar";
 import Settings from "./pages/Settings";
+import Alerts from "./pages/Alerts";
+import AlertSubscribe from "./pages/AlertSubscribe";
+import AlertUnsubscribe from "./pages/AlertUnsubscribe";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
 import AuthCallback from "./pages/AuthCallback";
@@ -50,6 +53,7 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/calendar">Calendar</NavItem>
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/finance">Finance</NavItem>
+        <NavItem to="/alerts">Alerts</NavItem>
         <NavItem to="/settings">Settings</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
@@ -75,6 +79,7 @@ function AdminShell({ user }: { user: AuthUser }) {
           <Route path="/calendar" element={<OperationsCalendar />} />
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/finance" element={<Finance />} />
+          <Route path="/alerts" element={<Alerts />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
           <Route path="/student/permits" element={<StudentPermits />} />
@@ -121,6 +126,7 @@ export default function App() {
   const location = useLocation();
   const isPayRoute = location.pathname.startsWith("/pay");
   const isNotificationsRoute = location.pathname.startsWith("/notifications/");
+  const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
   const isAuthCallback = location.pathname === "/auth/callback";
 
   if (isAuthCallback) {
@@ -144,6 +150,15 @@ export default function App() {
     return (
       <Routes>
         <Route path="/notifications/:token" element={<NotificationPreferences />} />
+      </Routes>
+    );
+  }
+
+  if (isAlertSubscribeRoute) {
+    return (
+      <Routes>
+        <Route path="/alerts/subscribe" element={<AlertSubscribe />} />
+        <Route path="/alerts/unsubscribe/:token" element={<AlertUnsubscribe />} />
       </Routes>
     );
   }
