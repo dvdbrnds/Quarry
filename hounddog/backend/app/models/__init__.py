@@ -1,4 +1,6 @@
 from .academic_season import AcademicSeason
+from .alert_log import AlertLog
+from .alert_subscriber import AlertSubscriber
 from .audit_log import AuditLog
 from .device import Device
 from .enforcement_settings import EnforcementSettings
@@ -17,6 +19,8 @@ from .violation_type import ViolationType
 
 __all__ = [
     "AcademicSeason",
+    "AlertLog",
+    "AlertSubscriber",
     "AuditLog",
     "Device",
     "EnforcementSettings",

@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .routers import (
     academic_calendar,
+    alerts,
     audit,
     auth,
     devices,
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
         Permit, PermitApplication, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
         AuditLog, LotClosure, MessageTemplate, NotificationPreference,
+        AlertSubscriber, AlertLog,
     )
     # Fail fast if secret_key was not overridden from the default
     if not settings.secret_key:
@@ -349,6 +351,8 @@ app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])
 app.include_router(notification_preferences.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(student_permits.router, prefix="/api/student/permits", tags=["student-permits"])
+app.include_router(alerts.admin_router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(alerts.public_router, prefix="/api/alerts", tags=["alerts-public"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
