@@ -73,12 +73,18 @@ class AlertSendPreview(BaseModel):
     email_recipient_count: int
     sms_recipient_count: int
     total_subscribers: int
+    configured_channels: list[str] = []
 
 
 class AlertSendResult(BaseModel):
+    alert_id: uuid.UUID
     emails_sent: int
     sms_sent: int
-    alert_id: uuid.UUID
+    channel_results: dict[str, dict] = {}
+
+
+class AlertTestRequest(BaseModel):
+    channel: str
 
 
 # --- Alert History schemas ---
@@ -95,4 +101,31 @@ class AlertLogRead(BaseModel):
     sent_by: str
     email_count: int
     sms_count: int
+    status: str
+    cleared_at: datetime | None = None
+    cleared_by: str | None = None
+    channel_results: dict | None = None
     sent_at: datetime
+
+
+# --- Active Alert (public) ---
+
+
+class ActiveAlertRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    category: str
+    subject: str
+    body_text: str
+    sent_at: datetime
+    status: str
+
+
+# --- Channel config ---
+
+
+class AlertChannelRead(BaseModel):
+    name: str
+    configured: bool
+    emergency_only: bool

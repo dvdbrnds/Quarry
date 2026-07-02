@@ -14,52 +14,26 @@ from ..database import get_db
 from ..models.alert_log import AlertLog
 from ..models.alert_subscriber import AlertSubscriber
 from ..schemas.alerts import (
+    ActiveAlertRead,
+    AlertChannelRead,
     AlertLogRead,
     AlertSendPreview,
     AlertSendRequest,
     AlertSendResult,
+    AlertTestRequest,
     PublicSubscribeRequest,
     PublicSubscribeResponse,
     SubscriberCreate,
     SubscriberRead,
     SubscriberUpdate,
 )
-from ..services.email import send_email
-from ..services.sms import send_bulk_sms
+from ..services.alert_dispatcher import clear_alert, dispatch_alert
+from ..services.channels import get_registry
 
 logger = logging.getLogger("quarry.alerts")
 
 admin_router = APIRouter(dependencies=[Depends(require_role("admin", "staff"))])
 public_router = APIRouter()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _unsubscribe_url(token: str) -> str:
-    return f"{settings.public_url}/alerts/unsubscribe/{token}"
-
-
-def _build_email_html(subject: str, body: str, unsub_token: str) -> str:
-    school = settings.school_name or "Campus"
-    unsub_link = _unsubscribe_url(unsub_token)
-    return f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a2744;">{subject}</h2>
-        <div style="white-space: pre-wrap;">{body}</div>
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
-        <p style="font-size: 12px; color: #888;">{school} — Quarry Alerts</p>
-        <p style="font-size: 11px; color: #aaa;">
-            <a href="{unsub_link}" style="color: #aaa;">Unsubscribe from alerts</a>
-        </p>
-    </div>
-    """
-
-
-def _build_sms_body(body: str, unsub_token: str) -> str:
-    unsub_link = _unsubscribe_url(unsub_token)
-    return f"{body}\n\nUnsubscribe: {unsub_link}"
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +82,27 @@ async def public_unsubscribe(token: str, db: AsyncSession = Depends(get_db)):
     return {"message": "You have been unsubscribed from all alerts."}
 
 
+@public_router.get("/active")
+async def get_active_alert(db: AsyncSession = Depends(get_db)):
+    """Public endpoint for website banner JS and signage players to poll."""
+    from ..services.channels.banner_channel import get_active_banner
+    banner = get_active_banner()
+    if banner:
+        return banner
+    result = await db.execute(
+        select(AlertLog)
+        .where(AlertLog.status == "active")
+        .order_by(AlertLog.sent_at.desc())
+        .limit(1)
+    )
+    alert = result.scalar_one_or_none()
+    if not alert:
+        return None
+    return ActiveAlertRead.model_validate(alert)
+
+
 # ---------------------------------------------------------------------------
-# Admin: Send & Preview
+# Admin: Send, Clear, Test & Preview
 # ---------------------------------------------------------------------------
 
 @admin_router.get("/send/preview", response_model=AlertSendPreview)
@@ -132,7 +125,6 @@ async def preview_send(
             AlertSubscriber.sms_enabled.is_(True),
         )
     else:
-        from sqlalchemy import cast, String
         email_q = select(func.count()).select_from(AlertSubscriber).where(
             AlertSubscriber.email.isnot(None),
             AlertSubscriber.email_enabled.is_(True),
@@ -147,11 +139,14 @@ async def preview_send(
     email_count = await db.scalar(email_q) or 0
     sms_count = await db.scalar(sms_q) or 0
 
+    configured_channels = [c.name for c in get_registry() if c.is_configured()]
+
     return AlertSendPreview(
         category=category,
         email_recipient_count=email_count,
         sms_recipient_count=sms_count,
         total_subscribers=total,
+        configured_channels=configured_channels,
     )
 
 
@@ -161,71 +156,81 @@ async def send_alert(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    is_emergency = data.category == "emergency"
-
-    if is_emergency:
-        q = select(AlertSubscriber).where(
-            or_(
-                AlertSubscriber.email.isnot(None),
-                AlertSubscriber.phone.isnot(None),
-            )
-        )
-    else:
-        q = select(AlertSubscriber).where(
-            AlertSubscriber.categories.op("@>")(f'["{data.category}"]'),
-            or_(
-                AlertSubscriber.email.isnot(None),
-                AlertSubscriber.phone.isnot(None),
-            ),
-        )
-
-    subscribers = (await db.execute(q)).scalars().all()
-
-    emails_sent = 0
-    sms_sent = 0
-
-    if data.send_email and data.subject:
-        email_recipients = [
-            s for s in subscribers
-            if s.email and s.email_enabled
-        ]
-        for batch_start in range(0, len(email_recipients), 50):
-            batch = email_recipients[batch_start:batch_start + 50]
-            for sub in batch:
-                html = _build_email_html(data.subject, data.body_text, sub.unsubscribe_token)
-                text_body = f"{data.body_text}\n\nUnsubscribe: {_unsubscribe_url(sub.unsubscribe_token)}"
-                success = await send_email([sub.email], data.subject, html, text_body)
-                if success:
-                    emails_sent += 1
-
-    if data.send_sms and data.body_sms:
-        sms_recipients = [
-            s for s in subscribers
-            if s.phone and s.sms_enabled
-        ]
-        for sub in sms_recipients:
-            sms_text = _build_sms_body(data.body_sms, sub.unsubscribe_token)
-            sent = send_bulk_sms([sub.phone], sms_text)
-            sms_sent += sent
-
     log_entry = AlertLog(
         category=data.category,
         subject=data.subject,
         body_text=data.body_text,
         body_sms=data.body_sms,
         sent_by=user.email,
-        email_count=emails_sent,
-        sms_count=sms_sent,
+        status="active",
     )
     db.add(log_entry)
     await db.flush()
     await db.refresh(log_entry)
 
+    channel_results = await dispatch_alert(log_entry.id, db)
+
+    await db.refresh(log_entry)
+
     return AlertSendResult(
-        emails_sent=emails_sent,
-        sms_sent=sms_sent,
         alert_id=log_entry.id,
+        emails_sent=log_entry.email_count,
+        sms_sent=log_entry.sms_count,
+        channel_results=channel_results,
     )
+
+
+@admin_router.post("/{alert_id}/clear", response_model=AlertLogRead)
+async def clear_alert_endpoint(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    alert = await clear_alert(alert_id, user.email, db)
+    if not alert:
+        raise HTTPException(404, "Alert not found or already cleared")
+    return alert
+
+
+@admin_router.post("/{alert_id}/test", response_model=AlertSendResult)
+async def test_alert_channel(
+    alert_id: uuid.UUID,
+    data: AlertTestRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Send an alert to a single channel for testing."""
+    alert = await db.get(AlertLog, alert_id)
+    if not alert:
+        raise HTTPException(404, "Alert not found")
+
+    channel_results = await dispatch_alert(alert_id, db, channels=[data.channel])
+
+    await db.refresh(alert)
+
+    return AlertSendResult(
+        alert_id=alert.id,
+        emails_sent=alert.email_count,
+        sms_sent=alert.sms_count,
+        channel_results=channel_results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin: Channels
+# ---------------------------------------------------------------------------
+
+@admin_router.get("/channels", response_model=list[AlertChannelRead])
+async def list_channels():
+    """List all registered alert channels with their configuration status."""
+    result = []
+    for ch in get_registry():
+        result.append(AlertChannelRead(
+            name=ch.name,
+            configured=ch.is_configured(),
+            emergency_only=ch.emergency_only,
+        ))
+    return result
 
 
 # ---------------------------------------------------------------------------
