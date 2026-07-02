@@ -223,12 +223,14 @@ export interface AlertSendPreview {
   email_recipient_count: number;
   sms_recipient_count: number;
   total_subscribers: number;
+  configured_channels: string[];
 }
 
 export interface AlertSendResult {
+  alert_id: string;
   emails_sent: number;
   sms_sent: number;
-  alert_id: string;
+  channel_results: Record<string, { sent: number; failed: number; error?: string | null }>;
 }
 
 export interface AlertLogEntry {
@@ -240,7 +242,37 @@ export interface AlertLogEntry {
   sent_by: string;
   email_count: number;
   sms_count: number;
+  status: string;
+  cleared_at: string | null;
+  cleared_by: string | null;
+  channel_results: Record<string, { sent: number; failed: number; error?: string | null }> | null;
   sent_at: string;
+}
+
+export interface ActiveAlert {
+  id: string;
+  category: string;
+  subject: string;
+  body_text: string;
+  sent_at: string;
+  status: string;
+}
+
+export interface AlertChannelInfo {
+  name: string;
+  configured: boolean;
+  emergency_only: boolean;
+}
+
+export interface SignageScreen {
+  id: string;
+  name: string;
+  location: string;
+  playlist: { type: string; url: string; duration: number }[];
+  last_seen: string | null;
+  is_online: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export const api = {
@@ -378,6 +410,20 @@ export const api = {
       send_sms?: boolean;
     }) =>
       request<AlertSendResult>("/alerts/send", { method: "POST", body: JSON.stringify(data) }),
+    clear: (alertId: string) =>
+      request<AlertLogEntry>(`/alerts/${alertId}/clear`, { method: "POST" }),
+    test: (alertId: string, channel: string) =>
+      request<AlertSendResult>(`/alerts/${alertId}/test`, {
+        method: "POST",
+        body: JSON.stringify({ channel }),
+      }),
+    active: () =>
+      fetch(`${BASE}/alerts/active`).then(async (res) => {
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data as ActiveAlert | null;
+      }),
+    channels: () => request<AlertChannelInfo[]>("/alerts/channels"),
     history: (params?: { limit?: number; offset?: number }) => {
       const qs = new URLSearchParams();
       if (params?.limit) qs.set("limit", String(params.limit));
@@ -421,5 +467,16 @@ export const api = {
         }
         return res.json() as Promise<{ message: string; subscriber_id: string }>;
       }),
+  },
+  signage: {
+    screens: {
+      list: () => request<SignageScreen[]>("/signage/screens"),
+      create: (data: { name: string; location?: string; playlist?: { type: string; url: string; duration: number }[] }) =>
+        request<SignageScreen>("/signage/screens", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<SignageScreen>) =>
+        request<SignageScreen>(`/signage/screens/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request<void>(`/signage/screens/${id}`, { method: "DELETE" }),
+    },
   },
 };

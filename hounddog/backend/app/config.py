@@ -49,6 +49,22 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
 
+    # Microsoft Teams
+    teams_webhook_url: str = ""
+
+    # Zoom Phone
+    zoom_account_id: str = ""
+    zoom_client_id: str = ""
+    zoom_client_secret: str = ""
+    zoom_paging_group_id: str = ""
+
+    # Crestron (TBD)
+    crestron_host: str = ""
+    crestron_api_key: str = ""
+
+    # PA System (TBD)
+    pa_system_host: str = ""
+
     # APNs (Push Notifications)
     apns_key_path: str = ""
     apns_key_id: str = ""

@@ -20,6 +20,7 @@ from .routers import (
     payments,
     permit_types,
     permits,
+    signage,
     student_permits,
     sync,
     tickets,
@@ -124,11 +125,29 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS application_closes_at TIMESTAMPTZ",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS offer_window_days INTEGER DEFAULT 5",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_run_at TIMESTAMPTZ",
+            # Alert log multi-channel fields
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active'",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS cleared_by VARCHAR(256)",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS channel_results JSONB",
+            # Digital signage screens
+            """CREATE TABLE IF NOT EXISTS signage_screens (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(256) NOT NULL,
+                location VARCHAR(256) DEFAULT '',
+                playlist JSONB DEFAULT '[]'::jsonb,
+                last_seen TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
         ]
         for migration in migrations:
             await conn.execute(text(migration))
 
     logger.info("Schema migrations applied.")
+
+    from .services.alert_dispatcher import init_channels
+    init_channels()
 
     # Seed default violation types and permit types if none exist
     try:
@@ -353,6 +372,8 @@ app.include_router(notification_preferences.router, prefix="/api/notifications",
 app.include_router(student_permits.router, prefix="/api/student/permits", tags=["student-permits"])
 app.include_router(alerts.admin_router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(alerts.public_router, prefix="/api/alerts", tags=["alerts-public"])
+app.include_router(signage.admin_router, prefix="/api/signage", tags=["signage"])
+app.include_router(signage.public_router, prefix="/api/signage", tags=["signage-public"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

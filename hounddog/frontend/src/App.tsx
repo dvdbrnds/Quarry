@@ -12,6 +12,7 @@ import Settings from "./pages/Settings";
 import Alerts from "./pages/Alerts";
 import AlertSubscribe from "./pages/AlertSubscribe";
 import AlertUnsubscribe from "./pages/AlertUnsubscribe";
+import SignagePlayer from "./pages/SignagePlayer";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
 import AuthCallback from "./pages/AuthCallback";
@@ -127,6 +128,7 @@ export default function App() {
   const isPayRoute = location.pathname.startsWith("/pay");
   const isNotificationsRoute = location.pathname.startsWith("/notifications/");
   const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
+  const isSignageRoute = location.pathname.startsWith("/signage/player");
   const isAuthCallback = location.pathname === "/auth/callback";
 
   if (isAuthCallback) {
@@ -159,6 +161,14 @@ export default function App() {
       <Routes>
         <Route path="/alerts/subscribe" element={<AlertSubscribe />} />
         <Route path="/alerts/unsubscribe/:token" element={<AlertUnsubscribe />} />
+      </Routes>
+    );
+  }
+
+  if (isSignageRoute) {
+    return (
+      <Routes>
+        <Route path="/signage/player/:screenId" element={<SignagePlayer />} />
       </Routes>
     );
   }

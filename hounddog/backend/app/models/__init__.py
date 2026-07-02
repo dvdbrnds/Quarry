@@ -13,6 +13,7 @@ from .notification_preference import NotificationPreference
 from .payment import Payment
 from .permit import Permit
 from .permit_application import PermitApplication
+from .signage_screen import SignageScreen
 from .permit_type import PermitType
 from .ticket import Ticket
 from .violation_type import ViolationType
@@ -31,6 +32,7 @@ __all__ = [
     "ParkingLot",
     "ParkingSpot",
     "Payment",
+    "SignageScreen",
     "Permit",
     "PermitApplication",
     "PermitType",
