@@ -125,6 +125,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS application_closes_at TIMESTAMPTZ",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS offer_window_days INTEGER DEFAULT 5",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_run_at TIMESTAMPTZ",
+            # SheepDog spot type
+            "ALTER TABLE parking_spots ADD COLUMN IF NOT EXISTS spot_type VARCHAR(32) DEFAULT 'standard'",
             # Alert log multi-channel fields
             "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active'",
             "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ",

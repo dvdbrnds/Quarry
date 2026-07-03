@@ -331,6 +331,7 @@ async def create_spot(
         lot_id=lot_id,
         number=data.number,
         label=data.label,
+        spot_type=data.spot_type,
         sensor_id=data.sensor_id,
         latitude=data.latitude,
         longitude=data.longitude,
@@ -370,6 +371,47 @@ async def delete_spot(
         raise HTTPException(404, "Spot not found")
     await db.delete(spot)
     await db.flush()
+
+
+@router.post("/{lot_id}/spots/detect", response_model=list[SpotRead])
+async def detect_spots_endpoint(
+    lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    """Use AI vision to detect parking spots from satellite imagery."""
+    from ..config import settings as cfg
+    from ..services.spot_detector import detect_spots
+
+    lot = await db.get(ParkingLot, lot_id)
+    if not lot or lot.deleted_at:
+        raise HTTPException(404, "Lot not found")
+    if not lot.has_sheepdog:
+        raise HTTPException(400, "SheepDog is not enabled for this lot")
+    if len(lot.boundary) < 3:
+        raise HTTPException(400, "Lot must have a boundary with at least 3 points")
+    if not cfg.gemini_api_key:
+        raise HTTPException(503, "Gemini API key not configured")
+    if not cfg.google_maps_api_key:
+        raise HTTPException(503, "Google Maps API key not configured")
+
+    detected = await detect_spots(lot.boundary)
+
+    created: list[ParkingSpot] = []
+    for d in detected:
+        spot = ParkingSpot(
+            lot_id=lot_id,
+            number=d.number,
+            spot_type=d.spot_type,
+            latitude=d.latitude,
+            longitude=d.longitude,
+        )
+        db.add(spot)
+        created.append(spot)
+
+    await db.flush()
+    for s in created:
+        await db.refresh(s)
+
+    return created
 
 
 # --- Lot Closures ---

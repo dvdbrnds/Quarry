@@ -4,12 +4,20 @@ import {
   useMap,
 } from "@vis.gl/react-google-maps";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Coordinate, Lot } from "../api";
+import type { Coordinate, Lot, ParkingSpot } from "../api";
 
 const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
 const BRASS = "#C5A55A";
 const LOT_OPEN = "#22C55E";
 const LOT_CLOSED = "#EF4444";
+
+const SPOT_TYPE_COLORS: Record<string, string> = {
+  standard: "#3B82F6",
+  ev: "#22C55E",
+  handicap: "#6366F1",
+  reserved: "#D97706",
+  loading: "#6B7280",
+};
 
 interface LotMapProps {
   apiKey: string;
@@ -19,6 +27,11 @@ interface LotMapProps {
   editingBoundary: Coordinate[] | null;
   onBoundaryChange: (coords: Coordinate[]) => void;
   defaultCenter?: { lat: number; lng: number };
+  spots?: ParkingSpot[];
+  selectedSpotId?: string | null;
+  onSelectSpot?: (id: string | null) => void;
+  placingSpot?: boolean;
+  onPlaceSpot?: (lat: number, lng: number) => void;
 }
 
 function lotFillColor(lot: Lot): string {
@@ -32,12 +45,18 @@ function MapContent({
   editingBoundary,
   onBoundaryChange,
   defaultCenter,
+  spots = [],
+  selectedSpotId,
+  onSelectSpot,
+  placingSpot = false,
+  onPlaceSpot,
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const labelMarkersRef = useRef<google.maps.Marker[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
+  const spotMarkersRef = useRef<google.maps.Marker[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [drawingActive, setDrawingActive] = useState(false);
 
@@ -62,7 +81,7 @@ function MapContent({
     labelMarkersRef.current.forEach((m) => m.setMap(null));
     labelMarkersRef.current = [];
 
-    lots.forEach((lot, idx) => {
+    lots.forEach((lot) => {
       if (lot.boundary.length < 3) return;
       if (editingBoundary !== null && lot.id === selectedLotId) return;
 
@@ -109,7 +128,6 @@ function MapContent({
 
       polygonsRef.current.push(poly);
 
-      // Center label so lots are identifiable without hovering
       const bounds = new google.maps.LatLngBounds();
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
       const center = bounds.getCenter();
@@ -138,6 +156,52 @@ function MapContent({
       labelMarkersRef.current.forEach((m) => m.setMap(null));
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
+
+  // Render spot markers for the selected SheepDog lot
+  useEffect(() => {
+    spotMarkersRef.current.forEach((m) => m.setMap(null));
+    spotMarkersRef.current = [];
+
+    if (!map || !selectedLotId || spots.length === 0) return;
+
+    spots.forEach((spot) => {
+      if (spot.latitude == null || spot.longitude == null) return;
+
+      const isSelected = spot.id === selectedSpotId;
+      const color = SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard;
+
+      const marker = new google.maps.Marker({
+        position: { lat: spot.latitude, lng: spot.longitude },
+        map,
+        label: {
+          text: String(spot.number),
+          color: "white",
+          fontSize: "10px",
+          fontWeight: "bold",
+        },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: isSelected ? 14 : 11,
+          fillColor: color,
+          fillOpacity: 1,
+          strokeColor: isSelected ? BRASS : "white",
+          strokeWeight: isSelected ? 3 : 2,
+        },
+        title: `#${spot.number}${spot.label ? ` — ${spot.label}` : ""}${spot.sensor_id ? ` [${spot.sensor_id}]` : ""}`,
+        zIndex: isSelected ? 100 : 10,
+      });
+
+      marker.addListener("click", () => {
+        onSelectSpot?.(spot.id);
+      });
+
+      spotMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      spotMarkersRef.current.forEach((m) => m.setMap(null));
+    };
+  }, [map, selectedLotId, spots, selectedSpotId, onSelectSpot]);
 
   // Fit map to all lots on initial load / when no lot is selected
   useEffect(() => {
@@ -171,7 +235,7 @@ function MapContent({
     return () => clearTimeout(timer);
   }, [map, selectedLotId, lots]);
 
-  // Render vertex markers for the points being placed
+  // Render vertex markers for the points being placed (boundary drawing)
   useEffect(() => {
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
@@ -249,7 +313,6 @@ function MapContent({
     if (!map || !drawingActive || !editingBoundary || editingBoundary.length < 2) return;
 
     const path = editingBoundary.map((c) => ({ lat: c.latitude, lng: c.longitude }));
-    // Close the loop visually if we have 3+ points
     if (editingBoundary.length >= 3) {
       path.push(path[0]);
     }
@@ -266,23 +329,32 @@ function MapContent({
     return () => { line.setMap(null); };
   }, [map, drawingActive, editingBoundary]);
 
-  // Click-to-place handler during drawing mode
+  // Click-to-place handler: boundary drawing OR spot placement
   useEffect(() => {
-    if (!map || !drawingActive) return;
+    if (!map) return;
+    if (!drawingActive && !placingSpot) return;
 
     const listener = map.addListener("click", (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
-      const newPoint: Coordinate = {
-        latitude: e.latLng.lat(),
-        longitude: e.latLng.lng(),
-      };
-      onBoundaryChange([...(editingBoundary ?? []), newPoint]);
+
+      if (placingSpot && onPlaceSpot) {
+        onPlaceSpot(e.latLng.lat(), e.latLng.lng());
+        return;
+      }
+
+      if (drawingActive) {
+        const newPoint: Coordinate = {
+          latitude: e.latLng.lat(),
+          longitude: e.latLng.lng(),
+        };
+        onBoundaryChange([...(editingBoundary ?? []), newPoint]);
+      }
     });
 
     return () => {
       google.maps.event.removeListener(listener);
     };
-  }, [map, drawingActive, editingBoundary, onBoundaryChange]);
+  }, [map, drawingActive, placingSpot, editingBoundary, onBoundaryChange, onPlaceSpot]);
 
   const startDrawing = useCallback(() => {
     onBoundaryChange([]);
@@ -366,6 +438,11 @@ function MapContent({
           Drag the <strong>white squares</strong> on the boundary to adjust points. Drag midpoints to add new vertices.
         </div>
       )}
+      {placingSpot && (
+        <div className="absolute top-3 left-3 z-10 bg-amber-50/95 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-amber-800 max-w-[220px] border border-amber-300">
+          Click on the map to place the spot's puck location.
+        </div>
+      )}
       <Map
         defaultCenter={defaultCenter ?? DEFAULT_CENTER}
         defaultZoom={16}
@@ -378,7 +455,10 @@ function MapContent({
         zoomControl={true}
         style={{ width: "100%", height: "100%" }}
         onClick={() => {
-          if (!drawingActive) onSelectLot(null);
+          if (!drawingActive && !placingSpot) {
+            onSelectLot(null);
+            onSelectSpot?.(null);
+          }
         }}
       />
       <div

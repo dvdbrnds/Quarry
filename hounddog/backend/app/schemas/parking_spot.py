@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 class SpotBase(BaseModel):
     number: int
     label: str | None = None
+    spot_type: str = "standard"
     sensor_id: str | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -19,6 +20,7 @@ class SpotCreate(SpotBase):
 class SpotUpdate(BaseModel):
     number: int | None = None
     label: str | None = None
+    spot_type: str | None = None
     sensor_id: str | None = None
     latitude: float | None = None
     longitude: float | None = None

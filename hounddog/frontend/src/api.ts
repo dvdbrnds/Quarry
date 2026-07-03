@@ -134,6 +134,7 @@ export interface ParkingSpot {
   lot_id: string;
   number: number;
   label: string | null;
+  spot_type: string;
   sensor_id: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -356,6 +357,8 @@ export const api = {
         request<ParkingSpot>(`/lots/${lotId}/spots/${spotId}`, { method: "PUT", body: JSON.stringify(data) }),
       delete: (lotId: string, spotId: string) =>
         request<void>(`/lots/${lotId}/spots/${spotId}`, { method: "DELETE" }),
+      detect: (lotId: string) =>
+        request<ParkingSpot[]>(`/lots/${lotId}/spots/detect`, { method: "POST" }),
     },
   },
   devices: {

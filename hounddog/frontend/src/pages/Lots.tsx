@@ -13,6 +13,27 @@ const DESIGNATION_OPTIONS = [
   { code: "VPR", label: "VPR — Visitor / Premium Resident" },
 ];
 
+const SPOT_TYPE_OPTIONS = [
+  { value: "standard", label: "Standard", color: "bg-blue-500" },
+  { value: "ev", label: "EV Charging", color: "bg-green-500" },
+  { value: "handicap", label: "Handicap", color: "bg-indigo-500" },
+  { value: "reserved", label: "Reserved", color: "bg-amber-500" },
+  { value: "loading", label: "Loading Zone", color: "bg-gray-500" },
+];
+
+function spotTypeBadge(type: string) {
+  const info = SPOT_TYPE_OPTIONS.find((t) => t.value === type);
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium text-white ${info?.color ?? "bg-gray-400"}`}>
+      {info?.label ?? type}
+    </span>
+  );
+}
+
+/* ============================================================
+   Lot Form (Create / Edit)
+   ============================================================ */
+
 function LotForm({
   initial,
   boundary,
@@ -157,6 +178,10 @@ function LotForm({
   );
 }
 
+/* ============================================================
+   Zone Form + Panel (unchanged)
+   ============================================================ */
+
 const ZONE_TYPE_OPTIONS = [
   { value: "disability", label: "Disability" },
   { value: "fire_lane", label: "Fire Lane" },
@@ -289,132 +314,292 @@ function ZonePanel({ lotId }: { lotId: string }) {
   );
 }
 
-type SpotFormState = { number: number; label: string; sensor_id: string; latitude: string; longitude: string };
-const EMPTY_SPOT_FORM: SpotFormState = { number: 1, label: "", sensor_id: "", latitude: "", longitude: "" };
+/* ============================================================
+   Spot Detail Editor (shown when a spot is selected on the map)
+   ============================================================ */
 
-function SpotForm({ initial, onSubmit, onCancel }: {
-  initial?: SpotFormState;
-  onSubmit: (data: SpotFormState) => Promise<void>;
-  onCancel: () => void;
+function SpotDetail({
+  spot,
+  lotId,
+  onSaved,
+  onClose,
+  onStartPlacing,
+  placingSpot,
+}: {
+  spot: ParkingSpot;
+  lotId: string;
+  onSaved: () => void;
+  onClose: () => void;
+  onStartPlacing: () => void;
+  placingSpot: boolean;
 }) {
-  const [form, setForm] = useState<SpotFormState>(initial ?? EMPTY_SPOT_FORM);
+  const [number, setNumber] = useState(spot.number);
+  const [label, setLabel] = useState(spot.label ?? "");
+  const [spotType, setSpotType] = useState(spot.spot_type);
+  const [sensorId, setSensorId] = useState(spot.sensor_id ?? "");
   const [saving, setSaving] = useState(false);
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+
+  async function handleSave() {
     setSaving(true);
-    try { await onSubmit(form); } finally { setSaving(false); }
+    try {
+      await api.lots.spots.update(lotId, spot.id, {
+        number,
+        label: label || null,
+        spot_type: spotType,
+        sensor_id: sensorId || null,
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
   }
+
+  async function handleDelete() {
+    if (!confirm(`Remove spot #${spot.number}?`)) return;
+    await api.lots.spots.delete(lotId, spot.id);
+    onSaved();
+    onClose();
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="mt-2 space-y-2 bg-amber-50 rounded-lg p-2">
-      <div className="flex gap-2">
-        <input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: Number(e.target.value) })}
-          placeholder="#" className="w-16 border border-gray-300 rounded px-2 py-1 text-xs" />
-        <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })}
-          placeholder="Label (e.g. Dave's Office)" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs" />
+    <div className="p-4 border-t border-amber-300 bg-amber-50/50 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-bold uppercase text-amber-700 tracking-wide">Edit Spot #{spot.number}</h4>
+        <button onClick={onClose} className="text-xs text-ink-mute hover:text-ink">Back to list</button>
       </div>
-      <input value={form.sensor_id} onChange={(e) => setForm({ ...form, sensor_id: e.target.value })}
-        placeholder="Sensor ID (e.g. A-001)" className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
-      <div className="flex gap-2">
-        <input value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-          placeholder="Latitude" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
-        <input value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-          placeholder="Longitude" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] font-medium text-ink-mute mb-0.5">Spot Number</label>
+          <input type="number" value={number} onChange={(e) => setNumber(Number(e.target.value))}
+            className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium text-ink-mute mb-0.5">Label</label>
+          <input value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder="Optional label"
+            className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
+        </div>
       </div>
-      <div className="flex gap-2">
-        <button type="submit" disabled={saving} className="px-2 py-1 bg-amber-500 text-white text-xs rounded disabled:opacity-50">
-          {saving ? "..." : initial ? "Update" : "Add"}
+
+      <div>
+        <label className="block text-[10px] font-medium text-ink-mute mb-0.5">Spot Type</label>
+        <select value={spotType} onChange={(e) => setSpotType(e.target.value)}
+          className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
+          {SPOT_TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-medium text-ink-mute mb-0.5">LoRaWAN Sensor ID</label>
+        <input value={sensorId} onChange={(e) => setSensorId(e.target.value)}
+          placeholder="e.g. A-001"
+          className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-medium text-ink-mute mb-0.5">Location</label>
+        {spot.latitude != null && spot.longitude != null ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-ink-mute">{spot.latitude.toFixed(6)}, {spot.longitude.toFixed(6)}</span>
+            <button onClick={onStartPlacing} className="text-xs text-amber-600 hover:text-amber-700">
+              {placingSpot ? "Click the map..." : "Reposition"}
+            </button>
+          </div>
+        ) : (
+          <button onClick={onStartPlacing} className={`text-xs px-2 py-1 rounded ${
+            placingSpot
+              ? "bg-amber-200 text-amber-800 animate-pulse"
+              : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+          }`}>
+            {placingSpot ? "Click the map to place..." : "Place on Map"}
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button onClick={handleSave} disabled={saving}
+          className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded font-medium disabled:opacity-50">
+          {saving ? "Saving..." : "Save Changes"}
         </button>
-        <button type="button" onClick={onCancel} className="px-2 py-1 text-xs text-ink-mute">Cancel</button>
+        <button onClick={handleDelete} className="px-3 py-1.5 text-xs text-signal-red/70 hover:text-signal-red">
+          Delete Spot
+        </button>
       </div>
-    </form>
+    </div>
   );
 }
 
-function SpotPanel({ lotId }: { lotId: string }) {
-  const [spots, setSpots] = useState<ParkingSpot[]>([]);
+/* ============================================================
+   Spot Panel (list view + add form)
+   ============================================================ */
+
+function SpotPanel({
+  lotId,
+  spots,
+  selectedSpotId,
+  onSelectSpot,
+  onSpotsChanged,
+  onStartPlacing,
+  placingSpot,
+}: {
+  lotId: string;
+  spots: ParkingSpot[];
+  selectedSpotId: string | null;
+  onSelectSpot: (id: string | null) => void;
+  onSpotsChanged: () => void;
+  onStartPlacing: () => void;
+  placingSpot: boolean;
+}) {
   const [adding, setAdding] = useState(false);
-  const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
+  const [newNumber, setNewNumber] = useState(spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1);
+  const [newLabel, setNewLabel] = useState("");
+  const [newSpotType, setNewSpotType] = useState("standard");
+  const [newSensorId, setNewSensorId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState("");
 
-  const load = useCallback(async () => {
-    setSpots(await api.lots.spots.list(lotId));
-  }, [lotId]);
+  const selectedSpot = spots.find(s => s.id === selectedSpotId);
 
-  useEffect(() => { load(); }, [load]);
-
-  async function handleAdd(data: SpotFormState) {
-    await api.lots.spots.create(lotId, {
-      number: data.number,
-      label: data.label || null,
-      sensor_id: data.sensor_id || null,
-      latitude: data.latitude ? parseFloat(data.latitude) : null,
-      longitude: data.longitude ? parseFloat(data.longitude) : null,
-    });
-    setAdding(false);
-    load();
+  if (selectedSpot) {
+    return (
+      <SpotDetail
+        spot={selectedSpot}
+        lotId={lotId}
+        onSaved={onSpotsChanged}
+        onClose={() => onSelectSpot(null)}
+        onStartPlacing={onStartPlacing}
+        placingSpot={placingSpot}
+      />
+    );
   }
 
-  async function handleUpdate(spotId: string, data: SpotFormState) {
-    await api.lots.spots.update(lotId, spotId, {
-      number: data.number,
-      label: data.label || null,
-      sensor_id: data.sensor_id || null,
-      latitude: data.latitude ? parseFloat(data.latitude) : null,
-      longitude: data.longitude ? parseFloat(data.longitude) : null,
-    });
-    setEditingSpotId(null);
-    load();
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.lots.spots.create(lotId, {
+        number: newNumber,
+        label: newLabel || null,
+        spot_type: newSpotType,
+        sensor_id: newSensorId || null,
+      });
+      setAdding(false);
+      setNewLabel("");
+      setNewSensorId("");
+      setNewSpotType("standard");
+      onSpotsChanged();
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function handleDelete(spotId: string) {
-    if (!confirm("Remove this spot?")) return;
-    await api.lots.spots.delete(lotId, spotId);
-    load();
+  async function handleDetect() {
+    if (spots.length > 0 && !confirm(
+      `This lot already has ${spots.length} spot(s). AI detection will add new spots alongside them. Continue?`
+    )) return;
+
+    setDetecting(true);
+    setDetectError("");
+    try {
+      await api.lots.spots.detect(lotId);
+      onSpotsChanged();
+    } catch (err: any) {
+      setDetectError(err?.message || "Detection failed");
+    } finally {
+      setDetecting(false);
+    }
   }
 
   return (
     <div className="p-4 border-t border-amber-200 bg-amber-50/30">
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-xs font-bold uppercase text-amber-700 tracking-wide flex items-center gap-1">
-          <span>🐾</span> SheepDog Spots
+          SheepDog Spots
         </h4>
-        <button onClick={() => setAdding(true)} className="text-xs text-amber-600 hover:text-amber-700">+ Add Spot</button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDetect}
+            disabled={detecting}
+            className="text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 flex items-center gap-1"
+          >
+            {detecting ? (
+              <>
+                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Detecting...
+              </>
+            ) : "AI Detect"}
+          </button>
+          <button onClick={() => { setAdding(true); setNewNumber(spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1); }}
+            className="text-xs text-amber-600 hover:text-amber-700">+ Add Spot</button>
+        </div>
       </div>
-      {spots.map(s => editingSpotId === s.id ? (
-        <SpotForm
+      {detectError && (
+        <div className="mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+          {detectError}
+        </div>
+      )}
+      {detecting && (
+        <div className="mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-200 rounded text-xs text-indigo-700">
+          Analyzing satellite imagery with AI. This may take a few seconds...
+        </div>
+      )}
+      {spots.map(s => (
+        <div
           key={s.id}
-          initial={{
-            number: s.number,
-            label: s.label ?? "",
-            sensor_id: s.sensor_id ?? "",
-            latitude: s.latitude != null ? String(s.latitude) : "",
-            longitude: s.longitude != null ? String(s.longitude) : "",
-          }}
-          onSubmit={(data) => handleUpdate(s.id, data)}
-          onCancel={() => setEditingSpotId(null)}
-        />
-      ) : (
-        <div key={s.id} className="flex items-center justify-between text-xs py-1">
-          <span>
+          onClick={() => onSelectSpot(s.id)}
+          className={`flex items-center justify-between text-xs py-1.5 px-1 rounded cursor-pointer transition-colors ${
+            s.id === selectedSpotId ? "bg-amber-100" : "hover:bg-amber-50"
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
             <span className="font-mono font-bold text-amber-700">#{s.number}</span>
-            {s.label && <span className="ml-1">{s.label}</span>}
-            {s.sensor_id && <span className="ml-1.5 font-mono bg-amber-100 text-amber-700 px-1 rounded text-[10px]">{s.sensor_id}</span>}
-            {s.latitude != null && s.longitude != null && (
-              <span className="ml-1.5 text-[10px] text-ink-mute font-mono">{s.latitude.toFixed(6)}, {s.longitude.toFixed(6)}</span>
-            )}
+            {spotTypeBadge(s.spot_type)}
+            {s.label && <span className="text-ink-mute">{s.label}</span>}
+            {s.sensor_id && <span className="font-mono bg-amber-100 text-amber-700 px-1 rounded text-[10px]">{s.sensor_id}</span>}
           </span>
-          <div className="flex gap-2">
-            <button onClick={() => setEditingSpotId(s.id)} className="text-amber-600 hover:text-amber-700">Edit</button>
-            <button onClick={() => handleDelete(s.id)} className="text-signal-red/60 hover:text-signal-red">Remove</button>
-          </div>
+          {s.latitude == null && (
+            <span className="text-[10px] text-ink-mute italic">no location</span>
+          )}
         </div>
       ))}
-      {spots.length === 0 && !adding && (
-        <p className="text-xs text-ink-mute">No spots assigned. Add spots to assign SheepDog pucks.</p>
+      {spots.length === 0 && !adding && !detecting && (
+        <p className="text-xs text-ink-mute">No spots assigned. Use AI Detect or add manually.</p>
       )}
-      {adding && <SpotForm onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
+      {adding && (
+        <form onSubmit={handleAdd} className="mt-2 space-y-2 bg-amber-50 rounded-lg p-2">
+          <div className="flex gap-2">
+            <input type="number" value={newNumber} onChange={(e) => setNewNumber(Number(e.target.value))}
+              placeholder="#" className="w-16 border border-gray-300 rounded px-2 py-1 text-xs" />
+            <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Label (optional)" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs" />
+          </div>
+          <select value={newSpotType} onChange={(e) => setNewSpotType(e.target.value)}
+            className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
+            {SPOT_TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <input value={newSensorId} onChange={(e) => setNewSensorId(e.target.value)}
+            placeholder="Sensor ID (e.g. A-001)" className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono" />
+          <p className="text-[10px] text-ink-mute">After adding, select the spot and click "Place on Map" to set its location.</p>
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving} className="px-2 py-1 bg-amber-500 text-white text-xs rounded disabled:opacity-50">
+              {saving ? "..." : "Add"}
+            </button>
+            <button type="button" onClick={() => setAdding(false)} className="px-2 py-1 text-xs text-ink-mute">Cancel</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
+
+/* ============================================================
+   Close Lot Modal
+   ============================================================ */
 
 function CloseLotModal({
   lot,
@@ -517,6 +702,10 @@ function CloseLotModal({
   );
 }
 
+/* ============================================================
+   Main Lots Component
+   ============================================================ */
+
 export default function Lots() {
   const [lots, setLots] = useState<Lot[]>([]);
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
@@ -528,9 +717,29 @@ export default function Lots() {
   const [closingLot, setClosingLot] = useState<Lot | null>(null);
   const [deletingLot, setDeletingLot] = useState<Lot | null>(null);
 
+  // SheepDog spot state (lifted to parent so both map + panel can share)
+  const [spots, setSpots] = useState<ParkingSpot[]>([]);
+  const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
+  const [placingSpot, setPlacingSpot] = useState(false);
+
+  const selectedLot = lots.find(l => l.id === selectedLotId);
+  const isSheepDogLot = selectedLot?.has_sheepdog ?? false;
+
   const load = useCallback(async () => {
     setLots(await api.lots.list());
   }, []);
+
+  const loadSpots = useCallback(async () => {
+    if (!selectedLotId || !isSheepDogLot) {
+      setSpots([]);
+      return;
+    }
+    try {
+      setSpots(await api.lots.spots.list(selectedLotId));
+    } catch {
+      setSpots([]);
+    }
+  }, [selectedLotId, isSheepDogLot]);
 
   useEffect(() => {
     load();
@@ -541,6 +750,17 @@ export default function Lots() {
       }
     });
   }, [load]);
+
+  useEffect(() => {
+    loadSpots();
+    setSelectedSpotId(null);
+    setPlacingSpot(false);
+  }, [loadSpots]);
+
+  function handleSelectLot(id: string | null) {
+    if (creating || editing) return;
+    setSelectedLotId(id === selectedLotId ? null : id);
+  }
 
   function startCreate() {
     setCreating(true);
@@ -581,6 +801,17 @@ export default function Lots() {
     load();
   }
 
+  function handlePlaceSpot(lat: number, lng: number) {
+    if (!selectedSpotId || !selectedLotId) return;
+    api.lots.spots.update(selectedLotId, selectedSpotId, {
+      latitude: lat,
+      longitude: lng,
+    }).then(() => {
+      setPlacingSpot(false);
+      loadSpots();
+    });
+  }
+
   const isEditing = creating || editing !== null;
 
   return (
@@ -607,9 +838,7 @@ export default function Lots() {
           {lots.map((lot) => (
             <div key={lot.id}>
               <div
-                onClick={() => {
-                  if (!isEditing) setSelectedLotId(lot.id === selectedLotId ? null : lot.id);
-                }}
+                onClick={() => handleSelectLot(lot.id)}
                 className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
                   lot.id === selectedLotId
                     ? "bg-brass/10 border-l-4 border-l-brass"
@@ -622,7 +851,7 @@ export default function Lots() {
                       <h3 className="font-semibold text-sm">{lot.name}</h3>
                       {lot.has_sheepdog && (
                         <span className="inline-block bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                          🐾
+                          SD
                         </span>
                       )}
                       {lot.is_closed && (
@@ -671,7 +900,17 @@ export default function Lots() {
               {lot.id === selectedLotId && !isEditing && (
                 <>
                   <ZonePanel lotId={lot.id} />
-                  {lot.has_sheepdog && <SpotPanel lotId={lot.id} />}
+                  {lot.has_sheepdog && (
+                    <SpotPanel
+                      lotId={lot.id}
+                      spots={spots}
+                      selectedSpotId={selectedSpotId}
+                      onSelectSpot={setSelectedSpotId}
+                      onSpotsChanged={loadSpots}
+                      onStartPlacing={() => setPlacingSpot(true)}
+                      placingSpot={placingSpot}
+                    />
+                  )}
                 </>
               )}
             </div>
@@ -695,12 +934,15 @@ export default function Lots() {
           apiKey={mapsApiKey}
           lots={lots}
           selectedLotId={selectedLotId}
-          onSelectLot={(id) => {
-            if (!isEditing) setSelectedLotId(id);
-          }}
+          onSelectLot={handleSelectLot}
           editingBoundary={editingBoundary}
           onBoundaryChange={setEditingBoundary}
           defaultCenter={campusCenter}
+          spots={isSheepDogLot ? spots : []}
+          selectedSpotId={selectedSpotId}
+          onSelectSpot={setSelectedSpotId}
+          placingSpot={placingSpot}
+          onPlaceSpot={handlePlaceSpot}
         />
       </div>
 

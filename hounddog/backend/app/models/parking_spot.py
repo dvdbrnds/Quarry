@@ -15,6 +15,7 @@ class ParkingSpot(Base):
     lot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("parking_lots.id", ondelete="CASCADE"))
     number: Mapped[int] = mapped_column(Integer)
     label: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    spot_type: Mapped[str] = mapped_column(String(32), default="standard")
     sensor_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)

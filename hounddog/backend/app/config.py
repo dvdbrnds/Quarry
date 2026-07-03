@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     campus_lat: float = 40.6265
     campus_lng: float = -75.3707
 
+    # Google Gemini (AI vision for spot detection)
+    gemini_api_key: str = ""
+
     # Stripe (Phase 3)
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
