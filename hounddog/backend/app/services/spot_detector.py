@@ -127,7 +127,7 @@ async def _call_gemini(image_bytes: bytes) -> list[dict]:
     """Send the satellite image to Gemini and parse the spot positions."""
     client = genai.Client(api_key=settings.gemini_api_key)
 
-    response = client.models.generate_content(
+    response = await client.aio.models.generate_content(
         model="gemini-2.5-flash",
         contents=[
             types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
@@ -135,12 +135,15 @@ async def _call_gemini(image_bytes: bytes) -> list[dict]:
         ],
     )
 
-    raw = response.text.strip()
+    raw = (response.text or "").strip()
+    if not raw:
+        raise ValueError("Gemini returned an empty response")
+
     # Strip markdown code fences if present
     if raw.startswith("```"):
         lines = raw.split("\n")
         lines = [l for l in lines if not l.startswith("```")]
-        raw = "\n".join(lines)
+        raw = "\n".join(lines).strip()
 
     spots = json.loads(raw)
     if not isinstance(spots, list):

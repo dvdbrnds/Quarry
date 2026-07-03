@@ -393,7 +393,14 @@ async def detect_spots_endpoint(
     if not cfg.google_maps_api_key:
         raise HTTPException(503, "Google Maps API key not configured")
 
-    detected = await detect_spots(lot.boundary)
+    try:
+        detected = await detect_spots(lot.boundary)
+    except Exception as e:
+        logger.exception("Spot detection failed for lot %s", lot_id)
+        raise HTTPException(502, f"AI spot detection failed: {e}")
+
+    if not detected:
+        return []
 
     created: list[ParkingSpot] = []
     for d in detected:
