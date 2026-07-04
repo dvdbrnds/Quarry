@@ -608,8 +608,8 @@ function SpotPanel({
           )}
         </div>
       ))}
-      {spots.length === 0 && !adding && !detecting && (
-        <p className="text-xs text-ink-mute">No spots assigned. Use AI Detect or add manually.</p>
+      {spots.length === 0 && !adding && !batchPlacing && (
+        <p className="text-xs text-ink-mute">No spots assigned. Use Place Spots or + Add.</p>
       )}
       {adding && (
         <form onSubmit={handleAdd} className="mt-2 space-y-2 bg-amber-50 rounded-lg p-2">
