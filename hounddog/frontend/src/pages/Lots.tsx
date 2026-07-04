@@ -446,6 +446,8 @@ function SpotPanel({
   batchNextNumber,
   onStartBatch,
   onStopBatch,
+  spotsVisible,
+  onToggleVisible,
 }: {
   lotId: string;
   spots: ParkingSpot[];
@@ -458,6 +460,8 @@ function SpotPanel({
   batchNextNumber: number;
   onStartBatch: () => void;
   onStopBatch: () => void;
+  spotsVisible: boolean;
+  onToggleVisible: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newNumber, setNewNumber] = useState(spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1);
@@ -535,8 +539,28 @@ function SpotPanel({
   return (
     <div className="p-4 border-t border-amber-200 bg-amber-50/30">
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-bold uppercase text-amber-700 tracking-wide flex items-center gap-1">
+        <h4 className="text-xs font-bold uppercase text-amber-700 tracking-wide flex items-center gap-1.5">
           SheepDog Spots
+          <button
+            onClick={onToggleVisible}
+            title={spotsVisible ? "Hide spots on map" : "Show spots on map"}
+            className={`inline-flex items-center justify-center w-5 h-5 rounded transition-colors ${
+              spotsVisible
+                ? "bg-amber-200 text-amber-700 hover:bg-amber-300"
+                : "bg-gray-200 text-gray-400 hover:bg-gray-300"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+              {spotsVisible ? (
+                <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+              ) : (
+                <path fillRule="evenodd" d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-4.38 1.651 1.651 0 000-1.185A10.004 10.004 0 009.999 3a9.956 9.956 0 00-4.744 1.194L3.28 2.22zM7.752 6.69l1.092 1.092a2.5 2.5 0 013.374 3.373l1.092 1.092a4 4 0 00-5.558-5.558z" clipRule="evenodd" />
+              )}
+              {spotsVisible && (
+                <path fillRule="evenodd" d="M10 3C5.523 3 1.73 6.068.458 10.003a1.651 1.651 0 000 1.185A10.004 10.004 0 0010 17c4.478 0 8.27-3.068 9.542-7.003a1.651 1.651 0 000-1.185A10.004 10.004 0 0010 3zm0 11a4 4 0 100-8 4 4 0 000 8z" clipRule="evenodd" />
+              )}
+            </svg>
+          </button>
         </h4>
         <div className="flex items-center gap-2">
           {batchPlacing ? (
@@ -764,6 +788,7 @@ export default function Lots() {
   const [placingSpot, setPlacingSpot] = useState(false);
   const [batchPlacing, setBatchPlacing] = useState(false);
   const [batchNextNumber, setBatchNextNumber] = useState(1);
+  const [spotsVisible, setSpotsVisible] = useState(true);
 
   const selectedLot = lots.find(l => l.id === selectedLotId);
   const isSheepDogLot = selectedLot?.has_sheepdog ?? false;
@@ -987,6 +1012,8 @@ export default function Lots() {
                       batchNextNumber={batchNextNumber}
                       onStartBatch={startBatchPlacing}
                       onStopBatch={stopBatchPlacing}
+                      spotsVisible={spotsVisible}
+                      onToggleVisible={() => setSpotsVisible(v => !v)}
                     />
                   )}
                 </>
@@ -1016,7 +1043,7 @@ export default function Lots() {
           editingBoundary={editingBoundary}
           onBoundaryChange={setEditingBoundary}
           defaultCenter={campusCenter}
-          spots={isSheepDogLot ? spots : []}
+          spots={isSheepDogLot && spotsVisible ? spots : []}
           selectedSpotId={selectedSpotId}
           onSelectSpot={setSelectedSpotId}
           placingSpot={placingSpot}
