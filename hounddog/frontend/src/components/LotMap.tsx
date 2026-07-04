@@ -60,9 +60,11 @@ function MapContent({
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [drawingActive, setDrawingActive] = useState(false);
 
-  // Ref so Google Maps event listeners always see the latest placingSpot value
+  // Refs so Google Maps event listeners always see the latest values
   const placingRef = useRef(placingSpot);
   useEffect(() => { placingRef.current = placingSpot; }, [placingSpot]);
+  const placeSpotRef = useRef(onPlaceSpot);
+  useEffect(() => { placeSpotRef.current = onPlaceSpot; }, [onPlaceSpot]);
 
   const syncEditPolygon = useCallback(() => {
     const poly = editPolygonRef.current;
@@ -104,11 +106,10 @@ function MapContent({
       });
 
       poly.addListener("click", (e: google.maps.MapMouseEvent) => {
-        if (placingRef.current && onPlaceSpot && e.latLng) {
-          onPlaceSpot(e.latLng.lat(), e.latLng.lng());
+        if (placingRef.current && placeSpotRef.current && e.latLng) {
+          placeSpotRef.current(e.latLng.lat(), e.latLng.lng());
           return;
         }
-        // Don't toggle off an already-selected lot; use map background click to deselect
         if (!isSelected) {
           onSelectLot(lot.id);
         }
@@ -168,7 +169,7 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       labelMarkersRef.current.forEach((m) => m.setMap(null));
     };
-  }, [map, lots, selectedLotId, editingBoundary, onSelectLot, onPlaceSpot]);
+  }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
 
   // Render spot markers for the selected SheepDog lot
   useEffect(() => {
@@ -350,8 +351,8 @@ function MapContent({
     const listener = map.addListener("click", (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
 
-      if (placingSpot && onPlaceSpot) {
-        onPlaceSpot(e.latLng.lat(), e.latLng.lng());
+      if (placingRef.current && placeSpotRef.current) {
+        placeSpotRef.current(e.latLng.lat(), e.latLng.lng());
         return;
       }
 
