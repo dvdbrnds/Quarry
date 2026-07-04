@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 # scale=2 doubles the actual pixel count to give Gemini more detail,
 # but the coordinate math still uses the logical size.
 IMAGE_SIZE = 640
-SCALE = 2
+SCALE = 1
 TILE_SIZE = 256
 
 
