@@ -97,7 +97,7 @@ async def _fetch_satellite_image(
         "zoom": str(zoom),
         "size": f"{IMAGE_SIZE}x{IMAGE_SIZE}",
         "maptype": "satellite",
-        "key": settings.google_maps_api_key,
+        "key": settings.google_maps_static_key or settings.google_maps_api_key,
     }
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params)

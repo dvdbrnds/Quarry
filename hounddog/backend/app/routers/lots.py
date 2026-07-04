@@ -390,14 +390,14 @@ async def detect_spots_endpoint(
         raise HTTPException(400, "Lot must have a boundary with at least 3 points")
     if not cfg.gemini_api_key:
         raise HTTPException(503, "Gemini API key not configured")
-    if not cfg.google_maps_api_key:
+    if not (cfg.google_maps_static_key or cfg.google_maps_api_key):
         raise HTTPException(503, "Google Maps API key not configured")
 
     try:
         detected = await detect_spots(lot.boundary)
-    except Exception as e:
+    except Exception:
         logger.exception("Spot detection failed for lot %s", lot_id)
-        raise HTTPException(502, f"AI spot detection failed: {e}")
+        raise HTTPException(502, "AI spot detection failed — check server logs for details")
 
     if not detected:
         return []

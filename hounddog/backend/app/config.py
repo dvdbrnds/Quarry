@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     # Google Maps
     google_maps_api_key: str = ""
+    google_maps_static_key: str = ""
     campus_lat: float = 40.6265
     campus_lng: float = -75.3707
 
