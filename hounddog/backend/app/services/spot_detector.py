@@ -134,7 +134,7 @@ async def _call_gemini(image_bytes: bytes) -> list[dict]:
     client = genai.Client(api_key=settings.gemini_api_key)
 
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-pro",
+        model="gemini-2.5-flash",
         contents=[
             types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
             DETECTION_PROMPT,
