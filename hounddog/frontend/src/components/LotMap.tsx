@@ -8,6 +8,17 @@ import type { Coordinate, Lot, ParkingSpot } from "../api";
 
 const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
 const BRASS = "#C5A55A";
+
+function spotScale(zoom: number, selected: boolean): { iconScale: number; fontSize: string } {
+  const base = selected ? 14 : 11;
+  const refZoom = 19;
+  const ratio = Math.pow(2, zoom - refZoom);
+  const clamped = Math.max(0.25, Math.min(1, ratio));
+  return {
+    iconScale: Math.round(base * clamped),
+    fontSize: `${Math.max(6, Math.round(10 * clamped))}px`,
+  };
+}
 const LOT_OPEN = "#22C55E";
 const LOT_CLOSED = "#EF4444";
 
@@ -171,18 +182,21 @@ function MapContent({
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
 
-  // Render spot markers for the selected SheepDog lot
+  // Render spot markers for the selected SheepDog lot (zoom-aware)
   useEffect(() => {
     spotMarkersRef.current.forEach((m) => m.setMap(null));
     spotMarkersRef.current = [];
 
     if (!map || !selectedLotId || spots.length === 0) return;
 
+    const currentZoom = map.getZoom() ?? 19;
+
     spots.forEach((spot) => {
       if (spot.latitude == null || spot.longitude == null) return;
 
       const isSelected = spot.id === selectedSpotId;
       const color = SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard;
+      const { iconScale, fontSize } = spotScale(currentZoom, isSelected);
 
       const marker = new google.maps.Marker({
         position: { lat: spot.latitude, lng: spot.longitude },
@@ -190,12 +204,12 @@ function MapContent({
         label: {
           text: String(spot.number),
           color: "white",
-          fontSize: "10px",
+          fontSize,
           fontWeight: "bold",
         },
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          scale: isSelected ? 14 : 11,
+          scale: iconScale,
           fillColor: color,
           fillOpacity: 1,
           strokeColor: isSelected ? BRASS : "white",
@@ -203,6 +217,7 @@ function MapContent({
         },
         title: `#${spot.number}${spot.label ? ` — ${spot.label}` : ""}${spot.sensor_id ? ` [${spot.sensor_id}]` : ""}`,
         zIndex: isSelected ? 100 : 10,
+        visible: iconScale >= 3,
       });
 
       marker.addListener("click", () => {
@@ -212,7 +227,33 @@ function MapContent({
       spotMarkersRef.current.push(marker);
     });
 
+    const zoomListener = map.addListener("zoom_changed", () => {
+      const z = map.getZoom() ?? 19;
+      spotMarkersRef.current.forEach((marker, i) => {
+        const spot = spots.filter(s => s.latitude != null && s.longitude != null)[i];
+        if (!spot) return;
+        const isSelected = spot.id === selectedSpotId;
+        const { iconScale, fontSize } = spotScale(z, isSelected);
+        marker.setIcon({
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: iconScale,
+          fillColor: SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard,
+          fillOpacity: 1,
+          strokeColor: isSelected ? BRASS : "white",
+          strokeWeight: isSelected ? 3 : 2,
+        });
+        marker.setLabel({
+          text: String(spot.number),
+          color: "white",
+          fontSize,
+          fontWeight: "bold",
+        });
+        marker.setVisible(iconScale >= 3);
+      });
+    });
+
     return () => {
+      google.maps.event.removeListener(zoomListener);
       spotMarkersRef.current.forEach((m) => m.setMap(null));
     };
   }, [map, selectedLotId, spots, selectedSpotId, onSelectSpot]);
