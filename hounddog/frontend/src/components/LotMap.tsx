@@ -108,7 +108,10 @@ function MapContent({
           onPlaceSpot(e.latLng.lat(), e.latLng.lng());
           return;
         }
-        onSelectLot(lot.id);
+        // Don't toggle off an already-selected lot; use map background click to deselect
+        if (!isSelected) {
+          onSelectLot(lot.id);
+        }
       });
 
       poly.addListener("mouseover", () => {
