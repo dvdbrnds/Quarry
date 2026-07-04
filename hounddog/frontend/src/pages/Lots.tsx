@@ -442,6 +442,10 @@ function SpotPanel({
   onSpotsChanged,
   onStartPlacing,
   placingSpot,
+  batchPlacing,
+  batchNextNumber,
+  onStartBatch,
+  onStopBatch,
 }: {
   lotId: string;
   spots: ParkingSpot[];
@@ -450,6 +454,10 @@ function SpotPanel({
   onSpotsChanged: () => void;
   onStartPlacing: () => void;
   placingSpot: boolean;
+  batchPlacing: boolean;
+  batchNextNumber: number;
+  onStartBatch: () => void;
+  onStopBatch: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newNumber, setNewNumber] = useState(spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1);
@@ -457,14 +465,12 @@ function SpotPanel({
   const [newSpotType, setNewSpotType] = useState("standard");
   const [newSensorId, setNewSensorId] = useState("");
   const [saving, setSaving] = useState(false);
-  const [detecting, setDetecting] = useState(false);
-  const [detectError, setDetectError] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
   const selectedSpot = spots.find(s => s.id === selectedSpotId);
 
-  if (selectedSpot) {
+  if (selectedSpot && !batchPlacing) {
     return (
       <SpotDetail
         spot={selectedSpot}
@@ -526,23 +532,6 @@ function SpotPanel({
     }
   }
 
-  async function handleDetect() {
-    if (spots.length > 0 && !confirm(
-      `This lot already has ${spots.length} spot(s). AI detection will add new spots alongside them. Continue?`
-    )) return;
-
-    setDetecting(true);
-    setDetectError("");
-    try {
-      await api.lots.spots.detect(lotId);
-      onSpotsChanged();
-    } catch (err: any) {
-      setDetectError(err?.message || "Detection failed");
-    } finally {
-      setDetecting(false);
-    }
-  }
-
   return (
     <div className="p-4 border-t border-amber-200 bg-amber-50/30">
       <div className="flex items-center justify-between mb-2">
@@ -550,33 +539,24 @@ function SpotPanel({
           SheepDog Spots
         </h4>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleDetect}
-            disabled={detecting}
-            className="text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 flex items-center gap-1"
-          >
-            {detecting ? (
-              <>
-                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Detecting...
-              </>
-            ) : "AI Detect"}
-          </button>
-          <button onClick={() => { setAdding(true); setNewNumber(spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1); }}
-            className="text-xs text-amber-600 hover:text-amber-700">+ Add Spot</button>
+          {batchPlacing ? (
+            <button onClick={onStopBatch}
+              className="text-xs text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded font-medium">
+              Done Placing
+            </button>
+          ) : (
+            <>
+              <button onClick={onStartBatch}
+                className="text-xs text-amber-600 hover:text-amber-700">Place Spots</button>
+              <button onClick={() => { setAdding(true); setNewNumber(spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1); }}
+                className="text-xs text-amber-600 hover:text-amber-700">+ Add</button>
+            </>
+          )}
         </div>
       </div>
-      {detectError && (
-        <div className="mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-          {detectError}
-        </div>
-      )}
-      {detecting && (
-        <div className="mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-200 rounded text-xs text-indigo-700">
-          Analyzing satellite imagery with AI. This may take a few seconds...
+      {batchPlacing && (
+        <div className="mb-2 px-2 py-1.5 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800">
+          Click on the map to place spots. Next spot: <strong>#{batchNextNumber}</strong>
         </div>
       )}
       {spots.length > 0 && (
@@ -782,6 +762,8 @@ export default function Lots() {
   const [spots, setSpots] = useState<ParkingSpot[]>([]);
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [placingSpot, setPlacingSpot] = useState(false);
+  const [batchPlacing, setBatchPlacing] = useState(false);
+  const [batchNextNumber, setBatchNextNumber] = useState(1);
 
   const selectedLot = lots.find(l => l.id === selectedLotId);
   const isSheepDogLot = selectedLot?.has_sheepdog ?? false;
@@ -816,6 +798,7 @@ export default function Lots() {
     loadSpots();
     setSelectedSpotId(null);
     setPlacingSpot(false);
+    setBatchPlacing(false);
   }, [loadSpots]);
 
   function handleSelectLot(id: string | null) {
@@ -863,7 +846,24 @@ export default function Lots() {
   }
 
   function handlePlaceSpot(lat: number, lng: number) {
-    if (!selectedSpotId || !selectedLotId) return;
+    if (!selectedLotId) return;
+
+    // Batch placement mode: create a new spot on each click
+    if (batchPlacing) {
+      api.lots.spots.create(selectedLotId, {
+        number: batchNextNumber,
+        spot_type: "standard",
+        latitude: lat,
+        longitude: lng,
+      }).then(() => {
+        setBatchNextNumber(n => n + 1);
+        loadSpots();
+      });
+      return;
+    }
+
+    // Single reposition mode
+    if (!selectedSpotId) return;
     api.lots.spots.update(selectedLotId, selectedSpotId, {
       latitude: lat,
       longitude: lng,
@@ -871,6 +871,19 @@ export default function Lots() {
       setPlacingSpot(false);
       loadSpots();
     });
+  }
+
+  function startBatchPlacing() {
+    const nextNum = spots.length > 0 ? Math.max(...spots.map(s => s.number)) + 1 : 1;
+    setBatchNextNumber(nextNum);
+    setBatchPlacing(true);
+    setPlacingSpot(true);
+    setSelectedSpotId(null);
+  }
+
+  function stopBatchPlacing() {
+    setBatchPlacing(false);
+    setPlacingSpot(false);
   }
 
   const isEditing = creating || editing !== null;
@@ -970,6 +983,10 @@ export default function Lots() {
                       onSpotsChanged={loadSpots}
                       onStartPlacing={() => setPlacingSpot(true)}
                       placingSpot={placingSpot}
+                      batchPlacing={batchPlacing}
+                      batchNextNumber={batchNextNumber}
+                      onStartBatch={startBatchPlacing}
+                      onStopBatch={stopBatchPlacing}
                     />
                   )}
                 </>
