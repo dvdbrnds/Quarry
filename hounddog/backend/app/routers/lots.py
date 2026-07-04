@@ -373,6 +373,31 @@ async def delete_spot(
     await db.flush()
 
 
+@router.post("/{lot_id}/spots/bulk-delete", status_code=204)
+async def bulk_delete_spots(
+    lot_id: uuid.UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete multiple spots at once. Body: {"spot_ids": ["uuid", ...]}"""
+    spot_ids = body.get("spot_ids", [])
+    if not spot_ids:
+        return
+    lot = await db.get(ParkingLot, lot_id)
+    if not lot or lot.deleted_at:
+        raise HTTPException(404, "Lot not found")
+
+    result = await db.execute(
+        select(ParkingSpot).where(
+            ParkingSpot.id.in_([uuid.UUID(s) for s in spot_ids]),
+            ParkingSpot.lot_id == lot_id,
+        )
+    )
+    for spot in result.scalars().all():
+        await db.delete(spot)
+    await db.flush()
+
+
 @router.post("/{lot_id}/spots/detect", response_model=list[SpotRead])
 async def detect_spots_endpoint(
     lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)

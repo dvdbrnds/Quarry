@@ -357,6 +357,8 @@ export const api = {
         request<ParkingSpot>(`/lots/${lotId}/spots/${spotId}`, { method: "PUT", body: JSON.stringify(data) }),
       delete: (lotId: string, spotId: string) =>
         request<void>(`/lots/${lotId}/spots/${spotId}`, { method: "DELETE" }),
+      bulkDelete: (lotId: string, spotIds: string[]) =>
+        request<void>(`/lots/${lotId}/spots/bulk-delete`, { method: "POST", body: JSON.stringify({ spot_ids: spotIds }) }),
       detect: (lotId: string) =>
         request<ParkingSpot[]>(`/lots/${lotId}/spots/detect`, { method: "POST" }),
     },

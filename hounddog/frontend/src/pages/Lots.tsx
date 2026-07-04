@@ -459,6 +459,8 @@ function SpotPanel({
   const [saving, setSaving] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState("");
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const selectedSpot = spots.find(s => s.id === selectedSpotId);
 
@@ -473,6 +475,35 @@ function SpotPanel({
         placingSpot={placingSpot}
       />
     );
+  }
+
+  function toggleCheck(id: string) {
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (checked.size === spots.length) {
+      setChecked(new Set());
+    } else {
+      setChecked(new Set(spots.map(s => s.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (checked.size === 0) return;
+    if (!confirm(`Delete ${checked.size} spot(s)?`)) return;
+    setDeleting(true);
+    try {
+      await api.lots.spots.bulkDelete(lotId, Array.from(checked));
+      setChecked(new Set());
+      onSpotsChanged();
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -548,22 +579,52 @@ function SpotPanel({
           Analyzing satellite imagery with AI. This may take a few seconds...
         </div>
       )}
+      {spots.length > 0 && (
+        <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-amber-200/60">
+          <label className="flex items-center gap-1.5 text-[10px] text-ink-mute cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={checked.size === spots.length && spots.length > 0}
+              onChange={toggleAll}
+              className="rounded border-gray-300 text-amber-500 focus:ring-amber-500 h-3 w-3"
+            />
+            {checked.size > 0 ? `${checked.size} selected` : "Select all"}
+          </label>
+          {checked.size > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              disabled={deleting}
+              className="text-[10px] text-signal-red hover:text-red-700 font-medium disabled:opacity-50"
+            >
+              {deleting ? "Deleting..." : `Delete ${checked.size}`}
+            </button>
+          )}
+        </div>
+      )}
       {spots.map(s => (
         <div
           key={s.id}
-          onClick={() => onSelectSpot(s.id)}
-          className={`flex items-center justify-between text-xs py-1.5 px-1 rounded cursor-pointer transition-colors ${
+          className={`flex items-center text-xs py-1.5 px-1 rounded cursor-pointer transition-colors ${
             s.id === selectedSpotId ? "bg-amber-100" : "hover:bg-amber-50"
           }`}
         >
-          <span className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={checked.has(s.id)}
+            onChange={(e) => { e.stopPropagation(); toggleCheck(s.id); }}
+            className="rounded border-gray-300 text-amber-500 focus:ring-amber-500 h-3 w-3 mr-1.5 flex-shrink-0"
+          />
+          <span
+            className="flex items-center gap-1.5 flex-1 min-w-0"
+            onClick={() => onSelectSpot(s.id)}
+          >
             <span className="font-mono font-bold text-amber-700">#{s.number}</span>
             {spotTypeBadge(s.spot_type)}
-            {s.label && <span className="text-ink-mute">{s.label}</span>}
+            {s.label && <span className="text-ink-mute truncate">{s.label}</span>}
             {s.sensor_id && <span className="font-mono bg-amber-100 text-amber-700 px-1 rounded text-[10px]">{s.sensor_id}</span>}
           </span>
           {s.latitude == null && (
-            <span className="text-[10px] text-ink-mute italic">no location</span>
+            <span className="text-[10px] text-ink-mute italic flex-shrink-0">no location</span>
           )}
         </div>
       ))}
