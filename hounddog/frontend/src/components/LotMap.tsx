@@ -60,6 +60,10 @@ function MapContent({
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [drawingActive, setDrawingActive] = useState(false);
 
+  // Ref so Google Maps event listeners always see the latest placingSpot value
+  const placingRef = useRef(placingSpot);
+  useEffect(() => { placingRef.current = placingSpot; }, [placingSpot]);
+
   const syncEditPolygon = useCallback(() => {
     const poly = editPolygonRef.current;
     if (!poly) return;
@@ -99,7 +103,13 @@ function MapContent({
         clickable: true,
       });
 
-      poly.addListener("click", () => onSelectLot(lot.id));
+      poly.addListener("click", (e: google.maps.MapMouseEvent) => {
+        if (placingRef.current && onPlaceSpot && e.latLng) {
+          onPlaceSpot(e.latLng.lat(), e.latLng.lng());
+          return;
+        }
+        onSelectLot(lot.id);
+      });
 
       poly.addListener("mouseover", () => {
         if (tooltipRef.current) {
@@ -155,7 +165,7 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       labelMarkersRef.current.forEach((m) => m.setMap(null));
     };
-  }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
+  }, [map, lots, selectedLotId, editingBoundary, onSelectLot, onPlaceSpot]);
 
   // Render spot markers for the selected SheepDog lot
   useEffect(() => {
