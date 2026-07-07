@@ -10,7 +10,14 @@ from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
-from ..schemas.permit_application import ApplicationAdminRead, LotteryResult
+from ..schemas.permit_application import (
+    ActivityEventRead,
+    ApplicationAdminRead,
+    LotteryResult,
+    SimulateRequest,
+    SimulatedAppResult,
+    SimulationResponse,
+)
 from ..schemas.permit_type import (
     PermitTypeCreate,
     PermitTypeImportPayload,
@@ -322,3 +329,140 @@ async def advance_waitlist(
 
     await db.flush()
     return {"expired": len(expired), "advanced": advanced}
+
+
+@router.post("/{ptype_id}/simulate-lottery", response_model=SimulationResponse)
+async def simulate_lottery(
+    ptype_id: uuid.UUID,
+    data: SimulateRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Dry-run the lottery without persisting any changes."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+    if not pt.requires_lottery:
+        raise HTTPException(400, "This permit type does not use a lottery")
+
+    pending = (await db.execute(
+        select(PermitApplication)
+        .where(
+            PermitApplication.permit_type_id == ptype_id,
+            PermitApplication.status == "pending",
+        )
+    )).scalars().all()
+
+    if not pending:
+        raise HTTPException(400, "No pending applications to simulate with")
+
+    active_count = (await db.execute(
+        select(func.count()).select_from(Permit).where(
+            Permit.permit_type == pt.code,
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+        )
+    )).scalar() or 0
+
+    already_selected = (await db.execute(
+        select(func.count()).select_from(PermitApplication).where(
+            PermitApplication.permit_type_id == ptype_id,
+            PermitApplication.status.in_(["selected", "accepted"]),
+        )
+    )).scalar() or 0
+
+    capacity = data.capacity_override if data.capacity_override else pt.max_capacity
+    spots = max(0, capacity - active_count - already_selected)
+
+    from ..services.lottery import get_strategy, assign_lots
+    strategy_name = data.strategy or pt.lottery_strategy or "seniority_timestamp"
+    strategy = get_strategy(strategy_name)
+
+    # Work on copies to avoid mutating DB objects
+    import copy
+    apps_copy = [copy.copy(a) for a in pending]
+    selected_apps, remaining = strategy.rank(apps_copy, spots)
+
+    if pt.lot_assignments and len(pt.lot_assignments) > 1:
+        assign_lots(selected_apps, pt.lot_assignments, capacity)
+
+    selected_results = [
+        SimulatedAppResult(
+            id=app.id,
+            student_name=app.student_name,
+            student_email=app.student_email,
+            class_year=app.class_year,
+            plate=app.plate,
+            lot_preferences=app.lot_preferences or [],
+            assigned_lot=app.assigned_lot,
+            rank=i + 1,
+        )
+        for i, app in enumerate(selected_apps)
+    ]
+
+    waitlisted_results = [
+        SimulatedAppResult(
+            id=app.id,
+            student_name=app.student_name,
+            student_email=app.student_email,
+            class_year=app.class_year,
+            plate=app.plate,
+            lot_preferences=app.lot_preferences or [],
+            assigned_lot=None,
+            rank=i + 1,
+        )
+        for i, app in enumerate(remaining)
+    ]
+
+    return SimulationResponse(
+        selected=selected_results,
+        waitlisted=waitlisted_results,
+        total_applicants=len(pending),
+        spots_available=spots,
+        strategy_used=strategy_name,
+    )
+
+
+@router.get("/{ptype_id}/lottery-activity", response_model=list[ActivityEventRead])
+async def lottery_activity(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Return recent application status changes for the live dashboard."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    result = await db.execute(
+        select(PermitApplication)
+        .where(
+            PermitApplication.permit_type_id == ptype_id,
+            PermitApplication.status != "pending",
+            PermitApplication.updated_at > cutoff,
+        )
+        .order_by(PermitApplication.updated_at.desc())
+        .limit(50)
+    )
+    apps = result.scalars().all()
+
+    events = []
+    for app in apps:
+        old_status = "pending"
+        if app.status == "accepted":
+            old_status = "selected"
+        elif app.status == "expired":
+            old_status = "selected"
+        elif app.status in ("selected", "waitlisted"):
+            old_status = "pending"
+
+        events.append(ActivityEventRead(
+            id=app.id,
+            student_name=app.student_name,
+            old_status=old_status,
+            new_status=app.status,
+            timestamp=app.updated_at,
+        ))
+
+    return events

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { api, Permit, ImportResult } from "../api";
 import { authHeaders } from "../auth";
+import LotteryManager from "./LotteryManager";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -240,6 +241,10 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
 
 export default function Permits() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [tab, setTab] = useState<"permits" | "lottery">(
+    location.hash === "#lottery" ? "lottery" : "permits"
+  );
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -343,6 +348,34 @@ export default function Permits() {
 
   return (
     <div>
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <button
+          onClick={() => { setTab("permits"); window.location.hash = ""; }}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            tab === "permits"
+              ? "bg-white border border-b-0 border-gray-200 -mb-px text-navy"
+              : "text-ink-mute hover:text-ink"
+          }`}
+        >
+          Permits
+        </button>
+        <button
+          onClick={() => { setTab("lottery"); window.location.hash = "lottery"; }}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            tab === "lottery"
+              ? "bg-white border border-b-0 border-gray-200 -mb-px text-navy"
+              : "text-ink-mute hover:text-ink"
+          }`}
+        >
+          Lottery
+        </button>
+      </div>
+
+      {tab === "lottery" ? (
+        <LotteryManager />
+      ) : (
+      <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Permits</h2>
         <div className="flex gap-3">
@@ -597,6 +630,8 @@ export default function Permits() {
             loadMeta();
           }}
         />
+      )}
+    </div>
       )}
     </div>
   );

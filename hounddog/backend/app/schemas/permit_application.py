@@ -63,6 +63,38 @@ class LotteryResult(BaseModel):
     total_applicants: int
 
 
+class SimulateRequest(BaseModel):
+    strategy: str | None = None
+    capacity_override: int | None = None
+
+
+class SimulatedAppResult(BaseModel):
+    id: uuid.UUID
+    student_name: str
+    student_email: str
+    class_year: int
+    plate: str
+    lot_preferences: list[str] = []
+    assigned_lot: str | None = None
+    rank: int
+
+
+class SimulationResponse(BaseModel):
+    selected: list[SimulatedAppResult]
+    waitlisted: list[SimulatedAppResult]
+    total_applicants: int
+    spots_available: int
+    strategy_used: str
+
+
+class ActivityEventRead(BaseModel):
+    id: uuid.UUID
+    student_name: str
+    old_status: str
+    new_status: str
+    timestamp: datetime
+
+
 class ApplicationAdminRead(ApplicationRead):
     permit_type_code: str = ""
     permit_type_label: str = ""
