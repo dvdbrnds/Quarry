@@ -6,7 +6,6 @@ block others.
 
 import asyncio
 import logging
-from dataclasses import asdict
 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,26 +63,27 @@ async def dispatch_alert(
     subscribers = await _get_subscribers(alert, db)
     registry = get_registry()
 
-    results: dict[str, dict] = {}
+    eligible = [
+        ch for ch in registry
+        if (not channels or ch.name in channels)
+        and ch.is_configured()
+        and (not ch.emergency_only or alert.category == "emergency")
+    ]
 
-    for channel in registry:
-        if channels and channel.name not in channels:
-            continue
-        if not channel.is_configured():
-            continue
-        if channel.emergency_only and alert.category != "emergency":
-            continue
-
+    async def _run_channel(channel):
         try:
             result = await channel.send(alert, subscribers)
-            results[channel.name] = {
+            return channel.name, {
                 "sent": result.sent,
                 "failed": result.failed,
                 "error": result.error,
             }
         except Exception as e:
             logger.error("Channel %s failed: %s", channel.name, e, exc_info=True)
-            results[channel.name] = {"sent": 0, "failed": 0, "error": str(e)}
+            return channel.name, {"sent": 0, "failed": 0, "error": str(e)}
+
+    outcomes = await asyncio.gather(*[_run_channel(ch) for ch in eligible])
+    results: dict[str, dict] = dict(outcomes)
 
     alert.channel_results = results
 
@@ -128,7 +128,7 @@ def init_channels():
     from .channels.signage_channel import SignageChannel
     from .channels.banner_channel import BannerChannel
     from .channels.teams_channel import TeamsChannel
-    from .channels.crestron_channel import CrestronChannel
+    from .channels.extron_channel import ExtronChannel
     from .channels.pa_channel import PaChannel
     from .channels.zoom_phone_channel import ZoomPhoneChannel
 
@@ -138,7 +138,7 @@ def init_channels():
     register_channel(SignageChannel())
     register_channel(BannerChannel())
     register_channel(TeamsChannel())
-    register_channel(CrestronChannel())
+    register_channel(ExtronChannel())
     register_channel(PaChannel())
     register_channel(ZoomPhoneChannel())
 

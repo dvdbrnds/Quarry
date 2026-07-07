@@ -404,6 +404,21 @@ _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
 _os.makedirs(_upload_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_upload_dir), name="uploads")
 
+_static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+if _os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+@app.get("/alerts/banner.js", include_in_schema=False)
+async def banner_js():
+    """Serve the embeddable alert banner script at a clean URL."""
+    from fastapi.responses import FileResponse
+    path = _os.path.join(_os.path.dirname(__file__), "static", "banner.js")
+    return FileResponse(path, media_type="application/javascript", headers={
+        "Cache-Control": "public, max-age=300",
+        "Access-Control-Allow-Origin": "*",
+    })
+
 
 @app.get("/health")
 async def health():

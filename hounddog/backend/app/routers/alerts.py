@@ -85,10 +85,19 @@ async def public_unsubscribe(token: str, db: AsyncSession = Depends(get_db)):
 @public_router.get("/active")
 async def get_active_alert(db: AsyncSession = Depends(get_db)):
     """Public endpoint for website banner JS and signage players to poll."""
+    from fastapi.responses import JSONResponse
     from ..services.channels.banner_channel import get_active_banner
+
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Cache-Control": "no-cache",
+    }
+
     banner = get_active_banner()
     if banner:
-        return banner
+        return JSONResponse(content=banner, headers=cors_headers)
+
     result = await db.execute(
         select(AlertLog)
         .where(AlertLog.status == "active")
@@ -97,8 +106,11 @@ async def get_active_alert(db: AsyncSession = Depends(get_db)):
     )
     alert = result.scalar_one_or_none()
     if not alert:
-        return None
-    return ActiveAlertRead.model_validate(alert)
+        return JSONResponse(content=None, headers=cors_headers)
+    return JSONResponse(
+        content=ActiveAlertRead.model_validate(alert).model_dump(mode="json"),
+        headers=cors_headers,
+    )
 
 
 # ---------------------------------------------------------------------------

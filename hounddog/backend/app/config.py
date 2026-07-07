@@ -62,12 +62,14 @@ class Settings(BaseSettings):
     zoom_client_secret: str = ""
     zoom_paging_group_id: str = ""
 
-    # Crestron (TBD)
-    crestron_host: str = ""
-    crestron_api_key: str = ""
+    # Extron Room Agent (scheduling panel override)
+    extron_room_agent_url: str = ""
 
-    # PA System (TBD)
-    pa_system_host: str = ""
+    # Q-SYS (PA/Siren via QRC TCP protocol)
+    qsys_core_host: str = ""
+    qsys_core_port: int = 1710
+    qsys_core_username: str = ""
+    qsys_core_password: str = ""
 
     # APNs (Push Notifications)
     apns_key_path: str = ""

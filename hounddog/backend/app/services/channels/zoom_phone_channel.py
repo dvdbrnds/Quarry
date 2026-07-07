@@ -1,26 +1,58 @@
 """Zoom Phone paging channel.
 
-Zoom Phone supports paging groups. On emergency, page all phones with
-a TTS alert via the Zoom API.
+Uses Zoom Server-to-Server OAuth2 to authenticate, then triggers a paging
+broadcast to a configured paging group. The paging message is TTS derived
+from the alert subject and body.
 
-When Zoom Phone rollout is further along, implement:
-  - OAuth2 server-to-server auth with zoom_client_id / zoom_client_secret
-  - POST /phone/call_queues/{id}/calls or use the paging group API
-  - TTS body derived from alert subject + body
-
-Expected config:
-  QUARRY_ZOOM_ACCOUNT_ID
-  QUARRY_ZOOM_CLIENT_ID
-  QUARRY_ZOOM_CLIENT_SECRET
-  QUARRY_ZOOM_PAGING_GROUP_ID
+Config:
+    QUARRY_ZOOM_ACCOUNT_ID
+    QUARRY_ZOOM_CLIENT_ID
+    QUARRY_ZOOM_CLIENT_SECRET
+    QUARRY_ZOOM_PAGING_GROUP_ID
 """
 
+import base64
 import logging
+import time
+
+import httpx
 
 from . import AlertChannel, ChannelResult
 from ...config import settings
 
 logger = logging.getLogger("quarry.channels.zoom_phone")
+
+_token_cache: dict = {"access_token": "", "expires_at": 0}
+
+
+async def _get_access_token() -> str:
+    """Get a Zoom access token via Server-to-Server OAuth2."""
+    now = time.time()
+    if _token_cache["access_token"] and _token_cache["expires_at"] > now + 60:
+        return _token_cache["access_token"]
+
+    credentials = base64.b64encode(
+        f"{settings.zoom_client_id}:{settings.zoom_client_secret}".encode()
+    ).decode()
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://zoom.us/oauth/token",
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={
+                "grant_type": "account_credentials",
+                "account_id": settings.zoom_account_id,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    _token_cache["access_token"] = data["access_token"]
+    _token_cache["expires_at"] = now + data.get("expires_in", 3600)
+    return data["access_token"]
 
 
 class ZoomPhoneChannel(AlertChannel):
@@ -36,9 +68,33 @@ class ZoomPhoneChannel(AlertChannel):
         )
 
     async def send(self, alert, subscribers) -> ChannelResult:
-        logger.warning(
-            "Zoom Phone channel not implemented -- alert '%s' not sent to paging group. "
-            "Configure QUARRY_ZOOM_* env vars and implement the API calls.",
-            alert.subject,
-        )
-        return ChannelResult(channel=self.name, error="Not implemented")
+        try:
+            token = await _get_access_token()
+        except Exception as e:
+            logger.error("Zoom OAuth token failed: %s", e)
+            return ChannelResult(channel=self.name, failed=1, error=f"OAuth failed: {e}")
+
+        school = settings.school_name or "Campus"
+        tts_message = (
+            f"Attention. This is an emergency alert from {school}. "
+            f"{alert.subject}. {alert.body_text}"
+        ).strip()
+
+        payload = {
+            "paging_group_id": settings.zoom_paging_group_id,
+            "message": tts_message[:512],
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"https://api.zoom.us/v2/phone/paging_groups/"
+                    f"{settings.zoom_paging_group_id}/paging",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json=payload,
+                )
+                resp.raise_for_status()
+            return ChannelResult(channel=self.name, sent=1)
+        except Exception as e:
+            logger.error("Zoom Phone paging failed: %s", e)
+            return ChannelResult(channel=self.name, failed=1, error=str(e))

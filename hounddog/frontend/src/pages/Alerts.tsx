@@ -759,10 +759,50 @@ function ChannelsSection() {
     signage: "Digital Signage",
     banner: "Website Banner",
     teams: "Microsoft Teams",
-    crestron: "Crestron Panels",
-    pa: "PA System",
-    zoom_phone: "Zoom Phone",
+    extron: "Extron Scheduling Panels",
+    pa: "PA / Siren (Q-SYS)",
+    zoom_phone: "Zoom Phone Paging",
   };
+
+  const CHANNEL_DESCRIPTIONS: Record<string, string> = {
+    sms: "Twilio SMS to all subscribers",
+    email: "SMTP email to all subscribers",
+    voice: "Twilio robocalls with TTS alert message",
+    signage: "Override all digital signage screens",
+    banner: "Website banner via polling endpoint",
+    teams: "Adaptive Card to Teams webhook",
+    extron: "Override Extron TouchLink room panels via Room Agent",
+    pa: "Siren + TTS via Q-SYS QRC protocol",
+    zoom_phone: "Page all Zoom phones via paging group",
+  };
+
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, string>>({});
+
+  async function handleTestChannel(channelName: string) {
+    setTesting(channelName);
+    setTestResult((prev) => ({ ...prev, [channelName]: "" }));
+    try {
+      const r = await api.alerts.send({
+        category: "general",
+        subject: `[TEST] Channel test — ${channelName}`,
+        body_text: "This is an automated test of the alert channel. No action required.",
+        body_sms: "TEST: Alert channel test. No action required.",
+      });
+      const chResult = r.channel_results?.[channelName];
+      if (chResult?.error) {
+        setTestResult((prev) => ({ ...prev, [channelName]: `Error: ${chResult.error}` }));
+      } else if (chResult) {
+        setTestResult((prev) => ({ ...prev, [channelName]: `Sent: ${chResult.sent}` }));
+      } else {
+        setTestResult((prev) => ({ ...prev, [channelName]: "No result returned" }));
+      }
+    } catch (err: any) {
+      setTestResult((prev) => ({ ...prev, [channelName]: `Failed: ${err.message}` }));
+    } finally {
+      setTesting(null);
+    }
+  }
 
   return (
     <div>
@@ -781,7 +821,7 @@ function ChannelsSection() {
                 ch.configured ? "border-green-500" : "border-gray-300"
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1">
                 <h4 className="font-medium text-sm">{CHANNEL_LABELS[ch.name] ?? ch.name}</h4>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                   ch.configured ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
@@ -789,8 +829,25 @@ function ChannelsSection() {
                   {ch.configured ? "Configured" : "Not Configured"}
                 </span>
               </div>
+              <p className="text-xs text-ink-mute mb-2">{CHANNEL_DESCRIPTIONS[ch.name] ?? ""}</p>
               {ch.emergency_only && (
-                <p className="text-xs text-red-600 font-medium">Emergency Only</p>
+                <p className="text-xs text-red-600 font-medium mb-2">Emergency Only</p>
+              )}
+              {ch.configured && (
+                <div>
+                  <button
+                    onClick={() => handleTestChannel(ch.name)}
+                    disabled={testing === ch.name}
+                    className="text-xs px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {testing === ch.name ? "Testing..." : "Send Test"}
+                  </button>
+                  {testResult[ch.name] && (
+                    <span className={`ml-2 text-xs ${testResult[ch.name].startsWith("Error") || testResult[ch.name].startsWith("Failed") ? "text-red-600" : "text-green-600"}`}>
+                      {testResult[ch.name]}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           ))}
