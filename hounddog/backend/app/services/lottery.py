@@ -4,7 +4,6 @@ import random
 from typing import Protocol
 
 from ..models.permit_application import PermitApplication
-from ..models.permit_type import PermitType
 
 
 class LotteryStrategy(Protocol):
@@ -114,13 +113,81 @@ class ClassPriorityStrategy:
         return selected, waitlisted
 
 
+class SeniorityTimestampStrategy:
+    """Moravian's actual process: class year first, then application timestamp.
+
+    No randomness. Seniors go first; within the same class year, whoever
+    applied earliest wins. This is a deterministic first-come-first-served
+    selection within each seniority tier.
+    """
+
+    def rank(
+        self,
+        applications: list[PermitApplication],
+        spots: int,
+    ) -> tuple[list[PermitApplication], list[PermitApplication]]:
+        if not applications:
+            return [], []
+
+        ordered = sorted(applications, key=lambda a: (a.class_year, a.created_at))
+
+        pick_count = min(spots, len(ordered))
+        selected = ordered[:pick_count]
+        waitlisted = ordered[pick_count:]
+
+        return selected, waitlisted
+
+
 STRATEGIES: dict[str, LotteryStrategy] = {
     "seniority_weighted": SeniorityWeightedStrategy(),
     "pure_random": PureRandomStrategy(),
     "class_priority": ClassPriorityStrategy(),
+    "seniority_timestamp": SeniorityTimestampStrategy(),
 }
 
 
 def get_strategy(name: str) -> LotteryStrategy:
     """Look up a strategy by name. Falls back to seniority_weighted if unknown."""
     return STRATEGIES.get(name, STRATEGIES["seniority_weighted"])
+
+
+def assign_lots(
+    selected: list[PermitApplication],
+    lot_assignments: list[str],
+    max_capacity: int,
+) -> None:
+    """Assign each selected applicant their highest-preference lot with remaining capacity.
+
+    Modifies applications in-place, setting `assigned_lot`. If no preferences
+    were submitted, assigns the first lot with capacity. If all preferred lots
+    are full, assigns the first available lot from the permit type's list.
+
+    The max_capacity is split evenly across lots when no per-lot limits exist.
+    """
+    if not lot_assignments:
+        return
+
+    per_lot_cap = max(1, max_capacity // len(lot_assignments))
+    lot_counts: dict[str, int] = {lot: 0 for lot in lot_assignments}
+
+    for app in selected:
+        preferences = app.lot_preferences if app.lot_preferences else lot_assignments
+        assigned = False
+
+        for pref in preferences:
+            if pref in lot_counts and lot_counts[pref] < per_lot_cap:
+                app.assigned_lot = pref
+                lot_counts[pref] += 1
+                assigned = True
+                break
+
+        if not assigned:
+            for lot in lot_assignments:
+                if lot_counts[lot] < per_lot_cap:
+                    app.assigned_lot = lot
+                    lot_counts[lot] += 1
+                    assigned = True
+                    break
+
+        if not assigned:
+            app.assigned_lot = lot_assignments[0]

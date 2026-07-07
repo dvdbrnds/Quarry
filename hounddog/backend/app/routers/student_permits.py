@@ -58,6 +58,7 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
             remaining=remaining,
             lot_assignments=pt.lot_assignments,
             valid_days=pt.valid_days,
+            min_class_year=pt.min_class_year,
             application_closes_at=pt.application_closes_at,
             requires_lottery=pt.requires_lottery,
         ))
@@ -84,6 +85,13 @@ async def submit_application(
     if now > pt.application_closes_at:
         raise HTTPException(400, "Application window has closed")
 
+    if pt.min_class_year and data.class_year > pt.min_class_year:
+        raise HTTPException(
+            403,
+            f"This permit type requires class year {pt.min_class_year} or earlier. "
+            f"First-year students are not eligible for resident parking.",
+        )
+
     existing = await db.execute(
         select(PermitApplication).where(
             PermitApplication.student_sub == user.sub,
@@ -102,6 +110,7 @@ async def submit_application(
         permit_type_id=pt.id,
         plate=data.plate.upper().strip(),
         phone=data.phone,
+        lot_preferences=data.lot_preferences,
     )
     db.add(app)
     await db.flush()

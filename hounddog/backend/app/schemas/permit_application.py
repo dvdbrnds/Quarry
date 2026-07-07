@@ -11,6 +11,7 @@ class ApplicationSubmit(BaseModel):
     student_name: str
     class_year: int
     phone: str | None = None
+    lot_preferences: list[str] = []
 
 
 class ApplicationRead(BaseModel):
@@ -24,6 +25,8 @@ class ApplicationRead(BaseModel):
     permit_type_id: uuid.UUID
     plate: str
     phone: str | None = None
+    lot_preferences: list[str] = []
+    assigned_lot: str | None = None
     status: str
     lottery_rank: int | None = None
     waitlist_position: int | None = None
@@ -49,6 +52,7 @@ class AvailablePermitType(BaseModel):
     remaining: int
     lot_assignments: list[str]
     valid_days: int
+    min_class_year: int | None = None
     application_closes_at: datetime | None = None
     requires_lottery: bool = False
 

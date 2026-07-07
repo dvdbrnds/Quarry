@@ -146,7 +146,12 @@ async def lifespan(app: FastAPI):
             # Standalone permit purchases: ticket_id must be nullable
             "ALTER TABLE payments ALTER COLUMN ticket_id DROP NOT NULL",
             # Lottery strategy on permit types
-            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_strategy VARCHAR(64) DEFAULT 'seniority_weighted'",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_strategy VARCHAR(64) DEFAULT 'seniority_timestamp'",
+            # Lot preferences on permit applications
+            "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS lot_preferences TEXT[] DEFAULT '{}'",
+            "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS assigned_lot VARCHAR(128)",
+            # First-year restriction on permit types
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS min_class_year INTEGER",
             # Renewal tokens for faculty/staff magic-link renewal
             """CREATE TABLE IF NOT EXISTS renewal_tokens (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

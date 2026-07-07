@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Integer, ForeignKey, func
+from sqlalchemy import String, DateTime, Integer, ForeignKey, func, ARRAY
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,8 @@ class PermitApplication(Base):
     permit_type_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("permit_types.id"))
     plate: Mapped[str] = mapped_column(String(32))
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    lot_preferences: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    assigned_lot: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="pending")
     lottery_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     waitlist_position: Mapped[int | None] = mapped_column(Integer, nullable=True)

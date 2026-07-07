@@ -226,9 +226,12 @@ async def run_lottery(
 
     spots = max(0, pt.max_capacity - active_count - already_selected)
 
-    from ..services.lottery import get_strategy
+    from ..services.lottery import get_strategy, assign_lots
     strategy = get_strategy(pt.lottery_strategy or "seniority_weighted")
     selected_apps, remaining = strategy.rank(list(pending), spots)
+
+    if pt.lot_assignments and len(pt.lot_assignments) > 1:
+        assign_lots(selected_apps, pt.lot_assignments, pt.max_capacity)
 
     offer_deadline = datetime.now(timezone.utc) + timedelta(days=pt.offer_window_days)
     for rank, app in enumerate(selected_apps, 1):

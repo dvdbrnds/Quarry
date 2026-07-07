@@ -18,6 +18,7 @@ interface PermitTypeRow {
   remaining: number;
   requires_lottery: boolean;
   lottery_strategy: string;
+  min_class_year: number | null;
   application_opens_at: string | null;
   application_closes_at: string | null;
   offer_window_days: number;
@@ -31,6 +32,8 @@ interface Application {
   class_year: number;
   plate: string;
   phone: string | null;
+  lot_preferences: string[];
+  assigned_lot: string | null;
   status: string;
   lottery_rank: number | null;
   waitlist_position: number | null;
@@ -41,7 +44,8 @@ interface Application {
 const STRATEGY_LABELS: Record<string, string> = {
   seniority_weighted: "Seniority Weighted (random, seniors favored)",
   pure_random: "Pure Random (equal chance)",
-  class_priority: "Class Priority (seniors first, deterministic)",
+  class_priority: "Class Priority (seniors first, random tiebreak)",
+  seniority_timestamp: "Seniority + Timestamp (seniors first, earliest application wins)",
 };
 
 function PermitTypeForm({
@@ -63,7 +67,8 @@ function PermitTypeForm({
   const [purchasable, setPurchasable] = useState(initial?.is_purchasable_online ?? false);
   const [sortOrder, setSortOrder] = useState(initial?.sort_order ?? 0);
   const [requiresLottery, setRequiresLottery] = useState(initial?.requires_lottery ?? false);
-  const [lotteryStrategy, setLotteryStrategy] = useState(initial?.lottery_strategy ?? "seniority_weighted");
+  const [lotteryStrategy, setLotteryStrategy] = useState(initial?.lottery_strategy ?? "seniority_timestamp");
+  const [minClassYear, setMinClassYear] = useState<string>(initial?.min_class_year?.toString() ?? "");
   const [opensAt, setOpensAt] = useState(initial?.application_opens_at?.slice(0, 16) ?? "");
   const [closesAt, setClosesAt] = useState(initial?.application_closes_at?.slice(0, 16) ?? "");
   const [offerDays, setOfferDays] = useState(initial?.offer_window_days ?? 5);
@@ -84,6 +89,7 @@ function PermitTypeForm({
       sort_order: sortOrder,
       requires_lottery: requiresLottery,
       lottery_strategy: lotteryStrategy,
+      min_class_year: minClassYear ? parseInt(minClassYear) : null,
       offer_window_days: offerDays,
       application_opens_at: opensAt ? new Date(opensAt).toISOString() : null,
       application_closes_at: closesAt ? new Date(closesAt).toISOString() : null,
@@ -165,10 +171,18 @@ function PermitTypeForm({
             <label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
             <select value={lotteryStrategy} onChange={(e) => setLotteryStrategy(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-              <option value="seniority_weighted">Seniority Weighted</option>
+              <option value="seniority_timestamp">Seniority + Timestamp (Moravian default)</option>
+              <option value="seniority_weighted">Seniority Weighted (random)</option>
               <option value="pure_random">Pure Random</option>
-              <option value="class_priority">Class Priority (seniors first)</option>
+              <option value="class_priority">Class Priority (random tiebreak)</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-1">Min. Class Year (blank = all)</label>
+            <input type="number" value={minClassYear} onChange={(e) => setMinClassYear(e.target.value)}
+              placeholder="e.g. 2027 = sophomores+"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+            <p className="text-[10px] text-ink-mute mt-0.5">Students with a graduation year above this cannot apply (blocks first-years)</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
@@ -395,6 +409,8 @@ function LotteryPanel({
                 <th className="px-3 py-2 font-medium text-ink-mute text-xs">Plate</th>
                 <th className="px-3 py-2 font-medium text-ink-mute text-xs">Status</th>
                 <th className="px-3 py-2 font-medium text-ink-mute text-xs">Rank / Position</th>
+                <th className="px-3 py-2 font-medium text-ink-mute text-xs">Lot Prefs</th>
+                <th className="px-3 py-2 font-medium text-ink-mute text-xs">Assigned</th>
                 <th className="px-3 py-2 font-medium text-ink-mute text-xs">Applied</th>
               </tr>
             </thead>
@@ -418,6 +434,14 @@ function LotteryPanel({
                         (exp {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
                       </span>
                     )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-ink-mute">
+                    {app.lot_preferences?.length > 0 ? app.lot_preferences.join(" > ") : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-xs font-medium">
+                    {app.assigned_lot ? (
+                      <span className="text-green-700">{app.assigned_lot}</span>
+                    ) : "—"}
                   </td>
                   <td className="px-3 py-2 text-xs text-ink-mute">
                     {new Date(app.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}

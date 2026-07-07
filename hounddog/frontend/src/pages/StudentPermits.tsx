@@ -11,6 +11,7 @@ interface AvailablePermit {
   remaining: number;
   lot_assignments: string[];
   valid_days: number;
+  min_class_year: number | null;
   application_closes_at: string | null;
   requires_lottery: boolean;
 }
@@ -25,6 +26,8 @@ interface MyApplication {
   permit_type_code: string;
   permit_type_price: string;
   lot_assignments: string[];
+  lot_preferences: string[];
+  assigned_lot: string | null;
   waitlist_position: number | null;
   offer_expires_at: string | null;
   created_at: string;
@@ -179,6 +182,11 @@ export default function StudentPermits() {
                         Plate: <span className="font-mono">{app.plate}</span>{" "}
                         &middot; Class of {app.class_year} &middot; Lots:{" "}
                         {app.lot_assignments.join(", ")}
+                        {app.assigned_lot && (
+                          <span className="ml-1 text-green-700 font-medium">
+                            &middot; Assigned: {app.assigned_lot}
+                          </span>
+                        )}
                       </div>
                       {app.status === "waitlisted" &&
                         app.waitlist_position != null && (
@@ -284,6 +292,11 @@ export default function StudentPermits() {
                         )}
                       </div>
                     )}
+                    {pt.min_class_year && (
+                      <div className="text-xs text-ink-mute mt-1">
+                        Eligibility: Class of {pt.min_class_year} or earlier only
+                      </div>
+                    )}
                   </div>
                   <div className="mt-4">
                     {alreadyApplied ? (
@@ -348,7 +361,16 @@ function ApplyModal({
   const [plate, setPlate] = useState("");
   const [classYear, setClassYear] = useState("");
   const [phone, setPhone] = useState("");
+  const [lotPreferences, setLotPreferences] = useState<string[]>(permit.lot_assignments);
   const [submitting, setSubmitting] = useState(false);
+
+  function moveLot(index: number, direction: -1 | 1) {
+    const newPrefs = [...lotPreferences];
+    const target = index + direction;
+    if (target < 0 || target >= newPrefs.length) return;
+    [newPrefs[index], newPrefs[target]] = [newPrefs[target], newPrefs[index]];
+    setLotPreferences(newPrefs);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -363,6 +385,7 @@ function ApplyModal({
           plate: plate.toUpperCase().trim(),
           class_year: parseInt(classYear),
           phone: phone || null,
+          lot_preferences: lotPreferences,
         }),
       });
       if (!res.ok) {
@@ -447,6 +470,45 @@ function ApplyModal({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
             />
           </div>
+          {permit.lot_assignments.length > 1 && (
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">
+                Lot Preferences (drag to reorder, #1 is your top choice)
+              </label>
+              <div className="space-y-1.5">
+                {lotPreferences.map((lot, idx) => (
+                  <div
+                    key={lot}
+                    className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2"
+                  >
+                    <span className="text-xs font-bold text-ink-mute w-5">
+                      {idx + 1}.
+                    </span>
+                    <span className="text-sm font-medium flex-1">{lot}</span>
+                    <button
+                      type="button"
+                      onClick={() => moveLot(idx, -1)}
+                      disabled={idx === 0}
+                      className="text-ink-mute hover:text-navy disabled:opacity-20 text-xs px-1"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveLot(idx, 1)}
+                      disabled={idx === lotPreferences.length - 1}
+                      className="text-ink-mute hover:text-navy disabled:opacity-20 text-xs px-1"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-ink-mute mt-1">
+                You will be assigned your highest-preference lot with available capacity.
+              </p>
+            </div>
+          )}
           <div className="flex gap-3 justify-end pt-2">
             <button
               type="button"

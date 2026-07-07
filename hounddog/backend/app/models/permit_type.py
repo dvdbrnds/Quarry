@@ -26,7 +26,8 @@ class PermitType(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     requires_lottery: Mapped[bool] = mapped_column(Boolean, default=False)
-    lottery_strategy: Mapped[str] = mapped_column(String(64), default="seniority_weighted")
+    lottery_strategy: Mapped[str] = mapped_column(String(64), default="seniority_timestamp")
+    min_class_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     application_opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     application_closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     offer_window_days: Mapped[int] = mapped_column(Integer, default=5)
