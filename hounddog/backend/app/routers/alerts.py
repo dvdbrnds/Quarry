@@ -21,6 +21,8 @@ from ..schemas.alerts import (
     AlertSendRequest,
     AlertSendResult,
     AlertTestRequest,
+    AlertTestSendRequest,
+    AlertTestSendResult,
     PublicSubscribeRequest,
     PublicSubscribeResponse,
     SubscriberCreate,
@@ -204,27 +206,82 @@ async def clear_alert_endpoint(
     return alert
 
 
-@admin_router.post("/{alert_id}/test", response_model=AlertSendResult)
-async def test_alert_channel(
-    alert_id: uuid.UUID,
-    data: AlertTestRequest,
+@admin_router.post("/test-send", response_model=AlertTestSendResult)
+async def test_send_channel(
+    data: AlertTestSendRequest,
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    """Send an alert to a single channel for testing."""
-    alert = await db.get(AlertLog, alert_id)
-    if not alert:
-        raise HTTPException(404, "Alert not found")
+    """Isolated test of a single channel. Creates a status='test' alert that
+    never appears as active. For subscriber-based channels (sms, email, voice),
+    uses the provided test_email/test_phone instead of the subscriber list.
+    For signage, targets a single screen_id if provided."""
 
-    channel_results = await dispatch_alert(alert_id, db, channels=[data.channel])
+    registry = get_registry()
+    channel_obj = next((c for c in registry if c.name == data.channel), None)
+    if not channel_obj:
+        raise HTTPException(400, f"Unknown channel: {data.channel}")
+    if not channel_obj.is_configured():
+        raise HTTPException(400, f"Channel '{data.channel}' is not configured")
+    if channel_obj.emergency_only and data.category != "emergency":
+        raise HTTPException(
+            400,
+            f"Channel '{data.channel}' is emergency-only. Set category to 'emergency' to test it.",
+        )
 
-    await db.refresh(alert)
+    subscriber_channels = {"sms", "email", "voice"}
+    if data.channel in subscriber_channels and not data.test_email and not data.test_phone:
+        raise HTTPException(
+            400,
+            f"Channel '{data.channel}' requires a test_email or test_phone recipient.",
+        )
 
-    return AlertSendResult(
-        alert_id=alert.id,
-        emails_sent=alert.email_count,
-        sms_sent=alert.sms_count,
-        channel_results=channel_results,
+    log_entry = AlertLog(
+        category=data.category,
+        subject=f"[TEST] {data.subject}",
+        body_text=data.body_text,
+        body_sms=data.body_sms,
+        sent_by=user.email,
+        status="test",
+    )
+    db.add(log_entry)
+    await db.flush()
+    await db.refresh(log_entry)
+
+    test_subs = None
+    if data.channel in subscriber_channels:
+        from types import SimpleNamespace
+        test_subs = [SimpleNamespace(
+            id=uuid.uuid4(),
+            name="Test Recipient",
+            email=data.test_email,
+            phone=data.test_phone,
+            sms_enabled=True,
+            email_enabled=True,
+            categories=["emergency", "weather", "campus_closing", "parking", "general"],
+            unsubscribe_token="test-no-unsubscribe",
+        )]
+
+    channel_results = await dispatch_alert(
+        log_entry.id, db,
+        channels=[data.channel],
+        test_subscribers=test_subs,
+    )
+
+    result = channel_results.get(data.channel, {})
+
+    from datetime import datetime, timezone
+    log_entry.status = "test"
+    log_entry.cleared_at = datetime.now(timezone.utc)
+    log_entry.cleared_by = "auto-test"
+    await db.flush()
+
+    return AlertTestSendResult(
+        alert_id=log_entry.id,
+        channel=data.channel,
+        sent=result.get("sent", 0),
+        failed=result.get("failed", 0),
+        error=result.get("error"),
     )
 
 
@@ -253,11 +310,14 @@ async def list_channels():
 async def list_history(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    include_tests: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
+    q = select(AlertLog)
+    if not include_tests:
+        q = q.where(AlertLog.status != "test")
     result = await db.execute(
-        select(AlertLog)
-        .order_by(AlertLog.sent_at.desc())
+        q.order_by(AlertLog.sent_at.desc())
         .limit(limit)
         .offset(offset)
     )

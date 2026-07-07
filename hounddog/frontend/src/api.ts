@@ -265,6 +265,15 @@ export interface AlertChannelInfo {
   emergency_only: boolean;
 }
 
+export interface AlertTestSendResult {
+  alert_id: string;
+  channel: string;
+  sent: number;
+  failed: number;
+  error: string | null;
+  status: string;
+}
+
 export interface SignageScreen {
   id: string;
   name: string;
@@ -417,10 +426,19 @@ export const api = {
       request<AlertSendResult>("/alerts/send", { method: "POST", body: JSON.stringify(data) }),
     clear: (alertId: string) =>
       request<AlertLogEntry>(`/alerts/${alertId}/clear`, { method: "POST" }),
-    test: (alertId: string, channel: string) =>
-      request<AlertSendResult>(`/alerts/${alertId}/test`, {
+    testSend: (data: {
+      channel: string;
+      category?: string;
+      subject?: string;
+      body_text?: string;
+      body_sms?: string;
+      test_email?: string | null;
+      test_phone?: string | null;
+      screen_id?: string | null;
+    }) =>
+      request<AlertTestSendResult>("/alerts/test-send", {
         method: "POST",
-        body: JSON.stringify({ channel }),
+        body: JSON.stringify(data),
       }),
     active: () =>
       fetch(`${BASE}/alerts/active`).then(async (res) => {
@@ -429,10 +447,11 @@ export const api = {
         return data as ActiveAlert | null;
       }),
     channels: () => request<AlertChannelInfo[]>("/alerts/channels"),
-    history: (params?: { limit?: number; offset?: number }) => {
+    history: (params?: { limit?: number; offset?: number; include_tests?: boolean }) => {
       const qs = new URLSearchParams();
       if (params?.limit) qs.set("limit", String(params.limit));
       if (params?.offset) qs.set("offset", String(params.offset));
+      if (params?.include_tests) qs.set("include_tests", "true");
       return request<AlertLogEntry[]>(`/alerts/history?${qs}`);
     },
     subscribers: {

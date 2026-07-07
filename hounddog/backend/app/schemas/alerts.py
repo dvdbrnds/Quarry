@@ -87,6 +87,26 @@ class AlertTestRequest(BaseModel):
     channel: str
 
 
+class AlertTestSendRequest(BaseModel):
+    channel: str
+    category: str = "general"
+    subject: str = "[TEST] Alert channel test"
+    body_text: str = "This is an automated test of the alert channel. No action required."
+    body_sms: str = "TEST: Alert channel test. No action required."
+    test_email: str | None = None
+    test_phone: str | None = None
+    screen_id: str | None = None
+
+
+class AlertTestSendResult(BaseModel):
+    alert_id: uuid.UUID
+    channel: str
+    sent: int = 0
+    failed: int = 0
+    error: str | None = None
+    status: str = "test"
+
+
 # --- Alert History schemas ---
 
 

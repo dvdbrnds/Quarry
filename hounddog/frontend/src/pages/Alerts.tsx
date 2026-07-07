@@ -6,6 +6,7 @@ import {
   AlertSubscriber,
   AlertSendPreview,
   AlertSendResult,
+  AlertTestSendResult,
   AlertLogEntry,
   SignageScreen,
 } from "../api";
@@ -18,7 +19,7 @@ const CATEGORIES = [
   { id: "general", label: "General", color: "bg-gray-600" },
 ];
 
-type Section = "send" | "history" | "subscribers" | "channels" | "signage";
+type Section = "send" | "history" | "subscribers" | "channels" | "test" | "signage";
 
 export default function Alerts() {
   const [section, setSection] = useState<Section>("send");
@@ -78,6 +79,7 @@ export default function Alerts() {
             { id: "history" as Section, label: "History" },
             { id: "subscribers" as Section, label: "Subscribers" },
             { id: "channels" as Section, label: "Channels" },
+            { id: "test" as Section, label: "Test" },
             { id: "signage" as Section, label: "Signage" },
           ]).map((s) => (
             <button
@@ -99,6 +101,7 @@ export default function Alerts() {
       {section === "history" && <HistorySection />}
       {section === "subscribers" && <SubscribersSection />}
       {section === "channels" && <ChannelsSection />}
+      {section === "test" && <TestConsole />}
       {section === "signage" && <SignageSection />}
     </div>
   );
@@ -334,11 +337,12 @@ function HistorySection() {
   const [entries, setEntries] = useState<AlertLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [includeTests, setIncludeTests] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    api.alerts.history({ limit: 100 }).then(setEntries).finally(() => setLoading(false));
-  }, []);
+    api.alerts.history({ limit: 100, include_tests: includeTests }).then(setEntries).finally(() => setLoading(false));
+  }, [includeTests]);
 
   function categoryBadge(cat: string) {
     const info = CATEGORIES.find((c) => c.id === cat);
@@ -350,6 +354,9 @@ function HistorySection() {
   }
 
   function statusBadge(status: string) {
+    if (status === "test") {
+      return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Test</span>;
+    }
     if (status === "active") {
       return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Active</span>;
     }
@@ -358,7 +365,17 @@ function HistorySection() {
 
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-4">Alert History</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Alert History</h3>
+        <label className="flex items-center gap-2 text-sm text-ink-mute cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeTests}
+            onChange={(e) => setIncludeTests(e.target.checked)}
+          />
+          Show test alerts
+        </label>
+      </div>
 
       {loading ? (
         <p className="text-ink-mute text-center py-6">Loading...</p>
@@ -744,6 +761,42 @@ function SubscriberForm({
    SECTION D — Channels
    ============================================================ */
 
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: "SMS (Twilio)",
+  email: "Email (SMTP)",
+  voice: "Voice Calls (Twilio)",
+  signage: "Digital Signage",
+  banner: "Website Banner",
+  teams: "Microsoft Teams",
+  extron: "Extron Scheduling Panels",
+  pa: "PA / Siren (Q-SYS)",
+  zoom_phone: "Zoom Phone Paging",
+};
+
+const CHANNEL_DESCRIPTIONS: Record<string, string> = {
+  sms: "Twilio SMS to all subscribers",
+  email: "SMTP email to all subscribers",
+  voice: "Twilio robocalls with TTS alert message",
+  signage: "Override all digital signage screens",
+  banner: "Website banner via polling endpoint",
+  teams: "Adaptive Card to Teams webhook",
+  extron: "Override Extron TouchLink room panels via Room Agent",
+  pa: "Siren + TTS via Q-SYS QRC protocol",
+  zoom_phone: "Page all Zoom phones via paging group",
+};
+
+const CHANNEL_ENV_HINTS: Record<string, string> = {
+  sms: "QUARRY_TWILIO_ACCOUNT_SID, QUARRY_TWILIO_AUTH_TOKEN, QUARRY_TWILIO_FROM_NUMBER",
+  email: "QUARRY_SMTP_HOST, QUARRY_SMTP_FROM_ADDRESS",
+  voice: "Same as SMS (Twilio)",
+  signage: "Always on",
+  banner: "Always on",
+  teams: "QUARRY_TEAMS_WEBHOOK_URL",
+  extron: "QUARRY_EXTRON_ROOM_AGENT_URL",
+  pa: "QUARRY_QSYS_CORE_HOST",
+  zoom_phone: "QUARRY_ZOOM_ACCOUNT_ID, QUARRY_ZOOM_CLIENT_ID, QUARRY_ZOOM_CLIENT_SECRET, QUARRY_ZOOM_PAGING_GROUP_ID",
+};
+
 function ChannelsSection() {
   const [channels, setChannels] = useState<AlertChannelInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -752,63 +805,16 @@ function ChannelsSection() {
     api.alerts.channels().then(setChannels).finally(() => setLoading(false));
   }, []);
 
-  const CHANNEL_LABELS: Record<string, string> = {
-    sms: "SMS (Twilio)",
-    email: "Email (SMTP)",
-    voice: "Voice Calls (Twilio)",
-    signage: "Digital Signage",
-    banner: "Website Banner",
-    teams: "Microsoft Teams",
-    extron: "Extron Scheduling Panels",
-    pa: "PA / Siren (Q-SYS)",
-    zoom_phone: "Zoom Phone Paging",
-  };
-
-  const CHANNEL_DESCRIPTIONS: Record<string, string> = {
-    sms: "Twilio SMS to all subscribers",
-    email: "SMTP email to all subscribers",
-    voice: "Twilio robocalls with TTS alert message",
-    signage: "Override all digital signage screens",
-    banner: "Website banner via polling endpoint",
-    teams: "Adaptive Card to Teams webhook",
-    extron: "Override Extron TouchLink room panels via Room Agent",
-    pa: "Siren + TTS via Q-SYS QRC protocol",
-    zoom_phone: "Page all Zoom phones via paging group",
-  };
-
-  const [testing, setTesting] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, string>>({});
-
-  async function handleTestChannel(channelName: string) {
-    setTesting(channelName);
-    setTestResult((prev) => ({ ...prev, [channelName]: "" }));
-    try {
-      const r = await api.alerts.send({
-        category: "general",
-        subject: `[TEST] Channel test — ${channelName}`,
-        body_text: "This is an automated test of the alert channel. No action required.",
-        body_sms: "TEST: Alert channel test. No action required.",
-      });
-      const chResult = r.channel_results?.[channelName];
-      if (chResult?.error) {
-        setTestResult((prev) => ({ ...prev, [channelName]: `Error: ${chResult.error}` }));
-      } else if (chResult) {
-        setTestResult((prev) => ({ ...prev, [channelName]: `Sent: ${chResult.sent}` }));
-      } else {
-        setTestResult((prev) => ({ ...prev, [channelName]: "No result returned" }));
-      }
-    } catch (err: any) {
-      setTestResult((prev) => ({ ...prev, [channelName]: `Failed: ${err.message}` }));
-    } finally {
-      setTesting(null);
-    }
-  }
-
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-4">Alert Channels</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Alert Channels</h3>
+        <span className="text-xs text-ink-mute">
+          {channels.filter((c) => c.configured).length}/{channels.length} configured
+        </span>
+      </div>
       <p className="text-sm text-ink-mute mb-4">
-        Channels are configured via environment variables. When an alert is sent, all configured channels deliver simultaneously.
+        Channels are configured via environment variables. Use the <strong>Test</strong> tab to send isolated test alerts to individual channels.
       </p>
       {loading ? (
         <p className="text-ink-mute text-center py-6">Loading...</p>
@@ -829,28 +835,305 @@ function ChannelsSection() {
                   {ch.configured ? "Configured" : "Not Configured"}
                 </span>
               </div>
-              <p className="text-xs text-ink-mute mb-2">{CHANNEL_DESCRIPTIONS[ch.name] ?? ""}</p>
+              <p className="text-xs text-ink-mute mb-1">{CHANNEL_DESCRIPTIONS[ch.name] ?? ""}</p>
               {ch.emergency_only && (
-                <p className="text-xs text-red-600 font-medium mb-2">Emergency Only</p>
+                <p className="text-xs text-red-600 font-medium mb-1">Emergency Only</p>
               )}
-              {ch.configured && (
-                <div>
-                  <button
-                    onClick={() => handleTestChannel(ch.name)}
-                    disabled={testing === ch.name}
-                    className="text-xs px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {testing === ch.name ? "Testing..." : "Send Test"}
-                  </button>
-                  {testResult[ch.name] && (
-                    <span className={`ml-2 text-xs ${testResult[ch.name].startsWith("Error") || testResult[ch.name].startsWith("Failed") ? "text-red-600" : "text-green-600"}`}>
-                      {testResult[ch.name]}
-                    </span>
-                  )}
-                </div>
+              {!ch.configured && (
+                <p className="text-[10px] text-ink-mute font-mono mt-1 break-all">
+                  {CHANNEL_ENV_HINTS[ch.name] ?? ""}
+                </p>
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   SECTION F — Test Console
+   ============================================================ */
+
+function TestConsole() {
+  const [channels, setChannels] = useState<AlertChannelInfo[]>([]);
+  const [screens, setScreens] = useState<SignageScreen[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [selectedChannel, setSelectedChannel] = useState("");
+  const [category, setCategory] = useState("general");
+  const [subject, setSubject] = useState("Alert channel test");
+  const [bodyText, setBodyText] = useState("This is an automated test of the alert channel. No action required.");
+  const [bodySms, setBodySms] = useState("TEST: Alert channel test. No action required.");
+  const [testEmail, setTestEmail] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [screenId, setScreenId] = useState("");
+
+  const [sending, setSending] = useState(false);
+  const [results, setResults] = useState<AlertTestSendResult[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      api.alerts.channels(),
+      api.signage.screens.list(),
+    ]).then(([ch, sc]) => {
+      setChannels(ch);
+      setScreens(sc);
+      const firstConfigured = ch.find((c) => c.configured);
+      if (firstConfigured) setSelectedChannel(firstConfigured.name);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const channelInfo = channels.find((c) => c.name === selectedChannel);
+  const needsRecipient = ["sms", "email", "voice"].includes(selectedChannel);
+  const isEmergencyOnly = channelInfo?.emergency_only ?? false;
+
+  useEffect(() => {
+    if (isEmergencyOnly && category !== "emergency") {
+      setCategory("emergency");
+    }
+  }, [isEmergencyOnly, category]);
+
+  const canSend = selectedChannel
+    && (!needsRecipient || testEmail || testPhone)
+    && subject
+    && (!isEmergencyOnly || category === "emergency");
+
+  async function handleSend() {
+    setSending(true);
+    try {
+      const r = await api.alerts.testSend({
+        channel: selectedChannel,
+        category,
+        subject,
+        body_text: bodyText,
+        body_sms: bodySms,
+        test_email: testEmail || null,
+        test_phone: testPhone || null,
+        screen_id: screenId || null,
+      });
+      setResults((prev) => [r, ...prev]);
+    } catch (err: any) {
+      setResults((prev) => [{
+        alert_id: "",
+        channel: selectedChannel,
+        sent: 0,
+        failed: 1,
+        error: err.message,
+        status: "error",
+      }, ...prev]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (loading) {
+    return <p className="text-ink-mute text-center py-6">Loading...</p>;
+  }
+
+  const configuredChannels = channels.filter((c) => c.configured);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold mb-1">Test Console</h3>
+        <p className="text-sm text-ink-mute">
+          Send isolated test alerts to a single channel without affecting real subscribers.
+          Tests are logged with status &ldquo;test&rdquo; and never appear as active alerts.
+        </p>
+      </div>
+
+      {configuredChannels.length === 0 ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
+          No channels are configured. Set the required environment variables on the Channels tab first.
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow p-6 space-y-5">
+          {/* Channel picker */}
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-2">Channel to Test</label>
+            <div className="flex gap-2 flex-wrap">
+              {configuredChannels.map((ch) => (
+                <button
+                  key={ch.name}
+                  onClick={() => setSelectedChannel(ch.name)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedChannel === ch.name
+                      ? "bg-navy text-bone"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {CHANNEL_LABELS[ch.name] ?? ch.name}
+                  {ch.emergency_only && <span className="ml-1 text-[10px] opacity-70">(emerg.)</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-2">Alert Category</label>
+            {isEmergencyOnly && (
+              <p className="text-xs text-red-600 mb-2">
+                This channel is emergency-only — category is locked to Emergency.
+              </p>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => !isEmergencyOnly && setCategory(c.id)}
+                  disabled={isEmergencyOnly && c.id !== "emergency"}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-30 ${
+                    category === c.id
+                      ? `${c.color} text-white`
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Test recipients for subscriber-based channels */}
+          {needsRecipient && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+              <p className="text-xs font-medium text-blue-800">
+                Test recipient — only this person receives the test, not the subscriber list.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-ink-mute mb-1">
+                    Email {selectedChannel === "email" && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    type="email"
+                    placeholder="you@moravian.edu"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-mute mb-1">
+                    Phone {(selectedChannel === "sms" || selectedChannel === "voice") && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="+15551234567"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Signage screen picker */}
+          {selectedChannel === "signage" && screens.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Target Screen (optional)</label>
+              <select
+                value={screenId}
+                onChange={(e) => setScreenId(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">All screens</option>
+                {screens.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} — {s.location}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Message content */}
+          <details className="group">
+            <summary className="text-xs font-medium text-ink-mute cursor-pointer select-none hover:text-ink">
+              Customize test message
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-ink-mute mb-1">Subject</label>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-mute mb-1">Body (email/signage/teams)</label>
+                <textarea
+                  value={bodyText}
+                  onChange={(e) => setBodyText(e.target.value)}
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-mute mb-1">
+                  SMS Body
+                  <span className={`ml-2 text-xs ${bodySms.length > 160 ? "text-red-600 font-bold" : "text-ink-mute"}`}>
+                    {bodySms.length}/160
+                  </span>
+                </label>
+                <textarea
+                  value={bodySms}
+                  onChange={(e) => setBodySms(e.target.value)}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </details>
+
+          {/* Send button */}
+          <button
+            onClick={handleSend}
+            disabled={sending || !canSend}
+            className="px-6 py-3 bg-navy text-bone font-medium rounded-lg text-sm hover:bg-navy-700 transition-colors disabled:opacity-50"
+          >
+            {sending ? "Sending..." : `Test ${CHANNEL_LABELS[selectedChannel] ?? selectedChannel}`}
+          </button>
+        </div>
+      )}
+
+      {/* Results log */}
+      {results.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-medium text-sm">Test Results</h4>
+            <button
+              onClick={() => setResults([])}
+              className="text-xs text-ink-mute hover:text-ink"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="space-y-2">
+            {results.map((r, i) => (
+              <div
+                key={i}
+                className={`rounded-lg p-3 text-sm flex items-center gap-3 ${
+                  r.error
+                    ? "bg-red-50 border border-red-200"
+                    : "bg-green-50 border border-green-200"
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${r.error ? "bg-red-500" : "bg-green-500"}`} />
+                <span className="font-medium capitalize">{CHANNEL_LABELS[r.channel] ?? r.channel}</span>
+                {r.error ? (
+                  <span className="text-red-700">{r.error}</span>
+                ) : (
+                  <span className="text-green-700">{r.sent} sent, {r.failed} failed</span>
+                )}
+                {r.alert_id && (
+                  <span className="ml-auto text-[10px] font-mono text-ink-mute">{r.alert_id.slice(0, 8)}</span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

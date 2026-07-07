@@ -44,6 +44,7 @@ async def dispatch_alert(
     alert_id,
     db: AsyncSession,
     channels: list[str] | None = None,
+    test_subscribers: list | None = None,
 ) -> dict[str, dict]:
     """
     Fan out an alert to all configured channels.
@@ -52,6 +53,8 @@ async def dispatch_alert(
         alert_id: UUID of the AlertLog entry
         db: database session
         channels: optional list of channel names to limit delivery to
+        test_subscribers: if provided, use these instead of querying
+            the subscriber table (for isolated test sends)
 
     Returns:
         dict of channel_name -> {sent, failed, error}
@@ -60,7 +63,7 @@ async def dispatch_alert(
     if not alert:
         raise ValueError(f"Alert {alert_id} not found")
 
-    subscribers = await _get_subscribers(alert, db)
+    subscribers = test_subscribers if test_subscribers is not None else await _get_subscribers(alert, db)
     registry = get_registry()
 
     eligible = [
