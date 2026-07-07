@@ -9,7 +9,7 @@ class PaymentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    ticket_id: uuid.UUID
+    ticket_id: uuid.UUID | None = None
     amount: Decimal
     method: str
     stripe_payment_id: str | None = None
@@ -119,5 +119,21 @@ class PermitPurchaseRequest(BaseModel):
 
 
 class PermitPurchaseResponse(BaseModel):
+    checkout_url: str
+    session_id: str
+
+
+class StandalonePermitPurchaseRequest(BaseModel):
+    permit_type_id: uuid.UUID
+    student_name: str
+    plate: str
+    email: str
+    phone: str | None = None
+    class_year: int | None = None
+    success_url: str = "/permits/buy/success"
+    cancel_url: str = "/permits/buy"
+
+
+class StandalonePermitPurchaseResponse(BaseModel):
     checkout_url: str
     session_id: str

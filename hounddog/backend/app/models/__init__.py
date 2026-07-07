@@ -13,6 +13,7 @@ from .notification_preference import NotificationPreference
 from .payment import Payment
 from .permit import Permit
 from .permit_application import PermitApplication
+from .renewal_token import RenewalToken
 from .signage_screen import SignageScreen
 from .permit_type import PermitType
 from .ticket import Ticket
@@ -36,6 +37,7 @@ __all__ = [
     "Permit",
     "PermitApplication",
     "PermitType",
+    "RenewalToken",
     "Ticket",
     "ViolationType",
 ]

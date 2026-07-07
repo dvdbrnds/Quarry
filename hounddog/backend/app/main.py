@@ -20,6 +20,7 @@ from .routers import (
     payments,
     permit_types,
     permits,
+    renewals,
     signage,
     student_permits,
     sync,
@@ -40,7 +41,7 @@ async def lifespan(app: FastAPI):
         Permit, PermitApplication, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
         AuditLog, LotClosure, MessageTemplate, NotificationPreference,
-        AlertSubscriber, AlertLog,
+        AlertSubscriber, AlertLog, RenewalToken,
     )
     # Fail fast if secret_key was not overridden from the default
     if not settings.secret_key:
@@ -141,6 +142,21 @@ async def lifespan(app: FastAPI):
                 last_seen TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT now(),
                 updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            # Standalone permit purchases: ticket_id must be nullable
+            "ALTER TABLE payments ALTER COLUMN ticket_id DROP NOT NULL",
+            # Lottery strategy on permit types
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_strategy VARCHAR(64) DEFAULT 'seniority_weighted'",
+            # Renewal tokens for faculty/staff magic-link renewal
+            """CREATE TABLE IF NOT EXISTS renewal_tokens (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                token VARCHAR(128) NOT NULL UNIQUE,
+                permit_id UUID NOT NULL REFERENCES permits(id) ON DELETE CASCADE,
+                email VARCHAR(256) NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at TIMESTAMPTZ,
+                new_plate VARCHAR(32),
+                created_at TIMESTAMPTZ DEFAULT now()
             )""",
         ]
         for migration in migrations:
@@ -372,6 +388,7 @@ app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])
 app.include_router(notification_preferences.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(student_permits.router, prefix="/api/student/permits", tags=["student-permits"])
+app.include_router(renewals.router, prefix="/api/renewals", tags=["renewals"])
 app.include_router(alerts.admin_router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(alerts.public_router, prefix="/api/alerts", tags=["alerts-public"])
 app.include_router(signage.admin_router, prefix="/api/signage", tags=["signage"])

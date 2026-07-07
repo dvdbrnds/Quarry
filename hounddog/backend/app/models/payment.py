@@ -13,7 +13,7 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id"))
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(8, 2))
     method: Mapped[str] = mapped_column(String(32), default="online_card")
     stripe_payment_id: Mapped[str | None] = mapped_column(String(256), nullable=True)

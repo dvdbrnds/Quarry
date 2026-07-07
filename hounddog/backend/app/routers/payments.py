@@ -29,6 +29,8 @@ from ..schemas.payment import (
     PermitPurchaseRequest,
     PermitPurchaseResponse,
     RevenueReport,
+    StandalonePermitPurchaseRequest,
+    StandalonePermitPurchaseResponse,
     TicketLookup,
     TicketLookupList,
 )
@@ -273,6 +275,70 @@ async def purchase_permit(
     return PermitPurchaseResponse(checkout_url=session.url, session_id=session.id)
 
 
+@router.post("/standalone-purchase", response_model=StandalonePermitPurchaseResponse)
+async def standalone_permit_purchase(
+    data: StandalonePermitPurchaseRequest, db: AsyncSession = Depends(get_db)
+):
+    """Public endpoint — purchase a permit directly (no ticket context). Used by /permits/buy."""
+    permit_type = await db.get(PermitType, data.permit_type_id)
+    if not permit_type:
+        raise HTTPException(404, "Permit type not found")
+    if not permit_type.is_purchasable_online:
+        raise HTTPException(400, "This permit type is not available for online purchase")
+    if permit_type.requires_lottery:
+        raise HTTPException(400, "This permit type requires a lottery application")
+
+    active_count_result = await db.execute(
+        select(func.count()).select_from(Permit).where(
+            Permit.permit_type == permit_type.code,
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+        )
+    )
+    active_count = active_count_result.scalar() or 0
+    if active_count >= permit_type.max_capacity:
+        raise HTTPException(409, "No permits of this type are currently available")
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"{permit_type.label} Parking Permit",
+                    "description": f"Plate: {data.plate.upper()} | Valid for {permit_type.valid_days} days",
+                },
+                "unit_amount": int(permit_type.price * 100),
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}{data.cancel_url}",
+        metadata={
+            "type": "standalone_permit_purchase",
+            "permit_type_id": str(permit_type.id),
+            "permit_type_code": permit_type.code,
+            "student_name": data.student_name,
+            "plate": data.plate.upper().strip(),
+            "email": data.email,
+            "phone": data.phone or "",
+            "class_year": str(data.class_year) if data.class_year else "",
+            "valid_days": str(permit_type.valid_days),
+        },
+    )
+
+    return StandalonePermitPurchaseResponse(checkout_url=session.url, session_id=session.id)
+
+
 @router.get("/verify-session")
 async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_db)):
     """Public endpoint — verify a Stripe checkout session's payment status for the PaySuccess page."""
@@ -332,6 +398,8 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             await _handle_permit_purchase(session, metadata, db)
         elif payment_type == "lottery_permit":
             await _handle_lottery_permit(session, metadata, db)
+        elif payment_type == "standalone_permit_purchase":
+            await _handle_standalone_permit_purchase(session, metadata, db)
 
     return {"status": "ok"}
 
@@ -447,6 +515,44 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
     db.add(new_permit)
 
     app.status = "accepted"
+    await db.flush()
+
+
+async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: AsyncSession):
+    """Handle payment for a standalone permit purchase (no ticket context)."""
+    permit_type_code = metadata.get("permit_type_code", "")
+    student_name = metadata.get("student_name", "")
+    plate = metadata.get("plate", "")
+    email = metadata.get("email", "")
+    phone = metadata.get("phone", "") or None
+    valid_days = int(metadata.get("valid_days", "365"))
+
+    lot_assignment = ""
+    permit_type_id = metadata.get("permit_type_id")
+    if permit_type_id:
+        pt = await db.get(PermitType, uuid.UUID(permit_type_id))
+        if pt and pt.lot_assignments:
+            lot_assignment = ",".join(pt.lot_assignments)
+
+    new_permit = Permit(
+        name=student_name,
+        email=email,
+        phone=phone,
+        plates=[plate],
+        permit_type=permit_type_code,
+        lot_assignment=lot_assignment,
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=valid_days),
+        status="active",
+    )
+    db.add(new_permit)
+
+    payment = Payment(
+        amount=Decimal(session["amount_total"]) / 100,
+        method="online_permit_purchase",
+        stripe_payment_id=session["payment_intent"],
+    )
+    db.add(payment)
     await db.flush()
 
 

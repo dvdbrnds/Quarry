@@ -217,3 +217,61 @@ async def send_citation_email(
     )
 
     return await send_email([recipient_email], subject, body_html, body_text, from_override=from_addr)
+
+
+async def send_renewal_email(
+    recipient_email: str,
+    name: str,
+    permit_type: str,
+    lot_assignment: str,
+    end_date: str,
+    renew_url: str,
+    school_name: str | None = None,
+) -> bool:
+    school = school_name or settings.school_name or "Campus"
+    subject = f"Parking Permit Renewal — {school}"
+
+    body_html = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a2744;">Parking Permit Renewal</h2>
+        <p>Hello {name},</p>
+        <p>Your <strong>{permit_type}</strong> parking permit
+        (lots: {lot_assignment}) is expiring on <strong>{end_date}</strong>.</p>
+        <p>To renew your permit, simply click the button below. No payment is required
+        for faculty/staff permits.</p>
+
+        <p style="margin: 24px 0;">
+            <a href="{renew_url}"
+               style="display: inline-block; padding: 14px 28px; background: #1a2744;
+                      color: white; text-decoration: none; border-radius: 8px;
+                      font-weight: bold; font-size: 15px;">
+                Renew My Permit
+            </a>
+        </p>
+
+        <p style="font-size: 13px; color: #666;">
+        You can also copy and paste this link into your browser:<br>
+        <a href="{renew_url}" style="color: #2563eb; word-break: break-all;">{renew_url}</a>
+        </p>
+
+        <p style="font-size: 13px; color: #666; margin-top: 16px;">
+        During renewal you may update your license plate number if needed.
+        Your lot assignment will remain the same.</p>
+
+        <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
+        <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
+    </div>
+    """
+
+    body_text = (
+        f"PARKING PERMIT RENEWAL\n\n"
+        f"Hello {name},\n\n"
+        f"Your {permit_type} parking permit (lots: {lot_assignment}) "
+        f"is expiring on {end_date}.\n\n"
+        f"To renew, visit: {renew_url}\n\n"
+        f"No payment is required for faculty/staff permits.\n\n"
+        f"{school} Parking Services"
+    )
+
+    return await send_email([recipient_email], subject, body_html, body_text)
+

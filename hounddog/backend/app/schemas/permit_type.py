@@ -18,6 +18,7 @@ class PermitTypeBase(BaseModel):
     is_active: bool = True
     sort_order: int = 0
     requires_lottery: bool = False
+    lottery_strategy: str = "seniority_weighted"
     application_opens_at: datetime | None = None
     application_closes_at: datetime | None = None
     offer_window_days: int = 5
@@ -40,6 +41,7 @@ class PermitTypeUpdate(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     requires_lottery: bool | None = None
+    lottery_strategy: str | None = None
     application_opens_at: datetime | None = None
     application_closes_at: datetime | None = None
     offer_window_days: int | None = None

@@ -1,4 +1,3 @@
-import random
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -192,7 +191,7 @@ async def run_lottery(
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
 ):
-    """Execute a seniority-weighted lottery for a permit type."""
+    """Execute a configurable lottery for a permit type."""
     pt = await db.get(PermitType, ptype_id)
     if not pt:
         raise HTTPException(404, "Permit type not found")
@@ -227,21 +226,9 @@ async def run_lottery(
 
     spots = max(0, pt.max_capacity - active_count - already_selected)
 
-    # Seniority weight: lower class_year = more senior = higher weight
-    max_year = max(a.class_year for a in pending)
-    weights = [max_year - a.class_year + 1 for a in pending]
-
-    selected_apps: list[PermitApplication] = []
-    pool = list(zip(pending, weights))
-
-    pick_count = min(spots, len(pool))
-    for _ in range(pick_count):
-        if not pool:
-            break
-        apps_list, w_list = zip(*pool)
-        chosen = random.choices(list(apps_list), weights=list(w_list), k=1)[0]
-        selected_apps.append(chosen)
-        pool = [(a, w) for a, w in pool if a.id != chosen.id]
+    from ..services.lottery import get_strategy
+    strategy = get_strategy(pt.lottery_strategy or "seniority_weighted")
+    selected_apps, remaining = strategy.rank(list(pending), spots)
 
     offer_deadline = datetime.now(timezone.utc) + timedelta(days=pt.offer_window_days)
     for rank, app in enumerate(selected_apps, 1):
@@ -249,9 +236,6 @@ async def run_lottery(
         app.lottery_rank = rank
         app.offer_expires_at = offer_deadline
 
-    # Waitlist the rest, ordered by seniority then random
-    remaining = [a for a, _ in pool]
-    remaining.sort(key=lambda a: a.class_year)
     for pos, app in enumerate(remaining, 1):
         app.status = "waitlisted"
         app.waitlist_position = pos
@@ -259,7 +243,6 @@ async def run_lottery(
     pt.lottery_run_at = datetime.now(timezone.utc)
     await db.flush()
 
-    # Send notification emails to selected applicants
     from ..services.email import send_email
     for app in selected_apps:
         await send_email(

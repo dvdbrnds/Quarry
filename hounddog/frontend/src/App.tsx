@@ -5,6 +5,9 @@ import Dashboard from "./pages/Dashboard";
 import Tickets from "./pages/Tickets";
 import Pay from "./pages/Pay";
 import PaySuccess from "./pages/PaySuccess";
+import BuyPermit from "./pages/BuyPermit";
+import BuyPermitSuccess from "./pages/BuyPermitSuccess";
+import PermitRenew from "./pages/PermitRenew";
 import NotificationPreferences from "./pages/NotificationPreferences";
 import Finance from "./pages/Finance";
 import OperationsCalendar from "./pages/OperationsCalendar";
@@ -126,6 +129,8 @@ function StudentShell({ user }: { user: AuthUser }) {
 export default function App() {
   const location = useLocation();
   const isPayRoute = location.pathname.startsWith("/pay");
+  const isBuyPermitRoute = location.pathname.startsWith("/permits/buy");
+  const isRenewRoute = location.pathname.startsWith("/permits/renew");
   const isNotificationsRoute = location.pathname.startsWith("/notifications/");
   const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
   const isSignageRoute = location.pathname.startsWith("/signage/player");
@@ -144,6 +149,23 @@ export default function App() {
       <Routes>
         <Route path="/pay" element={<Pay />} />
         <Route path="/pay/success" element={<PaySuccess />} />
+      </Routes>
+    );
+  }
+
+  if (isBuyPermitRoute) {
+    return (
+      <Routes>
+        <Route path="/permits/buy" element={<BuyPermit />} />
+        <Route path="/permits/buy/success" element={<BuyPermitSuccess />} />
+      </Routes>
+    );
+  }
+
+  if (isRenewRoute) {
+    return (
+      <Routes>
+        <Route path="/permits/renew/:token" element={<PermitRenew />} />
       </Routes>
     );
   }
