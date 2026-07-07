@@ -93,7 +93,7 @@ export default function LotteryManager() {
     const res = await fetch("/api/permit-types?all=true", { headers: await authHeaders() });
     if (res.ok) {
       const all: PermitTypeRow[] = await res.json();
-      setTypes(all.filter((t) => t.requires_lottery && t.is_active));
+      setTypes(all.filter((t) => t.is_active));
     }
   }, []);
 
@@ -115,7 +115,7 @@ export default function LotteryManager() {
   }
 
   if (view === "overview" || !selected) {
-    return <OverviewGrid types={types} onSelect={openManage} />;
+    return <OverviewGrid types={types} onSelect={openManage} onReload={load} />;
   }
 
   if (view === "simulate") {
@@ -139,11 +139,17 @@ export default function LotteryManager() {
 function OverviewGrid({
   types,
   onSelect,
+  onReload,
 }: {
   types: PermitTypeRow[];
   onSelect: (pt: PermitTypeRow) => void;
+  onReload: () => void;
 }) {
   const now = new Date();
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  const lotteryTypes = types.filter((t) => t.requires_lottery);
+  const otherTypes = types.filter((t) => !t.requires_lottery);
 
   function getStatus(pt: PermitTypeRow) {
     if (pt.lottery_run_at) return { label: "Completed", color: "bg-green-100 text-green-700" };
@@ -153,27 +159,51 @@ function OverviewGrid({
     return { label: "Not configured", color: "bg-gray-100 text-gray-500" };
   }
 
+  async function enableLottery(pt: PermitTypeRow) {
+    setToggling(pt.id);
+    try {
+      await fetch(`/api/permit-types/${pt.id}`, {
+        method: "PUT",
+        headers: await authHeaders(),
+        body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }),
+      });
+      onReload();
+    } finally {
+      setToggling(null);
+    }
+  }
+
+  async function disableLottery(pt: PermitTypeRow) {
+    if (!confirm(`Disable lottery for "${pt.label}"? Existing applications will be preserved.`)) return;
+    setToggling(pt.id);
+    try {
+      await fetch(`/api/permit-types/${pt.id}`, {
+        method: "PUT",
+        headers: await authHeaders(),
+        body: JSON.stringify({ requires_lottery: false }),
+      });
+      onReload();
+    } finally {
+      setToggling(null);
+    }
+  }
+
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-navy">Lottery Management</h2>
-        <p className="text-sm text-ink-mute mt-1">Select a permit type to manage its lottery, run simulations, or monitor live.</p>
+        <p className="text-sm text-ink-mute mt-1">Manage lotteries, run simulations, and monitor live draws.</p>
       </div>
 
-      {types.length === 0 ? (
-        <div className="bg-white rounded-xl shadow p-12 text-center">
-          <p className="text-ink-mute">No lottery-enabled permit types found.</p>
-          <p className="text-xs text-ink-mute mt-1">Enable lottery on a permit type in Settings &gt; Permit Types.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {types.map((pt) => {
+      {/* Lottery-enabled permit types */}
+      {lotteryTypes.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {lotteryTypes.map((pt) => {
             const status = getStatus(pt);
             return (
-              <button
+              <div
                 key={pt.id}
-                onClick={() => onSelect(pt)}
-                className="bg-white rounded-xl shadow p-5 text-left hover:shadow-md hover:ring-2 hover:ring-brass/40 transition-all"
+                className="bg-white rounded-xl shadow p-5 hover:shadow-md transition-all"
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-navy">{pt.label}</h3>
@@ -181,7 +211,7 @@ function OverviewGrid({
                     {status.label}
                   </span>
                 </div>
-                <div className="text-xs text-ink-mute space-y-1">
+                <div className="text-xs text-ink-mute space-y-1 mb-4">
                   <div>Strategy: {STRATEGY_LABELS[pt.lottery_strategy] || pt.lottery_strategy}</div>
                   <div>Capacity: {pt.max_capacity} &middot; {pt.remaining} remaining</div>
                   <div>Lots: {pt.lot_assignments.join(", ") || "None"}</div>
@@ -196,9 +226,75 @@ function OverviewGrid({
                     </div>
                   )}
                 </div>
-              </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onSelect(pt)}
+                    className="flex-1 py-2 bg-brass text-navy-deep font-medium rounded-lg text-xs hover:bg-brass-deep transition-colors"
+                  >
+                    Manage
+                  </button>
+                  <button
+                    onClick={() => disableLottery(pt)}
+                    disabled={toggling === pt.id}
+                    className="px-3 py-2 text-xs text-ink-mute hover:text-signal-red transition-colors"
+                  >
+                    Disable
+                  </button>
+                </div>
+              </div>
             );
           })}
+        </div>
+      )}
+
+      {lotteryTypes.length === 0 && (
+        <div className="bg-white rounded-xl shadow p-8 text-center mb-8">
+          <p className="text-ink-mute">No permit types have lottery enabled yet.</p>
+          <p className="text-xs text-ink-mute mt-1">Enable lottery on a permit type below to get started.</p>
+        </div>
+      )}
+
+      {/* Other permit types that can be lottery-enabled */}
+      {otherTypes.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-ink-mute uppercase tracking-wide mb-3">
+            Available Permit Types
+          </h3>
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th className="px-4 py-2 font-medium text-ink-mute text-xs">Permit Type</th>
+                  <th className="px-4 py-2 font-medium text-ink-mute text-xs">Capacity</th>
+                  <th className="px-4 py-2 font-medium text-ink-mute text-xs">Price</th>
+                  <th className="px-4 py-2 font-medium text-ink-mute text-xs">Lots</th>
+                  <th className="px-4 py-2 font-medium text-ink-mute text-xs w-40"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {otherTypes.map((pt) => (
+                  <tr key={pt.id} className="hover:bg-bone/30">
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{pt.label}</div>
+                      <div className="text-xs text-ink-mute">{pt.code}</div>
+                    </td>
+                    <td className="px-4 py-3 text-xs">{pt.max_capacity}</td>
+                    <td className="px-4 py-3 text-xs">{Number(pt.price) === 0 ? "Free" : `$${Number(pt.price).toFixed(0)}`}</td>
+                    <td className="px-4 py-3 text-xs text-ink-mute">{pt.lot_assignments.join(", ") || "—"}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => enableLottery(pt)}
+                        disabled={toggling === pt.id}
+                        className="px-3 py-1.5 border border-purple-300 text-purple-700 font-medium rounded-lg text-xs hover:bg-purple-50 transition-colors disabled:opacity-50"
+                      >
+                        {toggling === pt.id ? "Enabling..." : "Enable Lottery"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -222,6 +318,13 @@ function ManageView({
   const [advancing, setAdvancing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showConfig, setShowConfig] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [strategy, setStrategy] = useState(permitType.lottery_strategy);
+  const [minClassYear, setMinClassYear] = useState(permitType.min_class_year?.toString() ?? "");
+  const [offerDays, setOfferDays] = useState(permitType.offer_window_days);
+  const [opensAt, setOpensAt] = useState(permitType.application_opens_at?.slice(0, 16) ?? "");
+  const [closesAt, setClosesAt] = useState(permitType.application_closes_at?.slice(0, 16) ?? "");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -295,6 +398,26 @@ function ManageView({
     }
   }
 
+  async function saveConfig() {
+    setConfigSaving(true);
+    try {
+      await fetch(`/api/permit-types/${permitType.id}`, {
+        method: "PUT",
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          lottery_strategy: strategy,
+          min_class_year: minClassYear ? parseInt(minClassYear) : null,
+          offer_window_days: offerDays,
+          application_opens_at: opensAt ? new Date(opensAt).toISOString() : null,
+          application_closes_at: closesAt ? new Date(closesAt).toISOString() : null,
+        }),
+      });
+      setMessage("Configuration saved.");
+    } finally {
+      setConfigSaving(false);
+    }
+  }
+
   return (
     <div>
       {/* Header */}
@@ -311,6 +434,12 @@ function ManageView({
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() => setShowConfig(!showConfig)}
+            className={`px-4 py-2 border text-sm font-medium rounded-lg transition-colors ${showConfig ? "border-navy bg-navy/5 text-navy" : "border-gray-300 text-ink-mute hover:bg-gray-50"}`}
+          >
+            Configure
+          </button>
+          <button
             onClick={onSimulate}
             disabled={applications.length === 0}
             className="px-4 py-2 border border-purple-300 text-purple-700 font-medium rounded-lg text-sm hover:bg-purple-50 transition-colors disabled:opacity-40"
@@ -326,6 +455,53 @@ function ManageView({
           </button>
         </div>
       </div>
+
+      {/* Configuration panel */}
+      {showConfig && (
+        <div className="bg-white rounded-xl shadow p-5 mb-5">
+          <h3 className="text-sm font-semibold text-navy mb-3">Lottery Configuration</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
+              <select value={strategy} onChange={(e) => setStrategy(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
+                <option value="seniority_timestamp">Seniority + Timestamp</option>
+                <option value="seniority_weighted">Seniority Weighted</option>
+                <option value="pure_random">Pure Random</option>
+                <option value="class_priority">Class Priority</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Min Class Year</label>
+              <input type="number" value={minClassYear} onChange={(e) => setMinClassYear(e.target.value)}
+                placeholder="None"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
+              <input type="number" value={offerDays} onChange={(e) => setOfferDays(Number(e.target.value))}
+                min={1} max={30}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Application Opens</label>
+              <input type="datetime-local" value={opensAt} onChange={(e) => setOpensAt(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Application Closes</label>
+              <input type="datetime-local" value={closesAt} onChange={(e) => setClosesAt(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
+            </div>
+          </div>
+          <div className="flex justify-end mt-3">
+            <button onClick={saveConfig} disabled={configSaving}
+              className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep transition-colors disabled:opacity-50">
+              {configSaving ? "Saving..." : "Save Configuration"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-6 gap-3 mb-5">
