@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     admin_okta_groups: str = "Quarry-Admin"
     staff_okta_groups: str = "Quarry-Staff"
     okta_claim: str = "groups"
+    okta_class_year_claim: str = "class_year"
 
     # Google Maps
     google_maps_api_key: str = ""

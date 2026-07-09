@@ -61,6 +61,21 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
     }
 
 
+@router.get("/profile")
+async def profile(user: OktaUser = Depends(get_current_user)):
+    """Return enriched Okta profile data for form pre-fill."""
+    return {
+        "sub": user.sub,
+        "email": user.email,
+        "given_name": user.given_name,
+        "family_name": user.family_name,
+        "display_name": user.display_name,
+        "class_year": user.class_year,
+        "groups": user.groups,
+        "role": user.role,
+    }
+
+
 @router.post("/logout")
 async def logout_event(request: Request,
                        user: OktaUser = Depends(get_current_user)):

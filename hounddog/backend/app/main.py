@@ -150,6 +150,9 @@ async def lifespan(app: FastAPI):
             # Lot preferences on permit applications
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS lot_preferences TEXT[] DEFAULT '{}'",
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS assigned_lot VARCHAR(128)",
+            # Lottery test entries and Okta metadata
+            "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS is_test_entry BOOLEAN DEFAULT false",
+            "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS okta_metadata JSONB",
             # First-year restriction on permit types
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS min_class_year INTEGER",
             # Renewal tokens for faculty/staff magic-link renewal

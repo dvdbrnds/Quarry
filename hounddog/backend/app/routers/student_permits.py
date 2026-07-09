@@ -102,6 +102,16 @@ async def submit_application(
     if existing.scalar():
         raise HTTPException(409, "You already have an active application for this permit type")
 
+    okta_profile = {
+        "sub": user.sub,
+        "email": user.email,
+        "given_name": user.given_name,
+        "family_name": user.family_name,
+        "display_name": user.display_name,
+        "class_year": user.class_year,
+        "groups": user.groups,
+    }
+
     app = PermitApplication(
         student_sub=user.sub,
         student_email=user.email,
@@ -111,6 +121,8 @@ async def submit_application(
         plate=data.plate.upper().strip(),
         phone=data.phone,
         lot_preferences=data.lot_preferences,
+        is_test_entry=user.is_staff,
+        okta_metadata=okta_profile,
     )
     db.add(app)
     await db.flush()

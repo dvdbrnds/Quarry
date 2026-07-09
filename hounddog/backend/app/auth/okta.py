@@ -22,9 +22,8 @@ async def _get_jwks() -> dict:
         return _jwks_cache
 
 
-async def _fetch_userinfo_groups(access_token: str) -> list[str]:
-    """Fetch groups from Okta's /userinfo endpoint when the access token
-    doesn't contain the groups claim (common default configuration)."""
+async def _fetch_userinfo(access_token: str) -> dict:
+    """Fetch the full userinfo payload from Okta's /userinfo endpoint."""
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -32,11 +31,17 @@ async def _fetch_userinfo_groups(access_token: str) -> list[str]:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             if resp.status_code == 200:
-                info = resp.json()
-                return info.get(settings.okta_claim, [])
+                return resp.json()
     except Exception:
         pass
-    return []
+    return {}
+
+
+async def _fetch_userinfo_groups(access_token: str) -> list[str]:
+    """Fetch groups from Okta's /userinfo endpoint when the access token
+    doesn't contain the groups claim (common default configuration)."""
+    info = await _fetch_userinfo(access_token)
+    return info.get(settings.okta_claim, [])
 
 
 def _extract_token(request: Request) -> str | None:
@@ -47,10 +52,25 @@ def _extract_token(request: Request) -> str | None:
 
 
 class OktaUser:
-    def __init__(self, sub: str, email: str, groups: list[str]):
+    def __init__(
+        self,
+        sub: str,
+        email: str,
+        groups: list[str],
+        given_name: str = "",
+        family_name: str = "",
+        display_name: str = "",
+        class_year: int | None = None,
+        profile: dict | None = None,
+    ):
         self.sub = sub
         self.email = email
         self.groups = groups
+        self.given_name = given_name
+        self.family_name = family_name
+        self.display_name = display_name or f"{given_name} {family_name}".strip()
+        self.class_year = class_year
+        self.profile = profile or {}
 
     @property
     def is_admin(self) -> bool:
@@ -98,14 +118,35 @@ async def verify_token_string(token: str) -> OktaUser:
 
         groups = payload.get(settings.okta_claim, [])
         email = payload.get("email", payload.get("sub", ""))
+        given_name = payload.get("given_name", "")
+        family_name = payload.get("family_name", "")
+        display_name = payload.get("name", "")
 
-        if not groups:
-            groups = await _fetch_userinfo_groups(token)
+        class_year_raw = payload.get(settings.okta_class_year_claim)
+        class_year = int(class_year_raw) if class_year_raw else None
+
+        userinfo: dict = {}
+        if not groups or not given_name:
+            userinfo = await _fetch_userinfo(token)
+            if not groups:
+                groups = userinfo.get(settings.okta_claim, [])
+            if not given_name:
+                given_name = userinfo.get("given_name", "")
+                family_name = userinfo.get("family_name", family_name)
+                display_name = userinfo.get("name", display_name)
+            if class_year is None:
+                cy = userinfo.get(settings.okta_class_year_claim)
+                class_year = int(cy) if cy else None
 
         return OktaUser(
             sub=payload.get("sub", ""),
             email=email,
             groups=groups,
+            given_name=given_name,
+            family_name=family_name,
+            display_name=display_name,
+            class_year=class_year,
+            profile=userinfo or payload,
         )
     except JWTError as e:
         raise ValueError(f"Token verification failed: {e}")
@@ -140,14 +181,35 @@ async def get_current_user(request: Request) -> OktaUser:
 
         groups = payload.get(settings.okta_claim, [])
         email = payload.get("email", payload.get("sub", ""))
+        given_name = payload.get("given_name", "")
+        family_name = payload.get("family_name", "")
+        display_name = payload.get("name", "")
 
-        if not groups:
-            groups = await _fetch_userinfo_groups(token)
+        class_year_raw = payload.get(settings.okta_class_year_claim)
+        class_year = int(class_year_raw) if class_year_raw else None
+
+        userinfo: dict = {}
+        if not groups or not given_name:
+            userinfo = await _fetch_userinfo(token)
+            if not groups:
+                groups = userinfo.get(settings.okta_claim, [])
+            if not given_name:
+                given_name = userinfo.get("given_name", "")
+                family_name = userinfo.get("family_name", family_name)
+                display_name = userinfo.get("name", display_name)
+            if class_year is None:
+                cy = userinfo.get(settings.okta_class_year_claim)
+                class_year = int(cy) if cy else None
 
         user = OktaUser(
             sub=payload.get("sub", ""),
             email=email,
             groups=groups,
+            given_name=given_name,
+            family_name=family_name,
+            display_name=display_name,
+            class_year=class_year,
+            profile=userinfo or payload,
         )
         request.state.audit_user_email = user.email
         request.state.audit_user_sub = user.sub

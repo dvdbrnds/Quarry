@@ -1,7 +1,10 @@
+import random
+import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -494,3 +497,107 @@ async def lottery_activity(
         ))
 
     return events
+
+
+@router.delete("/{ptype_id}/test-applications")
+async def purge_test_applications(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Delete all test entries for a permit type (staff tests + synthetic data)."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    test_apps = (await db.execute(
+        select(PermitApplication).where(
+            PermitApplication.permit_type_id == ptype_id,
+            PermitApplication.is_test_entry.is_(True),
+        )
+    )).scalars().all()
+
+    count = len(test_apps)
+    for app in test_apps:
+        await db.delete(app)
+
+    await db.flush()
+    return {"deleted": count}
+
+
+class GenerateTestRequest(BaseModel):
+    count: int = 50
+    min_class_year: int = 2025
+    max_class_year: int = 2028
+
+
+_FIRST_NAMES = [
+    "Emma", "Liam", "Olivia", "Noah", "Ava", "Ethan", "Sophia", "Mason",
+    "Isabella", "James", "Mia", "Lucas", "Charlotte", "Logan", "Amelia",
+    "Alexander", "Harper", "Jack", "Ella", "William", "Abigail", "Owen",
+    "Emily", "Daniel", "Madison", "Henry", "Grace", "Sebastian", "Chloe",
+    "Michael", "Victoria", "Benjamin", "Riley", "Aiden", "Aria", "Samuel",
+    "Zoey", "Carter", "Lily", "Jayden", "Hannah", "Caleb", "Natalie",
+    "Ryan", "Luna", "Nathan", "Stella", "Dylan", "Savannah", "Andrew",
+]
+
+_LAST_NAMES = [
+    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
+    "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez",
+    "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin",
+    "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark",
+    "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King",
+    "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores", "Green",
+    "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell",
+]
+
+
+def _random_plate() -> str:
+    letters = "".join(random.choices(string.ascii_uppercase, k=3))
+    digits = "".join(random.choices(string.digits, k=4))
+    return f"{letters}{digits}"
+
+
+@router.post("/{ptype_id}/generate-test-applications")
+async def generate_test_applications(
+    ptype_id: uuid.UUID,
+    data: GenerateTestRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Generate synthetic test applications for a permit type."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+    if not pt.requires_lottery:
+        raise HTTPException(400, "This permit type does not use a lottery")
+
+    count = min(max(1, data.count), 500)
+    created = 0
+
+    for i in range(count):
+        first = random.choice(_FIRST_NAMES)
+        last = random.choice(_LAST_NAMES)
+        class_year = random.randint(data.min_class_year, data.max_class_year)
+        email = f"{first.lower()}.{last.lower()}{random.randint(1, 99)}@test.moravian.edu"
+
+        lot_prefs = list(pt.lot_assignments) if pt.lot_assignments else []
+        random.shuffle(lot_prefs)
+
+        app = PermitApplication(
+            student_sub=f"test-{uuid.uuid4().hex[:12]}",
+            student_email=email,
+            student_name=f"{first} {last}",
+            class_year=class_year,
+            permit_type_id=pt.id,
+            plate=_random_plate(),
+            phone=None,
+            lot_preferences=lot_prefs,
+            is_test_entry=True,
+            okta_metadata={"synthetic": True, "generator": "quarry-test"},
+        )
+        db.add(app)
+        created += 1
+
+    await db.flush()
+    return {"created": created}

@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Integer, ForeignKey, func, ARRAY
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey, func, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -25,6 +25,8 @@ class PermitApplication(Base):
     lottery_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     waitlist_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     offer_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_test_entry: Mapped[bool] = mapped_column(Boolean, default=False)
+    okta_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

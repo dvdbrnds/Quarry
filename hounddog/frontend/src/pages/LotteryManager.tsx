@@ -20,7 +20,7 @@ interface Application {
   plate: string; phone: string | null; lot_preferences: string[];
   assigned_lot: string | null; status: string; lottery_rank: number | null;
   waitlist_position: number | null; offer_expires_at: string | null;
-  created_at: string; updated_at: string;
+  is_test_entry: boolean; created_at: string; updated_at: string;
 }
 
 interface SimulationResult {
@@ -179,6 +179,10 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
   const [offerDays, setOfferDays] = useState(permitType.offer_window_days);
   const [opensAt, setOpensAt] = useState<dayjs.Dayjs | null>(permitType.application_opens_at ? dayjs(permitType.application_opens_at) : null);
   const [closesAt, setClosesAt] = useState<dayjs.Dayjs | null>(permitType.application_closes_at ? dayjs(permitType.application_closes_at) : null);
+  const [generating, setGenerating] = useState(false);
+  const [genCount, setGenCount] = useState<number>(50);
+  const [purging, setPurging] = useState(false);
+  const [showTestOnly, setShowTestOnly] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -191,6 +195,9 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
   const now = new Date();
   const windowClosed = permitType.application_closes_at ? new Date(permitType.application_closes_at) < now : true;
   const lotteryAlreadyRun = !!permitType.lottery_run_at;
+  const testCount = applications.filter(a => a.is_test_entry).length;
+  const realCount = applications.length - testCount;
+  const displayedApps = showTestOnly ? applications.filter(a => a.is_test_entry) : applications;
   const pendingCount = applications.filter(a => a.status === "pending").length;
   const selectedCount = applications.filter(a => a.status === "selected").length;
   const waitlistedCount = applications.filter(a => a.status === "waitlisted").length;
@@ -245,6 +252,37 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
     });
   }
 
+  async function handleGenerateTestData() {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/permit-types/${permitType.id}/generate-test-applications`, {
+        method: "POST", headers: await authHeaders(), body: JSON.stringify({ count: genCount }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+      const result = await res.json();
+      msg.success(`Generated ${result.created} test applications`);
+      load();
+    } catch (e: any) { msg.error(e.message); } finally { setGenerating(false); }
+  }
+
+  function handleClearTestData() {
+    modal.confirm({
+      title: "Clear all test data?",
+      content: `This will permanently delete ${testCount} test application(s). Real student applications will not be affected.`,
+      okText: "Clear Test Data", okButtonProps: { danger: true },
+      onOk: async () => {
+        setPurging(true);
+        try {
+          const res = await fetch(`/api/permit-types/${permitType.id}/test-applications`, { method: "DELETE", headers: await authHeaders() });
+          if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+          const result = await res.json();
+          msg.success(`Deleted ${result.deleted} test entries`);
+          load();
+        } catch (e: any) { msg.error(e.message); } finally { setPurging(false); }
+      },
+    });
+  }
+
   async function saveConfig() {
     setConfigSaving(true);
     try {
@@ -257,7 +295,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
   }
 
   const appColumns: ColumnsType<Application> = [
-    { title: "Name", dataIndex: "student_name", key: "name", render: v => <span className="font-medium">{v}</span> },
+    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}</> },
     { title: "Email", dataIndex: "student_email", key: "email", ellipsis: true },
     { title: "Class", dataIndex: "class_year", key: "class" },
     { title: "Plate", dataIndex: "plate", key: "plate", render: v => <span className="font-mono text-xs">{v}</span> },
@@ -325,14 +363,28 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
         ))}
       </div>
 
-      <Space className="mb-5">
+      {testCount > 0 && (
+        <div className="flex items-center gap-2 mb-3 px-2 py-1.5 bg-orange-50 border border-orange-200 rounded-lg text-xs">
+          <Tag color="orange">TEST</Tag>
+          <span className="text-orange-800">{testCount} test entries · {realCount} real applications</span>
+          <Button type="link" size="small" className="ml-auto" onClick={() => setShowTestOnly(!showTestOnly)}>
+            {showTestOnly ? "Show all" : "Show test only"}
+          </Button>
+        </div>
+      )}
+
+      <Space className="mb-5" wrap>
         <Button type="primary" onClick={handleRunLottery} loading={running} disabled={pendingCount === 0 || !windowClosed}>Run Lottery</Button>
         <Button onClick={handleAdvanceWaitlist} loading={advancing} disabled={selectedCount === 0 && waitlistedCount === 0}>Advance Waitlist</Button>
         {lotteryAlreadyRun && <Button danger onClick={handleResetLottery} loading={resetting}>Reset Lottery</Button>}
+        <span className="border-l border-gray-200 h-5 mx-1" />
+        <InputNumber value={genCount} onChange={v => setGenCount(v ?? 50)} min={1} max={500} size="small" style={{ width: 70 }} />
+        <Button onClick={handleGenerateTestData} loading={generating} style={{ borderColor: "#f97316", color: "#ea580c" }}>Generate Test Data</Button>
+        {testCount > 0 && <Button danger type="text" onClick={handleClearTestData} loading={purging}>Clear Test Data</Button>}
         {!windowClosed && <span className="text-xs text-amber-700">Window open until {new Date(permitType.application_closes_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
       </Space>
 
-      <Table dataSource={applications} columns={appColumns} rowKey="id" loading={loading} size="small"
+      <Table dataSource={displayedApps} columns={appColumns} rowKey="id" loading={loading} size="small"
         pagination={{ pageSize: 50 }}
         locale={{ emptyText: <Empty description="No applications yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />

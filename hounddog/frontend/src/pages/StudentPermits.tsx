@@ -168,17 +168,42 @@ export default function StudentPermits() {
   );
 }
 
+interface OktaProfile {
+  display_name: string;
+  given_name: string;
+  family_name: string;
+  email: string;
+  class_year: number | null;
+}
+
 function ApplyModal({ permit, onClose, onSuccess, onError }: {
   permit: AvailablePermit | null; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
 }) {
   const [form] = Form.useForm();
   const [lotPreferences, setLotPreferences] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [profile, setProfile] = useState<OktaProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
     if (permit) {
       form.resetFields();
       setLotPreferences(permit.lot_assignments);
+      setProfileLoading(true);
+      (async () => {
+        try {
+          const res = await fetch("/api/auth/profile", { headers: await authHeaders() });
+          if (res.ok) {
+            const p: OktaProfile = await res.json();
+            setProfile(p);
+            const prefill: Record<string, unknown> = {};
+            if (p.display_name) prefill.name = p.display_name;
+            if (p.class_year) prefill.class_year = p.class_year;
+            form.setFieldsValue(prefill);
+          }
+        } catch { /* fallback to manual entry */ }
+        finally { setProfileLoading(false); }
+      })();
     }
   }, [permit, form]);
 
@@ -207,36 +232,45 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
     } catch (e: any) { onError(e.message); onClose(); } finally { setSubmitting(false); }
   }
 
+  const nameFromOkta = !!profile?.display_name;
+  const classYearFromOkta = !!profile?.class_year;
+
   return (
     <Modal open={!!permit} onCancel={onClose} footer={null} title={permit ? `Apply for ${permit.label}` : ""} destroyOnClose>
       {permit && (
         <>
           <p className="text-sm text-ink-mute mb-4">${Number(permit.price).toFixed(0)} &middot; Lots: {permit.lot_assignments.join(", ")}{permit.requires_lottery ? " (lottery)" : ""}</p>
-          <Form form={form} layout="vertical" onFinish={handleFinish}>
-            <Form.Item name="name" label="Full Name" rules={[{ required: true }]}><Input /></Form.Item>
-            <Form.Item name="plate" label="License Plate" rules={[{ required: true }]}><Input placeholder="ABC1234" className="font-mono" /></Form.Item>
-            <Form.Item name="class_year" label="Graduation Year" rules={[{ required: true }]}><InputNumber min={2024} max={2035} placeholder="2027" className="w-full" /></Form.Item>
-            <Form.Item name="phone" label="Phone (optional)"><Input placeholder="610-555-0123" /></Form.Item>
-            {permit.lot_assignments.length > 1 && (
-              <Form.Item label="Lot Preferences (#1 is your top choice)">
-                <div className="space-y-1.5">
-                  {lotPreferences.map((lot, idx) => (
-                    <div key={lot} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                      <span className="text-xs font-bold text-ink-mute w-5">{idx + 1}.</span>
-                      <span className="text-sm font-medium flex-1">{lot}</span>
-                      <Button type="text" size="small" disabled={idx === 0} onClick={() => moveLot(idx, -1)}>▲</Button>
-                      <Button type="text" size="small" disabled={idx === lotPreferences.length - 1} onClick={() => moveLot(idx, 1)}>▼</Button>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[10px] text-ink-mute mt-1">You will be assigned your highest-preference lot with available capacity.</p>
+          {profileLoading ? <div className="flex justify-center py-4"><Spin size="small" /></div> : (
+            <Form form={form} layout="vertical" onFinish={handleFinish}>
+              <Form.Item name="name" label="Full Name" rules={[{ required: true }]} tooltip={nameFromOkta ? "Auto-filled from your university account" : undefined}>
+                <Input disabled={nameFromOkta} className={nameFromOkta ? "bg-gray-50" : ""} />
               </Form.Item>
-            )}
-            <div className="flex justify-end gap-3 pt-2">
-              <Button onClick={onClose}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={submitting}>Submit Application</Button>
-            </div>
-          </Form>
+              <Form.Item name="plate" label="License Plate" rules={[{ required: true }]}><Input placeholder="ABC1234" className="font-mono" /></Form.Item>
+              <Form.Item name="class_year" label="Graduation Year" rules={[{ required: true }]} tooltip={classYearFromOkta ? "Auto-filled from your university account" : undefined}>
+                <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
+              </Form.Item>
+              <Form.Item name="phone" label="Phone (optional)"><Input placeholder="610-555-0123" /></Form.Item>
+              {permit.lot_assignments.length > 1 && (
+                <Form.Item label="Lot Preferences (#1 is your top choice)">
+                  <div className="space-y-1.5">
+                    {lotPreferences.map((lot, idx) => (
+                      <div key={lot} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-xs font-bold text-ink-mute w-5">{idx + 1}.</span>
+                        <span className="text-sm font-medium flex-1">{lot}</span>
+                        <Button type="text" size="small" disabled={idx === 0} onClick={() => moveLot(idx, -1)}>▲</Button>
+                        <Button type="text" size="small" disabled={idx === lotPreferences.length - 1} onClick={() => moveLot(idx, 1)}>▼</Button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-ink-mute mt-1">You will be assigned your highest-preference lot with available capacity.</p>
+                </Form.Item>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <Button onClick={onClose}>Cancel</Button>
+                <Button type="primary" htmlType="submit" loading={submitting}>Submit Application</Button>
+              </div>
+            </Form>
+          )}
         </>
       )}
     </Modal>
