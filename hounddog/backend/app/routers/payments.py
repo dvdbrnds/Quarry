@@ -490,24 +490,28 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"].to_dict()
         metadata = session.get("metadata") or {}
-        payment_type = metadata.get("type", "ticket_payment")
+        payment_type = metadata.get("type", "")
 
+        handled = False
         if payment_type == "ticket_payment":
-            await _handle_ticket_payment(session, metadata, db)
+            handled = await _handle_ticket_payment(session, metadata, db)
         elif payment_type == "permit_purchase":
-            await _handle_permit_purchase(session, metadata, db)
+            handled = await _handle_permit_purchase(session, metadata, db)
         elif payment_type == "lottery_permit":
-            await _handle_lottery_permit(session, metadata, db)
+            handled = await _handle_lottery_permit(session, metadata, db)
         elif payment_type == "standalone_permit_purchase":
-            await _handle_standalone_permit_purchase(session, metadata, db)
+            handled = await _handle_standalone_permit_purchase(session, metadata, db)
+
+        if not handled:
+            await _handle_generic_payment(session, metadata, db)
 
     return {"status": "ok"}
 
 
-async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession):
+async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession) -> bool:
     ticket_id = metadata.get("ticket_id")
     if not ticket_id:
-        return
+        return False
 
     stripe_pi = session.get("payment_intent", "")
     if stripe_pi:
@@ -515,11 +519,11 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
             select(Payment).where(Payment.stripe_payment_id == stripe_pi)
         )
         if existing.scalar():
-            return
+            return True
 
     ticket = await db.get(Ticket, uuid.UUID(ticket_id))
     if not ticket:
-        return
+        return False
 
     ticket_ref = str(ticket.id)[:8].upper()
     payer_name = metadata.get("payer_name", "") or ticket.owner_name or ticket.driver_name or ""
@@ -539,9 +543,11 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     db.add(payment)
     ticket.status = "paid"
     await db.flush()
+    return True
 
 
-async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSession):
+async def _handle_generic_payment(session: dict, metadata: dict, db: AsyncSession):
+    """Fallback: record any Stripe checkout payment that wasn't handled by a specific handler."""
     stripe_pi = session.get("payment_intent", "")
     if stripe_pi:
         existing = await db.execute(
@@ -549,6 +555,38 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
         )
         if existing.scalar():
             return
+
+    amount_total = session.get("amount_total", 0)
+    if not amount_total:
+        return
+
+    payer_email = session.get("customer_email") or session.get("customer_details", {}).get("email") or ""
+    payer_name = session.get("customer_details", {}).get("name") or metadata.get("payer_name") or ""
+    payment_type = metadata.get("type") or "unknown"
+    plate = metadata.get("plate") or ""
+
+    payment = Payment(
+        amount=Decimal(amount_total) / 100,
+        method="online_card",
+        stripe_payment_id=stripe_pi or None,
+        payment_type=payment_type,
+        payer_name=payer_name or None,
+        payer_email=payer_email or None,
+        plate=plate or None,
+        description=metadata.get("description") or (f"Stripe payment {stripe_pi[:12]}..." if stripe_pi else "Stripe payment"),
+    )
+    db.add(payment)
+    await db.flush()
+
+
+async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSession) -> bool:
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return True
 
     ticket_id = metadata.get("ticket_id")
     permit_type_code = metadata.get("permit_type_code", "")
@@ -558,11 +596,11 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     valid_days = int(metadata.get("valid_days", "365"))
 
     if not ticket_id:
-        return
+        return False
 
     ticket = await db.get(Ticket, uuid.UUID(ticket_id))
     if not ticket:
-        return
+        return False
 
     lot_assignment = ""
     permit_type_id = metadata.get("permit_type_id")
@@ -603,9 +641,10 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     ticket.fine_amount = es.permit_fine_reduction if es else Decimal("0.00")
     ticket.status = "resolved_permit"
     await db.flush()
+    return True
 
 
-async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession):
+async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession) -> bool:
     """Handle payment for a lottery-won permit application."""
     from ..models.permit_application import PermitApplication
     from ..models.permit_type import PermitType as PT
@@ -616,15 +655,15 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
             select(Payment).where(Payment.stripe_payment_id == stripe_pi)
         )
         if existing.scalar():
-            return
+            return True
 
     app_id = metadata.get("application_id")
     if not app_id:
-        return
+        return False
 
     app = await db.get(PermitApplication, uuid.UUID(app_id))
     if not app or app.status != "selected":
-        return
+        return False
 
     permit_type_code = metadata.get("permit_type_code", "")
     student_name = metadata.get("student_name", "")
@@ -665,9 +704,10 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
 
     app.status = "accepted"
     await db.flush()
+    return True
 
 
-async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: AsyncSession):
+async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: AsyncSession) -> bool:
     """Handle payment for a standalone permit purchase (no ticket context)."""
     stripe_pi = session.get("payment_intent", "")
     if stripe_pi:
@@ -675,7 +715,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
             select(Payment).where(Payment.stripe_payment_id == stripe_pi)
         )
         if existing.scalar():
-            return
+            return True
 
     permit_type_code = metadata.get("permit_type_code", "")
     student_name = metadata.get("student_name", "")
@@ -716,6 +756,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
     )
     db.add(payment)
     await db.flush()
+    return True
 
 
 # --- Authenticated Endpoints (admin/staff) ---
