@@ -195,6 +195,21 @@ async def list_applications(
     ]
 
 
+@router.delete("/{ptype_id}/applications/{app_id}", status_code=204)
+async def delete_application(
+    ptype_id: uuid.UUID,
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Delete a single lottery application."""
+    app = await db.get(PermitApplication, app_id)
+    if not app or app.permit_type_id != ptype_id:
+        raise HTTPException(404, "Application not found")
+    await db.delete(app)
+    await db.flush()
+
+
 @router.post("/{ptype_id}/run-lottery", response_model=LotteryResult)
 async def run_lottery(
     ptype_id: uuid.UUID,

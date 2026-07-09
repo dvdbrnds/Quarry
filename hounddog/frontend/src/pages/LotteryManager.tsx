@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress,
+  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -283,6 +283,15 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
     });
   }
 
+  async function handleDeleteApplication(appId: string) {
+    try {
+      const res = await fetch(`/api/permit-types/${permitType.id}/applications/${appId}`, { method: "DELETE", headers: await authHeaders() });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+      msg.success("Application deleted");
+      load();
+    } catch (e: any) { msg.error(e.message); }
+  }
+
   async function saveConfig() {
     setConfigSaving(true);
     try {
@@ -311,6 +320,11 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
     { title: "Lot Prefs", key: "prefs", render: (_, a) => a.lot_preferences?.length > 0 ? a.lot_preferences.join(" > ") : "—" },
     { title: "Assigned", dataIndex: "assigned_lot", key: "assigned", render: v => v ? <span className="text-green-700 font-medium">{v}</span> : "—" },
     { title: "Applied", dataIndex: "created_at", key: "applied", render: d => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) },
+    { title: "", key: "actions", width: 50, render: (_, a) => (
+      <Popconfirm title="Delete this application?" onConfirm={() => handleDeleteApplication(a.id)} okText="Delete" okButtonProps={{ danger: true }}>
+        <Button type="text" size="small" danger>✕</Button>
+      </Popconfirm>
+    )},
   ];
 
   return (
@@ -326,7 +340,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
         <Space>
           <Button onClick={() => setShowConfig(!showConfig)} type={showConfig ? "primary" : "default"} ghost={showConfig}>Configure</Button>
           <Button onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
-          <Button onClick={onGoLive} disabled={!lotteryAlreadyRun} style={{ borderColor: "#16a34a", color: "#15803d" }}>Go Live</Button>
+          <Button onClick={onGoLive} style={{ borderColor: "#16a34a", color: "#15803d" }}>Go Live</Button>
         </Space>
       </div>
 
