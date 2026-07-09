@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { authHeaders } from "../auth";
 import { useCurrentUser } from "../UserContext";
 
@@ -31,23 +33,17 @@ interface Ticket {
   dispute_phone: string | null;
 }
 
-interface TicketList {
-  items: Ticket[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
 const STATUS_COLORS: Record<string, string> = {
-  issued: "bg-signal-red/15 text-red-700",
-  pending_payment: "bg-orange-100 text-orange-700",
-  paid: "bg-signal-green/15 text-green-700",
-  appealed: "bg-yellow-100 text-yellow-700",
-  escalated: "bg-purple-100 text-purple-700",
-  voided: "bg-gray-100 text-gray-500",
+  issued: "red",
+  pending_payment: "orange",
+  paid: "green",
+  appealed: "gold",
+  escalated: "purple",
+  voided: "default",
 };
 
 export default function Tickets() {
+  const { modal, message } = App.useApp();
   const user = useCurrentUser();
   const isAdmin = user?.role === "admin";
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -57,189 +53,246 @@ export default function Tickets() {
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<Ticket | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const qs = new URLSearchParams();
-    qs.set("page", String(page));
-    if (search) qs.set("search", search);
-    if (statusFilter) qs.set("status", statusFilter);
-    if (categoryFilter) qs.set("category", categoryFilter);
-    const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
-    if (res.ok) {
-      const data: TicketList = await res.json();
-      setTickets(data.items);
-      setTotal(data.total);
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("page", String(page));
+      if (search) qs.set("search", search);
+      if (statusFilter) qs.set("status", statusFilter);
+      if (categoryFilter) qs.set("category", categoryFilter);
+      const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setTickets(data.items);
+        setTotal(data.total);
+      }
+    } catch {
+      message.error("Failed to load tickets");
+    } finally {
+      setLoading(false);
     }
-  }, [page, search, statusFilter, categoryFilter]);
+  }, [page, search, statusFilter, categoryFilter, message]);
 
   useEffect(() => { load(); }, [load]);
 
   async function handleVoid(id: string) {
     if (!isAdmin) return;
-    if (!confirm("Void this ticket?")) return;
-    await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
-    load();
-    setSelected(null);
+    modal.confirm({
+      title: "Void this ticket?",
+      content: "This action will void the ticket and cannot be easily reversed.",
+      okText: "Void Ticket",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
+          message.success("Ticket voided");
+          load();
+          setSelected(null);
+        } catch {
+          message.error("Failed to void ticket");
+        }
+      },
+    });
   }
 
   async function handleAppealDecision(id: string, decision: string) {
     if (!isAdmin) return;
     const decided_by = user?.email || "admin";
-    await fetch(`/api/tickets/${id}/appeal/decide`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({ decision, decided_by }),
-    });
-    load();
-    setSelected(null);
+    try {
+      await fetch(`/api/tickets/${id}/appeal/decide`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ decision, decided_by }),
+      });
+      message.success(`Appeal ${decision}`);
+      load();
+      setSelected(null);
+    } catch {
+      message.error("Failed to process appeal decision");
+    }
   }
+
+  const columns: ColumnsType<Ticket> = [
+    {
+      title: "Plate",
+      dataIndex: "plate",
+      key: "plate",
+      render: (plate: string) => <span className="font-mono">{plate}</span>,
+    },
+    {
+      title: "Location",
+      key: "location",
+      render: (_, t) => t.ticket_category === "moving" ? (t.location_text || "—") : t.lot,
+    },
+    {
+      title: "Violation",
+      key: "violation",
+      render: (_, t) => (
+        <Space>
+          <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
+          {t.ticket_category === "moving" && <Tag color="red">MOVING</Tag>}
+        </Space>
+      ),
+    },
+    {
+      title: "Fine",
+      dataIndex: "fine_amount",
+      key: "fine",
+      render: (amt: string) => `$${Number(amt).toFixed(2)}`,
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (status: string) => (
+        <Tag color={STATUS_COLORS[status] || "default"}>
+          {status.replace("_", " ")}
+        </Tag>
+      ),
+    },
+    {
+      title: "Issued",
+      dataIndex: "issued_at",
+      key: "issued_at",
+      render: (d: string) => new Date(d).toLocaleDateString(),
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      width: 100,
+      render: (_, t) =>
+        isAdmin && !["paid", "voided"].includes(t.status) ? (
+          <Button type="link" danger size="small" onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>
+            Void
+          </Button>
+        ) : null,
+    },
+  ];
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Tickets</h2>
-      </div>
+      <h2 className="text-2xl font-bold mb-6">Tickets</h2>
 
-      <div className="flex gap-3 mb-4">
-        <input
-          type="text"
+      <Space className="mb-4" wrap>
+        <Input.Search
           placeholder="Search by plate or officer..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="flex-1 max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none"
+          onSearch={() => setPage(1)}
+          style={{ width: 300 }}
+          allowClear
         />
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="">All Statuses</option>
-          <option value="issued">Issued</option>
-          <option value="pending_payment">Pending Payment</option>
-          <option value="paid">Paid</option>
-          <option value="appealed">Appealed</option>
-          <option value="escalated">Escalated</option>
-          <option value="voided">Voided</option>
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="">All Types</option>
-          <option value="parking">Parking</option>
-          <option value="moving">Moving</option>
-        </select>
-      </div>
+        <Select
+          value={statusFilter || undefined}
+          onChange={(val) => { setStatusFilter(val || ""); setPage(1); }}
+          placeholder="All Statuses"
+          allowClear
+          style={{ width: 170 }}
+          options={[
+            { label: "Issued", value: "issued" },
+            { label: "Pending Payment", value: "pending_payment" },
+            { label: "Paid", value: "paid" },
+            { label: "Appealed", value: "appealed" },
+            { label: "Escalated", value: "escalated" },
+            { label: "Voided", value: "voided" },
+          ]}
+        />
+        <Select
+          value={categoryFilter || undefined}
+          onChange={(val) => { setCategoryFilter(val || ""); setPage(1); }}
+          placeholder="All Types"
+          allowClear
+          style={{ width: 140 }}
+          options={[
+            { label: "Parking", value: "parking" },
+            { label: "Moving", value: "moving" },
+          ]}
+        />
+      </Space>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-navy text-bone text-left">
-            <tr>
-              <th className="px-4 py-3 font-medium">Plate</th>
-              <th className="px-4 py-3 font-medium">Location</th>
-              <th className="px-4 py-3 font-medium">Violation</th>
-              <th className="px-4 py-3 font-medium">Fine</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Issued</th>
-              <th className="px-4 py-3 font-medium w-24">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {tickets.map((t) => (
-              <tr key={t.id} className={`hover:bg-bone/50 cursor-pointer ${
-                t.ticket_category === "moving" ? "border-l-4 border-l-signal-red/60" : ""
-              }`} onClick={() => setSelected(t)}>
-                <td className="px-4 py-3 font-mono">{t.plate}</td>
-                <td className="px-4 py-3">{t.ticket_category === "moving" ? (t.location_text || "—") : t.lot}</td>
-                <td className="px-4 py-3">
-                  <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
-                  {t.ticket_category === "moving" && (
-                    <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-signal-red/10 text-signal-red">MOVING</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">${Number(t.fine_amount).toFixed(2)}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                    STATUS_COLORS[t.status] || "bg-gray-100"
-                  }`}>{t.status.replace("_", " ")}</span>
-                </td>
-                <td className="px-4 py-3 text-xs text-ink-mute">
-                  {new Date(t.issued_at).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3">
-                  {isAdmin && !["paid", "voided"].includes(t.status) && (
-                    <button onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}
-                      className="text-signal-red/70 hover:text-signal-red text-xs">Void</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {tickets.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-mute">No tickets found</td></tr>
+      <Table
+        dataSource={tickets}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        onRow={(t) => ({ onClick: () => setSelected(t), className: "cursor-pointer" })}
+        pagination={{
+          current: page,
+          total,
+          pageSize: 50,
+          onChange: setPage,
+          showSizeChanger: false,
+          showTotal: (t) => `${t} tickets`,
+        }}
+        locale={{ emptyText: <Empty description="No tickets found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+      />
+
+      <Modal
+        open={!!selected}
+        onCancel={() => setSelected(null)}
+        title={
+          <Space>
+            {selected?.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail"}
+            {selected?.ticket_category === "moving" && <Tag color="red">Moving Violation</Tag>}
+          </Space>
+        }
+        footer={
+          <Space>
+            <Button onClick={() => setSelected(null)}>Close</Button>
+            {isAdmin && selected?.appeal_decision === "pending" && (
+              <>
+                <Button type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
+                  Approve Appeal
+                </Button>
+                <Button danger onClick={() => handleAppealDecision(selected!.id, "denied")}>
+                  Deny Appeal
+                </Button>
+              </>
             )}
-          </tbody>
-        </table>
-      </div>
-
-      {total > 50 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
-            className="px-3 py-1 rounded border text-sm disabled:opacity-30">Prev</button>
-          <span className="px-3 py-1 text-sm text-ink-mute">
-            Page {page} of {Math.ceil(total / 50)}
-          </span>
-          <button onClick={() => setPage(page + 1)} disabled={page >= Math.ceil(total / 50)}
-            className="px-3 py-1 rounded border text-sm disabled:opacity-30">Next</button>
-        </div>
-      )}
-
-      {selected && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-lg font-semibold">
-                {selected.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail"}
-              </h3>
-              {selected.ticket_category === "moving" && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-signal-red/10 text-signal-red">Moving Violation</span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-              <div><span className="text-ink-mute">Plate:</span> <span className="font-mono">{selected.plate}</span></div>
-              {selected.ticket_category === "moving" ? (
-                <div><span className="text-ink-mute">Location:</span> {selected.location_text || "—"}</div>
-              ) : (
-                <div><span className="text-ink-mute">Lot:</span> {selected.lot}</div>
-              )}
-              <div><span className="text-ink-mute">Violation:</span> {selected.violation_type.replace(/_/g, " ")}</div>
-              <div><span className="text-ink-mute">Fine:</span> ${Number(selected.fine_amount).toFixed(2)}</div>
-              <div><span className="text-ink-mute">Status:</span> {selected.status}</div>
-              <div><span className="text-ink-mute">Officer:</span> {selected.officer_name || selected.officer_id}</div>
-              {selected.owner_name && <div><span className="text-ink-mute">Owner:</span> {selected.owner_name}</div>}
-              {selected.permit_number && <div><span className="text-ink-mute">Permit #:</span> {selected.permit_number}</div>}
-              <div className="col-span-2"><span className="text-ink-mute">Issued:</span> {new Date(selected.issued_at).toLocaleString()}</div>
-            </div>
+            {isAdmin && selected && !["paid", "voided"].includes(selected.status) && (
+              <Button danger type="primary" onClick={() => handleVoid(selected.id)}>Void Ticket</Button>
+            )}
+          </Space>
+        }
+        width={560}
+      >
+        {selected && (
+          <div className="space-y-4">
+            <Descriptions size="small" column={2} bordered>
+              <Descriptions.Item label="Plate"><span className="font-mono">{selected.plate}</span></Descriptions.Item>
+              <Descriptions.Item label={selected.ticket_category === "moving" ? "Location" : "Lot"}>
+                {selected.ticket_category === "moving" ? (selected.location_text || "—") : selected.lot}
+              </Descriptions.Item>
+              <Descriptions.Item label="Violation">{selected.violation_type.replace(/_/g, " ")}</Descriptions.Item>
+              <Descriptions.Item label="Fine">${Number(selected.fine_amount).toFixed(2)}</Descriptions.Item>
+              <Descriptions.Item label="Status"><Tag color={STATUS_COLORS[selected.status]}>{selected.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Officer">{selected.officer_name || selected.officer_id}</Descriptions.Item>
+              {selected.owner_name && <Descriptions.Item label="Owner">{selected.owner_name}</Descriptions.Item>}
+              {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
+              <Descriptions.Item label="Issued" span={2}>{new Date(selected.issued_at).toLocaleString()}</Descriptions.Item>
+            </Descriptions>
 
             {selected.ticket_category === "moving" && (
-              <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-4 text-sm">
+              <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm">
                 <div className="font-medium text-red-800 mb-2">Driver & Vehicle</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {selected.driver_name && <div><span className="text-ink-mute">Driver:</span> {selected.driver_name}</div>}
-                  {selected.driver_license && <div><span className="text-ink-mute">License:</span> <span className="font-mono">{selected.driver_license}</span></div>}
-                  {selected.vehicle_description && <div className="col-span-2"><span className="text-ink-mute">Vehicle:</span> {selected.vehicle_description}</div>}
-                  {selected.officer_notes && <div className="col-span-2"><span className="text-ink-mute">Notes:</span> {selected.officer_notes}</div>}
-                </div>
+                <Descriptions size="small" column={2}>
+                  {selected.driver_name && <Descriptions.Item label="Driver">{selected.driver_name}</Descriptions.Item>}
+                  {selected.driver_license && <Descriptions.Item label="License"><span className="font-mono">{selected.driver_license}</span></Descriptions.Item>}
+                  {selected.vehicle_description && <Descriptions.Item label="Vehicle" span={2}>{selected.vehicle_description}</Descriptions.Item>}
+                  {selected.officer_notes && <Descriptions.Item label="Notes" span={2}>{selected.officer_notes}</Descriptions.Item>}
+                </Descriptions>
               </div>
             )}
 
             {selected.photo_url && (
-              <img src={selected.photo_url} alt="Violation photo" className="w-full rounded-lg mb-4 max-h-48 object-cover" />
+              <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" />
             )}
 
             {selected.appeal_note && (
-              <div className="bg-yellow-50 rounded-lg p-3 mb-4 text-sm">
+              <div className="bg-yellow-50 rounded-lg p-3 text-sm">
                 <div className="font-medium text-yellow-800 mb-1">Appeal Note</div>
                 <p>{selected.appeal_note}</p>
                 {(selected.dispute_name || selected.dispute_email || selected.dispute_phone) && (
@@ -259,25 +312,9 @@ export default function Tickets() {
                 )}
               </div>
             )}
-
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setSelected(null)} className="px-4 py-2 text-sm text-ink-mute">Close</button>
-              {isAdmin && selected.appeal_decision === "pending" && (
-                <>
-                  <button onClick={() => handleAppealDecision(selected.id, "approved")}
-                    className="px-4 py-2 bg-signal-green text-white rounded-lg text-sm">Approve Appeal</button>
-                  <button onClick={() => handleAppealDecision(selected.id, "denied")}
-                    className="px-4 py-2 bg-signal-red text-white rounded-lg text-sm">Deny Appeal</button>
-                </>
-              )}
-              {isAdmin && !["paid", "voided"].includes(selected.status) && (
-                <button onClick={() => handleVoid(selected.id)}
-                  className="px-4 py-2 bg-signal-red/80 text-white rounded-lg text-sm">Void Ticket</button>
-              )}
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

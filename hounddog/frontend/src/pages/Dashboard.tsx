@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Card, Statistic, Spin, Tag, Segmented, Empty } from "antd";
 import { authHeaders, getAccessToken } from "../auth";
 import { useCurrentUser } from "../UserContext";
 
@@ -93,13 +94,13 @@ function formatDate(): string {
   });
 }
 
-function ageBadge(issuedAt: string): { label: string; color: string } {
+function ageBadge(issuedAt: string): { label: string; color: "red" | "gold" | "blue" } {
   const days = Math.floor(
     (Date.now() - new Date(issuedAt).getTime()) / 86_400_000
   );
-  if (days > 3) return { label: `${days}d overdue`, color: "bg-red-100 text-red-700" };
-  if (days >= 1) return { label: "review", color: "bg-amber-100 text-amber-700" };
-  return { label: "new", color: "bg-blue-100 text-blue-700" };
+  if (days > 3) return { label: `${days}d overdue`, color: "red" };
+  if (days >= 1) return { label: "review", color: "gold" };
+  return { label: "new", color: "blue" };
 }
 
 function eventDescription(e: ActivityEvent): string {
@@ -139,6 +140,7 @@ export default function Dashboard() {
   const user = useCurrentUser();
   const [data, setData] = useState<DashboardData | null>(null);
   const [period, setPeriod] = useState<Period>("today");
+  const [loading, setLoading] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
 
   const load = useCallback(async () => {
@@ -147,16 +149,20 @@ export default function Dashboard() {
         headers: await authHeaders(),
       });
       if (res.ok) setData(await res.json());
-    } catch {}
+    } catch {
+      /* network error */
+    } finally {
+      setLoading(false);
+    }
   }, [period]);
 
   useEffect(() => {
+    setLoading(true);
     load();
     const interval = setInterval(load, 30_000);
     return () => clearInterval(interval);
   }, [load]);
 
-  // WebSocket for live refresh
   useEffect(() => {
     let cancelled = false;
     const connect = async () => {
@@ -186,241 +192,164 @@ export default function Dashboard() {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="space-y-6">
-      {/* ── Header row ── */}
-      <div className="flex items-end justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-navy">
-            {getGreeting()}, {name}
-          </h2>
-          <p className="text-sm text-ink-mute mt-0.5">
-            {formatDate()} — here's what needs attention.
-          </p>
+    <Spin spinning={loading && !data} size="large">
+      <div className="space-y-6">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-navy">
+              {getGreeting()}, {name}
+            </h2>
+            <p className="text-sm text-ink-mute mt-0.5">
+              {formatDate()} — here's what needs attention.
+            </p>
+          </div>
+          <Segmented
+            value={period}
+            onChange={(val) => setPeriod(val as Period)}
+            options={[
+              { label: "Today", value: "today" },
+              { label: "Last 7 days", value: "week" },
+              { label: "This month", value: "month" },
+            ]}
+          />
         </div>
-        <div className="flex gap-1 bg-bone rounded-full p-1">
-          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                period === p
-                  ? "bg-brass text-navy-deep shadow-sm"
-                  : "text-ink-mute hover:text-navy"
-              }`}
+
+        {data && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card size="small" className="!bg-red-50">
+              <Statistic
+                title={<span className="text-red-700">Needs action</span>}
+                value={data.needs_action.total}
+                valueStyle={{ color: "#b91c1c", fontWeight: 700 }}
+              />
+              <div className="text-xs text-red-600/70 mt-1">
+                {data.needs_action.appealed} appeal{data.needs_action.appealed !== 1 ? "s" : ""},
+                {" "}{data.needs_action.escalated} escalation{data.needs_action.escalated !== 1 ? "s" : ""}
+              </div>
+            </Card>
+
+            <Card size="small">
+              <Statistic
+                title={`Issued ${PERIOD_LABELS[period].toLowerCase()}`}
+                value={data.issued_count.total}
+                valueStyle={{ color: "#0A1628", fontWeight: 700 }}
+              />
+              <div className="text-xs text-ink-mute mt-1">
+                vs {data.issued_count.daily_avg} avg daily
+              </div>
+            </Card>
+
+            <Card size="small">
+              <Statistic
+                title={`Revenue ${PERIOD_LABELS[period].toLowerCase()}`}
+                value={Number(data.revenue.collected)}
+                prefix="$"
+                precision={0}
+                valueStyle={{ color: "#0A1628", fontWeight: 700 }}
+              />
+              <div className="text-xs text-ink-mute mt-1">
+                {data.revenue.pending_count} pending (${Number(data.revenue.pending_amount).toFixed(0)})
+              </div>
+            </Card>
+
+            <Card size="small" className="!bg-green-50">
+              <Statistic
+                title={<span className="text-green-700">Resolution rate</span>}
+                value={data.resolution_rate.rate}
+                suffix="%"
+                valueStyle={{ color: "#15803d", fontWeight: 700 }}
+              />
+              <div className="text-xs text-green-600/70 mt-1">
+                {data.resolution_rate.resolved} of {data.resolution_rate.total} resolved
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {data && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card
+              title="Action items"
+              extra={<span className="text-xs text-ink-mute">Appeals & escalations needing review</span>}
+              styles={{ body: { padding: 0 } }}
             >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Metric cards ── */}
-      {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Needs action */}
-          <div className="bg-red-50 rounded-xl shadow p-4">
-            <div className="text-xs font-medium text-red-700 uppercase tracking-wide">
-              Needs action
-            </div>
-            <div className="text-3xl font-bold text-red-700 mt-1">
-              {data.needs_action.total}
-            </div>
-            <div className="text-xs text-red-600/70 mt-1">
-              {data.needs_action.appealed} appeal
-              {data.needs_action.appealed !== 1 ? "s" : ""}
-              , {data.needs_action.escalated} escalation
-              {data.needs_action.escalated !== 1 ? "s" : ""}
-            </div>
-          </div>
-
-          {/* Issued */}
-          <div className="bg-white rounded-xl shadow p-4">
-            <div className="text-xs font-medium text-ink-mute uppercase tracking-wide">
-              Issued {PERIOD_LABELS[period].toLowerCase()}
-            </div>
-            <div className="text-3xl font-bold text-navy mt-1">
-              {data.issued_count.total}
-            </div>
-            <div className="text-xs text-ink-mute mt-1">
-              vs {data.issued_count.daily_avg} avg daily
-            </div>
-          </div>
-
-          {/* Revenue */}
-          <div className="bg-white rounded-xl shadow p-4">
-            <div className="text-xs font-medium text-ink-mute uppercase tracking-wide">
-              Revenue {PERIOD_LABELS[period].toLowerCase()}
-            </div>
-            <div className="text-3xl font-bold text-navy mt-1">
-              ${Number(data.revenue.collected).toFixed(0)}
-            </div>
-            <div className="text-xs text-ink-mute mt-1">
-              {data.revenue.pending_count} pending ($
-              {Number(data.revenue.pending_amount).toFixed(0)})
-            </div>
-          </div>
-
-          {/* Resolution rate */}
-          <div className="bg-green-50 rounded-xl shadow p-4">
-            <div className="text-xs font-medium text-green-700 uppercase tracking-wide">
-              Resolution rate
-            </div>
-            <div className="text-3xl font-bold text-green-700 mt-1">
-              {data.resolution_rate.rate}%
-            </div>
-            <div className="text-xs text-green-600/70 mt-1">
-              {data.resolution_rate.resolved} of {data.resolution_rate.total}{" "}
-              resolved
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Two-column panels ── */}
-      {data && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Action items */}
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-semibold text-navy">Action items</h3>
-              <p className="text-xs text-ink-mute">
-                Appeals & escalations needing review
-              </p>
-            </div>
-            <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
-              {data.action_items.length === 0 && (
-                <div className="px-5 py-12 text-center text-ink-mute text-sm">
-                  No pending items
+              {data.action_items.length === 0 ? (
+                <Empty description="No pending items" className="py-8" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
+                  {data.action_items.map((item) => {
+                    const badge = ageBadge(item.issued_at);
+                    const borderColor = badge.label.includes("overdue") ? "border-red-400" : "border-amber-400";
+                    return (
+                      <div key={item.id} className={`px-5 py-3 border-l-4 ${borderColor} flex items-start gap-3`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm font-medium text-navy">#{item.id.slice(0, 8)}</span>
+                            <span className="text-xs text-ink-mute">{item.plate}</span>
+                          </div>
+                          {item.appeal_note ? (
+                            <p className="text-xs text-ink-mute mt-0.5 line-clamp-2">{item.appeal_note}</p>
+                          ) : (
+                            <p className="text-xs text-ink-mute mt-0.5 italic">
+                              {item.status === "escalated" ? "Escalated for review" : "Appeal pending"}
+                            </p>
+                          )}
+                        </div>
+                        <Tag color={badge.color}>{badge.label}</Tag>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              {data.action_items.map((item) => {
-                const badge = ageBadge(item.issued_at);
-                const borderColor =
-                  badge.label.includes("overdue")
-                    ? "border-red-400"
-                    : "border-amber-400";
-                return (
-                  <div
-                    key={item.id}
-                    className={`px-5 py-3 border-l-4 ${borderColor} flex items-start gap-3`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-medium text-navy">
-                          #{item.id.slice(0, 8)}
-                        </span>
-                        <span className="text-xs text-ink-mute">
-                          {item.plate}
-                        </span>
-                      </div>
-                      {item.appeal_note && (
-                        <p className="text-xs text-ink-mute mt-0.5 line-clamp-2">
-                          {item.appeal_note}
-                        </p>
-                      )}
-                      {!item.appeal_note && (
-                        <p className="text-xs text-ink-mute mt-0.5 italic">
-                          {item.status === "escalated"
-                            ? "Escalated for review"
-                            : "Appeal pending"}
-                        </p>
-                      )}
+            </Card>
+
+            <Card
+              title={`${PERIOD_LABELS[period]}'s activity`}
+              extra={<span className="text-xs text-ink-mute">Ticket lifecycle events</span>}
+              styles={{ body: { padding: 0 } }}
+            >
+              {data.activity.length === 0 ? (
+                <Empty description="No activity yet" className="py-8" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
+                  {data.activity.map((ev) => (
+                    <div key={`${ev.id}-${ev.updated_at}`} className="px-5 py-3 flex items-start gap-3">
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${STATUS_DOTS[ev.status] || "bg-gray-300"}`} />
+                      <div className="flex-1 min-w-0 text-sm text-ink">{eventDescription(ev)}</div>
+                      <span className="text-xs text-ink-mute shrink-0 whitespace-nowrap">
+                        {period === "today"
+                          ? new Date(ev.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                          : new Date(ev.updated_at).toLocaleDateString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </span>
                     </div>
-                    <span
-                      className={`shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.color}`}
-                    >
-                      {badge.label}
-                    </span>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {data && (
+          <Card title="Tickets issued — last 7 days" size="small">
+            <div className="flex items-end justify-between gap-2" style={{ height: 80 }}>
+              {data.trend.map((d) => {
+                const pct = maxTrend > 0 ? (d.count / maxTrend) * 100 : 0;
+                const isToday = d.date === todayStr;
+                return (
+                  <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs font-medium text-navy">{d.count}</span>
+                    <div
+                      className={`w-full rounded-t ${isToday ? "bg-blue-600" : "bg-blue-300"}`}
+                      style={{ height: `${Math.max(pct, 4)}%`, minHeight: 4, transition: "height 0.3s ease" }}
+                    />
+                    <span className="text-[11px] text-ink-mute">{d.day}</span>
                   </div>
                 );
               })}
             </div>
-          </div>
-
-          {/* Activity feed */}
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-semibold text-navy">
-                {PERIOD_LABELS[period]}'s activity
-              </h3>
-              <p className="text-xs text-ink-mute">
-                Ticket lifecycle events
-              </p>
-            </div>
-            <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
-              {data.activity.length === 0 && (
-                <div className="px-5 py-12 text-center text-ink-mute text-sm">
-                  No activity yet
-                </div>
-              )}
-              {data.activity.map((ev) => (
-                <div
-                  key={`${ev.id}-${ev.updated_at}`}
-                  className="px-5 py-3 flex items-start gap-3"
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                      STATUS_DOTS[ev.status] || "bg-gray-300"
-                    }`}
-                  />
-                  <div className="flex-1 min-w-0 text-sm text-ink">
-                    {eventDescription(ev)}
-                  </div>
-                  <span className="text-xs text-ink-mute shrink-0 whitespace-nowrap">
-                    {period === "today"
-                      ? new Date(ev.updated_at).toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })
-                      : new Date(ev.updated_at).toLocaleDateString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 7-day trend ── */}
-      {data && (
-        <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-semibold text-navy text-sm mb-3">
-            Tickets issued — last 7 days
-          </h3>
-          <div className="flex items-end justify-between gap-2" style={{ height: 80 }}>
-            {data.trend.map((d) => {
-              const pct = maxTrend > 0 ? (d.count / maxTrend) * 100 : 0;
-              const isToday = d.date === todayStr;
-              return (
-                <div
-                  key={d.date}
-                  className="flex-1 flex flex-col items-center gap-1"
-                >
-                  <span className="text-xs font-medium text-navy">
-                    {d.count}
-                  </span>
-                  <div
-                    className={`w-full rounded-t ${
-                      isToday ? "bg-blue-600" : "bg-blue-300"
-                    }`}
-                    style={{
-                      height: `${Math.max(pct, 4)}%`,
-                      minHeight: 4,
-                      transition: "height 0.3s ease",
-                    }}
-                  />
-                  <span className="text-[11px] text-ink-mute">{d.day}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+          </Card>
+        )}
+      </div>
+    </Spin>
   );
 }

@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api, Permit, ImportResult } from "../api";
 import { authHeaders } from "../auth";
+import {
+  Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
+  Space, Tabs, Alert, App, Upload,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
 import LotteryManager from "./LotteryManager";
 
 async function downloadWithAuth(url: string, filename: string) {
@@ -23,174 +29,224 @@ interface PermitStats {
   revoked: number;
 }
 
-interface PermitTypeOption {
-  code: string;
-  label: string;
-}
-
-interface LotOption {
-  id: string;
-  name: string;
-}
-
-function StatCard({ label, value, color, active, onClick }: {
-  label: string; value: number; color: string; active?: boolean; onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg border px-4 py-3 text-left transition-all ${color} ${
-        active ? "ring-2 ring-brass shadow-md" : "hover:shadow-sm"
-      } ${onClick ? "cursor-pointer" : ""}`}
-    >
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-xs text-ink-mute">{label}</div>
-    </button>
-  );
-}
+interface PermitTypeOption { code: string; label: string; }
+interface LotOption { id: string; name: string; }
 
 function PermitForm({
-  initial,
-  permitTypes,
-  lots,
-  onSave,
-  onCancel,
+  initial, permitTypes, lots, onSave, onCancel,
 }: {
-  initial?: Permit;
-  permitTypes: PermitTypeOption[];
-  lots: LotOption[];
-  onSave: () => void;
-  onCancel: () => void;
+  initial?: Permit; permitTypes: PermitTypeOption[]; lots: LotOption[];
+  onSave: () => void; onCancel: () => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? "");
-  const [plates, setPlates] = useState(initial?.plates.join(", ") ?? "");
-  const [studentId, setStudentId] = useState(initial?.student_id ?? "");
-  const [email, setEmail] = useState((initial as { email?: string })?.email ?? "");
-  const [phone, setPhone] = useState((initial as { phone?: string })?.phone ?? "");
-  const [beaconId, setBeaconId] = useState((initial as { beacon_id?: string })?.beacon_id ?? "");
-  const [lot, setLot] = useState(initial?.lot_assignment ?? "");
-  const [permitType, setPermitType] = useState(initial?.permit_type ?? "");
-  const [status, setStatus] = useState(initial?.status ?? "active");
-  const [startDate, setStartDate] = useState(initial?.start_date ?? new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(initial?.end_date ?? "");
+  const { message } = App.useApp();
+  const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    if (initial) {
+      form.setFieldsValue({
+        name: initial.name,
+        plates: initial.plates.join(", "),
+        student_id: initial.student_id,
+        email: (initial as any).email ?? "",
+        phone: (initial as any).phone ?? "",
+        beacon_id: (initial as any).beacon_id ?? "",
+        lot_assignment: initial.lot_assignment,
+        permit_type: initial.permit_type,
+        status: initial.status,
+        start_date: initial.start_date ? dayjs(initial.start_date) : null,
+        end_date: initial.end_date ? dayjs(initial.end_date) : null,
+      });
+    } else {
+      form.resetFields();
+    }
+  }, [initial, form]);
+
+  async function handleFinish(values: any) {
     setSaving(true);
     const data = {
-      name,
-      plates: plates.split(",").map((p) => p.trim().toUpperCase()).filter(Boolean),
-      student_id: studentId,
-      email: email || null,
-      phone: phone || null,
-      beacon_id: beaconId || null,
-      lot_assignment: lot,
-      permit_type: permitType,
-      status,
-      start_date: startDate || undefined,
-      end_date: endDate || null,
+      name: values.name,
+      plates: values.plates.split(",").map((p: string) => p.trim().toUpperCase()).filter(Boolean),
+      student_id: values.student_id,
+      email: values.email || null,
+      phone: values.phone || null,
+      beacon_id: values.beacon_id || null,
+      lot_assignment: values.lot_assignment,
+      permit_type: values.permit_type,
+      status: values.status || "active",
+      start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+      end_date: values.end_date?.format("YYYY-MM-DD") || null,
     };
     try {
       if (initial) {
         await api.permits.update(initial.id, data);
+        message.success("Permit updated");
       } else {
         await api.permits.create(data);
+        message.success("Permit created");
       }
       onSave();
+    } catch {
+      message.error("Failed to save permit");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 mb-6 grid grid-cols-2 gap-4">
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} required
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Plates (comma-separated)</label>
-        <input value={plates} onChange={(e) => setPlates(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Student ID</label>
-        <input value={studentId} onChange={(e) => setStudentId(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Lot Assignment</label>
-        <select value={lot} onChange={(e) => setLot(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">— Select —</option>
-          {lots.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Permit Type</label>
-        <select value={permitType} onChange={(e) => setPermitType(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">— Select —</option>
-          {permitTypes.map(pt => <option key={pt.code} value={pt.code}>{pt.label}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Status</label>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-          <option value="revoked">Revoked</option>
-          <option value="suspended">Suspended</option>
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Start Date</label>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">End Date</label>
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="student@university.edu"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Phone</label>
-        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-          placeholder="+1 (555) 123-4567"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Beacon ID (SheepDog)</label>
-        <input value={beaconId} onChange={(e) => setBeaconId(e.target.value)}
-          placeholder="optional hangtag beacon ID"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div className="col-span-2 flex gap-3 justify-end">
-        <button type="button" onClick={onCancel}
-          className="px-4 py-2 text-sm text-ink-mute hover:text-ink">Cancel</button>
-        <button type="submit" disabled={saving}
-          className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep transition-colors disabled:opacity-50">
-          {saving ? "Saving..." : initial ? "Update" : "Create"}
-        </button>
-      </div>
-    </form>
+    <Card className="mb-6">
+      <Form form={form} layout="vertical" onFinish={handleFinish}
+        initialValues={{ status: "active", start_date: dayjs() }}>
+        <div className="grid grid-cols-2 gap-x-4">
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="plates" label="Plates (comma-separated)">
+            <Input />
+          </Form.Item>
+          <Form.Item name="student_id" label="Student ID">
+            <Input />
+          </Form.Item>
+          <Form.Item name="lot_assignment" label="Lot Assignment">
+            <Select placeholder="— Select —" allowClear
+              options={lots.map(l => ({ label: l.name, value: l.name }))} />
+          </Form.Item>
+          <Form.Item name="permit_type" label="Permit Type">
+            <Select placeholder="— Select —" allowClear
+              options={permitTypes.map(pt => ({ label: pt.label, value: pt.code }))} />
+          </Form.Item>
+          <Form.Item name="status" label="Status">
+            <Select options={[
+              { label: "Active", value: "active" },
+              { label: "Expired", value: "expired" },
+              { label: "Revoked", value: "revoked" },
+              { label: "Suspended", value: "suspended" },
+            ]} />
+          </Form.Item>
+          <Form.Item name="start_date" label="Start Date">
+            <DatePicker className="w-full" />
+          </Form.Item>
+          <Form.Item name="end_date" label="End Date">
+            <DatePicker className="w-full" />
+          </Form.Item>
+          <Form.Item name="email" label="Email">
+            <Input type="email" placeholder="student@university.edu" />
+          </Form.Item>
+          <Form.Item name="phone" label="Phone">
+            <Input placeholder="+1 (555) 123-4567" />
+          </Form.Item>
+          <Form.Item name="beacon_id" label="Beacon ID (SheepDog)">
+            <Input placeholder="optional hangtag beacon ID" />
+          </Form.Item>
+        </div>
+        <div className="flex justify-end gap-3">
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button type="primary" htmlType="submit" loading={saving}>
+            {initial ? "Update" : "Create"}
+          </Button>
+        </div>
+      </Form>
+    </Card>
   );
 }
 
-function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: (result: ImportResult) => void }) {
+export default function Permits() {
+  const { modal, message } = App.useApp();
+  const navigate = useNavigate();
+  const location = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
 
-  async function handleFile() {
+  const [tab, setTab] = useState(location.hash === "#lottery" ? "lottery" : "permits");
+  const [permits, setPermits] = useState<Permit[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [filterLot, setFilterLot] = useState("");
+  const [sort, setSort] = useState("");
+  const [editing, setEditing] = useState<Permit | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [stats, setStats] = useState<PermitStats | null>(null);
+  const [permitTypes, setPermitTypes] = useState<PermitTypeOption[]>([]);
+  const [lots, setLots] = useState<LotOption[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [duplicateGroups, setDuplicateGroups] = useState<Array<{
+    shared_plate: string;
+    permits: Array<{ id: string; name: string; student_id: string; lot_assignment: string; permit_type: string }>;
+  }>>([]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api.permits.list({
+        page, search: search || undefined, status: filterStatus || undefined,
+        lot: filterLot || undefined, permit_type: filterType || undefined, sort: sort || undefined,
+      });
+      setPermits(data.items);
+      setTotal(data.total);
+    } catch {
+      message.error("Failed to load permits");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search, filterStatus, filterType, filterLot, sort, message]);
+
+  const loadMeta = useCallback(async () => {
+    try {
+      const [s, ptRes, lotsRes, dupRes] = await Promise.all([
+        api.permits.stats(),
+        fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
+        api.lots.list(),
+        fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
+      ]);
+      setStats(s);
+      setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label })));
+      setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
+      setDuplicateGroups(dupRes.duplicate_groups ?? []);
+    } catch { /* silently fail */ }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadMeta(); }, [loadMeta]);
+
+  function handleDelete(id: string) {
+    modal.confirm({
+      title: "Delete this permit?",
+      content: "This action cannot be undone.",
+      okText: "Delete",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.permits.delete(id);
+          message.success("Permit deleted");
+          load(); loadMeta();
+        } catch { message.error("Failed to delete permit"); }
+      },
+    });
+  }
+
+  function handleBulkAction() {
+    if (!bulkAction || selected.size === 0) return;
+    modal.confirm({
+      title: `Set ${selected.size} permits to "${bulkAction}"?`,
+      onOk: async () => {
+        try {
+          await api.permits.bulkStatus(Array.from(selected), bulkAction);
+          message.success(`${selected.size} permits updated`);
+          setSelected(new Set()); setBulkAction(""); load(); loadMeta();
+        } catch { message.error("Bulk action failed"); }
+      },
+    });
+  }
+
+  async function handleImport() {
     const file = fileRef.current?.files?.[0];
     if (!file) return;
     setImporting(true);
@@ -198,8 +254,8 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       const text = await file.text();
       const lines = text.split("\n").filter(Boolean);
       if (lines.length < 2) return;
-      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-      const permits = lines.slice(1).map((line) => {
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+      const permits = lines.slice(1).map(line => {
         const vals = line.split(",");
         const row: Record<string, string> = {};
         headers.forEach((h, i) => (row[h] = vals[i]?.trim() ?? ""));
@@ -213,426 +269,228 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         };
       });
       const result = await api.permits.importJson(permits);
-      onImported(result);
+      setImportResult(result);
+      setShowImport(false);
+      message.success(`Imported: ${result.inserted} new, ${result.updated} updated`);
+      load(); loadMeta();
+    } catch {
+      message.error("Import failed");
     } finally {
       setImporting(false);
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Import Permits (CSV)</h3>
-        <p className="text-sm text-ink-mute mb-4">
-          CSV columns: <code>plate_normalized</code>, <code>owner_name</code>, <code>permit_number</code>, <code>permit_type</code>, <code>lot_zone</code>
-        </p>
-        <input ref={fileRef} type="file" accept=".csv" className="mb-4" />
-        <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-ink-mute">Cancel</button>
-          <button onClick={handleFile} disabled={importing}
-            className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm disabled:opacity-50">
-            {importing ? "Importing..." : "Import"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function Permits() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [tab, setTab] = useState<"permits" | "lottery">(
-    location.hash === "#lottery" ? "lottery" : "permits"
-  );
-  const [permits, setPermits] = useState<Permit[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterType, setFilterType] = useState("");
-  const [filterLot, setFilterLot] = useState("");
-  const [sort, setSort] = useState("");
-  const [editing, setEditing] = useState<Permit | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [stats, setStats] = useState<PermitStats | null>(null);
-  const [permitTypes, setPermitTypes] = useState<PermitTypeOption[]>([]);
-  const [lots, setLots] = useState<LotOption[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState("");
-  const [duplicateGroups, setDuplicateGroups] = useState<Array<{ shared_plate: string; permits: Array<{ id: string; name: string; student_id: string; lot_assignment: string; permit_type: string }> }>>([]);
-  const [showDuplicates, setShowDuplicates] = useState(false);
-
-  const load = useCallback(async () => {
-    const data = await api.permits.list({
-      page,
-      search: search || undefined,
-      status: filterStatus || undefined,
-      lot: filterLot || undefined,
-      permit_type: filterType || undefined,
-      sort: sort || undefined,
-    });
-    setPermits(data.items);
-    setTotal(data.total);
-  }, [page, search, filterStatus, filterType, filterLot, sort]);
-
-  const loadMeta = useCallback(async () => {
-    const [s, ptRes, lotsRes, dupRes] = await Promise.all([
-      api.permits.stats(),
-      fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
-      api.lots.list(),
-      fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
-    ]);
-    setStats(s);
-    setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label })));
-    setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
-    setDuplicateGroups(dupRes.duplicate_groups ?? []);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadMeta(); }, [loadMeta]);
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this permit?")) return;
-    await api.permits.delete(id);
-    load();
-    loadMeta();
-  }
-
-  async function handleBulkAction() {
-    if (!bulkAction || selected.size === 0) return;
-    if (!confirm(`Set ${selected.size} permits to "${bulkAction}"?`)) return;
-    await api.permits.bulkStatus(Array.from(selected), bulkAction);
-    setSelected(new Set());
-    setBulkAction("");
-    load();
-    loadMeta();
-  }
-
-  function toggleSelect(id: string) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setSelected(next);
-  }
-
-  function toggleAll() {
-    if (selected.size === permits.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(permits.map(p => p.id)));
-    }
-  }
-
-  function handleSort(field: string) {
-    if (sort === field) setSort(`-${field}`);
-    else if (sort === `-${field}`) setSort("");
-    else setSort(field);
-  }
-
-  function sortIcon(field: string) {
-    if (sort === field) return " ▲";
-    if (sort === `-${field}`) return " ▼";
-    return "";
-  }
-
-  const hasFilters = filterStatus || filterType || filterLot;
   const isExpiringSoon = (p: Permit) => {
     if (!p.end_date || p.status !== "active") return false;
-    const end = new Date(p.end_date);
-    const now = new Date();
-    const diff = (end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    const diff = (new Date(p.end_date).getTime() - Date.now()) / 86_400_000;
     return diff >= 0 && diff <= 30;
   };
 
+  const columns: ColumnsType<Permit> = [
+    { title: "Name", dataIndex: "name", key: "name", sorter: true, render: (name) => <span className="font-medium">{name}</span> },
+    { title: "Student ID", dataIndex: "student_id", key: "student_id", sorter: true, render: (v) => v || "—" },
+    { title: "Plates", dataIndex: "plates", key: "plates", render: (plates: string[]) => <span className="font-mono text-xs">{plates.join(", ")}</span> },
+    { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true },
+    { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => <span className="capitalize">{v}</span> },
+    { title: "Issued", dataIndex: "start_date", key: "start_date", sorter: true, render: (v) => v || "—" },
+    {
+      title: "Expires", dataIndex: "end_date", key: "end_date", sorter: true,
+      render: (v, p) => v ? <span className={isExpiringSoon(p) ? "text-amber-600 font-medium" : ""}>{v}</span> : <span className="text-ink-mute">—</span>,
+    },
+    {
+      title: "Status", dataIndex: "status", key: "status", sorter: true,
+      render: (status, p) => (
+        <Space>
+          <Tag color={status === "active" ? "green" : status === "expired" || status === "renewed" ? "default" : "red"}>{status}</Tag>
+          {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
+        </Space>
+      ),
+    },
+    {
+      title: "Actions", key: "actions", width: 120,
+      render: (_, p) => (
+        <Space onClick={e => e.stopPropagation()}>
+          <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
+          <Button type="link" size="small" danger onClick={() => handleDelete(p.id)}>Del</Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const statCards = stats ? [
+    { label: "Total", value: stats.total, filter: "", color: undefined as string | undefined },
+    { label: "Active", value: stats.active, filter: "active", color: "#22C55E" },
+    { label: "Expiring Soon", value: stats.expiring_soon, filter: "expiring_soon", color: "#F59E0B" },
+    { label: "Expired", value: stats.expired, filter: "expired", color: "#EF4444" },
+    { label: "Revoked", value: stats.revoked, filter: "revoked", color: undefined },
+  ] : [];
+
   return (
     <div>
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
-        <button
-          onClick={() => { setTab("permits"); window.location.hash = ""; }}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            tab === "permits"
-              ? "bg-white border border-b-0 border-gray-200 -mb-px text-navy"
-              : "text-ink-mute hover:text-ink"
-          }`}
-        >
-          Permits
-        </button>
-        <button
-          onClick={() => { setTab("lottery"); window.location.hash = "lottery"; }}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            tab === "lottery"
-              ? "bg-white border border-b-0 border-gray-200 -mb-px text-navy"
-              : "text-ink-mute hover:text-ink"
-          }`}
-        >
-          Lottery
-        </button>
-      </div>
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => { setTab(key); window.location.hash = key === "lottery" ? "lottery" : ""; }}
+        items={[
+          {
+            key: "permits",
+            label: "Permits",
+            children: (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold">Permits</h2>
+                  <Space>
+                    <Button onClick={() => setShowImport(true)}>Import CSV</Button>
+                    <Button onClick={() => downloadWithAuth("/api/permits/export/csv", "permits.csv")}>Export CSV</Button>
+                    <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>
+                  </Space>
+                </div>
 
-      {tab === "lottery" ? (
-        <LotteryManager />
-      ) : (
-      <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold">Permits</h2>
-        <div className="flex gap-3">
-          <button onClick={() => setShowImport(true)}
-            className="px-4 py-2 border border-brass text-brass-deep rounded-lg text-sm hover:bg-brass/10">
-            Import CSV
-          </button>
-          <button
-            onClick={() => downloadWithAuth("/api/permits/export/csv", "permits.csv")}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-            Export CSV
-          </button>
-          <button onClick={() => { setCreating(true); setEditing(null); }}
-            className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep">
-            + New Permit
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-5 gap-3 mb-4">
-          <StatCard label="Total" value={stats.total} color="bg-white border-gray-200"
-            active={filterStatus === ""} onClick={() => { setFilterStatus(""); setPage(1); }} />
-          <StatCard label="Active" value={stats.active} color="bg-signal-green/5 border-signal-green/20"
-            active={filterStatus === "active"} onClick={() => { setFilterStatus("active"); setPage(1); }} />
-          <StatCard label="Expiring Soon" value={stats.expiring_soon} color="bg-amber-50 border-amber-200"
-            active={filterStatus === "expiring_soon"} onClick={() => { setFilterStatus("expiring_soon"); setPage(1); }} />
-          <StatCard label="Expired" value={stats.expired} color="bg-signal-red/5 border-signal-red/20"
-            active={filterStatus === "expired"} onClick={() => { setFilterStatus("expired"); setPage(1); }} />
-          <StatCard label="Revoked" value={stats.revoked} color="bg-gray-50 border-gray-200"
-            active={filterStatus === "revoked"} onClick={() => { setFilterStatus("revoked"); setPage(1); }} />
-        </div>
-      )}
-
-      {/* Duplicate Permits Alert */}
-      {duplicateGroups.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-amber-700 font-semibold text-sm">
-                ⚠ {duplicateGroups.length} duplicate plate conflict{duplicateGroups.length > 1 ? "s" : ""} detected
-              </span>
-              <span className="text-xs text-amber-600">Multiple active permits share the same plate</span>
-            </div>
-            <button
-              onClick={() => setShowDuplicates(!showDuplicates)}
-              className="text-xs text-amber-700 hover:underline"
-            >
-              {showDuplicates ? "Hide" : "Review"}
-            </button>
-          </div>
-          {showDuplicates && (
-            <div className="mt-3 space-y-3">
-              {duplicateGroups.map((group) => (
-                <div key={group.shared_plate} className="bg-white rounded-lg border border-amber-200 p-3">
-                  <div className="text-xs font-mono font-bold text-amber-800 mb-2">
-                    Shared plate: {group.shared_plate}
-                  </div>
-                  <div className="space-y-1">
-                    {group.permits.map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 text-xs">
-                        <span className="font-medium">{p.name}</span>
-                        {p.student_id && <span className="text-ink-mute">{p.student_id}</span>}
-                        <span className="text-ink-mute">{p.lot_assignment}</span>
-                        <span className="text-ink-mute capitalize">{p.permit_type}</span>
-                        <button
-                          onClick={() => navigate(`/permits/${p.id}`)}
-                          className="ml-auto text-brass hover:underline"
-                        >
-                          View
-                        </button>
-                      </div>
+                {stats && (
+                  <div className="grid grid-cols-5 gap-3 mb-4">
+                    {statCards.map(sc => (
+                      <Card key={sc.label} size="small" hoverable
+                        className={filterStatus === sc.filter ? "!border-brass !shadow-md" : ""}
+                        onClick={() => { setFilterStatus(sc.filter); setPage(1); }}>
+                        <Statistic title={sc.label} value={sc.value}
+                          valueStyle={sc.color ? { color: sc.color, fontWeight: 700 } : { fontWeight: 700 }} />
+                      </Card>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                )}
 
-      {/* Filter Bar */}
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <input
-          type="text"
-          placeholder="Search name, ID, or plate..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-64 focus:ring-2 focus:ring-brass focus:outline-none"
-        />
-        <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="expiring_soon">Expiring Soon</option>
-          <option value="expired">Expired</option>
-          <option value="revoked">Revoked</option>
-          <option value="suspended">Suspended</option>
-        </select>
-        <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">All Types</option>
-          {permitTypes.map(pt => <option key={pt.code} value={pt.code}>{pt.label}</option>)}
-        </select>
-        <select value={filterLot} onChange={(e) => { setFilterLot(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">All Lots</option>
-          {lots.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
-        </select>
-        {hasFilters && (
-          <button onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setPage(1); }}
-            className="text-xs text-signal-red hover:underline">Clear Filters</button>
-        )}
-      </div>
+                {duplicateGroups.length > 0 && (
+                  <Alert
+                    type="warning"
+                    className="mb-4"
+                    showIcon
+                    message={`${duplicateGroups.length} duplicate plate conflict${duplicateGroups.length > 1 ? "s" : ""} detected`}
+                    description={showDuplicates ? (
+                      <div className="mt-2 space-y-3">
+                        {duplicateGroups.map(group => (
+                          <Card size="small" key={group.shared_plate}>
+                            <div className="text-xs font-mono font-bold text-amber-800 mb-2">Shared plate: {group.shared_plate}</div>
+                            {group.permits.map(p => (
+                              <div key={p.id} className="flex items-center gap-3 text-xs">
+                                <span className="font-medium">{p.name}</span>
+                                {p.student_id && <span className="text-ink-mute">{p.student_id}</span>}
+                                <span className="text-ink-mute">{p.lot_assignment}</span>
+                                <span className="text-ink-mute capitalize">{p.permit_type}</span>
+                                <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
+                              </div>
+                            ))}
+                          </Card>
+                        ))}
+                      </div>
+                    ) : undefined}
+                    action={<Button size="small" type="text" onClick={() => setShowDuplicates(!showDuplicates)}>{showDuplicates ? "Hide" : "Review"}</Button>}
+                  />
+                )}
 
-      {importResult && (
-        <div className="bg-signal-green/10 border border-signal-green/30 rounded-lg px-4 py-3 mb-4 text-sm flex justify-between items-center">
-          <span>Imported: {importResult.inserted} new, {importResult.updated} updated, {importResult.skipped} skipped</span>
-          <button onClick={() => setImportResult(null)} className="text-ink-mute hover:text-ink">&times;</button>
-        </div>
-      )}
-
-      {(creating || editing) && (
-        <PermitForm
-          initial={editing ?? undefined}
-          permitTypes={permitTypes}
-          lots={lots}
-          onSave={() => { setCreating(false); setEditing(null); load(); loadMeta(); }}
-          onCancel={() => { setCreating(false); setEditing(null); }}
-        />
-      )}
-
-      {/* Bulk Actions */}
-      {selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 bg-navy/5 rounded-lg px-4 py-2">
-          <span className="text-sm font-medium">{selected.size} selected</span>
-          <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm">
-            <option value="">— Action —</option>
-            <option value="revoked">Revoke</option>
-            <option value="expired">Expire</option>
-            <option value="suspended">Suspend</option>
-            <option value="active">Reactivate</option>
-          </select>
-          <button onClick={handleBulkAction} disabled={!bulkAction}
-            className="px-3 py-1 bg-navy text-bone text-sm rounded disabled:opacity-50">Apply</button>
-          <button onClick={() => setSelected(new Set())} className="text-xs text-ink-mute ml-auto">Deselect All</button>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-navy text-bone text-left">
-            <tr>
-              <th className="px-3 py-3 w-8">
-                <input type="checkbox" checked={selected.size === permits.length && permits.length > 0}
-                  onChange={toggleAll} className="rounded border-gray-300" />
-              </th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("name")}>
-                Name{sortIcon("name")}
-              </th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("student_id")}>
-                Student ID{sortIcon("student_id")}
-              </th>
-              <th className="px-3 py-3 font-medium">Plates</th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("lot_assignment")}>
-                Lot{sortIcon("lot_assignment")}
-              </th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("permit_type")}>
-                Type{sortIcon("permit_type")}
-              </th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("start_date")}>
-                Issued{sortIcon("start_date")}
-              </th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("end_date")}>
-                Expires{sortIcon("end_date")}
-              </th>
-              <th className="px-3 py-3 font-medium cursor-pointer" onClick={() => handleSort("status")}>
-                Status{sortIcon("status")}
-              </th>
-              <th className="px-3 py-3 font-medium w-24">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {permits.map((p) => (
-              <tr key={p.id} className="hover:bg-bone/50 cursor-pointer"
-                onClick={() => navigate(`/permits/${p.id}`)}>
-                <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={selected.has(p.id)}
-                    onChange={() => toggleSelect(p.id)} className="rounded border-gray-300" />
-                </td>
-                <td className="px-3 py-3 font-medium">{p.name}</td>
-                <td className="px-3 py-3 text-xs text-ink-mute">{p.student_id || "—"}</td>
-                <td className="px-3 py-3 font-mono text-xs">{p.plates.join(", ")}</td>
-                <td className="px-3 py-3">{p.lot_assignment}</td>
-                <td className="px-3 py-3 capitalize">{p.permit_type}</td>
-                <td className="px-3 py-3 text-xs">{p.start_date || "—"}</td>
-                <td className="px-3 py-3 text-xs">
-                  {p.end_date ? (
-                    <span className={isExpiringSoon(p) ? "text-amber-600 font-medium" : ""}>
-                      {p.end_date}
-                    </span>
-                  ) : <span className="text-ink-mute">—</span>}
-                </td>
-                <td className="px-3 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                    p.status === "active" ? "bg-signal-green/15 text-green-700" :
-                    p.status === "expired" || p.status === "renewed" ? "bg-gray-100 text-gray-500" :
-                    "bg-signal-red/15 text-red-700"
-                  }`}>{p.status}</span>
-                  {isExpiringSoon(p) && (
-                    <span className="ml-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">EXPIRING</span>
+                <Space className="mb-4" wrap>
+                  <Input.Search
+                    placeholder="Search name, ID, or plate..."
+                    value={search}
+                    onChange={e => { setSearch(e.target.value); setPage(1); }}
+                    style={{ width: 280 }}
+                    allowClear
+                  />
+                  <Select value={filterStatus || undefined} onChange={v => { setFilterStatus(v || ""); setPage(1); }}
+                    placeholder="All Statuses" allowClear style={{ width: 160 }}
+                    options={[
+                      { label: "Active", value: "active" },
+                      { label: "Expiring Soon", value: "expiring_soon" },
+                      { label: "Expired", value: "expired" },
+                      { label: "Revoked", value: "revoked" },
+                      { label: "Suspended", value: "suspended" },
+                    ]}
+                  />
+                  <Select value={filterType || undefined} onChange={v => { setFilterType(v || ""); setPage(1); }}
+                    placeholder="All Types" allowClear style={{ width: 140 }}
+                    options={permitTypes.map(pt => ({ label: pt.label, value: pt.code }))}
+                  />
+                  <Select value={filterLot || undefined} onChange={v => { setFilterLot(v || ""); setPage(1); }}
+                    placeholder="All Lots" allowClear style={{ width: 140 }}
+                    options={lots.map(l => ({ label: l.name, value: l.name }))}
+                  />
+                  {(filterStatus || filterType || filterLot) && (
+                    <Button type="link" danger size="small"
+                      onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setPage(1); }}>
+                      Clear Filters
+                    </Button>
                   )}
-                </td>
-                <td className="px-3 py-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => { setEditing(p); setCreating(false); }}
-                    className="text-brass-deep hover:text-brass text-xs">Edit</button>
-                  <button onClick={() => handleDelete(p.id)}
-                    className="text-signal-red/70 hover:text-signal-red text-xs">Del</button>
-                </td>
-              </tr>
-            ))}
-            {permits.length === 0 && (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-ink-mute">No permits found</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                </Space>
 
-      {/* Pagination */}
-      <div className="flex justify-between items-center mt-4">
-        <span className="text-sm text-ink-mute">
-          Showing {Math.min((page - 1) * 50 + 1, total)}–{Math.min(page * 50, total)} of {total}
-        </span>
-        <div className="flex gap-2">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
-            className="px-3 py-1 rounded border text-sm disabled:opacity-30">Prev</button>
-          <button onClick={() => setPage(page + 1)} disabled={page >= Math.ceil(total / 50)}
-            className="px-3 py-1 rounded border text-sm disabled:opacity-30">Next</button>
-        </div>
-      </div>
+                {importResult && (
+                  <Alert className="mb-4" type="success" closable onClose={() => setImportResult(null)}
+                    message={`Imported: ${importResult.inserted} new, ${importResult.updated} updated, ${importResult.skipped} skipped`}
+                  />
+                )}
 
-      {showImport && (
-        <ImportModal
-          onClose={() => setShowImport(false)}
-          onImported={(result) => {
-            setImportResult(result);
-            setShowImport(false);
-            load();
-            loadMeta();
-          }}
-        />
-      )}
-    </div>
-      )}
+                {(creating || editing) && (
+                  <PermitForm initial={editing ?? undefined} permitTypes={permitTypes} lots={lots}
+                    onSave={() => { setCreating(false); setEditing(null); load(); loadMeta(); }}
+                    onCancel={() => { setCreating(false); setEditing(null); }}
+                  />
+                )}
+
+                {selected.size > 0 && (
+                  <div className="flex items-center gap-3 mb-3 bg-navy/5 rounded-lg px-4 py-2">
+                    <span className="text-sm font-medium">{selected.size} selected</span>
+                    <Select value={bulkAction || undefined} onChange={v => setBulkAction(v || "")}
+                      placeholder="— Action —" style={{ width: 140 }}
+                      options={[
+                        { label: "Revoke", value: "revoked" },
+                        { label: "Expire", value: "expired" },
+                        { label: "Suspend", value: "suspended" },
+                        { label: "Reactivate", value: "active" },
+                      ]}
+                    />
+                    <Button type="primary" size="small" disabled={!bulkAction} onClick={handleBulkAction}>Apply</Button>
+                    <Button type="text" size="small" className="ml-auto" onClick={() => setSelected(new Set())}>Deselect All</Button>
+                  </div>
+                )}
+
+                <Table
+                  dataSource={permits}
+                  columns={columns}
+                  rowKey="id"
+                  loading={loading}
+                  rowSelection={{
+                    selectedRowKeys: Array.from(selected),
+                    onChange: (keys) => setSelected(new Set(keys as string[])),
+                  }}
+                  onRow={(p) => ({
+                    onClick: () => navigate(`/permits/${p.id}`),
+                    className: "cursor-pointer",
+                  })}
+                  onChange={(_pagination, _filters, sorter: any) => {
+                    if (sorter.field) {
+                      setSort(sorter.order === "descend" ? `-${sorter.field}` : sorter.order === "ascend" ? sorter.field : "");
+                    }
+                  }}
+                  pagination={{
+                    current: page, total, pageSize: 50, onChange: setPage,
+                    showSizeChanger: false, showTotal: t => `${t} permits`,
+                  }}
+                />
+
+                <Modal open={showImport} title="Import Permits (CSV)" onCancel={() => setShowImport(false)}
+                  okText="Import" confirmLoading={importing} onOk={handleImport}>
+                  <p className="text-sm text-ink-mute mb-4">
+                    CSV columns: <code>plate_normalized</code>, <code>owner_name</code>, <code>permit_number</code>, <code>permit_type</code>, <code>lot_zone</code>
+                  </p>
+                  <input ref={fileRef} type="file" accept=".csv" />
+                </Modal>
+              </div>
+            ),
+          },
+          {
+            key: "lottery",
+            label: "Lottery",
+            children: <LotteryManager />,
+          },
+        ]}
+      />
     </div>
   );
 }

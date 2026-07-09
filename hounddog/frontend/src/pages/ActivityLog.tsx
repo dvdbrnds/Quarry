@@ -1,41 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "../auth";
+import { Table, Input, Select, Tag, Button, Space, Empty } from "antd";
+import type { ColumnsType } from "antd/es/table";
 
 interface AuditEntry {
-  id: string;
-  timestamp: string;
-  user_email: string;
-  action: string;
-  resource_type: string;
-  resource_id: string | null;
-  endpoint: string;
-  summary: string;
-  response_status: number;
-  ip_address: string | null;
+  id: string; timestamp: string; user_email: string; action: string;
+  resource_type: string; resource_id: string | null; endpoint: string;
+  summary: string; response_status: number; ip_address: string | null;
   changes: Record<string, any> | null;
 }
 
-interface AuditListResponse {
-  items: AuditEntry[];
-  total: number;
-  page: number;
-  page_size: number;
-}
+interface AuditListResponse { items: AuditEntry[]; total: number; page: number; page_size: number; }
 
 const ACTION_COLORS: Record<string, string> = {
-  GET: "bg-gray-100 text-gray-600",
-  POST: "bg-signal-green/10 text-green-700",
-  PUT: "bg-blue-50 text-blue-700",
-  PATCH: "bg-amber-50 text-amber-700",
-  DELETE: "bg-signal-red/10 text-red-700",
-  LOGIN: "bg-blue-100 text-blue-800",
-  LOGOUT: "bg-orange-100 text-orange-800",
+  GET: "default", POST: "green", PUT: "blue", PATCH: "gold", DELETE: "red", LOGIN: "geekblue", LOGOUT: "orange",
 };
 
 const RESOURCE_TYPES = [
-  "tickets", "permits", "lots", "devices", "sync",
-  "violation_types", "permit_types", "academic_calendar",
-  "settings", "payments", "auth", "audit",
+  "tickets", "permits", "lots", "devices", "sync", "violation_types",
+  "permit_types", "academic_calendar", "settings", "payments", "auth", "audit",
 ];
 
 export default function ActivityLog() {
@@ -46,150 +29,98 @@ export default function ActivityLog() {
   const [filterResource, setFilterResource] = useState("");
   const [filterAction, setFilterAction] = useState("");
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const qs = new URLSearchParams();
-    qs.set("page", String(page));
-    qs.set("page_size", "50");
-    if (filterUser) qs.set("user_email", filterUser);
-    if (filterResource) qs.set("resource_type", filterResource);
-    if (filterAction) qs.set("action", filterAction);
-    if (search) qs.set("search", search);
-
-    const res = await fetch(`/api/audit?${qs}`, { headers: await authHeaders() });
-    if (res.ok) {
-      const data: AuditListResponse = await res.json();
-      setEntries(data.items);
-      setTotal(data.total);
-    }
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("page", String(page));
+      qs.set("page_size", "50");
+      if (filterUser) qs.set("user_email", filterUser);
+      if (filterResource) qs.set("resource_type", filterResource);
+      if (filterAction) qs.set("action", filterAction);
+      if (search) qs.set("search", search);
+      const res = await fetch(`/api/audit?${qs}`, { headers: await authHeaders() });
+      if (res.ok) {
+        const data: AuditListResponse = await res.json();
+        setEntries(data.items);
+        setTotal(data.total);
+      }
+    } finally { setLoading(false); }
   }, [page, filterUser, filterResource, filterAction, search]);
 
   useEffect(() => { load(); }, [load]);
 
+  const columns: ColumnsType<AuditEntry> = [
+    { title: "Time", dataIndex: "timestamp", key: "timestamp", width: 160, render: (d) => new Date(d).toLocaleString() },
+    { title: "User", dataIndex: "user_email", key: "user_email", ellipsis: true },
+    { title: "Action", dataIndex: "action", key: "action", render: (a) => <Tag color={ACTION_COLORS[a] || "default"}>{a}</Tag> },
+    {
+      title: "Resource", key: "resource", render: (_, e) => (
+        <span className="capitalize text-xs">
+          {e.resource_type.replace(/_/g, " ")}
+          {e.resource_id && <span className="text-ink-mute ml-1">#{e.resource_id.slice(0, 8)}</span>}
+        </span>
+      ),
+    },
+    { title: "Summary", dataIndex: "summary", key: "summary", ellipsis: true },
+    {
+      title: "Status", dataIndex: "response_status", key: "status", width: 70,
+      render: (s) => <Tag color={s < 300 ? "green" : s < 500 ? "gold" : "red"}>{s}</Tag>,
+    },
+  ];
+
   return (
     <div>
       <h2 className="text-2xl font-bold mb-4">Activity Log</h2>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
-          type="text"
-          placeholder="Search actions..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 focus:ring-2 focus:ring-brass focus:outline-none"
-        />
-        <input
-          type="text"
-          placeholder="Filter by user email..."
-          value={filterUser}
-          onChange={(e) => { setFilterUser(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-48 focus:ring-2 focus:ring-brass focus:outline-none"
-        />
-        <select value={filterResource} onChange={(e) => { setFilterResource(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">All Resources</option>
-          {RESOURCE_TYPES.map(r => (
-            <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
-          ))}
-        </select>
-        <select value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="">All Actions</option>
-          <option value="LOGIN">Login</option>
-          <option value="LOGOUT">Logout</option>
-          <option value="GET">View</option>
-          <option value="POST">Create</option>
-          <option value="PUT">Update</option>
-          <option value="PATCH">Patch</option>
-          <option value="DELETE">Delete</option>
-        </select>
+      <Space className="mb-4" wrap>
+        <Input.Search placeholder="Search actions..." value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ width: 220 }} allowClear />
+        <Input placeholder="Filter by email" value={filterUser}
+          onChange={e => { setFilterUser(e.target.value); setPage(1); }} style={{ width: 180 }} allowClear />
+        <Select value={filterResource || undefined} onChange={v => { setFilterResource(v || ""); setPage(1); }}
+          placeholder="All Resources" allowClear style={{ width: 160 }}
+          options={RESOURCE_TYPES.map(r => ({ label: r.replace(/_/g, " "), value: r }))} />
+        <Select value={filterAction || undefined} onChange={v => { setFilterAction(v || ""); setPage(1); }}
+          placeholder="All Actions" allowClear style={{ width: 130 }}
+          options={[
+            { label: "Login", value: "LOGIN" }, { label: "Logout", value: "LOGOUT" },
+            { label: "View", value: "GET" }, { label: "Create", value: "POST" },
+            { label: "Update", value: "PUT" }, { label: "Patch", value: "PATCH" },
+            { label: "Delete", value: "DELETE" },
+          ]} />
         {(filterUser || filterResource || filterAction || search) && (
-          <button onClick={() => { setFilterUser(""); setFilterResource(""); setFilterAction(""); setSearch(""); setPage(1); }}
-            className="text-xs text-signal-red hover:underline">Clear</button>
+          <Button type="link" danger size="small"
+            onClick={() => { setFilterUser(""); setFilterResource(""); setFilterAction(""); setSearch(""); setPage(1); }}>
+            Clear
+          </Button>
         )}
-      </div>
+      </Space>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-navy text-bone text-left">
-            <tr>
-              <th className="px-4 py-3 font-medium">Time</th>
-              <th className="px-4 py-3 font-medium">User</th>
-              <th className="px-4 py-3 font-medium">Action</th>
-              <th className="px-4 py-3 font-medium">Resource</th>
-              <th className="px-4 py-3 font-medium">Summary</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {entries.map((entry) => (
-              <tr key={entry.id}
-                className="hover:bg-bone/50 cursor-pointer"
-                onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
-                <td className="px-4 py-3 text-xs whitespace-nowrap">
-                  {new Date(entry.timestamp).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-xs">{entry.user_email}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ACTION_COLORS[entry.action] || "bg-gray-100"}`}>
-                    {entry.action}
-                  </span>
-                </td>
-                <td className="px-4 py-3 capitalize text-xs">
-                  {entry.resource_type.replace(/_/g, " ")}
-                  {entry.resource_id && (
-                    <span className="text-ink-mute ml-1">#{entry.resource_id.slice(0, 8)}</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">{entry.summary}</td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs font-mono ${entry.response_status < 300 ? "text-green-600" : entry.response_status < 500 ? "text-amber-600" : "text-red-600"}`}>
-                    {entry.response_status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {entries.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-mute">No activity recorded yet</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Expanded detail */}
-      {expanded && (() => {
-        const entry = entries.find(e => e.id === expanded);
-        if (!entry?.changes) return null;
-        return (
-          <div className="mt-2 bg-gray-50 rounded-lg p-4 text-xs font-mono">
-            <h4 className="font-bold mb-2 text-sm font-sans">Changes</h4>
-            {Object.entries(entry.changes).map(([field, vals]: [string, any]) => (
-              <div key={field} className="flex gap-2 mb-1">
-                <span className="font-medium w-32">{field}:</span>
-                <span className="text-signal-red line-through">{JSON.stringify(vals?.old)}</span>
-                <span>&rarr;</span>
-                <span className="text-signal-green">{JSON.stringify(vals?.new)}</span>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* Pagination */}
-      <div className="flex justify-between items-center mt-4">
-        <span className="text-sm text-ink-mute">
-          {total > 0 ? `Showing ${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total}` : "No entries"}
-        </span>
-        <div className="flex gap-2">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
-            className="px-3 py-1 rounded border text-sm disabled:opacity-30">Prev</button>
-          <button onClick={() => setPage(page + 1)} disabled={page >= Math.ceil(total / 50)}
-            className="px-3 py-1 rounded border text-sm disabled:opacity-30">Next</button>
-        </div>
-      </div>
+      <Table dataSource={entries} columns={columns} rowKey="id" loading={loading} size="small"
+        expandable={{
+          expandedRowRender: (entry) => entry.changes ? (
+            <div className="text-xs font-mono bg-gray-50 p-3 rounded">
+              <h4 className="font-bold mb-2 text-sm font-sans">Changes</h4>
+              {Object.entries(entry.changes).map(([field, vals]: [string, any]) => (
+                <div key={field} className="flex gap-2 mb-1">
+                  <span className="font-medium w-32">{field}:</span>
+                  <span className="text-red-500 line-through">{JSON.stringify(vals?.old)}</span>
+                  <span>&rarr;</span>
+                  <span className="text-green-600">{JSON.stringify(vals?.new)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null,
+          rowExpandable: (entry) => !!entry.changes,
+        }}
+        pagination={{
+          current: page, total, pageSize: 50, onChange: setPage,
+          showSizeChanger: false, showTotal: t => `${t} entries`,
+        }}
+        locale={{ emptyText: <Empty description="No activity recorded yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+      />
     </div>
   );
 }

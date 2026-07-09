@@ -1,212 +1,144 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "../auth";
+import { Table, Button, Tag, Form, Input, InputNumber, Select, Card, Space, App, Empty } from "antd";
+import type { ColumnsType } from "antd/es/table";
 
 interface ViolationType {
-  id: string;
-  code: string;
-  label: string;
-  category: string;
-  fine_first: string;
-  fine_second: string | null;
-  fine_third_plus: string | null;
-  is_active: boolean;
-  sort_order: number;
+  id: string; code: string; label: string; category: string;
+  fine_first: string; fine_second: string | null; fine_third_plus: string | null;
+  is_active: boolean; sort_order: number;
 }
 
-function ViolationTypeForm({
-  initial,
-  onSave,
-  onCancel,
-}: {
-  initial?: ViolationType;
-  onSave: () => void;
-  onCancel: () => void;
+function ViolationTypeForm({ initial, onSave, onCancel }: {
+  initial?: ViolationType; onSave: () => void; onCancel: () => void;
 }) {
-  const [code, setCode] = useState(initial?.code ?? "");
-  const [label, setLabel] = useState(initial?.label ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "parking");
-  const [fineFirst, setFineFirst] = useState(initial?.fine_first ?? "35.00");
-  const [fineSecond, setFineSecond] = useState(initial?.fine_second ?? "");
-  const [fineThird, setFineThird] = useState(initial?.fine_third_plus ?? "");
-  const [sortOrder, setSortOrder] = useState(initial?.sort_order ?? 0);
+  const { message } = App.useApp();
+  const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    if (initial) {
+      form.setFieldsValue({
+        code: initial.code, label: initial.label, category: initial.category,
+        fine_first: initial.fine_first, fine_second: initial.fine_second ?? "",
+        fine_third_plus: initial.fine_third_plus ?? "", sort_order: initial.sort_order,
+      });
+    } else { form.resetFields(); }
+  }, [initial, form]);
+
+  async function handleFinish(values: any) {
     setSaving(true);
-    const body = {
-      code,
-      label,
-      category,
-      fine_first: fineFirst,
-      fine_second: fineSecond || null,
-      fine_third_plus: fineThird || null,
-      sort_order: sortOrder,
-    };
     try {
       const method = initial ? "PUT" : "POST";
-      const url = initial
-        ? `/api/violation-types/${initial.id}`
-        : "/api/violation-types";
-      await fetch(url, {
-        method,
-        headers: await authHeaders(),
-        body: JSON.stringify(body),
-      });
+      const url = initial ? `/api/violation-types/${initial.id}` : "/api/violation-types";
+      await fetch(url, { method, headers: await authHeaders(), body: JSON.stringify({
+        ...values, fine_second: values.fine_second || null, fine_third_plus: values.fine_third_plus || null,
+      })});
+      message.success(initial ? "Violation type updated" : "Violation type created");
       onSave();
-    } finally {
-      setSaving(false);
-    }
+    } catch { message.error("Failed to save"); } finally { setSaving(false); }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 mb-6 grid grid-cols-2 gap-4">
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Code</label>
-        <input value={code} onChange={(e) => setCode(e.target.value)} required
-          placeholder="e.g. no_permit"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Label</label>
-        <input value={label} onChange={(e) => setLabel(e.target.value)} required
-          placeholder="e.g. No Valid Permit"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Category</label>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none">
-          <option value="parking">Parking</option>
-          <option value="moving">Moving</option>
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Sort Order</label>
-        <input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Fine (1st Offense)</label>
-        <input type="number" step="0.01" value={fineFirst} onChange={(e) => setFineFirst(e.target.value)} required
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Fine (2nd Offense)</label>
-        <input type="number" step="0.01" value={fineSecond} onChange={(e) => setFineSecond(e.target.value)}
-          placeholder="Leave blank if no escalation"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-ink-mute mb-1">Fine (3rd+ Offense)</label>
-        <input type="number" step="0.01" value={fineThird} onChange={(e) => setFineThird(e.target.value)}
-          placeholder="Leave blank if no escalation"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brass focus:outline-none" />
-      </div>
-      <div className="flex items-end">
-        <div className="flex gap-3">
-          <button type="button" onClick={onCancel}
-            className="px-4 py-2 text-sm text-ink-mute hover:text-ink">Cancel</button>
-          <button type="submit" disabled={saving}
-            className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep transition-colors disabled:opacity-50">
-            {saving ? "Saving..." : initial ? "Update" : "Create"}
-          </button>
+    <Card className="mb-6">
+      <Form form={form} layout="vertical" onFinish={handleFinish}
+        initialValues={{ category: "parking", fine_first: "35.00", sort_order: 0 }}>
+        <div className="grid grid-cols-2 gap-x-4">
+          <Form.Item name="code" label="Code" rules={[{ required: true }]}>
+            <Input placeholder="e.g. no_permit" />
+          </Form.Item>
+          <Form.Item name="label" label="Label" rules={[{ required: true }]}>
+            <Input placeholder="e.g. No Valid Permit" />
+          </Form.Item>
+          <Form.Item name="category" label="Category">
+            <Select options={[{ label: "Parking", value: "parking" }, { label: "Moving", value: "moving" }]} />
+          </Form.Item>
+          <Form.Item name="sort_order" label="Sort Order">
+            <InputNumber className="w-full" />
+          </Form.Item>
+          <Form.Item name="fine_first" label="Fine (1st Offense)" rules={[{ required: true }]}>
+            <Input type="number" step="0.01" prefix="$" />
+          </Form.Item>
+          <Form.Item name="fine_second" label="Fine (2nd Offense)">
+            <Input type="number" step="0.01" prefix="$" placeholder="Leave blank if no escalation" />
+          </Form.Item>
+          <Form.Item name="fine_third_plus" label="Fine (3rd+ Offense)">
+            <Input type="number" step="0.01" prefix="$" placeholder="Leave blank if no escalation" />
+          </Form.Item>
         </div>
-      </div>
-    </form>
+        <Space>
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button type="primary" htmlType="submit" loading={saving}>{initial ? "Update" : "Create"}</Button>
+        </Space>
+      </Form>
+    </Card>
   );
 }
 
 export default function ViolationTypes() {
+  const { modal, message } = App.useApp();
   const [types, setTypes] = useState<ViolationType[]>([]);
   const [editing, setEditing] = useState<ViolationType | null>(null);
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/violation-types?all=true", { headers: await authHeaders() });
-    if (res.ok) setTypes(await res.json());
-  }, []);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/violation-types?all=true", { headers: await authHeaders() });
+      if (res.ok) setTypes(await res.json());
+    } catch { message.error("Failed to load violation types"); }
+    finally { setLoading(false); }
+  }, [message]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleDeactivate(id: string) {
-    if (!confirm("Deactivate this violation type?")) return;
-    await fetch(`/api/violation-types/${id}`, { method: "DELETE", headers: await authHeaders() });
-    load();
+  function handleDeactivate(id: string) {
+    modal.confirm({
+      title: "Deactivate this violation type?", okText: "Deactivate", okButtonProps: { danger: true },
+      onOk: async () => {
+        await fetch(`/api/violation-types/${id}`, { method: "DELETE", headers: await authHeaders() });
+        message.success("Violation type deactivated"); load();
+      },
+    });
   }
+
+  const columns: ColumnsType<ViolationType> = [
+    { title: "#", dataIndex: "sort_order", key: "sort_order", width: 50 },
+    { title: "Code", dataIndex: "code", key: "code", render: (v) => <span className="font-mono text-xs">{v}</span> },
+    { title: "Label", dataIndex: "label", key: "label" },
+    { title: "Category", dataIndex: "category", key: "category", render: (v) => <Tag color={v === "moving" ? "red" : "gold"}>{v === "moving" ? "Moving" : "Parking"}</Tag> },
+    { title: "1st", dataIndex: "fine_first", key: "fine_first", render: (v) => `$${Number(v).toFixed(0)}` },
+    { title: "2nd", dataIndex: "fine_second", key: "fine_second", render: (v) => v ? `$${Number(v).toFixed(0)}` : "—" },
+    { title: "3rd+", dataIndex: "fine_third_plus", key: "fine_third_plus", render: (v) => v ? `$${Number(v).toFixed(0)}` : "—" },
+    { title: "Status", dataIndex: "is_active", key: "is_active", render: (v) => <Tag color={v ? "green" : "default"}>{v ? "Active" : "Inactive"}</Tag> },
+    {
+      title: "Actions", key: "actions", width: 140,
+      render: (_, vt) => (
+        <Space>
+          <Button type="link" size="small" onClick={() => { setEditing(vt); setCreating(false); }}>Edit</Button>
+          {vt.is_active && <Button type="link" size="small" danger onClick={() => handleDeactivate(vt.id)}>Deactivate</Button>}
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Violation Types</h2>
-        <button onClick={() => { setCreating(true); setEditing(null); }}
-          className="px-4 py-2 bg-brass text-navy-deep font-medium rounded-lg text-sm hover:bg-brass-deep">
-          + New Violation Type
-        </button>
+        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Violation Type</Button>
       </div>
-
       {(creating || editing) && (
-        <ViolationTypeForm
-          initial={editing ?? undefined}
+        <ViolationTypeForm initial={editing ?? undefined}
           onSave={() => { setCreating(false); setEditing(null); load(); }}
-          onCancel={() => { setCreating(false); setEditing(null); }}
-        />
+          onCancel={() => { setCreating(false); setEditing(null); }} />
       )}
-
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-navy text-bone text-left">
-            <tr>
-              <th className="px-4 py-3 font-medium">#</th>
-              <th className="px-4 py-3 font-medium">Code</th>
-              <th className="px-4 py-3 font-medium">Label</th>
-              <th className="px-4 py-3 font-medium">Category</th>
-              <th className="px-4 py-3 font-medium">1st</th>
-              <th className="px-4 py-3 font-medium">2nd</th>
-              <th className="px-4 py-3 font-medium">3rd+</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium w-24">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {types.map((vt) => (
-              <tr key={vt.id} className={`hover:bg-bone/50 ${!vt.is_active ? "opacity-50" : ""} ${
-                vt.category === "moving" ? "border-l-4 border-l-signal-red/60" : "border-l-4 border-l-brass/60"
-              }`}>
-                <td className="px-4 py-3 text-ink-mute">{vt.sort_order}</td>
-                <td className="px-4 py-3 font-mono text-xs">{vt.code}</td>
-                <td className="px-4 py-3">{vt.label}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                    vt.category === "moving"
-                      ? "bg-signal-red/10 text-signal-red"
-                      : "bg-brass/15 text-brass-deep"
-                  }`}>{vt.category === "moving" ? "Moving" : "Parking"}</span>
-                </td>
-                <td className="px-4 py-3">${Number(vt.fine_first).toFixed(0)}</td>
-                <td className="px-4 py-3 text-ink-mute">{vt.fine_second ? `$${Number(vt.fine_second).toFixed(0)}` : "—"}</td>
-                <td className="px-4 py-3 text-ink-mute">{vt.fine_third_plus ? `$${Number(vt.fine_third_plus).toFixed(0)}` : "—"}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                    vt.is_active ? "bg-signal-green/15 text-green-700" : "bg-gray-100 text-gray-500"
-                  }`}>{vt.is_active ? "Active" : "Inactive"}</span>
-                </td>
-                <td className="px-4 py-3 flex gap-2">
-                  <button onClick={() => { setEditing(vt); setCreating(false); }}
-                    className="text-brass-deep hover:text-brass text-xs">Edit</button>
-                  {vt.is_active && (
-                    <button onClick={() => handleDeactivate(vt.id)}
-                      className="text-signal-red/70 hover:text-signal-red text-xs">Deactivate</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {types.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-ink-mute">No violation types configured</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Table dataSource={types} columns={columns} rowKey="id" loading={loading} size="small"
+        rowClassName={(vt) => !vt.is_active ? "opacity-50" : ""}
+        pagination={false}
+        locale={{ emptyText: <Empty description="No violation types configured" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+      />
     </div>
   );
 }
