@@ -1021,7 +1021,7 @@ def _charge_to_txn(ch) -> StripeTransaction:
         payment_method_type=pm_type,
         payment_method_last4=pm_last4,
         payment_method_brand=pm_brand,
-        metadata=dict(ch.metadata) if getattr(ch, "metadata", None) else {},
+        metadata=ch.metadata.to_dict() if getattr(ch, "metadata", None) else {},
         created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
         livemode=getattr(ch, "livemode", False),
     )
@@ -1091,7 +1091,7 @@ def _pi_to_txn(pi) -> StripeTransaction:
         payment_method_type=pm_type,
         payment_method_last4=pm_last4,
         payment_method_brand=pm_brand,
-        metadata=dict(pi.metadata) if getattr(pi, "metadata", None) else {},
+        metadata=pi.metadata.to_dict() if getattr(pi, "metadata", None) else {},
         created=datetime.fromtimestamp(pi.created, tz=timezone.utc),
         livemode=getattr(pi, "livemode", False),
     )
@@ -1119,7 +1119,7 @@ def _session_to_txn(sess) -> StripeTransaction:
         payment_method_type=None,
         payment_method_last4=None,
         payment_method_brand=None,
-        metadata=dict(sess.metadata) if getattr(sess, "metadata", None) else {},
+        metadata=sess.metadata.to_dict() if getattr(sess, "metadata", None) else {},
         created=datetime.fromtimestamp(sess.created, tz=timezone.utc),
         livemode=getattr(sess, "livemode", False),
     )
