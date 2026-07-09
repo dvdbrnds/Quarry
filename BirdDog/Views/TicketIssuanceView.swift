@@ -375,7 +375,8 @@ struct TicketIssuanceView: View {
             }
 
             Button("Done") { dismiss() }
-                .buttonStyle(result.notificationSent ? .borderedProminent : .bordered)
+                .buttonStyle(.bordered)
+                .tint(result.notificationSent ? .accentColor : nil)
                 .padding(.top)
         }
         .padding()

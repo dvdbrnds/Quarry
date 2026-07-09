@@ -326,7 +326,7 @@ final class PlateReaderViewModel: ObservableObject {
             candidateVoter.removeAll()
             candidateFirstSeen.removeAll()
 
-            var authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
+            let authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
 
             let normalizedPlate = consensusText.uppercased().trimmingCharacters(in: .whitespaces)
             let effectiveStatus = ticketedPlates.contains(normalizedPlate) ? .ticketed : authResult.status
