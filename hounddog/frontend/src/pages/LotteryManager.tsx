@@ -305,6 +305,38 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
     } catch (e: any) { msg.error(e.message); }
   }
 
+  async function handleCloseApplications() {
+    modal.confirm({
+      title: "Close application window now?",
+      content: "No new applications will be accepted after closing.",
+      okText: "Close Now",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/permit-types/${permitType.id}/close-applications`, { method: "POST", headers: await authHeaders() });
+          if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+          msg.success("Application window closed");
+          await onReload();
+        } catch (e: any) { msg.error(e.message); }
+      },
+    });
+  }
+
+  async function handleManualSelect(appId: string, name: string) {
+    modal.confirm({
+      title: `Manually select ${name}?`,
+      content: "They will receive a selection email and have the offer window to accept and pay.",
+      okText: "Select",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/permit-types/${permitType.id}/applications/${appId}/select`, { method: "POST", headers: await authHeaders() });
+          if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+          msg.success(`${name} selected`);
+          load();
+        } catch (e: any) { msg.error(e.message); }
+      },
+    });
+  }
+
   async function saveConfig() {
     setConfigSaving(true);
     try {
@@ -333,10 +365,15 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
     { title: "Lot Prefs", key: "prefs", render: (_, a) => a.lot_preferences?.length > 0 ? a.lot_preferences.join(" > ") : "—" },
     { title: "Assigned", dataIndex: "assigned_lot", key: "assigned", render: v => v ? <span className="text-green-700 font-medium">{v}</span> : "—" },
     { title: "Applied", dataIndex: "created_at", key: "applied", render: d => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) },
-    { title: "", key: "actions", width: 50, render: (_, a) => (
-      <Popconfirm title="Delete this application?" onConfirm={() => handleDeleteApplication(a.id)} okText="Delete" okButtonProps={{ danger: true }}>
-        <Button type="text" size="small" danger>✕</Button>
-      </Popconfirm>
+    { title: "", key: "actions", width: 120, render: (_, a) => (
+      <Space>
+        {(a.status === "pending" || a.status === "waitlisted") && (
+          <Button type="link" size="small" onClick={() => handleManualSelect(a.id, a.student_name)}>Select</Button>
+        )}
+        <Popconfirm title="Delete this application?" onConfirm={() => handleDeleteApplication(a.id)} okText="Delete" okButtonProps={{ danger: true }}>
+          <Button type="text" size="small" danger>✕</Button>
+        </Popconfirm>
+      </Space>
     )},
   ];
 
@@ -401,6 +438,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
       )}
 
       <Space className="mb-5" wrap>
+        {!windowClosed && <Button danger onClick={handleCloseApplications}>Close Applications</Button>}
         <Button type="primary" onClick={handleRunLottery} loading={running} disabled={pendingCount === 0 || !windowClosed}>Run Lottery</Button>
         <Button onClick={handleAdvanceWaitlist} loading={advancing} disabled={selectedCount === 0 && waitlistedCount === 0}>Advance Waitlist</Button>
         {lotteryAlreadyRun && <Button danger onClick={handleResetLottery} loading={resetting}>Reset Lottery</Button>}

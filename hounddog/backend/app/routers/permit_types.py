@@ -390,6 +390,68 @@ async def reset_lottery(
     return {"reset": reset_count, "total_applications": len(all_apps)}
 
 
+@router.post("/{ptype_id}/close-applications")
+async def close_applications(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Immediately close the application window by setting closes_at to now."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    pt.application_closes_at = datetime.now(timezone.utc)
+    await db.flush()
+    return {"status": "closed", "closed_at": pt.application_closes_at.isoformat()}
+
+
+@router.post("/{ptype_id}/applications/{app_id}/select")
+async def manually_select_application(
+    ptype_id: uuid.UUID,
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Manually select an applicant, bypassing the lottery draw."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    app = await db.get(PermitApplication, app_id)
+    if not app or app.permit_type_id != ptype_id:
+        raise HTTPException(404, "Application not found")
+
+    if app.status not in ("pending", "waitlisted"):
+        raise HTTPException(400, f"Cannot select an application with status '{app.status}'")
+
+    app.status = "selected"
+    app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=pt.offer_window_days)
+
+    if pt.lot_assignments and len(pt.lot_assignments) == 1:
+        app.assigned_lot = pt.lot_assignments[0]
+
+    await db.flush()
+
+    from ..services.email import send_email
+    await send_email(
+        to=[app.student_email],
+        subject=f"You've been selected — {pt.label}",
+        body_html=(
+            f"<p>Congratulations! You've been manually selected for "
+            f"<strong>{pt.label}</strong>.</p>"
+            f"<p>Log in to the student portal to accept and pay by "
+            f"<strong>{app.offer_expires_at.strftime('%b %d, %Y')}</strong>.</p>"
+        ),
+    )
+
+    return {
+        "status": "selected",
+        "student_name": app.student_name,
+        "offer_expires_at": app.offer_expires_at.isoformat(),
+    }
+
+
 @router.post("/{ptype_id}/simulate-lottery", response_model=SimulationResponse)
 async def simulate_lottery(
     ptype_id: uuid.UUID,
