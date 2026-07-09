@@ -92,6 +92,8 @@ export default function Finance() {
   const [filterDateTo, setFilterDateTo] = useState<dayjs.Dayjs | null>(null);
   const [glFrom, setGlFrom] = useState<dayjs.Dayjs | null>(null);
   const [glTo, setGlTo] = useState<dayjs.Dayjs | null>(null);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ updated: number; already_set: number; skipped_no_email: number; errors: string[]; details: { id: string; email: string; source: string }[] } | null>(null);
 
   const loadReport = useCallback(async () => {
     try { const res = await fetch("/api/payments/revenue", { headers: await authHeaders() }); if (res.ok) setReport(await res.json()); }
@@ -150,6 +152,31 @@ export default function Finance() {
   useEffect(() => { loadPayments(); }, [loadPayments]);
   useEffect(() => { loadStripe(); }, [loadStripe]);
   useEffect(() => { loadTimeSeries(); }, [loadTimeSeries]);
+
+  async function handleBackfillEmails() {
+    setBackfillRunning(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch("/api/payments/stripe-backfill-emails", { method: "POST", headers: await authHeaders() });
+      if (res.ok) {
+        const result = await res.json();
+        setBackfillResult(result);
+        if (result.updated > 0) {
+          message.success(`Updated ${result.updated} PaymentIntent(s) with email addresses`);
+          loadStripe();
+        } else {
+          message.info("No PaymentIntents needed updating");
+        }
+      } else {
+        const body = await res.text();
+        let detail = `HTTP ${res.status}`;
+        try { const j = JSON.parse(body); detail = j.detail || detail; } catch { if (body) detail += `: ${body.slice(0, 200)}`; }
+        message.error(detail);
+      }
+    } catch (err) {
+      message.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally { setBackfillRunning(false); }
+  }
 
   async function handleBursarImport() {
     const file = fileRef.current?.files?.[0];
@@ -298,6 +325,7 @@ export default function Finance() {
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-sm text-ink-mute">Live data from Stripe API — no webhook dependency</span>
                   <Space>
+                    <Button size="small" onClick={handleBackfillEmails} loading={backfillRunning}>Backfill Emails</Button>
                     <Button size="small" onClick={runStripeDebug} loading={debugLoading}>Diagnose Connection</Button>
                     <Button size="small" onClick={loadStripe} loading={stripeLoading}>Refresh</Button>
                   </Space>
@@ -308,6 +336,19 @@ export default function Finance() {
                     description={
                       <pre className="text-xs font-mono whitespace-pre-wrap mt-2 max-h-64 overflow-auto">{JSON.stringify(stripeDebug, null, 2)}</pre>
                     }
+                  />
+                )}
+                {backfillResult && (
+                  <Alert type={backfillResult.updated > 0 ? "success" : "info"} className="mb-4" showIcon closable onClose={() => setBackfillResult(null)}
+                    message={`Email Backfill: ${backfillResult.updated} updated, ${backfillResult.already_set} already had email, ${backfillResult.skipped_no_email} no email found`}
+                    description={backfillResult.details.length > 0 ? (
+                      <div className="text-xs font-mono mt-2 max-h-48 overflow-auto">
+                        {backfillResult.details.map(d => <div key={d.id}>{d.id} → {d.email} <span className="text-gray-400">({d.source})</span></div>)}
+                        {backfillResult.errors.length > 0 && <div className="text-red-600 mt-2">{backfillResult.errors.join("\n")}</div>}
+                      </div>
+                    ) : backfillResult.errors.length > 0 ? (
+                      <pre className="text-xs font-mono whitespace-pre-wrap mt-2 text-red-600">{backfillResult.errors.join("\n")}</pre>
+                    ) : undefined}
                   />
                 )}
                 {stripe?.errors && stripe.errors.length > 0 && (

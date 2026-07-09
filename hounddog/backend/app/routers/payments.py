@@ -936,6 +936,116 @@ async def revenue_report(
     )
 
 
+@router.post("/stripe-backfill-emails")
+async def stripe_backfill_emails(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Backfill receipt_email on Stripe PaymentIntents using local data sources."""
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    updated = 0
+    skipped = 0
+    already_set = 0
+    errors: list[str] = []
+    details: list[dict] = []
+
+    starting_after = None
+    while True:
+        params: dict = {"limit": 100}
+        if starting_after:
+            params["starting_after"] = starting_after
+
+        try:
+            page = stripe.PaymentIntent.list(**params)
+        except Exception as e:
+            errors.append(f"PaymentIntent.list failed: {e}")
+            break
+
+        if not page.data:
+            break
+
+        for pi in page.data:
+            pi_id = pi.id
+            existing_email = getattr(pi, "receipt_email", None)
+            if existing_email:
+                already_set += 1
+                continue
+
+            email = None
+            source = None
+            md = pi.metadata.to_dict() if getattr(pi, "metadata", None) else {}
+
+            if md.get("student_email"):
+                email = md["student_email"]
+                source = "metadata.student_email"
+            elif md.get("email"):
+                email = md["email"]
+                source = "metadata.email"
+
+            if not email:
+                result = await db.execute(
+                    select(Payment.payer_email).where(
+                        Payment.stripe_payment_id == pi_id,
+                        Payment.payer_email.isnot(None),
+                        Payment.payer_email != "",
+                    )
+                )
+                db_email = result.scalar()
+                if db_email:
+                    email = db_email
+                    source = "payments.payer_email"
+
+            if not email and md.get("ticket_id"):
+                try:
+                    ticket = await db.get(Ticket, uuid.UUID(md["ticket_id"]))
+                    if ticket:
+                        if ticket.permit_id:
+                            permit_result = await db.execute(
+                                select(Permit.email).where(
+                                    Permit.id == ticket.permit_id,
+                                    Permit.email.isnot(None),
+                                    Permit.email != "",
+                                )
+                            )
+                            permit_email = permit_result.scalar()
+                            if permit_email:
+                                email = permit_email
+                                source = "permit.email"
+                        if not email and ticket.dispute_email:
+                            email = ticket.dispute_email
+                            source = "ticket.dispute_email"
+                except Exception:
+                    pass
+
+            if not email:
+                skipped += 1
+                continue
+
+            try:
+                stripe.PaymentIntent.modify(pi_id, receipt_email=email)
+                updated += 1
+                details.append({"id": pi_id, "email": email, "source": source})
+            except Exception as e:
+                errors.append(f"{pi_id}: {e}")
+
+        if not page.has_more:
+            break
+        starting_after = page.data[-1].id
+
+    return {
+        "updated": updated,
+        "already_set": already_set,
+        "skipped_no_email": skipped,
+        "errors": errors,
+        "details": details,
+    }
+
+
 @router.get("/stripe-debug")
 async def stripe_debug(user: OktaUser = Depends(require_admin())):
     """Diagnostic: show what Stripe sees with the configured key."""
