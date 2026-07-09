@@ -59,6 +59,7 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/finance">Finance</NavItem>
         <NavItem to="/alerts">Alerts</NavItem>
         <NavItem to="/settings">Settings</NavItem>
+        <NavItem to="/student/permits">Student View</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-bone/70">{user.email}</span>
