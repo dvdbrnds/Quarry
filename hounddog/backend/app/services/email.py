@@ -219,6 +219,92 @@ async def send_citation_email(
     return await send_email([recipient_email], subject, body_html, body_text, from_override=from_addr)
 
 
+async def send_lottery_selection_email(
+    recipient_email: str,
+    student_name: str,
+    permit_type_label: str,
+    price: str,
+    deadline: str,
+    portal_url: str,
+    assigned_lot: str | None = None,
+    school_name: str | None = None,
+) -> bool:
+    school = school_name or settings.school_name or "Campus"
+    first_name = student_name.split()[0] if student_name else "Student"
+    subject = f"You've Been Selected — {permit_type_label} Parking Permit"
+
+    lot_line = ""
+    if assigned_lot:
+        lot_line = f'<tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Assigned Lot</td><td style="padding: 8px 0; font-weight: bold; font-size: 14px;">{assigned_lot}</td></tr>'
+
+    price_line = ""
+    if price and price != "0" and price != "0.00":
+        price_line = f'<tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Permit Fee</td><td style="padding: 8px 0; font-weight: bold; font-size: 14px;">${price}</td></tr>'
+
+    body_html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+        <div style="background: #1a2744; padding: 24px 32px; text-align: center;">
+            <h1 style="color: #c9a84c; margin: 0; font-size: 22px; letter-spacing: 1px;">QUARRY</h1>
+            <p style="color: #f5f0e8; margin: 4px 0 0; font-size: 12px;">{school} Parking Services</p>
+        </div>
+
+        <div style="padding: 32px;">
+            <h2 style="color: #1a2744; margin: 0 0 8px; font-size: 20px;">Congratulations, {first_name}!</h2>
+            <p style="color: #333; font-size: 15px; line-height: 1.6; margin: 0 0 20px;">
+                You've been selected for a <strong>{permit_type_label}</strong> parking permit.
+            </p>
+
+            <table style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 8px; margin: 20px 0;">
+                <tr><td colspan="2" style="padding: 12px 16px 4px; font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1px;">Permit Details</td></tr>
+                <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px 16px; color: #666; font-size: 14px;">Permit Type</td><td style="padding: 8px 16px; font-weight: bold; font-size: 14px;">{permit_type_label}</td></tr>
+                {lot_line.replace('padding: 8px 0', 'padding: 8px 16px') if lot_line else ''}
+                {price_line.replace('padding: 8px 0', 'padding: 8px 16px') if price_line else ''}
+                <tr><td style="padding: 8px 16px; color: #666; font-size: 14px;">Accept By</td><td style="padding: 8px 16px; font-weight: bold; color: #dc2626; font-size: 14px;">{deadline}</td></tr>
+            </table>
+
+            <p style="color: #333; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+                Log in to the student parking portal to accept your offer{' and complete payment' if price and price != '0' and price != '0.00' else ''}. 
+                If you do not respond by <strong>{deadline}</strong>, your spot will be released to the next student on the waitlist.
+            </p>
+
+            <div style="text-align: center; margin: 28px 0;">
+                <a href="{portal_url}"
+                   style="display: inline-block; padding: 16px 40px; background: #16a34a;
+                          color: white; text-decoration: none; border-radius: 8px;
+                          font-weight: bold; font-size: 16px;">
+                    Accept &amp; Pay Now
+                </a>
+            </div>
+
+            <p style="font-size: 13px; color: #666; text-align: center;">
+                Don't want this permit? You can decline from the portal and your spot will go to the next student.</p>
+        </div>
+
+        <div style="background: #f5f0e8; padding: 20px 32px; text-align: center;">
+            <p style="font-size: 12px; color: #888; margin: 0;">{school} Parking Services &middot; Powered by Quarry</p>
+        </div>
+    </div>
+    """
+
+    body_text = (
+        f"CONGRATULATIONS, {first_name.upper()}!\n\n"
+        f"You've been selected for a {permit_type_label} parking permit.\n\n"
+        f"Permit Type: {permit_type_label}\n"
+    )
+    if assigned_lot:
+        body_text += f"Assigned Lot: {assigned_lot}\n"
+    if price and price != "0" and price != "0.00":
+        body_text += f"Permit Fee: ${price}\n"
+    body_text += (
+        f"Accept By: {deadline}\n\n"
+        f"Log in to accept your offer: {portal_url}\n\n"
+        f"If you do not respond by {deadline}, your spot will be released.\n\n"
+        f"{school} Parking Services"
+    )
+
+    return await send_email([recipient_email], subject, body_html, body_text)
+
+
 async def send_renewal_email(
     recipient_email: str,
     name: str,

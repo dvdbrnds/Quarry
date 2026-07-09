@@ -303,13 +303,14 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
     next_app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=pt.offer_window_days)
     await db.flush()
 
-    from ..services.email import send_email
-    await send_email(
-        to=[next_app.student_email],
-        subject=f"Parking Permit Offer — {pt.label}",
-        body_html=(
-            f"<p>Good news! A spot has opened up for <strong>{pt.label}</strong>.</p>"
-            f"<p>Log in to the student portal to accept your offer before "
-            f"<strong>{next_app.offer_expires_at.strftime('%b %d, %Y')}</strong>.</p>"
-        ),
+    from ..services.email import send_lottery_selection_email
+    from ..config import settings
+    await send_lottery_selection_email(
+        recipient_email=next_app.student_email,
+        student_name=next_app.student_name,
+        permit_type_label=pt.label,
+        price=str(pt.price),
+        deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
+        portal_url=f"{settings.public_url.rstrip('/')}/parking",
+        assigned_lot=next_app.assigned_lot,
     )

@@ -9,6 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user, require_admin
+from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
@@ -271,17 +272,16 @@ async def run_lottery(
     pt.lottery_run_at = datetime.now(timezone.utc)
     await db.flush()
 
-    from ..services.email import send_email
+    from ..services.email import send_lottery_selection_email
     for app in selected_apps:
-        await send_email(
-            to=[app.student_email],
-            subject=f"You've been selected — {pt.label}",
-            body_html=(
-                f"<p>Congratulations! You've been selected in the lottery for "
-                f"<strong>{pt.label}</strong>.</p>"
-                f"<p>Log in to the student portal to accept and pay by "
-                f"<strong>{offer_deadline.strftime('%b %d, %Y')}</strong>.</p>"
-            ),
+        await send_lottery_selection_email(
+            recipient_email=app.student_email,
+            student_name=app.student_name,
+            permit_type_label=pt.label,
+            price=str(pt.price),
+            deadline=offer_deadline.strftime("%B %d, %Y"),
+            portal_url=f"{settings.public_url.rstrip('/')}/parking",
+            assigned_lot=app.assigned_lot,
         )
 
     return LotteryResult(
@@ -334,15 +334,15 @@ async def advance_waitlist(
         next_app.offer_expires_at = now + timedelta(days=pt.offer_window_days)
         advanced += 1
 
-        from ..services.email import send_email
-        await send_email(
-            to=[next_app.student_email],
-            subject=f"Parking Permit Offer — {pt.label}",
-            body_html=(
-                f"<p>A spot has opened up for <strong>{pt.label}</strong>.</p>"
-                f"<p>Log in to the student portal to accept your offer before "
-                f"<strong>{next_app.offer_expires_at.strftime('%b %d, %Y')}</strong>.</p>"
-            ),
+        from ..services.email import send_lottery_selection_email
+        await send_lottery_selection_email(
+            recipient_email=next_app.student_email,
+            student_name=next_app.student_name,
+            permit_type_label=pt.label,
+            price=str(pt.price),
+            deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
+            portal_url=f"{settings.public_url.rstrip('/')}/parking",
+            assigned_lot=next_app.assigned_lot,
         )
 
     await db.flush()
@@ -433,16 +433,15 @@ async def manually_select_application(
 
     await db.flush()
 
-    from ..services.email import send_email
-    await send_email(
-        to=[app.student_email],
-        subject=f"You've been selected — {pt.label}",
-        body_html=(
-            f"<p>Congratulations! You've been manually selected for "
-            f"<strong>{pt.label}</strong>.</p>"
-            f"<p>Log in to the student portal to accept and pay by "
-            f"<strong>{app.offer_expires_at.strftime('%b %d, %Y')}</strong>.</p>"
-        ),
+    from ..services.email import send_lottery_selection_email
+    await send_lottery_selection_email(
+        recipient_email=app.student_email,
+        student_name=app.student_name,
+        permit_type_label=pt.label,
+        price=str(pt.price),
+        deadline=app.offer_expires_at.strftime("%B %d, %Y"),
+        portal_url=f"{settings.public_url.rstrip('/')}/parking",
+        assigned_lot=app.assigned_lot,
     )
 
     return {
