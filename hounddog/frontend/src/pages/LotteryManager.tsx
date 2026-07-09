@@ -82,6 +82,7 @@ function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; o
   const [toggling, setToggling] = useState<string | null>(null);
   const lotteryTypes = types.filter(t => t.requires_lottery);
   const otherTypes = types.filter(t => !t.requires_lottery);
+  const studentUrl = `${window.location.origin}/student/permits`;
 
   function getStatus(pt: PermitTypeRow) {
     if (pt.lottery_run_at) return { label: "Completed", color: "green" as const };
@@ -125,6 +126,18 @@ function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; o
         <h2 className="text-2xl font-bold text-navy">Lottery Management</h2>
         <p className="text-sm text-ink-mute mt-1">Manage lotteries, run simulations, and monitor live draws.</p>
       </div>
+      {lotteryTypes.length > 0 && (
+        <Card size="small" className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-ink-mute uppercase tracking-wide mb-1">Student Application URL</div>
+              <code className="text-sm font-mono text-navy bg-gray-50 px-2 py-1 rounded">{studentUrl}</code>
+            </div>
+            <Button size="small" onClick={() => { navigator.clipboard.writeText(studentUrl); message.success("URL copied to clipboard"); }}>Copy URL</Button>
+          </div>
+          <p className="text-xs text-ink-mute mt-2">Share this link with students. They'll log in with their university credentials and see open lottery permits.</p>
+        </Card>
+      )}
       {lotteryTypes.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           {lotteryTypes.map(pt => {
