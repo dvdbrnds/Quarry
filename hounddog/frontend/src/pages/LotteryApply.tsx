@@ -103,7 +103,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
     const params = new URLSearchParams(window.location.search);
     if (params.get("accepted")) {
       message.success("Payment received — your permit is now active!");
-      window.history.replaceState({}, "", "/lottery");
+      window.history.replaceState({}, "", "/parking");
       load();
     }
   }, [load]);

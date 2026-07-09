@@ -135,7 +135,7 @@ export default function App() {
   const isNotificationsRoute = location.pathname.startsWith("/notifications/");
   const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
   const isSignageRoute = location.pathname.startsWith("/signage/player");
-  const isLotteryRoute = location.pathname.startsWith("/lottery");
+  const isLotteryRoute = location.pathname === "/parking";
   const isAuthCallback = location.pathname === "/auth/callback";
 
   if (isAuthCallback) {
@@ -200,7 +200,7 @@ export default function App() {
   if (isLotteryRoute) {
     return (
       <Routes>
-        <Route path="/lottery" element={<LotteryApply />} />
+        <Route path="/parking" element={<LotteryApply />} />
       </Routes>
     );
   }

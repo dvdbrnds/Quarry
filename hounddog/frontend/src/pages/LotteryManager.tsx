@@ -82,7 +82,7 @@ function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; o
   const [toggling, setToggling] = useState<string | null>(null);
   const lotteryTypes = types.filter(t => t.requires_lottery);
   const otherTypes = types.filter(t => !t.requires_lottery);
-  const studentUrl = `${window.location.origin}/lottery`;
+  const studentUrl = `${window.location.origin}/parking`;
 
   function getStatus(pt: PermitTypeRow) {
     if (pt.lottery_run_at) return { label: "Completed", color: "green" as const };
