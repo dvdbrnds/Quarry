@@ -75,6 +75,9 @@ export default function Finance() {
   const [stripe, setStripe] = useState<StripeTransactionsResponse | null>(null);
   const [stripeLoading, setStripeLoading] = useState(true);
   const [stripeError, setStripeError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [stripeDebug, setStripeDebug] = useState<any>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
   const [timeSeries, setTimeSeries] = useState<TimeSeriesPoint[]>([]);
   const [tsPeriod, setTsPeriod] = useState<"daily" | "monthly">("daily");
   const [bursarResult, setBursarResult] = useState<BursarResult | null>(null);
@@ -132,6 +135,15 @@ export default function Finance() {
       if (res.ok) { const json = await res.json(); setTimeSeries(json.data || []); }
     } catch { /* ignore */ }
   }, [tsPeriod]);
+
+  async function runStripeDebug() {
+    setDebugLoading(true);
+    try {
+      const res = await fetch("/api/payments/stripe-debug", { headers: await authHeaders() });
+      setStripeDebug(await res.json());
+    } catch (err) { setStripeDebug({ error: String(err) }); }
+    finally { setDebugLoading(false); }
+  }
 
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadPayments(); }, [loadPayments]);
@@ -280,33 +292,46 @@ export default function Finance() {
         {
           key: "stripe", label: `Stripe Transactions${stripe ? ` (${stripe.transactions.length})` : ""}`,
           children: (
-            <Card>
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-sm text-ink-mute">Live data from Stripe API — no webhook dependency</span>
-                <Button size="small" onClick={loadStripe} loading={stripeLoading}>Refresh</Button>
-              </div>
-              <Table dataSource={stripe?.transactions || []} columns={stripeColumns} rowKey="id" size="small"
-                pagination={{ pageSize: 25, showSizeChanger: false, showTotal: t => `${t} transactions` }}
-                locale={{ emptyText: <Empty description="No Stripe transactions found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-                expandable={{
-                  expandedRowRender: t => (
-                    <Descriptions size="small" column={3}>
-                      <Descriptions.Item label="ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
-                      <Descriptions.Item label="Email">{t.customer_email || "—"}</Descriptions.Item>
-                      <Descriptions.Item label="Name">{t.customer_name || "—"}</Descriptions.Item>
-                      <Descriptions.Item label="Amount">{fmtDollars(t.amount)}</Descriptions.Item>
-                      <Descriptions.Item label="Refunded">{Number(t.amount_refunded) > 0 ? fmtDollars(t.amount_refunded) : "—"}</Descriptions.Item>
-                      <Descriptions.Item label="Mode"><Tag color={t.livemode ? "green" : "orange"}>{t.livemode ? "Live" : "Test"}</Tag></Descriptions.Item>
-                      {Object.keys(t.metadata).length > 0 && (
-                        <Descriptions.Item label="Metadata" span={3}>
-                          <div className="text-xs font-mono">{Object.entries(t.metadata).map(([k, v]) => <div key={k}><strong>{k}:</strong> {v}</div>)}</div>
-                        </Descriptions.Item>
-                      )}
-                    </Descriptions>
-                  ),
-                }}
-              />
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-sm text-ink-mute">Live data from Stripe API — no webhook dependency</span>
+                  <Space>
+                    <Button size="small" onClick={runStripeDebug} loading={debugLoading}>Diagnose Connection</Button>
+                    <Button size="small" onClick={loadStripe} loading={stripeLoading}>Refresh</Button>
+                  </Space>
+                </div>
+                {stripeDebug && (
+                  <Alert type="info" className="mb-4" showIcon closable onClose={() => setStripeDebug(null)}
+                    message="Stripe Diagnostic Results"
+                    description={
+                      <pre className="text-xs font-mono whitespace-pre-wrap mt-2 max-h-64 overflow-auto">{JSON.stringify(stripeDebug, null, 2)}</pre>
+                    }
+                  />
+                )}
+                <Table dataSource={stripe?.transactions || []} columns={stripeColumns} rowKey="id" size="small"
+                  pagination={{ pageSize: 25, showSizeChanger: false, showTotal: t => `${t} transactions` }}
+                  locale={{ emptyText: <Empty description="No Stripe transactions found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                  expandable={{
+                    expandedRowRender: t => (
+                      <Descriptions size="small" column={3}>
+                        <Descriptions.Item label="ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
+                        <Descriptions.Item label="Email">{t.customer_email || "—"}</Descriptions.Item>
+                        <Descriptions.Item label="Name">{t.customer_name || "—"}</Descriptions.Item>
+                        <Descriptions.Item label="Amount">{fmtDollars(t.amount)}</Descriptions.Item>
+                        <Descriptions.Item label="Refunded">{Number(t.amount_refunded) > 0 ? fmtDollars(t.amount_refunded) : "—"}</Descriptions.Item>
+                        <Descriptions.Item label="Mode"><Tag color={t.livemode ? "green" : "orange"}>{t.livemode ? "Live" : "Test"}</Tag></Descriptions.Item>
+                        {Object.keys(t.metadata).length > 0 && (
+                          <Descriptions.Item label="Metadata" span={3}>
+                            <div className="text-xs font-mono">{Object.entries(t.metadata).map(([k, v]) => <div key={k}><strong>{k}:</strong> {v}</div>)}</div>
+                          </Descriptions.Item>
+                        )}
+                      </Descriptions>
+                    ),
+                  }}
+                />
+              </Card>
+            </div>
           ),
         },
         {

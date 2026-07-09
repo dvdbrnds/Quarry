@@ -936,6 +936,48 @@ async def revenue_report(
     )
 
 
+@router.get("/stripe-debug")
+async def stripe_debug(user: OktaUser = Depends(require_admin())):
+    """Diagnostic: show what Stripe sees with the configured key."""
+    if not settings.stripe_secret_key:
+        return {"error": "QUARRY_STRIPE_SECRET_KEY is empty", "key_prefix": ""}
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    result: dict = {
+        "key_prefix": settings.stripe_secret_key[:12] + "...",
+        "key_mode": "live" if settings.stripe_secret_key.startswith("sk_live") else "test" if settings.stripe_secret_key.startswith("sk_test") else "unknown",
+    }
+
+    try:
+        acct = stripe.Account.retrieve()
+        result["account_id"] = acct.id
+        result["account_name"] = getattr(acct, "business_profile", {}).get("name") if getattr(acct, "business_profile", None) else None
+        result["account_email"] = getattr(acct, "email", None)
+    except Exception as e:
+        result["account_error"] = str(e)
+
+    for label, fn in [
+        ("charges", lambda: stripe.Charge.list(limit=3)),
+        ("payment_intents", lambda: stripe.PaymentIntent.list(limit=3)),
+        ("checkout_sessions", lambda: stripe.checkout.Session.list(limit=3)),
+        ("customers", lambda: stripe.Customer.list(limit=1)),
+    ]:
+        try:
+            data = fn()
+            items = list(data.data)
+            result[label] = {
+                "count": len(items),
+                "has_more": data.has_more,
+                "sample_ids": [item.id for item in items],
+            }
+        except Exception as e:
+            result[label] = {"error": str(e)}
+
+    return result
+
+
 def _charge_to_txn(ch) -> StripeTransaction:
     """Convert a Stripe Charge object to our StripeTransaction schema."""
     fee = Decimal("0")
