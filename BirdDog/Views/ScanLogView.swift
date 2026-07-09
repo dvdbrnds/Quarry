@@ -67,7 +67,7 @@ struct ScanLogView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredLog, id: \ScannedPlate.id) { (entry: ScannedPlate) in
-                            if isTicketable(entry), let action = onIssueTapped {
+                            if let action = onIssueTapped {
                                 Button {
                                     action(entry)
                                 } label: {
@@ -154,31 +154,21 @@ struct ScanLogView: View {
 
             Spacer()
 
-            if isTicketable(entry) && onIssueTapped != nil {
-                HStack(spacing: 4) {
-                    Text("ISSUE")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.blue)
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.blue.opacity(0.6))
-                }
-            } else if entry.authStatus != .unchecked {
+            if entry.authStatus != .unchecked {
                 Image(systemName: entry.authStatus.systemImage)
                     .font(.caption)
                     .foregroundStyle(entry.authStatus.color)
+            }
+
+            if onIssueTapped != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
         .background(rowBackground(for: entry.authStatus))
-    }
-
-    private func isTicketable(_ entry: ScannedPlate) -> Bool {
-        switch entry.authStatus {
-        case .unknown, .wrongLot, .expired: return true
-        default: return false
-        }
     }
 
     private func plateTextColor(for status: PlateStatus) -> Color {
@@ -193,6 +183,8 @@ struct ScanLogView: View {
     private func rowBackground(for status: PlateStatus) -> some View {
         Group {
             switch status {
+            case .authorized:
+                Color.green.opacity(0.08)
             case .unknown:
                 Color.red.opacity(0.08)
             case .wrongLot:
@@ -201,7 +193,7 @@ struct ScanLogView: View {
                 Color.yellow.opacity(0.06)
             case .ticketed:
                 Color.purple.opacity(0.08)
-            default:
+            case .unchecked:
                 Color.clear
             }
         }

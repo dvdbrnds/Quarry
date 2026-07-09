@@ -1,11 +1,12 @@
 import csv
 import io
+import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
-from sqlalchemy import select, func
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from sqlalchemy import case, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user, require_admin
@@ -25,10 +26,14 @@ from ..schemas.payment import (
     CheckoutResponse,
     DisputeRequest,
     DisputeResponse,
+    PaymentListItem,
+    PaymentListResponse,
     PaymentRead,
     PermitPurchaseRequest,
     PermitPurchaseResponse,
     RevenueReport,
+    RevenueTimeSeries,
+    RevenueTimeSeriesPoint,
     StandalonePermitPurchaseRequest,
     StandalonePermitPurchaseResponse,
     TicketLookup,
@@ -516,11 +521,20 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     if not ticket:
         return
 
+    ticket_ref = str(ticket.id)[:8].upper()
+    payer_name = metadata.get("payer_name", "") or ticket.owner_name or ticket.driver_name or ""
+    payer_email = session.get("customer_email", "") or ""
+
     payment = Payment(
         ticket_id=ticket.id,
         amount=Decimal(session["amount_total"]) / 100,
         method="online_card",
         stripe_payment_id=stripe_pi,
+        payment_type="ticket_payment",
+        payer_name=payer_name or None,
+        payer_email=payer_email or None,
+        plate=ticket.plate,
+        description=f"Citation #{ticket_ref} — {ticket.plate}",
     )
     db.add(payment)
     ticket.status = "paid"
@@ -574,6 +588,11 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
         amount=Decimal(session["amount_total"]) / 100,
         method="online_permit_purchase",
         stripe_payment_id=stripe_pi,
+        payment_type="permit_purchase",
+        payer_name=student_name or None,
+        payer_email=email or None,
+        plate=plate or None,
+        description=f"Permit ({permit_type_code}) — {plate}" if plate else f"Permit ({permit_type_code})",
     )
     db.add(payment)
 
@@ -636,6 +655,11 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
         amount=Decimal(session["amount_total"]) / 100,
         method="online_permit_purchase",
         stripe_payment_id=stripe_pi,
+        payment_type="lottery_permit",
+        payer_name=student_name or None,
+        payer_email=email or None,
+        plate=plate or None,
+        description=f"Lottery Permit ({permit_type_code}) — {plate}" if plate else f"Lottery Permit ({permit_type_code})",
     )
     db.add(payment)
 
@@ -684,6 +708,11 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
         amount=Decimal(session["amount_total"]) / 100,
         method="online_permit_purchase",
         stripe_payment_id=stripe_pi,
+        payment_type="standalone_permit_purchase",
+        payer_name=student_name or None,
+        payer_email=email or None,
+        plate=plate or None,
+        description=f"Standalone Permit ({permit_type_code}) — {plate}" if plate else f"Standalone Permit ({permit_type_code})",
     )
     db.add(payment)
     await db.flush()
@@ -801,6 +830,11 @@ async def revenue_report(
     )
     by_status = {row[0]: row[1] for row in status_result.all()}
 
+    ptype_result = await db.execute(
+        select(Payment.payment_type, func.sum(Payment.amount)).group_by(Payment.payment_type)
+    )
+    by_payment_type = {(row[0] or "unknown"): row[1] for row in ptype_result.all()}
+
     return RevenueReport(
         total_fines_issued=total_fines,
         total_collected=total_collected,
@@ -808,7 +842,111 @@ async def revenue_report(
         collection_rate=rate,
         by_method=by_method,
         by_status=by_status,
+        by_payment_type=by_payment_type,
     )
+
+
+@router.get("/list", response_model=PaymentListResponse)
+async def list_payments(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    payment_type: str | None = None,
+    method: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Paginated list of payments with optional filters."""
+    query = select(Payment)
+
+    if payment_type:
+        query = query.where(Payment.payment_type == payment_type)
+    if method:
+        query = query.where(Payment.method == method)
+    if date_from:
+        query = query.where(func.date(Payment.paid_at) >= date_from)
+    if date_to:
+        query = query.where(func.date(Payment.paid_at) <= date_to)
+
+    count_q = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_q)).scalar() or 0
+    pages = max(1, math.ceil(total / page_size))
+
+    rows = await db.execute(
+        query.order_by(Payment.paid_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = [PaymentListItem.model_validate(p) for p in rows.scalars().all()]
+
+    return PaymentListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=pages,
+    )
+
+
+@router.get("/revenue/timeseries", response_model=RevenueTimeSeries)
+async def revenue_timeseries(
+    period: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Revenue time series grouped by citations vs permits."""
+    query = select(Payment)
+    if date_from:
+        query = query.where(func.date(Payment.paid_at) >= date_from)
+    if date_to:
+        query = query.where(func.date(Payment.paid_at) <= date_to)
+
+    if period == "monthly":
+        date_trunc = func.date_trunc("month", Payment.paid_at)
+    elif period == "weekly":
+        date_trunc = func.date_trunc("week", Payment.paid_at)
+    else:
+        date_trunc = func.date_trunc("day", Payment.paid_at)
+
+    is_citation = Payment.payment_type.in_(["ticket_payment", None])
+
+    ts_query = (
+        select(
+            date_trunc.label("bucket"),
+            func.sum(case((is_citation, Payment.amount), else_=Decimal("0"))).label("citations"),
+            func.sum(case((~is_citation, Payment.amount), else_=Decimal("0"))).label("permits"),
+            func.sum(Payment.amount).label("total"),
+        )
+        .group_by("bucket")
+        .order_by("bucket")
+    )
+
+    if date_from:
+        ts_query = ts_query.where(func.date(Payment.paid_at) >= date_from)
+    if date_to:
+        ts_query = ts_query.where(func.date(Payment.paid_at) <= date_to)
+
+    result = await db.execute(ts_query)
+    data = []
+    for row in result.all():
+        bucket_dt = row.bucket
+        if period == "monthly":
+            label = bucket_dt.strftime("%Y-%m")
+        elif period == "weekly":
+            label = bucket_dt.strftime("%Y-W%V")
+        else:
+            label = bucket_dt.strftime("%Y-%m-%d")
+        data.append(RevenueTimeSeriesPoint(
+            date=label,
+            citations_amount=row.citations or Decimal("0"),
+            permits_amount=row.permits or Decimal("0"),
+            total=row.total or Decimal("0"),
+        ))
+
+    return RevenueTimeSeries(period=period, data=data)
 
 
 @router.get("/ticket/{ticket_id}", response_model=list[PaymentRead])
@@ -835,12 +973,15 @@ async def export_payments(
     writer = csv.writer(output)
     writer.writerow([
         "id", "ticket_id", "amount", "method", "stripe_payment_id",
-        "bursar_reference", "paid_at",
+        "bursar_reference", "payment_type", "payer_name", "payer_email",
+        "description", "plate", "paid_at",
     ])
     for p in payments:
         writer.writerow([
             str(p.id), str(p.ticket_id), str(p.amount), p.method,
             p.stripe_payment_id or "", p.bursar_reference or "",
+            p.payment_type or "", p.payer_name or "", p.payer_email or "",
+            p.description or "", p.plate or "",
             p.paid_at.isoformat() if p.paid_at else "",
         ])
 

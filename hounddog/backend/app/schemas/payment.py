@@ -14,6 +14,11 @@ class PaymentRead(BaseModel):
     method: str
     stripe_payment_id: str | None = None
     bursar_reference: str | None = None
+    payment_type: str | None = None
+    payer_name: str | None = None
+    payer_email: str | None = None
+    description: str | None = None
+    plate: str | None = None
     paid_at: datetime
     created_at: datetime
 
@@ -72,6 +77,49 @@ class RevenueReport(BaseModel):
     collection_rate: float
     by_method: dict[str, Decimal]
     by_status: dict[str, int]
+    by_payment_type: dict[str, Decimal] = {}
+
+
+# --- Payment List ---
+
+
+class PaymentListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    ticket_id: uuid.UUID | None = None
+    amount: Decimal
+    method: str
+    stripe_payment_id: str | None = None
+    payment_type: str | None = None
+    payer_name: str | None = None
+    payer_email: str | None = None
+    description: str | None = None
+    plate: str | None = None
+    paid_at: datetime
+
+
+class PaymentListResponse(BaseModel):
+    items: list[PaymentListItem]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+# --- Revenue Time Series ---
+
+
+class RevenueTimeSeriesPoint(BaseModel):
+    date: str
+    citations_amount: Decimal = Decimal("0")
+    permits_amount: Decimal = Decimal("0")
+    total: Decimal = Decimal("0")
+
+
+class RevenueTimeSeries(BaseModel):
+    period: str
+    data: list[RevenueTimeSeriesPoint]
 
 
 # --- Public Dispute ---
