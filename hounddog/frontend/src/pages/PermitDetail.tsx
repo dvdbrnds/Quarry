@@ -33,6 +33,15 @@ export default function PermitDetail() {
     });
   }
 
+  function handleReactivate() {
+    if (!id) return;
+    modal.confirm({
+      title: "Reactivate this permit?", content: "This will set the permit status back to active.",
+      okText: "Reactivate",
+      onOk: async () => { await api.permits.update(id, { status: "active" } as any); message.success("Permit reactivated"); load(); },
+    });
+  }
+
   if (loading || !data) return <div className="flex justify-center py-12"><Spin size="large" /></div>;
 
   const p = data.permit;
@@ -142,7 +151,14 @@ export default function PermitDetail() {
             </Space>
             <div className="mt-4 flex gap-4 text-sm"><span>Start: {p.start_date || "—"}</span><span>End: {p.end_date || "No expiry"}</span></div>
           </div>
-          {(p.status === "expired" || p.status === "active") && <Button type="primary" onClick={handleRenew}>Renew</Button>}
+          <Space>
+            {(p.status === "revoked" || p.status === "suspended" || p.status === "expired") && (
+              <Button onClick={handleReactivate}>Reactivate</Button>
+            )}
+            {(p.status === "expired" || p.status === "active") && (
+              <Button type="primary" onClick={handleRenew}>Renew</Button>
+            )}
+          </Space>
         </div>
       </Card>
 

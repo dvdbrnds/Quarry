@@ -130,6 +130,18 @@ export default function PermitTypes() {
     });
   }
 
+  async function handleActivate(id: string) {
+    try {
+      await fetch(`/api/permit-types/${id}`, {
+        method: "PUT",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: true }),
+      });
+      message.success("Activated");
+      load();
+    } catch { message.error("Failed to activate"); }
+  }
+
   const columns: ColumnsType<PermitTypeRow> = [
     { title: "Label", dataIndex: "label", key: "label", render: v => <span className="font-medium">{v}</span> },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
@@ -157,7 +169,10 @@ export default function PermitTypes() {
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
           {pt.requires_lottery && pt.is_active && <Button type="link" size="small" onClick={() => navigate("/permits#lottery")}>Lottery</Button>}
-          {pt.is_active && <Button type="link" size="small" danger onClick={() => handleDeactivate(pt.id)}>Deactivate</Button>}
+          {pt.is_active
+            ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt.id)}>Deactivate</Button>
+            : <Button type="link" size="small" onClick={() => handleActivate(pt.id)}>Activate</Button>
+          }
         </Space>
       ),
     },
