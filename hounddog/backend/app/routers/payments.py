@@ -944,80 +944,89 @@ async def stripe_transactions(
 ):
     """Pull transactions directly from Stripe API — no webhook dependency."""
     if not settings.stripe_secret_key:
-        raise HTTPException(503, "Stripe not configured")
+        raise HTTPException(503, "Stripe not configured — QUARRY_STRIPE_SECRET_KEY is empty")
 
     import stripe
     stripe.api_key = settings.stripe_secret_key
 
-    params: dict = {"limit": limit, "expand": ["data.balance_transaction"]}
-    if starting_after:
-        params["starting_after"] = starting_after
-
-    try:
-        charges = stripe.Charge.list(**params)
-    except stripe.StripeError as e:
-        raise HTTPException(502, f"Stripe API error: {str(e)}")
-
     transactions: list[StripeTransaction] = []
     overview = StripeOverview()
+    has_more = False
 
-    for ch in charges.data:
-        fee = Decimal("0")
-        net = Decimal("0")
-        bt = getattr(ch, "balance_transaction", None)
-        if bt and hasattr(bt, "fee"):
-            fee = Decimal(bt.fee) / 100
-            net = Decimal(bt.net) / 100
+    try:
+        charges = stripe.Charge.list(limit=limit, expand=["data.balance_transaction"])
+        has_more = charges.has_more
 
-        amount = Decimal(ch.amount) / 100
-        refunded = Decimal(ch.amount_refunded) / 100
+        for ch in charges.data:
+            try:
+                fee = Decimal("0")
+                net = Decimal("0")
+                bt = getattr(ch, "balance_transaction", None)
+                if bt and hasattr(bt, "fee"):
+                    fee = Decimal(str(bt.fee)) / 100
+                    net = Decimal(str(bt.net)) / 100
 
-        pm_type = None
-        pm_last4 = None
-        pm_brand = None
-        if ch.payment_method_details:
-            pmd = ch.payment_method_details
-            pm_type = getattr(pmd, "type", None)
-            card = getattr(pmd, "card", None)
-            if card:
-                pm_last4 = getattr(card, "last4", None)
-                pm_brand = getattr(card, "brand", None)
+                amount = Decimal(str(ch.amount)) / 100
+                refunded = Decimal(str(getattr(ch, "amount_refunded", 0))) / 100
 
-        transactions.append(StripeTransaction(
-            id=ch.id,
-            amount=amount,
-            amount_refunded=refunded,
-            net=net,
-            fee=fee,
-            currency=ch.currency,
-            status=ch.status,
-            description=ch.description,
-            customer_email=getattr(ch, "receipt_email", None) or (ch.billing_details.email if ch.billing_details else None),
-            customer_name=ch.billing_details.name if ch.billing_details else None,
-            receipt_url=getattr(ch, "receipt_url", None),
-            payment_method_type=pm_type,
-            payment_method_last4=pm_last4,
-            payment_method_brand=pm_brand,
-            metadata=dict(ch.metadata) if ch.metadata else {},
-            created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
-            livemode=ch.livemode,
-        ))
+                pm_type = None
+                pm_last4 = None
+                pm_brand = None
+                pmd = getattr(ch, "payment_method_details", None)
+                if pmd:
+                    pm_type = getattr(pmd, "type", None)
+                    card = getattr(pmd, "card", None)
+                    if card:
+                        pm_last4 = getattr(card, "last4", None)
+                        pm_brand = getattr(card, "brand", None)
 
-        if ch.status == "succeeded":
-            overview.successful_count += 1
-            overview.total_volume += amount
-            overview.total_fees += fee
-            overview.total_net += net
-        if ch.refunded:
-            overview.refunded_count += 1
-            overview.total_refunded += refunded
-        if ch.status == "failed":
-            overview.failed_count += 1
+                billing = getattr(ch, "billing_details", None)
+                email = getattr(ch, "receipt_email", None) or (getattr(billing, "email", None) if billing else None)
+                name = getattr(billing, "name", None) if billing else None
+
+                transactions.append(StripeTransaction(
+                    id=ch.id,
+                    amount=amount,
+                    amount_refunded=refunded,
+                    net=net,
+                    fee=fee,
+                    currency=getattr(ch, "currency", "usd"),
+                    status=getattr(ch, "status", "unknown"),
+                    description=getattr(ch, "description", None),
+                    customer_email=email,
+                    customer_name=name,
+                    receipt_url=getattr(ch, "receipt_url", None),
+                    payment_method_type=pm_type,
+                    payment_method_last4=pm_last4,
+                    payment_method_brand=pm_brand,
+                    metadata=dict(ch.metadata) if getattr(ch, "metadata", None) else {},
+                    created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
+                    livemode=getattr(ch, "livemode", False),
+                ))
+
+                status = getattr(ch, "status", "")
+                if status == "succeeded":
+                    overview.successful_count += 1
+                    overview.total_volume += amount
+                    overview.total_fees += fee
+                    overview.total_net += net
+                if getattr(ch, "refunded", False):
+                    overview.refunded_count += 1
+                    overview.total_refunded += refunded
+                if status == "failed":
+                    overview.failed_count += 1
+            except Exception:
+                continue
+
+    except stripe.StripeError as e:
+        raise HTTPException(502, f"Stripe API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(500, f"Error processing Stripe data: {str(e)}")
 
     return StripeTransactionsResponse(
         overview=overview,
         transactions=transactions,
-        has_more=charges.has_more,
+        has_more=has_more,
     )
 
 

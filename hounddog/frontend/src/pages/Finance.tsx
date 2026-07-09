@@ -74,6 +74,7 @@ export default function Finance() {
   const [payments, setPayments] = useState<PaymentListResponse | null>(null);
   const [stripe, setStripe] = useState<StripeTransactionsResponse | null>(null);
   const [stripeLoading, setStripeLoading] = useState(true);
+  const [stripeError, setStripeError] = useState<string | null>(null);
   const [timeSeries, setTimeSeries] = useState<TimeSeriesPoint[]>([]);
   const [tsPeriod, setTsPeriod] = useState<"daily" | "monthly">("daily");
   const [bursarResult, setBursarResult] = useState<BursarResult | null>(null);
@@ -107,11 +108,22 @@ export default function Finance() {
 
   const loadStripe = useCallback(async () => {
     setStripeLoading(true);
+    setStripeError(null);
     try {
       const res = await fetch("/api/payments/stripe-transactions?limit=100", { headers: await authHeaders() });
-      if (res.ok) setStripe(await res.json());
-      else if (res.status === 503) setStripe(null);
-    } catch { /* ignore */ } finally { setStripeLoading(false); }
+      if (res.ok) {
+        setStripe(await res.json());
+      } else {
+        const body = await res.text();
+        let detail = `HTTP ${res.status}`;
+        try { const j = JSON.parse(body); detail = j.detail || detail; } catch { if (body) detail += `: ${body.slice(0, 200)}`; }
+        setStripeError(detail);
+        setStripe(null);
+      }
+    } catch (err) {
+      setStripeError(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+      setStripe(null);
+    } finally { setStripeLoading(false); }
   }, []);
 
   const loadTimeSeries = useCallback(async () => {
@@ -242,6 +254,8 @@ export default function Finance() {
           <Card size="small"><Statistic title="Refunded" value={ov.refunded_count} /></Card>
           <Card size="small"><Statistic title="Failed" value={ov.failed_count} valueStyle={ov.failed_count > 0 ? { color: "#b91c1c" } : {}} /></Card>
         </div>
+      ) : stripeError ? (
+        <Alert type="error" message="Stripe API Error" description={stripeError} className="mb-6" showIcon />
       ) : (
         <Alert type="warning" message="Stripe not configured" description="Set QUARRY_STRIPE_SECRET_KEY to see live Stripe data." className="mb-6" showIcon />
       )}
