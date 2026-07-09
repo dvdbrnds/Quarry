@@ -54,6 +54,7 @@ interface StripeOverview {
 
 interface StripeTransactionsResponse {
   overview: StripeOverview; transactions: StripeTransaction[]; has_more: boolean;
+  errors?: string[];
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -306,6 +307,14 @@ export default function Finance() {
                     message="Stripe Diagnostic Results"
                     description={
                       <pre className="text-xs font-mono whitespace-pre-wrap mt-2 max-h-64 overflow-auto">{JSON.stringify(stripeDebug, null, 2)}</pre>
+                    }
+                  />
+                )}
+                {stripe?.errors && stripe.errors.length > 0 && (
+                  <Alert type="error" className="mb-4" showIcon
+                    message={`${stripe.errors.length} error(s) processing Stripe data`}
+                    description={
+                      <pre className="text-xs font-mono whitespace-pre-wrap mt-2 max-h-64 overflow-auto">{stripe.errors.join("\n\n")}</pre>
                     }
                   />
                 )}

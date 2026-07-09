@@ -1125,12 +1125,14 @@ def _session_to_txn(sess) -> StripeTransaction:
     )
 
 
-@router.get("/stripe-transactions", response_model=StripeTransactionsResponse)
+@router.get("/stripe-transactions")
 async def stripe_transactions(
     limit: int = Query(50, ge=1, le=100),
     user: OktaUser = Depends(require_admin()),
 ):
     """Pull transactions from all Stripe APIs — Charges, PaymentIntents, and Checkout Sessions."""
+    import traceback
+
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured — QUARRY_STRIPE_SECRET_KEY is empty")
 
@@ -1138,72 +1140,89 @@ async def stripe_transactions(
     stripe.api_key = settings.stripe_secret_key
 
     seen_ids: set[str] = set()
-    transactions: list[StripeTransaction] = []
-    overview = StripeOverview()
+    transactions: list[dict] = []
+    overview = {
+        "total_volume": Decimal("0"), "total_fees": Decimal("0"),
+        "total_net": Decimal("0"), "total_refunded": Decimal("0"),
+        "successful_count": 0, "refunded_count": 0, "failed_count": 0,
+    }
     has_more = False
+    errors: list[str] = []
 
     def add_txn(txn: StripeTransaction):
         if txn.id in seen_ids:
             return
         seen_ids.add(txn.id)
-        transactions.append(txn)
+        d = txn.model_dump()
+        d["created"] = d["created"].isoformat()
+        d["amount"] = str(d["amount"])
+        d["amount_refunded"] = str(d["amount_refunded"])
+        d["net"] = str(d["net"])
+        d["fee"] = str(d["fee"])
+        transactions.append(d)
         if txn.status == "succeeded":
-            overview.successful_count += 1
-            overview.total_volume += txn.amount
-            overview.total_fees += txn.fee
-            overview.total_net += txn.net
+            overview["successful_count"] += 1
+            overview["total_volume"] += txn.amount
+            overview["total_fees"] += txn.fee
+            overview["total_net"] += txn.net
         if txn.amount_refunded > 0:
-            overview.refunded_count += 1
-            overview.total_refunded += txn.amount_refunded
+            overview["refunded_count"] += 1
+            overview["total_refunded"] += txn.amount_refunded
         if txn.status == "failed":
-            overview.failed_count += 1
+            overview["failed_count"] += 1
 
+    # --- Charges ---
     try:
-        try:
-            charges = stripe.Charge.list(limit=limit, expand=["data.balance_transaction"])
-            has_more = has_more or charges.has_more
-            for ch in charges.data:
-                try:
-                    add_txn(_charge_to_txn(ch))
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-        try:
-            pis = stripe.PaymentIntent.list(limit=limit, expand=["data.charges.data.balance_transaction"])
-            has_more = has_more or pis.has_more
-            for pi in pis.data:
-                try:
-                    add_txn(_pi_to_txn(pi))
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-        try:
-            sessions = stripe.checkout.Session.list(limit=limit)
-            has_more = has_more or sessions.has_more
-            for sess in sessions.data:
-                try:
-                    add_txn(_session_to_txn(sess))
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-    except stripe.StripeError as e:
-        raise HTTPException(502, f"Stripe API error: {str(e)}")
+        charges = stripe.Charge.list(limit=limit)
+        has_more = has_more or charges.has_more
+        for i, ch in enumerate(charges.data):
+            try:
+                add_txn(_charge_to_txn(ch))
+            except Exception as e:
+                errors.append(f"charge[{i}] {ch.id}: {e}\n{traceback.format_exc()}")
     except Exception as e:
-        raise HTTPException(500, f"Error processing Stripe data: {str(e)}")
+        errors.append(f"Charge.list failed: {e}\n{traceback.format_exc()}")
 
-    transactions.sort(key=lambda t: t.created, reverse=True)
+    # --- PaymentIntents ---
+    try:
+        pis = stripe.PaymentIntent.list(limit=limit)
+        has_more = has_more or pis.has_more
+        for i, pi in enumerate(pis.data):
+            try:
+                add_txn(_pi_to_txn(pi))
+            except Exception as e:
+                errors.append(f"pi[{i}] {pi.id}: {e}\n{traceback.format_exc()}")
+    except Exception as e:
+        errors.append(f"PaymentIntent.list failed: {e}\n{traceback.format_exc()}")
 
-    return StripeTransactionsResponse(
-        overview=overview,
-        transactions=transactions,
-        has_more=has_more,
-    )
+    # --- Checkout Sessions ---
+    try:
+        sessions = stripe.checkout.Session.list(limit=limit)
+        has_more = has_more or sessions.has_more
+        for i, sess in enumerate(sessions.data):
+            try:
+                add_txn(_session_to_txn(sess))
+            except Exception as e:
+                errors.append(f"session[{i}] {sess.id}: {e}\n{traceback.format_exc()}")
+    except Exception as e:
+        errors.append(f"Session.list failed: {e}\n{traceback.format_exc()}")
+
+    transactions.sort(key=lambda t: t["created"], reverse=True)
+
+    return {
+        "overview": {
+            "total_volume": str(overview["total_volume"]),
+            "total_fees": str(overview["total_fees"]),
+            "total_net": str(overview["total_net"]),
+            "total_refunded": str(overview["total_refunded"]),
+            "successful_count": overview["successful_count"],
+            "refunded_count": overview["refunded_count"],
+            "failed_count": overview["failed_count"],
+        },
+        "transactions": transactions,
+        "has_more": has_more,
+        "errors": errors,
+    }
 
 
 @router.get("/list", response_model=PaymentListResponse)
