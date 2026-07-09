@@ -487,23 +487,28 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     except (ValueError, stripe.SignatureVerificationError):
         raise HTTPException(400, "Invalid webhook signature")
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"].to_dict()
-        metadata = session.get("metadata") or {}
+    event_type = event["type"]
+    obj = event["data"]["object"].to_dict()
+
+    if event_type == "checkout.session.completed":
+        metadata = obj.get("metadata") or {}
         payment_type = metadata.get("type", "")
 
         handled = False
         if payment_type == "ticket_payment":
-            handled = await _handle_ticket_payment(session, metadata, db)
+            handled = await _handle_ticket_payment(obj, metadata, db)
         elif payment_type == "permit_purchase":
-            handled = await _handle_permit_purchase(session, metadata, db)
+            handled = await _handle_permit_purchase(obj, metadata, db)
         elif payment_type == "lottery_permit":
-            handled = await _handle_lottery_permit(session, metadata, db)
+            handled = await _handle_lottery_permit(obj, metadata, db)
         elif payment_type == "standalone_permit_purchase":
-            handled = await _handle_standalone_permit_purchase(session, metadata, db)
+            handled = await _handle_standalone_permit_purchase(obj, metadata, db)
 
         if not handled:
-            await _handle_generic_payment(session, metadata, db)
+            await _handle_generic_payment(obj, metadata, db)
+
+    elif event_type in ("payment_intent.succeeded", "charge.succeeded"):
+        await _handle_raw_stripe_event(obj, event_type, db)
 
     return {"status": "ok"}
 
@@ -574,6 +579,47 @@ async def _handle_generic_payment(session: dict, metadata: dict, db: AsyncSessio
         payer_email=payer_email or None,
         plate=plate or None,
         description=metadata.get("description") or (f"Stripe payment {stripe_pi[:12]}..." if stripe_pi else "Stripe payment"),
+    )
+    db.add(payment)
+    await db.flush()
+
+
+async def _handle_raw_stripe_event(obj: dict, event_type: str, db: AsyncSession):
+    """Handle payment_intent.succeeded or charge.succeeded events directly."""
+    if event_type == "payment_intent.succeeded":
+        stripe_id = obj.get("id", "")
+        amount = obj.get("amount", 0)
+        email = obj.get("receipt_email") or ""
+        metadata = obj.get("metadata") or {}
+        description = obj.get("description") or ""
+    else:
+        stripe_id = obj.get("payment_intent") or obj.get("id", "")
+        amount = obj.get("amount", 0)
+        email = obj.get("receipt_email") or obj.get("billing_details", {}).get("email") or ""
+        metadata = obj.get("metadata") or {}
+        description = obj.get("description") or ""
+
+    if stripe_id:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_id)
+        )
+        if existing.scalar():
+            return
+
+    if not amount:
+        return
+
+    payer_name = metadata.get("payer_name") or obj.get("billing_details", {}).get("name") or ""
+
+    payment = Payment(
+        amount=Decimal(amount) / 100,
+        method="online_card",
+        stripe_payment_id=stripe_id or None,
+        payment_type=metadata.get("type") or "unknown",
+        payer_name=payer_name or None,
+        payer_email=email or None,
+        plate=metadata.get("plate") or None,
+        description=description or (f"Stripe {event_type.split('.')[0]} {stripe_id[:12]}..." if stripe_id else "Stripe payment"),
     )
     db.add(payment)
     await db.flush()
