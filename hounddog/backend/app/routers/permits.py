@@ -225,21 +225,30 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
 
     old.status = "renewed"
 
-    valid_days = 365
-    if old.permit_type:
-        pt_result = await db.execute(
-            select(PermitType).where(PermitType.code == old.permit_type)
-        )
-        pt = pt_result.scalar()
-        if pt and pt.valid_days:
-            valid_days = pt.valid_days
-
-    new_start = date.today()
-    new_end = new_start + timedelta(days=valid_days)
+    # Faculty/staff permits always expire on June 30
+    if old.permit_type == "faculty_staff":
+        new_start = date.today()
+        target = date(new_start.year, 6, 30)
+        if target <= new_start:
+            target = date(new_start.year + 1, 6, 30)
+        new_end = target
+    else:
+        valid_days = 365
+        if old.permit_type:
+            pt_result = await db.execute(
+                select(PermitType).where(PermitType.code == old.permit_type)
+            )
+            pt = pt_result.scalar()
+            if pt and pt.valid_days:
+                valid_days = pt.valid_days
+        new_start = date.today()
+        new_end = new_start + timedelta(days=valid_days)
 
     renewed = Permit(
         name=old.name,
         student_id=old.student_id,
+        email=old.email,
+        phone=old.phone,
         plates=list(old.plates),
         lot_assignment=old.lot_assignment,
         permit_type=old.permit_type,

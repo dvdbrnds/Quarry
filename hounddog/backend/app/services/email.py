@@ -226,37 +226,54 @@ async def send_renewal_email(
     lot_assignment: str,
     end_date: str,
     renew_url: str,
+    decline_url: str,
     school_name: str | None = None,
 ) -> bool:
     school = school_name or settings.school_name or "Campus"
-    subject = f"Parking Permit Renewal — {school}"
+    subject = f"Parking Permit Renewal — Action Required by June 30"
 
     body_html = f"""
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #1a2744;">Parking Permit Renewal</h2>
         <p>Hello {name},</p>
         <p>Your <strong>{permit_type}</strong> parking permit
-        (lots: {lot_assignment}) is expiring on <strong>{end_date}</strong>.</p>
-        <p>To renew your permit, simply click the button below. No payment is required
-        for faculty/staff permits.</p>
+        (lots: {lot_assignment}) expires on <strong>June 30</strong>.</p>
+        <p>All faculty/staff parking permits expire annually on June 30 and must
+        be renewed for the upcoming year. Please let us know if you'd like to
+        keep your permit by clicking one of the buttons below.</p>
 
-        <p style="margin: 24px 0;">
-            <a href="{renew_url}"
-               style="display: inline-block; padding: 14px 28px; background: #1a2744;
-                      color: white; text-decoration: none; border-radius: 8px;
-                      font-weight: bold; font-size: 15px;">
-                Renew My Permit
-            </a>
-        </p>
+        <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 28px 0;">
+            <tr>
+                <td style="padding-right: 12px;">
+                    <a href="{renew_url}"
+                       style="display: inline-block; padding: 14px 28px; background: #16a34a;
+                              color: white; text-decoration: none; border-radius: 8px;
+                              font-weight: bold; font-size: 15px;">
+                        Yes, Renew My Permit
+                    </a>
+                </td>
+                <td>
+                    <a href="{decline_url}"
+                       style="display: inline-block; padding: 14px 28px; background: #dc2626;
+                              color: white; text-decoration: none; border-radius: 8px;
+                              font-weight: bold; font-size: 15px;">
+                        No, I Don't Need It
+                    </a>
+                </td>
+            </tr>
+        </table>
 
         <p style="font-size: 13px; color: #666;">
-        You can also copy and paste this link into your browser:<br>
-        <a href="{renew_url}" style="color: #2563eb; word-break: break-all;">{renew_url}</a>
-        </p>
+        No payment is required. Clicking "Yes" will automatically renew your permit
+        through June 30 of next year with the same lot assignment.</p>
+
+        <p style="font-size: 13px; color: #666;">
+        If you need to update your license plate, click "Yes" first, then contact
+        Parking Services to update your plate information.</p>
 
         <p style="font-size: 13px; color: #666; margin-top: 16px;">
-        During renewal you may update your license plate number if needed.
-        Your lot assignment will remain the same.</p>
+        If you do not respond by June 30, your permit will expire and your spot
+        will be released.</p>
 
         <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
         <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
@@ -264,12 +281,15 @@ async def send_renewal_email(
     """
 
     body_text = (
-        f"PARKING PERMIT RENEWAL\n\n"
+        f"PARKING PERMIT RENEWAL — ACTION REQUIRED\n\n"
         f"Hello {name},\n\n"
         f"Your {permit_type} parking permit (lots: {lot_assignment}) "
-        f"is expiring on {end_date}.\n\n"
-        f"To renew, visit: {renew_url}\n\n"
-        f"No payment is required for faculty/staff permits.\n\n"
+        f"expires on June 30.\n\n"
+        f"All faculty/staff permits expire annually on June 30.\n\n"
+        f"To RENEW your permit, visit: {renew_url}\n\n"
+        f"To DECLINE (you no longer need a permit), visit: {decline_url}\n\n"
+        f"No payment is required for renewal.\n"
+        f"If you do not respond by June 30, your permit will expire.\n\n"
         f"{school} Parking Services"
     )
 

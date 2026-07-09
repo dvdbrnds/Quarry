@@ -163,9 +163,11 @@ async def lifespan(app: FastAPI):
                 email VARCHAR(256) NOT NULL,
                 expires_at TIMESTAMPTZ NOT NULL,
                 used_at TIMESTAMPTZ,
+                response VARCHAR(32),
                 new_plate VARCHAR(32),
                 created_at TIMESTAMPTZ DEFAULT now()
             )""",
+            "ALTER TABLE renewal_tokens ADD COLUMN IF NOT EXISTS response VARCHAR(32)",
         ]
         for migration in migrations:
             await conn.execute(text(migration))

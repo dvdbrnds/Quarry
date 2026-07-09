@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -17,6 +17,7 @@ from .sms import send_bulk_sms
 logger = logging.getLogger("quarry.scheduler")
 
 _task: asyncio.Task | None = None
+_last_renewal_check_date: date | None = None
 
 
 async def _get_recipients_for_lot(lot_name: str, db) -> list[str]:
@@ -179,6 +180,87 @@ async def _process_closures():
         await db.commit()
 
 
+async def _auto_send_renewal_emails():
+    """Automatically send renewal emails to faculty/staff with permits expiring on June 30.
+
+    Runs daily as part of the scheduler loop. Sends emails starting ~60 days before
+    June 30 to any faculty/staff permit holders who haven't already received one.
+    """
+    global _last_renewal_check_date
+
+    today = date.today()
+    if _last_renewal_check_date == today:
+        return
+    _last_renewal_check_date = today
+
+    import secrets
+    from ..models.renewal_token import RenewalToken
+    june_30 = date(today.year, 6, 30)
+
+    # Only send between May 1 and June 30
+    may_1 = date(today.year, 5, 1)
+    if today < may_1 or today > june_30:
+        return
+
+    async with async_session() as db:
+        permits_result = await db.execute(
+            select(Permit).where(
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+                Permit.permit_type == "faculty_staff",
+                Permit.email.isnot(None),
+                Permit.email != "",
+                Permit.end_date.isnot(None),
+                Permit.end_date <= june_30,
+            )
+        )
+        permits = permits_result.scalars().all()
+
+        sent = 0
+        for permit in permits:
+            existing = (await db.execute(
+                select(RenewalToken).where(
+                    RenewalToken.permit_id == permit.id,
+                    RenewalToken.expires_at > datetime.now(timezone.utc),
+                )
+            )).scalar()
+
+            if existing:
+                continue
+
+            token = secrets.token_urlsafe(48)
+            renewal = RenewalToken(
+                token=token,
+                permit_id=permit.id,
+                email=permit.email,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=45),
+            )
+            db.add(renewal)
+
+            base_url = settings.public_url.rstrip("/")
+            renew_url = f"{base_url}/api/renewals/{token}/quick-renew"
+            decline_url = f"{base_url}/api/renewals/{token}/decline"
+
+            from .email import send_renewal_email
+            try:
+                await send_renewal_email(
+                    recipient_email=permit.email,
+                    name=permit.name,
+                    permit_type=permit.permit_type,
+                    lot_assignment=permit.lot_assignment,
+                    end_date=permit.end_date.isoformat() if permit.end_date else "June 30",
+                    renew_url=renew_url,
+                    decline_url=decline_url,
+                )
+                sent += 1
+            except Exception as e:
+                logger.error("Auto-renewal email failed for %s: %s", permit.email, e)
+
+        if sent:
+            await db.commit()
+            logger.info("Auto-sent %d renewal emails to faculty/staff", sent)
+
+
 async def _expire_lottery_offers():
     """Expire overdue lottery offers and advance waitlisted applicants."""
     from datetime import timedelta
@@ -261,6 +343,11 @@ async def _run_loop():
             await _expire_lottery_offers()
         except Exception as e:
             logger.error("Scheduler tick (lottery offers) failed: %s", e, exc_info=True)
+
+        try:
+            await _auto_send_renewal_emails()
+        except Exception as e:
+            logger.error("Scheduler tick (renewal emails) failed: %s", e, exc_info=True)
 
         await asyncio.sleep(60)
 
