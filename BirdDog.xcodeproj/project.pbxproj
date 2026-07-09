@@ -61,6 +61,8 @@
 		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
 		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
 		F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */; };
+		BNCHMK01A1B2C3D4E5F60001 /* DeviceInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = BNCHMK02A1B2C3D4E5F60002 /* DeviceInfo.swift */; };
+		BNCHMK03A1B2C3D4E5F60003 /* BenchmarkCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BNCHMK04A1B2C3D4E5F60004 /* BenchmarkCompareView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -131,6 +133,8 @@
 		EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotMatchingTests.swift; sourceTree = "<group>"; };
 		F3193DCF5C38933C9A27783B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoter.swift; sourceTree = "<group>"; };
+		BNCHMK02A1B2C3D4E5F60002 /* DeviceInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInfo.swift; sourceTree = "<group>"; };
+		BNCHMK04A1B2C3D4E5F60004 /* BenchmarkCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkCompareView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -220,6 +224,7 @@
 			isa = PBXGroup;
 			children = (
 				F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */,
+				BNCHMK02A1B2C3D4E5F60002 /* DeviceInfo.swift */,
 				EDAF99197F0B8306C7230405 /* LogExporter.swift */,
 				5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */,
 			);
@@ -242,6 +247,7 @@
 			children = (
 				C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */,
 				995B0C59C443E480C6E8929E /* AdminSettingsView.swift */,
+				BNCHMK04A1B2C3D4E5F60004 /* BenchmarkCompareView.swift */,
 				BCDFCA61ABE8C3A028664636 /* CameraLogView.swift */,
 				C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */,
 				8E3E09DFE576A65B9E6C3329 /* ContentView.swift */,
@@ -413,6 +419,8 @@
 				1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */,
 				08974B307700E90A8928F832 /* DataProvider.swift in Sources */,
 				B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */,
+				BNCHMK01A1B2C3D4E5F60001 /* DeviceInfo.swift in Sources */,
+				BNCHMK03A1B2C3D4E5F60003 /* BenchmarkCompareView.swift in Sources */,
 				A1B2C3D4E5F60718BEAC0005 /* EnforcementSettingsStore.swift in Sources */,
 				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
 				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,

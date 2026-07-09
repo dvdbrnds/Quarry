@@ -15,6 +15,7 @@ final class AppSettings: ObservableObject {
     private static let oktaClientIdKey = "AppSettings.oktaClientId"
     private static let oktaRedirectURIKey = "AppSettings.oktaRedirectURI"
     private static let wildcardZonesKey = "AppSettings.wildcardZones"
+    private static let highBandwidthModeKey = "AppSettings.highBandwidthMode"
     private static let defaultPasscode = "1234"
     private static let defaultRedirectURI = "edu.moravian.birddog://callback"
     /// Default wildcard zone labels — permits with these lot-zone strings are valid in any lot.
@@ -63,6 +64,12 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(wildcardZones, forKey: Self.wildcardZonesKey) }
     }
 
+    /// When enabled, allows external cameras to use higher resolutions/FPS
+    /// beyond the USB 2.0 hub-safe 1080p@30fps cap (for USB4/Thunderbolt direct connections).
+    @Published var highBandwidthMode: Bool {
+        didSet { UserDefaults.standard.set(highBandwidthMode, forKey: Self.highBandwidthModeKey) }
+    }
+
     /// Parsed set of normalised wildcard zone labels.
     var wildcardZoneSet: Set<String> {
         Set(wildcardZones.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).uppercased() })
@@ -87,6 +94,7 @@ final class AppSettings: ObservableObject {
         self.oktaClientId = UserDefaults.standard.string(forKey: Self.oktaClientIdKey) ?? ""
         self.oktaRedirectURI = UserDefaults.standard.string(forKey: Self.oktaRedirectURIKey) ?? Self.defaultRedirectURI
         self.wildcardZones = UserDefaults.standard.string(forKey: Self.wildcardZonesKey) ?? Self.defaultWildcardZones
+        self.highBandwidthMode = UserDefaults.standard.bool(forKey: Self.highBandwidthModeKey)
     }
 
     func attemptUnlock(with code: String) -> Bool {

@@ -45,6 +45,7 @@ async def list_tickets(
     search: str | None = None,
     status: str | None = None,
     lot: str | None = None,
+    category: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Ticket)
@@ -58,6 +59,8 @@ async def list_tickets(
         query = query.where(Ticket.status == status)
     if lot:
         query = query.where(Ticket.lot == lot)
+    if category:
+        query = query.where(Ticket.ticket_category == category)
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0

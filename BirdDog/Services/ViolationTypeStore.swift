@@ -18,19 +18,30 @@ final class ViolationTypeStore: ObservableObject {
     private static let storageKey = "ViolationTypeStore.cached"
 
     private static let defaults: [ViolationType] = [
-        ViolationType(id: "no_permit",         code: "no_permit",         label: "No Valid Permit",            category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "expired_permit",    code: "expired_permit",    label: "Expired Permit",             category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "wrong_lot",         code: "wrong_lot",         label: "Wrong Lot",                  category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "fire_lane",         code: "fire_lane",         label: "Fire Lane",                  category: "parking", fineFirst: "200.00"),
-        ViolationType(id: "disability_area",   code: "disability_area",   label: "Disability Area Violation",  category: "parking", fineFirst: "200.00"),
-        ViolationType(id: "overtime",          code: "overtime",          label: "Overtime Parking",           category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "snow_emergency",    code: "snow_emergency",    label: "Snow Emergency Violation",   category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "loading_zone",      code: "loading_zone",      label: "Loading Zone",               category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "reserved",          code: "reserved",          label: "Reserved Space",             category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "double_parked",     code: "double_parked",     label: "Double Parked",              category: "parking", fineFirst: "35.00"),
-        ViolationType(id: "speeding",          code: "speeding",          label: "Speeding",                   category: "moving",  fineFirst: "50.00"),
-        ViolationType(id: "stop_sign",         code: "stop_sign",         label: "Failure to Stop at Stop Sign", category: "moving", fineFirst: "50.00"),
-        ViolationType(id: "other",             code: "other",             label: "Other",                      category: "parking", fineFirst: "35.00"),
+        // Parking violations
+        ViolationType(id: "no_permit",              code: "no_permit",              label: "No Valid Permit",                                  category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "expired_permit",         code: "expired_permit",         label: "Expired Permit",                                   category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "wrong_lot",              code: "wrong_lot",              label: "Wrong Lot",                                        category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "fire_lane",              code: "fire_lane",              label: "Fire Lane",                                        category: "parking", fineFirst: "200.00"),
+        ViolationType(id: "disability_area",        code: "disability_area",        label: "Disability Area Violation",                        category: "parking", fineFirst: "200.00"),
+        ViolationType(id: "overtime",               code: "overtime",               label: "Overtime Parking",                                 category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "snow_emergency",         code: "snow_emergency",         label: "Snow Emergency Violation",                         category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "loading_zone",           code: "loading_zone",           label: "Loading Zone",                                     category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "reserved",               code: "reserved",              label: "Reserved Space",                                    category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "double_parked",          code: "double_parked",          label: "Double Parked",                                    category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "other",                  code: "other",                  label: "Other",                                            category: "parking", fineFirst: "35.00"),
+        // Moving violations (MUPD 2026 Traffic Citation)
+        ViolationType(id: "stop_sign",              code: "stop_sign",              label: "Failure to Obey Stop Sign",                        category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "one_way",                code: "one_way",                label: "Failure to Obey One-Way Sign",                     category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "do_not_enter",           code: "do_not_enter",           label: "Failure to Obey Do Not Enter Sign",                category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "traffic_control_device", code: "traffic_control_device", label: "Failure to Obey Other Traffic Control Devices",    category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "unsafe_speed",           code: "unsafe_speed",           label: "Driving at Unsafe Speed",                          category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "crosswalk_yield",        code: "crosswalk_yield",        label: "Failure to Yield to a Pedestrian in a Crosswalk",  category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "careless_driving",       code: "careless_driving",       label: "Careless Driving",                                 category: "moving",  fineFirst: "100.00"),
+        ViolationType(id: "reckless_driving",       code: "reckless_driving",       label: "Reckless Driving",                                 category: "moving",  fineFirst: "100.00"),
+        ViolationType(id: "no_license",             code: "no_license",             label: "Driving Without a Valid License",                   category: "moving",  fineFirst: "100.00"),
+        ViolationType(id: "no_registration",        code: "no_registration",        label: "Driving Without a Valid Vehicle Registration",      category: "moving",  fineFirst: "75.00"),
+        ViolationType(id: "no_insurance",           code: "no_insurance",           label: "Driving Without Required Insurance",                category: "moving",  fineFirst: "150.00"),
     ]
 
     private init() {

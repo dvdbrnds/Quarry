@@ -101,6 +101,14 @@ struct AdminSettingsView: View {
             infoRow("Frame Rate", value: cameraService.activeFPS)
             infoRow("Devices Detected", value: "\(cameraService.detectedDeviceCount)")
 
+            Toggle(isOn: $appSettings.highBandwidthMode) {
+                Label("High Bandwidth Mode", systemImage: "bolt.fill")
+            }
+            .onChange(of: appSettings.highBandwidthMode) { _, enabled in
+                cameraService.highBandwidthMode = enabled
+                cameraService.forceReconnect()
+            }
+
             Button {
                 cameraService.forceReconnect()
             } label: {
@@ -123,7 +131,7 @@ struct AdminSettingsView: View {
         } header: {
             Text("Camera")
         } footer: {
-            Text("If the external camera is not detected through a USB hub, try Reconnect Camera or unplug and replug the hub.")
+            Text("If the external camera is not detected through a USB hub, try Reconnect Camera or unplug and replug the hub. Enable High Bandwidth Mode for USB4/Thunderbolt direct connections to unlock higher resolution and frame rates.")
         }
     }
 

@@ -1,5 +1,6 @@
 import AVFoundation
 import UIKit
+import QuartzCore
 
 protocol CameraServiceDelegate: AnyObject {
     func cameraService(_ service: CameraService, didOutput sampleBuffer: CMSampleBuffer, orientation: CGImagePropertyOrientation)
@@ -9,6 +10,35 @@ enum CameraStatus: String {
     case externalActive = "EXT"
     case searchingExternal = "Searching..."
     case builtIn = "Built-in"
+}
+
+struct FrameMetrics: Sendable {
+    var framesReceived: Int = 0
+    var framesProcessed: Int = 0
+    var framesSkipped: Int = 0
+    var totalOCRTimeMs: Double = 0
+    var peakOCRTimeMs: Double = 0
+    var actualFPS: Double = 0
+    var resolution: String = "—"
+    var configuredFPS: Int = 0
+
+    var skipRatio: Double {
+        guard framesReceived > 0 else { return 0 }
+        return Double(framesSkipped) / Double(framesReceived)
+    }
+
+    var avgOCRTimeMs: Double {
+        guard framesProcessed > 0 else { return 0 }
+        return totalOCRTimeMs / Double(framesProcessed)
+    }
+
+    var pixelThroughput: Double {
+        let parts = resolution.split(separator: "x")
+        guard parts.count == 2,
+              let w = Double(parts[0]),
+              let h = Double(parts[1]) else { return 0 }
+        return w * h * actualFPS
+    }
 }
 
 final class CameraService: NSObject, ObservableObject {
@@ -39,7 +69,13 @@ final class CameraService: NSObject, ObservableObject {
     @Published var focusScore: Double = 0
     @Published var focusPeak: Double = 0
     @Published var exposureLocked: Bool = false
+    @Published var liveMetrics = FrameMetrics()
     var focusMeterEnabled = false
+    var highBandwidthMode = false
+
+    private var metricsFrameTimestamps: [CFTimeInterval] = []
+    private var metricsAccumulator = FrameMetrics()
+
     private var currentDevice: AVCaptureDevice?
     private var currentInput: AVCaptureDeviceInput?
     private var videoOutput: AVCaptureVideoDataOutput?
@@ -269,6 +305,13 @@ final class CameraService: NSObject, ObservableObject {
     func markProcessingComplete(elapsed: TimeInterval) {
         isProcessing = false
 
+        let elapsedMs = elapsed * 1000.0
+        metricsAccumulator.framesProcessed += 1
+        metricsAccumulator.totalOCRTimeMs += elapsedMs
+        if elapsedMs > metricsAccumulator.peakOCRTimeMs {
+            metricsAccumulator.peakOCRTimeMs = elapsedMs
+        }
+
         if Date() < burstUntil {
             frameSkip = 1
             return
@@ -285,6 +328,19 @@ final class CameraService: NSObject, ObservableObject {
         } else if elapsed < 0.10, frameSkip > minSkip {
             frameSkip -= 1
         }
+    }
+
+    /// Snapshot current metrics and reset accumulators for the next session.
+    func snapshotAndResetMetrics() -> FrameMetrics {
+        var snapshot = metricsAccumulator
+        snapshot.actualFPS = Double(metricsFrameTimestamps.count)
+        snapshot.resolution = activeResolution
+        if let fps = Int(activeFPS.replacingOccurrences(of: "fps", with: "")) {
+            snapshot.configuredFPS = fps
+        }
+        metricsAccumulator = FrameMetrics()
+        metricsFrameTimestamps.removeAll()
+        return snapshot
     }
 
     /// Temporarily drop to frameSkip=1 for a short burst to capture more
@@ -881,28 +937,48 @@ final class CameraService: NSObject, ObservableObject {
             return Candidate(format: format, width: dims.width, height: dims.height, maxFPS: maxFPS)
         }
 
-        // USB cameras through hubs share bandwidth with other devices
-        // (printer, beacon, etc). 1080p@30fps is the sweet spot: enough
-        // resolution for plate OCR while staying well within USB 2.0 hub
-        // bandwidth limits. 4K or high-fps modes saturate the hub and
-        // cause FigCaptureSourceRemote XPC pipe failures.
-        //
-        // Priority order: 1080p@30 > 1080p@any > 720p@30 > best sub-1080p
-        let hd1080_30 = candidates
-            .filter { $0.height == 1080 && $0.maxFPS >= 30 }
-            .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
-        let hd1080_any = candidates
-            .filter { $0.height == 1080 }
-            .min { $0.maxFPS < $1.maxFPS }
-        let hd720_30 = candidates
-            .filter { $0.height == 720 && $0.maxFPS >= 30 }
-            .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
-        let subHD = candidates
-            .filter { $0.height <= 1080 && $0.maxFPS >= 15 }
-            .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
-        let fallback = candidates.max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+        let pick: Candidate?
+        let fpsCap: Float64
 
-        let pick = hd1080_30 ?? hd1080_any ?? hd720_30 ?? subHD ?? fallback
+        if highBandwidthMode {
+            // USB4/Thunderbolt direct connection — no bandwidth bottleneck.
+            // Prefer highest resolution at 60fps, then 30fps.
+            let uhd4k_60 = candidates
+                .filter { $0.height >= 2160 && $0.maxFPS >= 60 }
+                .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+            let uhd4k_30 = candidates
+                .filter { $0.height >= 2160 && $0.maxFPS >= 30 }
+                .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+            let hd1080_60 = candidates
+                .filter { $0.height == 1080 && $0.maxFPS >= 60 }
+                .min { abs($0.maxFPS - 60) < abs($1.maxFPS - 60) }
+            let hd1080_30 = candidates
+                .filter { $0.height == 1080 && $0.maxFPS >= 30 }
+                .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
+            let fallback = candidates.max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+
+            pick = uhd4k_60 ?? uhd4k_30 ?? hd1080_60 ?? hd1080_30 ?? fallback
+            fpsCap = 60
+            log("HIGH BANDWIDTH MODE: selecting best available format")
+        } else {
+            // USB 2.0 hub — cap at 1080p@30fps to avoid XPC pipe failures.
+            let hd1080_30 = candidates
+                .filter { $0.height == 1080 && $0.maxFPS >= 30 }
+                .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
+            let hd1080_any = candidates
+                .filter { $0.height == 1080 }
+                .min { $0.maxFPS < $1.maxFPS }
+            let hd720_30 = candidates
+                .filter { $0.height == 720 && $0.maxFPS >= 30 }
+                .min { abs($0.maxFPS - 30) < abs($1.maxFPS - 30) }
+            let subHD = candidates
+                .filter { $0.height <= 1080 && $0.maxFPS >= 15 }
+                .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+            let fallback = candidates.max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+
+            pick = hd1080_30 ?? hd1080_any ?? hd720_30 ?? subHD ?? fallback
+            fpsCap = 30
+        }
 
         guard let pick else {
             log("NO usable format found")
@@ -911,14 +987,11 @@ final class CameraService: NSObject, ObservableObject {
 
         camera.activeFormat = pick.format
 
-        // Lock to 30fps — this is the bandwidth-safe ceiling for USB hubs.
-        // Vision OCR processes one frame at a time anyway so higher fps
-        // just wastes bandwidth.
-        let targetFPS = min(pick.maxFPS, 30)
+        let targetFPS = min(pick.maxFPS, fpsCap)
         camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
         camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
 
-        log("LOCKED: \(pick.width)x\(pick.height) @ \(Int(targetFPS))fps")
+        log("LOCKED: \(pick.width)x\(pick.height) @ \(Int(targetFPS))fps\(highBandwidthMode ? " [HIGH BW]" : "")")
     }
 
     // MARK: - Orientation
@@ -959,6 +1032,26 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastFrameTime = Date()
         frameCount += 1
 
+        // Track FPS via rolling 1-second window
+        let now = CACurrentMediaTime()
+        metricsAccumulator.framesReceived += 1
+        metricsFrameTimestamps.append(now)
+        let cutoff = now - 1.0
+        metricsFrameTimestamps.removeAll { $0 < cutoff }
+        let currentFPS = Double(metricsFrameTimestamps.count)
+
+        if frameCount % 15 == 0 {
+            var snapshot = metricsAccumulator
+            snapshot.actualFPS = currentFPS
+            snapshot.resolution = activeResolution
+            if let fps = Int(activeFPS.replacingOccurrences(of: "fps", with: "")) {
+                snapshot.configuredFPS = fps
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.liveMetrics = snapshot
+            }
+        }
+
         if isUsingExternalCamera && frameCount % 4 == 0,
            let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let score = laplacianVariance(buf)
@@ -972,10 +1065,17 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             lastFrameSharpness = score
         }
 
-        guard frameCount % UInt64(frameSkip) == 0 else { return }
-        guard !isProcessing else { return }
+        guard frameCount % UInt64(frameSkip) == 0 else {
+            metricsAccumulator.framesSkipped += 1
+            return
+        }
+        guard !isProcessing else {
+            metricsAccumulator.framesSkipped += 1
+            return
+        }
 
         if isUsingExternalCamera && lastFrameSharpness < sharpnessThreshold {
+            metricsAccumulator.framesSkipped += 1
             return
         }
 

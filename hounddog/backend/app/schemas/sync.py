@@ -87,3 +87,5 @@ class TicketUploadResponse(BaseModel):
     payment_url: str
     fine_amount: Decimal
     offense_number: int = 1
+    notification_sent: bool = False
+    notification_email: str | None = None

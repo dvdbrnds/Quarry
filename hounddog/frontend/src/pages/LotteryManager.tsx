@@ -114,6 +114,18 @@ export default function LotteryManager() {
     }
   }
 
+  const reloadSelected = useCallback(async () => {
+    await load();
+    if (selected) {
+      const res = await fetch("/api/permit-types?all=true", { headers: await authHeaders() });
+      if (res.ok) {
+        const all: PermitTypeRow[] = await res.json();
+        const updated = all.find((t) => t.id === selected.id);
+        if (updated) setSelected(updated);
+      }
+    }
+  }, [load, selected]);
+
   if (view === "overview" || !selected) {
     return <OverviewGrid types={types} onSelect={openManage} onReload={load} />;
   }
@@ -132,6 +144,7 @@ export default function LotteryManager() {
       onBack={goBack}
       onSimulate={() => setView("simulate")}
       onGoLive={() => setView("live")}
+      onReload={reloadSelected}
     />
   );
 }
@@ -306,16 +319,19 @@ function ManageView({
   onBack,
   onSimulate,
   onGoLive,
+  onReload,
 }: {
   permitType: PermitTypeRow;
   onBack: () => void;
   onSimulate: () => void;
   onGoLive: () => void;
+  onReload: () => Promise<void>;
 }) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showConfig, setShowConfig] = useState(false);
@@ -398,6 +414,38 @@ function ManageView({
     }
   }
 
+  async function handleResetLottery() {
+    const nonPending = applications.filter((a) => a.status !== "pending" && a.status !== "declined").length;
+    if (!confirm(
+      `Reset lottery for ${permitType.label}?\n\n` +
+      `This will move ${nonPending} application(s) back to "pending" status, ` +
+      `clear all rankings and lot assignments, and allow you to re-run the lottery.\n\n` +
+      `No applications will be deleted.`
+    )) return;
+
+    setResetting(true);
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch(`/api/permit-types/${permitType.id}/reset-lottery`, {
+        method: "POST",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.detail || "Reset failed");
+      }
+      const result = await res.json();
+      setMessage(`Reset ${result.reset} application(s) to pending. ${result.total_applications} total in pool — ready to re-run.`);
+      load();
+      await onReload();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setResetting(false);
+    }
+  }
+
   async function saveConfig() {
     setConfigSaving(true);
     try {
@@ -441,8 +489,7 @@ function ManageView({
           </button>
           <button
             onClick={onSimulate}
-            disabled={applications.length === 0}
-            className="px-4 py-2 border border-purple-300 text-purple-700 font-medium rounded-lg text-sm hover:bg-purple-50 transition-colors disabled:opacity-40"
+            className="px-4 py-2 border border-purple-300 text-purple-700 font-medium rounded-lg text-sm hover:bg-purple-50 transition-colors"
           >
             Simulate
           </button>
@@ -547,6 +594,15 @@ function ManageView({
         >
           {advancing ? "Processing..." : "Advance Waitlist"}
         </button>
+        {lotteryAlreadyRun && (
+          <button
+            onClick={handleResetLottery}
+            disabled={resetting}
+            className="px-4 py-2 border border-amber-300 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-40"
+          >
+            {resetting ? "Resetting..." : "Reset Lottery"}
+          </button>
+        )}
         {!windowClosed && (
           <span className="text-xs text-amber-700">
             Application window still open until{" "}
@@ -678,7 +734,10 @@ function SimulationView({
     }
   }
 
-  useEffect(() => { runSimulation(); }, []);
+  useEffect(() => {
+    runSimulation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permitType.id]);
 
   const previewStudent = result?.selected[previewIdx] || null;
 

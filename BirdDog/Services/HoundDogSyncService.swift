@@ -336,6 +336,8 @@ final class HoundDogSyncService: ObservableObject {
         let paymentUrl: String
         let fineAmount: String
         let offenseNumber: Int
+        let notificationSent: Bool
+        let notificationEmail: String?
     }
 
     func uploadTicket(_ ticket: PendingTicket) async throws -> TicketUploadResponse {
@@ -394,7 +396,9 @@ final class HoundDogSyncService: ObservableObject {
             ticketId: json["ticket_id"] as? String ?? ticket.ticketId,
             paymentUrl: json["payment_url"] as? String ?? "",
             fineAmount: json["fine_amount"] as? String ?? "0.00",
-            offenseNumber: json["offense_number"] as? Int ?? 1
+            offenseNumber: json["offense_number"] as? Int ?? 1,
+            notificationSent: json["notification_sent"] as? Bool ?? false,
+            notificationEmail: json["notification_email"] as? String
         )
     }
 

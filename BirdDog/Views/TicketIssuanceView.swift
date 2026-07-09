@@ -281,6 +281,43 @@ struct TicketIssuanceView: View {
                 }
             }
 
+            // Notification status
+            if result.notificationSent, let email = result.notificationEmail {
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "envelope.badge.fill")
+                            .font(.title3)
+                            .foregroundStyle(.blue)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Email Notification Sent")
+                                .font(.subheadline.bold())
+                            Text(email)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.blue.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "envelope.badge.shield.half.filled.fill")
+                            .font(.title3)
+                            .foregroundStyle(.orange)
+                        Text("No email on file — print required")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
             if !result.paymentUrl.isEmpty {
                 VStack(spacing: 8) {
                     Text("Payment QR Code")
@@ -304,16 +341,31 @@ struct TicketIssuanceView: View {
             }
 
             if printerService.isConnected {
-                Button {
-                    printTicket(result)
-                } label: {
-                    HStack {
-                        Image(systemName: "printer.fill")
-                        Text(isPrinting ? "Printing…" : "Print Ticket")
+                if result.notificationSent {
+                    Button {
+                        printTicket(result)
+                    } label: {
+                        HStack {
+                            Image(systemName: "printer")
+                            Text(isPrinting ? "Printing…" : "Print Copy (Optional)")
+                        }
+                        .font(.subheadline)
                     }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+                    .disabled(isPrinting)
+                } else {
+                    Button {
+                        printTicket(result)
+                    } label: {
+                        HStack {
+                            Image(systemName: "printer.fill")
+                            Text(isPrinting ? "Printing…" : "Print Ticket")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isPrinting)
                 }
-                .buttonStyle(.bordered)
-                .disabled(isPrinting)
             }
 
             if let printError {
@@ -323,7 +375,7 @@ struct TicketIssuanceView: View {
             }
 
             Button("Done") { dismiss() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(result.notificationSent ? .borderedProminent : .bordered)
                 .padding(.top)
         }
         .padding()
@@ -335,7 +387,8 @@ struct TicketIssuanceView: View {
             }
         }
         .onAppear {
-            if printerService.autoPrintEnabled && printerService.isConnected {
+            // Only auto-print when no email notification was delivered
+            if !result.notificationSent && printerService.autoPrintEnabled && printerService.isConnected {
                 printTicket(result)
             }
         }

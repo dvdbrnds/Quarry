@@ -185,7 +185,7 @@ async def accept_offer(
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
 
     session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
+        customer_email=app.student_email,
         line_items=[{
             "price_data": {
                 "currency": "usd",
@@ -198,6 +198,35 @@ async def accept_offer(
             "quantity": 1,
         }],
         mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "lottery_permit",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_permits, settings.gl_program,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_permits,
+                "gl_program": settings.gl_program,
+                "permit_type_code": pt.code,
+                "permit_type_label": pt.label,
+                "permit_price": str(pt.price),
+                "permit_valid_days": str(pt.valid_days),
+                "plate": app.plate,
+                "student_name": app.student_name,
+                "student_email": app.student_email,
+                "class_year": str(app.class_year) if app.class_year else "",
+                "application_id": str(app.id),
+                "lottery_rank": str(app.lottery_rank) if app.lottery_rank else "",
+                "assigned_lot": app.assigned_lot or "",
+                "lot_assignments": ",".join(pt.lot_assignments) if pt.lot_assignments else "",
+                "institution": settings.school_name or "moravian",
+            },
+        },
         success_url=f"{base_url}/student/permits?accepted={application_id}",
         cancel_url=f"{base_url}/student/permits",
         metadata={

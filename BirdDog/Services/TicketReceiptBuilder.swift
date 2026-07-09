@@ -167,10 +167,25 @@ struct TicketReceiptBuilder {
         _ = printerBuilder
             .styleAlignment(.center)
             .actionPrintText("\n")
-            .actionPrintText("This ticket is issued under the\n")
-            .actionPrintText("campus parking regulations.\n")
-            .actionPrintText("Appeals must be filed within\n")
-            .actionPrintText("10 business days.\n")
+
+        if ticket.ticketCategory == "moving" {
+            _ = printerBuilder
+                .actionPrintText("All violations must be paid or\n")
+                .actionPrintText("appealed within 10 days of\n")
+                .actionPrintText("the date issued.\n")
+                .actionPrintText("\n")
+                .actionPrintText("Fines not paid or appealed within\n")
+                .actionPrintText("10 days will result in a Traffic\n")
+                .actionPrintText("Citation via the Local Magistrate.\n")
+        } else {
+            _ = printerBuilder
+                .actionPrintText("This ticket is issued under the\n")
+                .actionPrintText("campus parking regulations.\n")
+                .actionPrintText("Appeals must be filed within\n")
+                .actionPrintText("10 business days.\n")
+        }
+
+        _ = printerBuilder
             .actionPrintText("\n")
             .actionPrintText(separator)
             .actionCut(.partial)

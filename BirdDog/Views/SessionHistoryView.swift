@@ -40,6 +40,24 @@ struct SessionHistoryView: View {
 
             if viewModel.sessionHistory.count >= 2 {
                 Section {
+                    NavigationLink {
+                        BenchmarkCompareView(sessions: viewModel.sessionHistory)
+                    } label: {
+                        Label("Compare Sessions", systemImage: "arrow.left.arrow.right")
+                    }
+
+                    Button {
+                        var urls: [URL] = []
+                        if let report = LogExporter.exportBenchmarkSummary(from: viewModel.sessionHistory) { urls.append(report) }
+                        if let csv = LogExporter.exportBenchmarkCSV(from: viewModel.sessionHistory) { urls.append(csv) }
+                        if !urls.isEmpty {
+                            exportURLs = urls
+                            showExport = true
+                        }
+                    } label: {
+                        Label("Export Benchmark Report", systemImage: "gauge.with.dots.needle.67percent")
+                    }
+
                     Button {
                         let all = viewModel.sessionHistory.flatMap(\.plates)
                         var urls: [URL] = []
@@ -107,13 +125,22 @@ struct SessionHistoryView: View {
             }
 
             HStack(spacing: 12) {
+                if let device = session.deviceModel {
+                    Label(device, systemImage: "ipad")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
                 if !session.primaryCamera.isEmpty {
                     Label(session.primaryCamera, systemImage: "camera")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+            }
 
+            HStack(spacing: 12) {
                 if !session.plates.isEmpty {
                     Text(String(format: "%.2fs avg", session.avgLatency))
                         .font(.caption2)
@@ -123,10 +150,16 @@ struct SessionHistoryView: View {
                         .foregroundStyle(.green)
                 }
 
-                if !session.diagnostics.isEmpty {
-                    Text("\(session.diagnostics.count) diag")
+                if let ocr = session.avgOCRTimeMs, ocr > 0 {
+                    Text(String(format: "%.0fms OCR", ocr))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.orange)
+                }
+
+                if let fps = session.avgActualFPS, fps > 0 {
+                    Text(String(format: "%.0f fps", fps))
+                        .font(.caption2)
+                        .foregroundStyle(.purple)
                 }
             }
         }
@@ -149,6 +182,20 @@ struct SessionDetailView: View {
 
     var body: some View {
         List {
+            if session.deviceModel != nil {
+                Section("Device") {
+                    if let model = session.deviceModel {
+                        LabeledContent("Model", value: model)
+                    }
+                    if let chip = session.deviceChip {
+                        LabeledContent("Chip", value: chip)
+                    }
+                    if let conn = session.connectionType {
+                        LabeledContent("Connection", value: conn)
+                    }
+                }
+            }
+
             Section("Summary") {
                 LabeledContent("Camera", value: session.primaryCamera)
                 LabeledContent("Plates Detected", value: "\(session.plates.count)")
@@ -156,14 +203,44 @@ struct SessionDetailView: View {
                 if !session.plates.isEmpty {
                     LabeledContent("Plates/min", value: String(format: "%.1f", session.platesPerMinute))
                     LabeledContent("Avg Latency", value: String(format: "%.3fs", session.avgLatency))
+                    LabeledContent("Median Latency", value: String(format: "%.3fs", session.medianLatency))
                     LabeledContent("Avg Confidence", value: String(format: "%.1f%%", session.avgConfidence * 100))
-
-                    let medLat = medianLatency(session.plates)
-                    LabeledContent("Median Latency", value: String(format: "%.3fs", medLat))
 
                     let minLat = session.plates.map(\.detectionLatency).min() ?? 0
                     let maxLat = session.plates.map(\.detectionLatency).max() ?? 0
                     LabeledContent("Min / Max Latency", value: String(format: "%.3f / %.3fs", minLat, maxLat))
+                }
+            }
+
+            if session.framesProcessed != nil || session.avgOCRTimeMs != nil {
+                Section("Pipeline Performance") {
+                    if let res = session.cameraResolution {
+                        LabeledContent("Resolution", value: res)
+                    }
+                    if let fps = session.cameraFPS, fps > 0 {
+                        LabeledContent("Configured FPS", value: "\(fps)")
+                    }
+                    if let fps = session.avgActualFPS, fps > 0 {
+                        LabeledContent("Actual FPS", value: String(format: "%.1f", fps))
+                    }
+                    if let tp = session.pixelThroughput, tp > 0 {
+                        LabeledContent("Pixel Throughput", value: String(format: "%.1f Mpx/s", tp / 1_000_000))
+                    }
+                    if let ocr = session.avgOCRTimeMs, ocr > 0 {
+                        LabeledContent("Avg OCR Time", value: String(format: "%.1f ms", ocr))
+                    }
+                    if let peak = session.peakOCRTimeMs, peak > 0 {
+                        LabeledContent("Peak OCR Time", value: String(format: "%.1f ms", peak))
+                    }
+                    if let processed = session.framesProcessed {
+                        LabeledContent("Frames Processed", value: "\(processed)")
+                    }
+                    if let skipped = session.framesSkipped {
+                        LabeledContent("Frames Skipped", value: "\(skipped)")
+                    }
+                    if session.frameSkipRatio > 0 {
+                        LabeledContent("Skip Ratio", value: String(format: "%.0f%%", session.frameSkipRatio * 100))
+                    }
                 }
             }
 
@@ -229,15 +306,5 @@ struct SessionDetailView: View {
         let mins = Int(d) / 60
         let secs = Int(d) % 60
         return "\(mins)m \(secs)s"
-    }
-
-    private func medianLatency(_ plates: [ScannedPlate]) -> Double {
-        guard !plates.isEmpty else { return 0 }
-        let sorted = plates.map(\.detectionLatency).sorted()
-        let mid = sorted.count / 2
-        if sorted.count.isMultiple(of: 2) {
-            return (sorted[mid - 1] + sorted[mid]) / 2.0
-        }
-        return sorted[mid]
     }
 }

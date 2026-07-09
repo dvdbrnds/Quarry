@@ -11,7 +11,7 @@ struct MovingViolationView: View {
     @State private var driverLicense = ""
     @State private var vehicleDescription = ""
     @State private var locationText = ""
-    @State private var selectedViolation = "speeding"
+    @State private var selectedViolation = "stop_sign"
     @State private var officerNotes = ""
     @State private var isSubmitting = false
     @State private var submittedResult: HoundDogSyncService.TicketUploadResponse?
@@ -23,19 +23,15 @@ struct MovingViolationView: View {
     @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
     @ObservedObject private var officerAuth = OfficerAuthService.shared
+    @ObservedObject private var violationTypeStore = ViolationTypeStore.shared
 
     var cameraService: CameraService?
 
-    private let movingViolations = [
-        ("speeding", "Speeding"),
-        ("stop_sign", "Failure to Stop"),
-        ("wrong_way", "Wrong Way"),
-        ("reckless", "Reckless Driving"),
-        ("crosswalk", "Crosswalk Violation"),
-        ("no_headlights", "No Headlights"),
-        ("distracted", "Distracted Driving"),
-        ("other_moving", "Other Moving Violation"),
-    ]
+    private var movingViolations: [(String, String)] {
+        violationTypeStore.types
+            .filter { $0.category == "moving" }
+            .map { ($0.code, $0.label) }
+    }
 
     var body: some View {
         NavigationStack {

@@ -17,6 +17,12 @@ interface Ticket {
   permit_number: string | null;
   issued_at: string;
   status: string;
+  ticket_category: string;
+  location_text: string | null;
+  vehicle_description: string | null;
+  driver_name: string | null;
+  driver_license: string | null;
+  officer_notes: string | null;
   appeal_note: string | null;
   appeal_decision: string | null;
   appeal_decided_by: string | null;
@@ -49,6 +55,7 @@ export default function Tickets() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<Ticket | null>(null);
 
   const load = useCallback(async () => {
@@ -56,13 +63,14 @@ export default function Tickets() {
     qs.set("page", String(page));
     if (search) qs.set("search", search);
     if (statusFilter) qs.set("status", statusFilter);
+    if (categoryFilter) qs.set("category", categoryFilter);
     const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
     if (res.ok) {
       const data: TicketList = await res.json();
       setTickets(data.items);
       setTotal(data.total);
     }
-  }, [page, search, statusFilter]);
+  }, [page, search, statusFilter, categoryFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -113,6 +121,15 @@ export default function Tickets() {
           <option value="escalated">Escalated</option>
           <option value="voided">Voided</option>
         </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="">All Types</option>
+          <option value="parking">Parking</option>
+          <option value="moving">Moving</option>
+        </select>
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -120,7 +137,7 @@ export default function Tickets() {
           <thead className="bg-navy text-bone text-left">
             <tr>
               <th className="px-4 py-3 font-medium">Plate</th>
-              <th className="px-4 py-3 font-medium">Lot</th>
+              <th className="px-4 py-3 font-medium">Location</th>
               <th className="px-4 py-3 font-medium">Violation</th>
               <th className="px-4 py-3 font-medium">Fine</th>
               <th className="px-4 py-3 font-medium">Status</th>
@@ -130,10 +147,17 @@ export default function Tickets() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {tickets.map((t) => (
-              <tr key={t.id} className="hover:bg-bone/50 cursor-pointer" onClick={() => setSelected(t)}>
+              <tr key={t.id} className={`hover:bg-bone/50 cursor-pointer ${
+                t.ticket_category === "moving" ? "border-l-4 border-l-signal-red/60" : ""
+              }`} onClick={() => setSelected(t)}>
                 <td className="px-4 py-3 font-mono">{t.plate}</td>
-                <td className="px-4 py-3">{t.lot}</td>
-                <td className="px-4 py-3 capitalize">{t.violation_type.replace("_", " ")}</td>
+                <td className="px-4 py-3">{t.ticket_category === "moving" ? (t.location_text || "—") : t.lot}</td>
+                <td className="px-4 py-3">
+                  <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
+                  {t.ticket_category === "moving" && (
+                    <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-signal-red/10 text-signal-red">MOVING</span>
+                  )}
+                </td>
                 <td className="px-4 py-3">${Number(t.fine_amount).toFixed(2)}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -172,12 +196,24 @@ export default function Tickets() {
 
       {selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold mb-4">Ticket Detail</h3>
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="text-lg font-semibold">
+                {selected.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail"}
+              </h3>
+              {selected.ticket_category === "moving" && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-signal-red/10 text-signal-red">Moving Violation</span>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3 text-sm mb-4">
               <div><span className="text-ink-mute">Plate:</span> <span className="font-mono">{selected.plate}</span></div>
-              <div><span className="text-ink-mute">Lot:</span> {selected.lot}</div>
-              <div><span className="text-ink-mute">Violation:</span> {selected.violation_type}</div>
+              {selected.ticket_category === "moving" ? (
+                <div><span className="text-ink-mute">Location:</span> {selected.location_text || "—"}</div>
+              ) : (
+                <div><span className="text-ink-mute">Lot:</span> {selected.lot}</div>
+              )}
+              <div><span className="text-ink-mute">Violation:</span> {selected.violation_type.replace(/_/g, " ")}</div>
               <div><span className="text-ink-mute">Fine:</span> ${Number(selected.fine_amount).toFixed(2)}</div>
               <div><span className="text-ink-mute">Status:</span> {selected.status}</div>
               <div><span className="text-ink-mute">Officer:</span> {selected.officer_name || selected.officer_id}</div>
@@ -185,6 +221,18 @@ export default function Tickets() {
               {selected.permit_number && <div><span className="text-ink-mute">Permit #:</span> {selected.permit_number}</div>}
               <div className="col-span-2"><span className="text-ink-mute">Issued:</span> {new Date(selected.issued_at).toLocaleString()}</div>
             </div>
+
+            {selected.ticket_category === "moving" && (
+              <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-4 text-sm">
+                <div className="font-medium text-red-800 mb-2">Driver & Vehicle</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {selected.driver_name && <div><span className="text-ink-mute">Driver:</span> {selected.driver_name}</div>}
+                  {selected.driver_license && <div><span className="text-ink-mute">License:</span> <span className="font-mono">{selected.driver_license}</span></div>}
+                  {selected.vehicle_description && <div className="col-span-2"><span className="text-ink-mute">Vehicle:</span> {selected.vehicle_description}</div>}
+                  {selected.officer_notes && <div className="col-span-2"><span className="text-ink-mute">Notes:</span> {selected.officer_notes}</div>}
+                </div>
+              </div>
+            )}
 
             {selected.photo_url && (
               <img src={selected.photo_url} alt="Violation photo" className="w-full rounded-lg mb-4 max-h-48 object-cover" />

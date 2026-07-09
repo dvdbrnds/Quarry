@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_publishable_key: str = ""
 
+    # Oracle ERP GL Configuration
+    gl_ledger: str = "Moravian Primary Ledger"
+    gl_source: str = "QUARRY"
+    gl_category_revenue: str = "Revenue"
+    gl_fund: str = "11"
+    gl_org: str = "5410"
+    gl_account_citations: str = "5210"
+    gl_account_permits: str = "4110"
+    gl_program: str = "00"
+    gl_cash_account: str = "1010"
+    gl_segment_separator: str = "."
+
     # SMTP Email
     smtp_host: str = ""
     smtp_port: int = 587

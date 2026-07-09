@@ -235,15 +235,33 @@ struct ContentView: View {
 
     private var liveStatsBadge: some View {
         let stats = viewModel.sessionStats
+        let m = viewModel.cameraService.liveMetrics
         return Group {
-            if stats.count > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "speedometer")
-                        .font(.caption2)
-                    Text("\(stats.count)p")
-                        .font(.caption2.bold())
-                    Text(String(format: "%.2fs", stats.avgLatency))
-                        .font(.caption2)
+            if stats.count > 0 || m.framesReceived > 0 {
+                HStack(spacing: 6) {
+                    if stats.count > 0 {
+                        Image(systemName: "speedometer")
+                            .font(.caption2)
+                        Text("\(stats.count)p")
+                            .font(.caption2.bold())
+                        Text(String(format: "%.2fs", stats.avgLatency))
+                            .font(.caption2)
+                    }
+                    if m.actualFPS > 0 {
+                        Text(String(format: "%.0ffps", m.actualFPS))
+                            .font(.caption2)
+                            .foregroundStyle(.cyan)
+                    }
+                    if m.avgOCRTimeMs > 0 {
+                        Text(String(format: "%.0fms", m.avgOCRTimeMs))
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                    if m.framesReceived > 100 {
+                        Text(String(format: "%.0f%% skip", m.skipRatio * 100))
+                            .font(.caption2)
+                            .foregroundStyle(m.skipRatio > 0.7 ? .red : .yellow)
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)

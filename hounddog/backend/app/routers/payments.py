@@ -92,13 +92,24 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
 
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
 
+    payer_email = None
+    if ticket.permit_id:
+        permit_result = await db.execute(
+            select(Permit).where(Permit.id == ticket.permit_id)
+        )
+        linked_permit = permit_result.scalar()
+        if linked_permit and linked_permit.email:
+            payer_email = linked_permit.email
+
+    ticket_ref = str(ticket.id)[:8].upper()
+
     session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
+        customer_email=payer_email,
         line_items=[{
             "price_data": {
                 "currency": "usd",
                 "product_data": {
-                    "name": f"Parking Ticket #{str(ticket.id)[:8]}",
+                    "name": f"Parking Citation #{ticket_ref}",
                     "description": f"Plate: {ticket.plate} | Violation: {ticket.violation_type}",
                 },
                 "unit_amount": int(ticket.fine_amount * 100),
@@ -106,6 +117,35 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
             "quantity": 1,
         }],
         mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": f"CITE {ticket_ref}"[:22],
+            "metadata": {
+                "type": "ticket_payment",
+                "revenue_category": "parking_citations",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_citations, settings.gl_program,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_citations,
+                "gl_program": settings.gl_program,
+                "ticket_id": str(ticket.id),
+                "ticket_ref": ticket_ref,
+                "violation_code": ticket.violation_type,
+                "violation_category": ticket.ticket_category,
+                "offense_number": str(ticket.offense_number),
+                "fine_amount": str(ticket.fine_amount),
+                "plate": ticket.plate,
+                "lot": ticket.lot or "",
+                "zone": ticket.zone or "",
+                "issued_at": ticket.issued_at.isoformat() if ticket.issued_at else "",
+                "officer_id": ticket.officer_id or "",
+                "payer_name": ticket.owner_name or ticket.driver_name or "",
+                "institution": settings.school_name or "moravian",
+            },
+        },
         success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}{data.cancel_url}",
         metadata={"ticket_id": str(ticket.id), "type": "ticket_payment"},
@@ -245,7 +285,7 @@ async def purchase_permit(
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
 
     session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
+        customer_email=data.email,
         line_items=[{
             "price_data": {
                 "currency": "usd",
@@ -258,6 +298,33 @@ async def purchase_permit(
             "quantity": 1,
         }],
         mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "permit_purchase",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_permits, settings.gl_program,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_permits,
+                "gl_program": settings.gl_program,
+                "permit_type_code": permit_type.code,
+                "permit_type_label": permit_type.label,
+                "permit_price": str(permit_type.price),
+                "permit_valid_days": str(permit_type.valid_days),
+                "ticket_id": str(ticket.id),
+                "ticket_ref": str(ticket.id)[:8].upper(),
+                "plate": data.plate.upper(),
+                "student_name": data.student_name,
+                "student_email": data.email,
+                "lot_assignments": ",".join(permit_type.lot_assignments) if permit_type.lot_assignments else "",
+                "institution": settings.school_name or "moravian",
+            },
+        },
         success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}{data.cancel_url}",
         metadata={
@@ -308,7 +375,7 @@ async def standalone_permit_purchase(
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
 
     session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
+        customer_email=data.email,
         line_items=[{
             "price_data": {
                 "currency": "usd",
@@ -321,6 +388,33 @@ async def standalone_permit_purchase(
             "quantity": 1,
         }],
         mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "standalone_permit_purchase",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_permits, settings.gl_program,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_permits,
+                "gl_program": settings.gl_program,
+                "permit_type_code": permit_type.code,
+                "permit_type_label": permit_type.label,
+                "permit_price": str(permit_type.price),
+                "permit_valid_days": str(permit_type.valid_days),
+                "plate": data.plate.upper().strip(),
+                "student_name": data.student_name,
+                "student_email": data.email,
+                "student_phone": data.phone or "",
+                "class_year": str(data.class_year) if data.class_year else "",
+                "lot_assignments": ",".join(permit_type.lot_assignments) if permit_type.lot_assignments else "",
+                "institution": settings.school_name or "moravian",
+            },
+        },
         success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}{data.cancel_url}",
         metadata={
@@ -350,8 +444,9 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
 
     try:
         session = stripe.checkout.Session.retrieve(session_id)
-        payment_status = session.get("payment_status", "unknown")
-        metadata = session.get("metadata", {})
+        data = session.to_dict()
+        payment_status = data.get("payment_status", "unknown")
+        metadata = data.get("metadata") or {}
         ticket_id = metadata.get("ticket_id")
         payment_type = metadata.get("type", "ticket_payment")
 
@@ -384,12 +479,12 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         event = stripe.Webhook.construct_event(
             payload, sig, settings.stripe_webhook_secret
         )
-    except (ValueError, stripe.error.SignatureVerificationError):
+    except (ValueError, stripe.SignatureVerificationError):
         raise HTTPException(400, "Invalid webhook signature")
 
     if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        metadata = session.get("metadata", {})
+        session = event["data"]["object"].to_dict()
+        metadata = session.get("metadata") or {}
         payment_type = metadata.get("type", "ticket_payment")
 
         if payment_type == "ticket_payment":
@@ -409,6 +504,14 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     if not ticket_id:
         return
 
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return
+
     ticket = await db.get(Ticket, uuid.UUID(ticket_id))
     if not ticket:
         return
@@ -417,7 +520,7 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
         ticket_id=ticket.id,
         amount=Decimal(session["amount_total"]) / 100,
         method="online_card",
-        stripe_payment_id=session["payment_intent"],
+        stripe_payment_id=stripe_pi,
     )
     db.add(payment)
     ticket.status = "paid"
@@ -425,10 +528,19 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
 
 
 async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSession):
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return
+
     ticket_id = metadata.get("ticket_id")
     permit_type_code = metadata.get("permit_type_code", "")
     student_name = metadata.get("student_name", "")
     plate = metadata.get("plate", "")
+    email = metadata.get("email", "")
     valid_days = int(metadata.get("valid_days", "365"))
 
     if not ticket_id:
@@ -438,7 +550,6 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     if not ticket:
         return
 
-    # Create the permit
     lot_assignment = ""
     permit_type_id = metadata.get("permit_type_id")
     if permit_type_id:
@@ -448,6 +559,7 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
 
     new_permit = Permit(
         name=student_name,
+        email=email or None,
         plates=[plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
@@ -457,16 +569,14 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     )
     db.add(new_permit)
 
-    # Record the payment
     payment = Payment(
         ticket_id=ticket.id,
         amount=Decimal(session["amount_total"]) / 100,
         method="online_permit_purchase",
-        stripe_payment_id=session["payment_intent"],
+        stripe_payment_id=stripe_pi,
     )
     db.add(payment)
 
-    # Reduce ticket fine and mark resolved
     es_result = await db.execute(
         select(EnforcementSettings).where(EnforcementSettings.id == 1)
     )
@@ -480,6 +590,14 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
     """Handle payment for a lottery-won permit application."""
     from ..models.permit_application import PermitApplication
     from ..models.permit_type import PermitType as PT
+
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return
 
     app_id = metadata.get("application_id")
     if not app_id:
@@ -504,7 +622,7 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
 
     new_permit = Permit(
         name=student_name,
-        email=email,
+        email=email or None,
         plates=[plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
@@ -514,12 +632,27 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
     )
     db.add(new_permit)
 
+    payment = Payment(
+        amount=Decimal(session["amount_total"]) / 100,
+        method="online_permit_purchase",
+        stripe_payment_id=stripe_pi,
+    )
+    db.add(payment)
+
     app.status = "accepted"
     await db.flush()
 
 
 async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: AsyncSession):
     """Handle payment for a standalone permit purchase (no ticket context)."""
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return
+
     permit_type_code = metadata.get("permit_type_code", "")
     student_name = metadata.get("student_name", "")
     plate = metadata.get("plate", "")
@@ -536,7 +669,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
 
     new_permit = Permit(
         name=student_name,
-        email=email,
+        email=email or None,
         phone=phone,
         plates=[plate],
         permit_type=permit_type_code,
@@ -550,7 +683,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
     payment = Payment(
         amount=Decimal(session["amount_total"]) / 100,
         method="online_permit_purchase",
-        stripe_payment_id=session["payment_intent"],
+        stripe_payment_id=stripe_pi,
     )
     db.add(payment)
     await db.flush()
@@ -717,4 +850,95 @@ async def export_payments(
         output,
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=payments.csv"},
+    )
+
+
+@router.get("/export/oracle-gl")
+async def export_oracle_gl(
+    since: date | None = None,
+    until: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Export payments as Oracle Cloud Financials FBDI journal import format.
+
+    Produces a two-line entry per payment:
+      - Debit line: Cash account (bank/merchant deposit)
+      - Credit line: Revenue account (citations or permits)
+    """
+    from fastapi.responses import StreamingResponse
+
+    query = select(Payment).where(Payment.amount > 0)
+    if since:
+        query = query.where(Payment.paid_at >= datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc))
+    if until:
+        query = query.where(Payment.paid_at < datetime.combine(until + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc))
+    query = query.order_by(Payment.paid_at)
+
+    result = await db.execute(query)
+    payments = result.scalars().all()
+
+    sep = settings.gl_segment_separator
+    cash_string = sep.join([settings.gl_fund, settings.gl_org, settings.gl_cash_account, settings.gl_program])
+    citation_string = sep.join([settings.gl_fund, settings.gl_org, settings.gl_account_citations, settings.gl_program])
+    permit_string = sep.join([settings.gl_fund, settings.gl_org, settings.gl_account_permits, settings.gl_program])
+
+    batch_date = date.today().isoformat()
+    batch_name = f"QUARRY-{batch_date}"
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "LedgerName", "AccountingDate", "UserJeSource", "UserJeCategory",
+        "CurrencyCode", "JeBatchName", "JeHeaderName", "JeLineName",
+        "Segment1", "Segment2", "Segment3", "Segment4",
+        "AccountCombination", "EnteredDrAmount", "EnteredCrAmount",
+        "LineDescription", "Reference1", "Reference2", "Reference3",
+        "Reference4", "Reference5",
+    ])
+
+    for p in payments:
+        acct_date = p.paid_at.strftime("%Y-%m-%d") if p.paid_at else batch_date
+
+        is_permit = p.method in ("online_permit_purchase",)
+        revenue_string = permit_string if is_permit else citation_string
+        revenue_account = settings.gl_account_permits if is_permit else settings.gl_account_citations
+        category = "Permit Revenue" if is_permit else "Citation Revenue"
+
+        ticket_ref = str(p.ticket_id)[:8].upper() if p.ticket_id else ""
+        ref_id = p.stripe_payment_id or p.bursar_reference or str(p.id)[:8]
+
+        header_name = f"{settings.gl_source}-{acct_date}"
+        amount_str = f"{p.amount:.2f}"
+
+        # Debit: Cash/Bank
+        writer.writerow([
+            settings.gl_ledger, acct_date, settings.gl_source,
+            settings.gl_category_revenue, "USD", batch_name, header_name,
+            f"DR-{ref_id[:12]}",
+            settings.gl_fund, settings.gl_org, settings.gl_cash_account, settings.gl_program,
+            cash_string, amount_str, "",
+            f"Parking {category} - {p.method}",
+            ref_id, ticket_ref, p.method,
+            str(p.id), str(p.ticket_id) if p.ticket_id else "",
+        ])
+
+        # Credit: Revenue
+        writer.writerow([
+            settings.gl_ledger, acct_date, settings.gl_source,
+            settings.gl_category_revenue, "USD", batch_name, header_name,
+            f"CR-{ref_id[:12]}",
+            settings.gl_fund, settings.gl_org, revenue_account, settings.gl_program,
+            revenue_string, "", amount_str,
+            f"Parking {category} - {p.method}",
+            ref_id, ticket_ref, p.method,
+            str(p.id), str(p.ticket_id) if p.ticket_id else "",
+        ])
+
+    output.seek(0)
+    filename = f"quarry_gl_journal_{batch_date}.csv"
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

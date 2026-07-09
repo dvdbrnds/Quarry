@@ -520,6 +520,9 @@ async def _upload_ticket_impl(
 
     payment_url = f"{settings.public_url}/pay?ticket={new_ticket.id}"
 
+    notification_sent = False
+    notification_email: str | None = None
+
     try:
         if permit and getattr(permit, "email", None):
             vtype_label = ticket.violation_type or "Parking Violation"
@@ -530,7 +533,7 @@ async def _upload_ticket_impl(
                 vt_label_row = vt_row.scalar()
                 if vt_label_row:
                     vtype_label = vt_label_row
-            await send_citation_email(
+            email_ok = await send_citation_email(
                 recipient_email=permit.email,
                 plate=new_ticket.plate,
                 lot=new_ticket.lot or "",
@@ -541,6 +544,9 @@ async def _upload_ticket_impl(
                 issued_at=new_ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if new_ticket.issued_at else "",
                 ticket_id=str(new_ticket.id),
             )
+            if email_ok:
+                notification_sent = True
+                notification_email = permit.email
     except Exception as e:
         import logging
         logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
@@ -551,4 +557,6 @@ async def _upload_ticket_impl(
         payment_url=payment_url,
         fine_amount=fine_amount,
         offense_number=offense_number,
+        notification_sent=notification_sent,
+        notification_email=notification_email,
     )

@@ -86,6 +86,7 @@ final class PlateReaderViewModel: ObservableObject {
 
     init() {
         cameraService.delegate = self
+        cameraService.highBandwidthMode = AppSettings.shared.highBandwidthMode
         hapticMedium.prepare()
         hapticHeavy.prepare()
         hapticLight.prepare()
@@ -155,6 +156,21 @@ final class PlateReaderViewModel: ObservableObject {
         session.endTime = Date()
         session.plates = scanLog
         session.diagnostics = diagnosticLog
+
+        let metrics = cameraService.snapshotAndResetMetrics()
+        session.deviceModel = DeviceInfo.modelName
+        session.deviceChip = DeviceInfo.chipName
+        session.deviceIdentifier = DeviceInfo.modelIdentifier
+        session.connectionType = cameraService.isUsingExternalCamera ? "External (USB)" : "Built-in"
+        session.cameraResolution = metrics.resolution
+        session.cameraFPS = metrics.configuredFPS
+        session.avgActualFPS = metrics.actualFPS
+        session.avgOCRTimeMs = metrics.avgOCRTimeMs
+        session.peakOCRTimeMs = metrics.peakOCRTimeMs
+        session.framesProcessed = metrics.framesProcessed
+        session.framesSkipped = metrics.framesSkipped
+        session.pixelThroughput = metrics.pixelThroughput
+
         sessionManager.save(session)
         activeSession = nil
         reloadHistory()

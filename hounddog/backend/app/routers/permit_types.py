@@ -331,6 +331,47 @@ async def advance_waitlist(
     return {"expired": len(expired), "advanced": advanced}
 
 
+@router.post("/{ptype_id}/reset-lottery")
+async def reset_lottery(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Reset all lottery results, returning every application to pending status.
+
+    Clears lottery_run_at on the permit type and resets rank, waitlist
+    position, assigned lot, and offer expiry on each application.  Does NOT
+    delete applications — they stay in the pool so the lottery can be re-run.
+    """
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+    if not pt.requires_lottery:
+        raise HTTPException(400, "This permit type does not use a lottery")
+
+    all_apps = (await db.execute(
+        select(PermitApplication).where(
+            PermitApplication.permit_type_id == ptype_id,
+            PermitApplication.status.notin_(["declined"]),
+        )
+    )).scalars().all()
+
+    reset_count = 0
+    for app in all_apps:
+        if app.status != "pending":
+            reset_count += 1
+        app.status = "pending"
+        app.lottery_rank = None
+        app.waitlist_position = None
+        app.assigned_lot = None
+        app.offer_expires_at = None
+
+    pt.lottery_run_at = None
+    await db.flush()
+
+    return {"reset": reset_count, "total_applications": len(all_apps)}
+
+
 @router.post("/{ptype_id}/simulate-lottery", response_model=SimulationResponse)
 async def simulate_lottery(
     ptype_id: uuid.UUID,
@@ -345,34 +386,21 @@ async def simulate_lottery(
     if not pt.requires_lottery:
         raise HTTPException(400, "This permit type does not use a lottery")
 
-    pending = (await db.execute(
+    # Include all non-withdrawn applications so simulation works both before
+    # and after the lottery has been run (dry-run treats everyone as a candidate).
+    candidates = (await db.execute(
         select(PermitApplication)
         .where(
             PermitApplication.permit_type_id == ptype_id,
-            PermitApplication.status == "pending",
+            PermitApplication.status.notin_(["declined"]),
         )
     )).scalars().all()
 
-    if not pending:
-        raise HTTPException(400, "No pending applications to simulate with")
-
-    active_count = (await db.execute(
-        select(func.count()).select_from(Permit).where(
-            Permit.permit_type == pt.code,
-            Permit.status == "active",
-            Permit.deleted_at.is_(None),
-        )
-    )).scalar() or 0
-
-    already_selected = (await db.execute(
-        select(func.count()).select_from(PermitApplication).where(
-            PermitApplication.permit_type_id == ptype_id,
-            PermitApplication.status.in_(["selected", "accepted"]),
-        )
-    )).scalar() or 0
+    if not candidates:
+        raise HTTPException(400, "No applications to simulate with")
 
     capacity = data.capacity_override if data.capacity_override else pt.max_capacity
-    spots = max(0, capacity - active_count - already_selected)
+    spots = max(0, capacity)
 
     from ..services.lottery import get_strategy, assign_lots
     strategy_name = data.strategy or pt.lottery_strategy or "seniority_timestamp"
@@ -380,7 +408,7 @@ async def simulate_lottery(
 
     # Work on copies to avoid mutating DB objects
     import copy
-    apps_copy = [copy.copy(a) for a in pending]
+    apps_copy = [copy.copy(a) for a in candidates]
     selected_apps, remaining = strategy.rank(apps_copy, spots)
 
     if pt.lot_assignments and len(pt.lot_assignments) > 1:
@@ -417,7 +445,7 @@ async def simulate_lottery(
     return SimulationResponse(
         selected=selected_results,
         waitlisted=waitlisted_results,
-        total_applicants=len(pending),
+        total_applicants=len(candidates),
         spots_available=spots,
         strategy_used=strategy_name,
     )
