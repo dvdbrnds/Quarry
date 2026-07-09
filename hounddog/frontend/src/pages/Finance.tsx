@@ -38,7 +38,7 @@ interface TimeSeriesPoint { date: string; citations_amount: string; permits_amou
 interface BursarResult { matched: number; unmatched: number; errors: string[]; }
 
 interface StripeTransaction {
-  id: string; amount: string; amount_refunded: string; net: string; fee: string;
+  id: string; source: string; amount: string; amount_refunded: string; net: string; fee: string;
   currency: string; status: string; description: string | null;
   customer_email: string | null; customer_name: string | null;
   receipt_url: string | null; payment_method_type: string | null;
@@ -164,14 +164,30 @@ export default function Finance() {
     .filter(([k]) => k !== "ticket_payment" && k !== "unknown")
     .reduce((sum, [, v]) => sum + Number(v), 0);
 
+  const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
+    charge: { label: "Charge", color: "blue" },
+    payment_intent: { label: "PaymentIntent", color: "purple" },
+    checkout_session: { label: "Checkout", color: "cyan" },
+  };
+
+  function stripeDashboardUrl(t: StripeTransaction) {
+    const base = `https://dashboard.stripe.com/${t.livemode ? "" : "test/"}`;
+    if (t.source === "checkout_session") return `${base}checkout/sessions/${t.id}`;
+    return `${base}payments/${t.id}`;
+  }
+
   const stripeColumns: ColumnsType<StripeTransaction> = [
     {
       title: "Date", dataIndex: "created", key: "created", width: 160,
       render: d => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
     },
     {
+      title: "Source", dataIndex: "source", key: "source", width: 110,
+      render: s => { const sl = SOURCE_LABELS[s] || { label: s, color: "default" }; return <Tag color={sl.color}>{sl.label}</Tag>; },
+    },
+    {
       title: "Status", dataIndex: "status", key: "status", width: 100,
-      render: s => <Tag color={s === "succeeded" ? "green" : s === "failed" ? "red" : s === "pending" ? "gold" : "default"}>{s}</Tag>,
+      render: s => <Tag color={s === "succeeded" ? "green" : s === "failed" ? "red" : s === "pending" ? "gold" : s === "canceled" ? "default" : "default"}>{s}</Tag>,
     },
     { title: "Description", dataIndex: "description", key: "desc", ellipsis: true, render: v => v || "—" },
     { title: "Customer", key: "customer", ellipsis: true, render: (_, t) => t.customer_name || t.customer_email || "—" },
@@ -190,7 +206,7 @@ export default function Finance() {
     {
       title: "Card", key: "card", width: 110,
       render: (_, t) => t.payment_method_last4
-        ? <span className="text-xs">{(t.payment_method_brand || "").toUpperCase()} •••• {t.payment_method_last4}</span>
+        ? <span className="text-xs">{(t.payment_method_brand || "").toUpperCase()} ···· {t.payment_method_last4}</span>
         : <span className="text-xs text-ink-mute">{t.payment_method_type || "—"}</span>,
     },
     {
@@ -198,7 +214,7 @@ export default function Finance() {
       render: (_, t) => (
         <Space size="small">
           {t.receipt_url && <a href={t.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600">Receipt</a>}
-          <a href={`https://dashboard.stripe.com/${t.livemode ? "" : "test/"}payments/${t.id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600">Stripe</a>
+          <a href={stripeDashboardUrl(t)} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600">Stripe</a>
         </Space>
       ),
     },
@@ -275,7 +291,7 @@ export default function Finance() {
                 expandable={{
                   expandedRowRender: t => (
                     <Descriptions size="small" column={3}>
-                      <Descriptions.Item label="Charge ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
+                      <Descriptions.Item label="ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
                       <Descriptions.Item label="Email">{t.customer_email || "—"}</Descriptions.Item>
                       <Descriptions.Item label="Name">{t.customer_name || "—"}</Descriptions.Item>
                       <Descriptions.Item label="Amount">{fmtDollars(t.amount)}</Descriptions.Item>

@@ -936,92 +936,226 @@ async def revenue_report(
     )
 
 
+def _charge_to_txn(ch) -> StripeTransaction:
+    """Convert a Stripe Charge object to our StripeTransaction schema."""
+    fee = Decimal("0")
+    net = Decimal("0")
+    bt = getattr(ch, "balance_transaction", None)
+    if bt and hasattr(bt, "fee"):
+        fee = Decimal(str(bt.fee)) / 100
+        net = Decimal(str(bt.net)) / 100
+
+    amount = Decimal(str(ch.amount)) / 100
+    refunded = Decimal(str(getattr(ch, "amount_refunded", 0))) / 100
+
+    pm_type = None
+    pm_last4 = None
+    pm_brand = None
+    pmd = getattr(ch, "payment_method_details", None)
+    if pmd:
+        pm_type = getattr(pmd, "type", None)
+        card = getattr(pmd, "card", None)
+        if card:
+            pm_last4 = getattr(card, "last4", None)
+            pm_brand = getattr(card, "brand", None)
+
+    billing = getattr(ch, "billing_details", None)
+    email = getattr(ch, "receipt_email", None) or (getattr(billing, "email", None) if billing else None)
+    name = getattr(billing, "name", None) if billing else None
+
+    return StripeTransaction(
+        id=ch.id,
+        source="charge",
+        amount=amount,
+        amount_refunded=refunded,
+        net=net,
+        fee=fee,
+        currency=getattr(ch, "currency", "usd"),
+        status=getattr(ch, "status", "unknown"),
+        description=getattr(ch, "description", None),
+        customer_email=email,
+        customer_name=name,
+        receipt_url=getattr(ch, "receipt_url", None),
+        payment_method_type=pm_type,
+        payment_method_last4=pm_last4,
+        payment_method_brand=pm_brand,
+        metadata=dict(ch.metadata) if getattr(ch, "metadata", None) else {},
+        created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
+        livemode=getattr(ch, "livemode", False),
+    )
+
+
+def _pi_to_txn(pi) -> StripeTransaction:
+    """Convert a Stripe PaymentIntent to our StripeTransaction schema."""
+    amount = Decimal(str(pi.amount)) / 100
+    refunded = Decimal("0")
+
+    pm_type = None
+    pm_last4 = None
+    pm_brand = None
+
+    charges = getattr(pi, "charges", None)
+    latest_charge = getattr(pi, "latest_charge", None)
+    receipt_url = None
+    fee = Decimal("0")
+    net = Decimal("0")
+
+    if charges and charges.data:
+        ch = charges.data[0]
+        refunded = Decimal(str(getattr(ch, "amount_refunded", 0))) / 100
+        receipt_url = getattr(ch, "receipt_url", None)
+        pmd = getattr(ch, "payment_method_details", None)
+        if pmd:
+            pm_type = getattr(pmd, "type", None)
+            card = getattr(pmd, "card", None)
+            if card:
+                pm_last4 = getattr(card, "last4", None)
+                pm_brand = getattr(card, "brand", None)
+        bt = getattr(ch, "balance_transaction", None)
+        if bt and hasattr(bt, "fee"):
+            fee = Decimal(str(bt.fee)) / 100
+            net = Decimal(str(bt.net)) / 100
+
+    status_map = {
+        "succeeded": "succeeded", "requires_payment_method": "failed",
+        "canceled": "canceled", "processing": "pending",
+        "requires_action": "pending", "requires_confirmation": "pending",
+        "requires_capture": "pending",
+    }
+
+    customer_email = None
+    customer_name = None
+    if getattr(pi, "receipt_email", None):
+        customer_email = pi.receipt_email
+    elif charges and charges.data:
+        billing = getattr(charges.data[0], "billing_details", None)
+        if billing:
+            customer_email = getattr(billing, "email", None)
+            customer_name = getattr(billing, "name", None)
+
+    return StripeTransaction(
+        id=pi.id,
+        source="payment_intent",
+        amount=amount,
+        amount_refunded=refunded,
+        net=net,
+        fee=fee,
+        currency=getattr(pi, "currency", "usd"),
+        status=status_map.get(getattr(pi, "status", ""), getattr(pi, "status", "unknown")),
+        description=getattr(pi, "description", None),
+        customer_email=customer_email,
+        customer_name=customer_name,
+        receipt_url=receipt_url,
+        payment_method_type=pm_type,
+        payment_method_last4=pm_last4,
+        payment_method_brand=pm_brand,
+        metadata=dict(pi.metadata) if getattr(pi, "metadata", None) else {},
+        created=datetime.fromtimestamp(pi.created, tz=timezone.utc),
+        livemode=getattr(pi, "livemode", False),
+    )
+
+
+def _session_to_txn(sess) -> StripeTransaction:
+    """Convert a Stripe Checkout Session to our StripeTransaction schema."""
+    amount = Decimal(str(getattr(sess, "amount_total", 0) or 0)) / 100
+    status_map = {"complete": "succeeded", "open": "pending", "expired": "canceled"}
+    customer_details = getattr(sess, "customer_details", None)
+
+    return StripeTransaction(
+        id=sess.id,
+        source="checkout_session",
+        amount=amount,
+        amount_refunded=Decimal("0"),
+        net=Decimal("0"),
+        fee=Decimal("0"),
+        currency=getattr(sess, "currency", "usd") or "usd",
+        status=status_map.get(getattr(sess, "status", ""), getattr(sess, "status", "unknown")),
+        description=f"Checkout Session",
+        customer_email=getattr(sess, "customer_email", None) or (getattr(customer_details, "email", None) if customer_details else None),
+        customer_name=getattr(customer_details, "name", None) if customer_details else None,
+        receipt_url=None,
+        payment_method_type=None,
+        payment_method_last4=None,
+        payment_method_brand=None,
+        metadata=dict(sess.metadata) if getattr(sess, "metadata", None) else {},
+        created=datetime.fromtimestamp(sess.created, tz=timezone.utc),
+        livemode=getattr(sess, "livemode", False),
+    )
+
+
 @router.get("/stripe-transactions", response_model=StripeTransactionsResponse)
 async def stripe_transactions(
     limit: int = Query(50, ge=1, le=100),
-    starting_after: str | None = None,
     user: OktaUser = Depends(require_admin()),
 ):
-    """Pull transactions directly from Stripe API — no webhook dependency."""
+    """Pull transactions from all Stripe APIs — Charges, PaymentIntents, and Checkout Sessions."""
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured — QUARRY_STRIPE_SECRET_KEY is empty")
 
     import stripe
     stripe.api_key = settings.stripe_secret_key
 
+    seen_ids: set[str] = set()
     transactions: list[StripeTransaction] = []
     overview = StripeOverview()
     has_more = False
 
+    def add_txn(txn: StripeTransaction):
+        if txn.id in seen_ids:
+            return
+        seen_ids.add(txn.id)
+        transactions.append(txn)
+        if txn.status == "succeeded":
+            overview.successful_count += 1
+            overview.total_volume += txn.amount
+            overview.total_fees += txn.fee
+            overview.total_net += txn.net
+        if txn.amount_refunded > 0:
+            overview.refunded_count += 1
+            overview.total_refunded += txn.amount_refunded
+        if txn.status == "failed":
+            overview.failed_count += 1
+
     try:
-        charges = stripe.Charge.list(limit=limit, expand=["data.balance_transaction"])
-        has_more = charges.has_more
+        try:
+            charges = stripe.Charge.list(limit=limit, expand=["data.balance_transaction"])
+            has_more = has_more or charges.has_more
+            for ch in charges.data:
+                try:
+                    add_txn(_charge_to_txn(ch))
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-        for ch in charges.data:
-            try:
-                fee = Decimal("0")
-                net = Decimal("0")
-                bt = getattr(ch, "balance_transaction", None)
-                if bt and hasattr(bt, "fee"):
-                    fee = Decimal(str(bt.fee)) / 100
-                    net = Decimal(str(bt.net)) / 100
+        try:
+            pis = stripe.PaymentIntent.list(limit=limit, expand=["data.charges.data.balance_transaction"])
+            has_more = has_more or pis.has_more
+            for pi in pis.data:
+                try:
+                    add_txn(_pi_to_txn(pi))
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-                amount = Decimal(str(ch.amount)) / 100
-                refunded = Decimal(str(getattr(ch, "amount_refunded", 0))) / 100
-
-                pm_type = None
-                pm_last4 = None
-                pm_brand = None
-                pmd = getattr(ch, "payment_method_details", None)
-                if pmd:
-                    pm_type = getattr(pmd, "type", None)
-                    card = getattr(pmd, "card", None)
-                    if card:
-                        pm_last4 = getattr(card, "last4", None)
-                        pm_brand = getattr(card, "brand", None)
-
-                billing = getattr(ch, "billing_details", None)
-                email = getattr(ch, "receipt_email", None) or (getattr(billing, "email", None) if billing else None)
-                name = getattr(billing, "name", None) if billing else None
-
-                transactions.append(StripeTransaction(
-                    id=ch.id,
-                    amount=amount,
-                    amount_refunded=refunded,
-                    net=net,
-                    fee=fee,
-                    currency=getattr(ch, "currency", "usd"),
-                    status=getattr(ch, "status", "unknown"),
-                    description=getattr(ch, "description", None),
-                    customer_email=email,
-                    customer_name=name,
-                    receipt_url=getattr(ch, "receipt_url", None),
-                    payment_method_type=pm_type,
-                    payment_method_last4=pm_last4,
-                    payment_method_brand=pm_brand,
-                    metadata=dict(ch.metadata) if getattr(ch, "metadata", None) else {},
-                    created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
-                    livemode=getattr(ch, "livemode", False),
-                ))
-
-                status = getattr(ch, "status", "")
-                if status == "succeeded":
-                    overview.successful_count += 1
-                    overview.total_volume += amount
-                    overview.total_fees += fee
-                    overview.total_net += net
-                if getattr(ch, "refunded", False):
-                    overview.refunded_count += 1
-                    overview.total_refunded += refunded
-                if status == "failed":
-                    overview.failed_count += 1
-            except Exception:
-                continue
+        try:
+            sessions = stripe.checkout.Session.list(limit=limit)
+            has_more = has_more or sessions.has_more
+            for sess in sessions.data:
+                try:
+                    add_txn(_session_to_txn(sess))
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
     except stripe.StripeError as e:
         raise HTTPException(502, f"Stripe API error: {str(e)}")
     except Exception as e:
         raise HTTPException(500, f"Error processing Stripe data: {str(e)}")
+
+    transactions.sort(key=lambda t: t.created, reverse=True)
 
     return StripeTransactionsResponse(
         overview=overview,

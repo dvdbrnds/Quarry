@@ -192,6 +192,7 @@ class StandalonePermitPurchaseResponse(BaseModel):
 
 class StripeTransaction(BaseModel):
     id: str
+    source: str = "charge"
     amount: Decimal
     amount_refunded: Decimal = Decimal("0")
     net: Decimal = Decimal("0")
