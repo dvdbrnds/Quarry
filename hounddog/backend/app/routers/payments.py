@@ -17,6 +17,7 @@ from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
 from ..models.ticket import Ticket
+from ..services.permit_numbering import next_permit_number
 from ..schemas.payment import (
     AvailablePermitsResponse,
     AvailablePermitType,
@@ -659,6 +660,7 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
             lot_assignment = ",".join(pt.lot_assignments)
 
     new_permit = Permit(
+        permit_number=await next_permit_number(db),
         name=student_name,
         email=email or None,
         plates=[plate],
@@ -728,6 +730,7 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
             lot_assignment = ",".join(pt.lot_assignments)
 
     new_permit = Permit(
+        permit_number=await next_permit_number(db),
         name=student_name,
         email=email or None,
         plates=[plate],
@@ -781,6 +784,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
             lot_assignment = ",".join(pt.lot_assignments)
 
     new_permit = Permit(
+        permit_number=await next_permit_number(db),
         name=student_name,
         email=email or None,
         phone=phone,

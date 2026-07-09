@@ -478,7 +478,7 @@ async def _upload_ticket_impl(
         if not owner_name:
             owner_name = permit.name
         if not permit_number:
-            permit_number = permit.student_id
+            permit_number = permit.permit_number or permit.student_id
 
     new_ticket = Ticket(
         plate=ticket.plate.upper(),

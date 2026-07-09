@@ -1,6 +1,7 @@
 """Faculty/staff permit renewal via magic-link token."""
 
 import secrets
+import uuid as uuid_mod
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,12 +10,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, require_admin
+from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.renewal_token import RenewalToken
 from ..services.email import send_renewal_email
+from ..services.permit_numbering import next_permit_number
 
 router = APIRouter()
 
@@ -163,6 +165,63 @@ async def send_renewal_campaign(
     return SendCampaignResult(sent=sent, skipped=skipped, errors=errors)
 
 
+class SendSingleResult(BaseModel):
+    status: str
+    message: str
+    token: str | None = None
+
+
+@router.post("/send/{permit_id}", response_model=SendSingleResult)
+async def send_renewal_to_permit(
+    permit_id: uuid_mod.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(get_current_user),
+):
+    """Send a renewal email to a single permit holder. Creates a fresh token even if one exists."""
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    if not permit.email:
+        raise HTTPException(400, "Permit has no email address")
+
+    token = secrets.token_urlsafe(48)
+    renewal = RenewalToken(
+        token=token,
+        permit_id=permit.id,
+        email=permit.email,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+    db.add(renewal)
+
+    base_url = settings.public_url.rstrip("/")
+    renew_url = f"{base_url}/api/renewals/{token}/quick-renew"
+    decline_url = f"{base_url}/api/renewals/{token}/decline"
+
+    success = await send_renewal_email(
+        recipient_email=permit.email,
+        name=permit.name,
+        permit_type=permit.permit_type,
+        lot_assignment=permit.lot_assignment,
+        end_date=permit.end_date.isoformat() if permit.end_date else "June 30",
+        renew_url=renew_url,
+        decline_url=decline_url,
+    )
+
+    await db.flush()
+
+    if success:
+        return SendSingleResult(
+            status="sent",
+            message=f"Renewal email sent to {permit.email}",
+            token=token,
+        )
+    return SendSingleResult(
+        status="failed",
+        message=f"SMTP send failed for {permit.email} — check server logs",
+    )
+
+
 @router.get("/{token}/quick-renew", response_class=HTMLResponse)
 async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
     """One-click renewal from email button. Renews the permit and shows confirmation."""
@@ -203,6 +262,7 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
     new_end = _next_june_30()
 
     new_permit = Permit(
+        permit_number=await next_permit_number(db),
         name=permit.name,
         email=permit.email,
         phone=permit.phone,
@@ -346,6 +406,7 @@ async def confirm_renewal(
     plates = [new_plate] if new_plate else permit.plates
 
     new_permit = Permit(
+        permit_number=await next_permit_number(db),
         name=permit.name,
         email=permit.email,
         phone=permit.phone,

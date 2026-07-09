@@ -29,11 +29,13 @@ from ..services.permit_lifecycle import (
     find_duplicates,
     get_permit_stats,
 )
+from ..services.permit_numbering import next_permit_number
 from ..websocket import manager
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 SORTABLE_FIELDS = {
+    "permit_number": Permit.permit_number,
     "name": Permit.name,
     "student_id": Permit.student_id,
     "status": Permit.status,
@@ -72,6 +74,7 @@ async def list_duplicates(db: AsyncSession = Depends(get_db)):
                     seen_ids.add(p.id)
                     duplicates.append({
                         "id": str(p.id),
+                        "permit_number": p.permit_number,
                         "name": p.name,
                         "plates": p.plates,
                         "conflicting_plate": plate,
@@ -100,6 +103,7 @@ async def list_permits(
             or_(
                 Permit.name.ilike(like),
                 Permit.student_id.ilike(like),
+                Permit.permit_number.ilike(like),
                 Permit.plates.any(search.upper()),
             )
         )
@@ -145,7 +149,10 @@ async def list_permits(
 
 @router.post("", response_model=PermitRead, status_code=201)
 async def create_permit(data: PermitCreate, db: AsyncSession = Depends(get_db)):
-    permit = Permit(**data.model_dump())
+    fields = data.model_dump()
+    if not fields.get("permit_number"):
+        fields["permit_number"] = await next_permit_number(db)
+    permit = Permit(**fields)
     db.add(permit)
     await db.flush()
     await db.refresh(permit)
@@ -245,6 +252,7 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
         new_end = new_start + timedelta(days=valid_days)
 
     renewed = Permit(
+        permit_number=await next_permit_number(db),
         name=old.name,
         student_id=old.student_id,
         email=old.email,
@@ -351,6 +359,7 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
         "prior_permits": [
             {
                 "id": str(p.id),
+                "permit_number": p.permit_number,
                 "name": p.name,
                 "permit_type": p.permit_type,
                 "status": p.status,
@@ -419,7 +428,7 @@ async def import_permits(
                 lot_assignment=row.lot_zone,
                 permit_type=row.permit_type,
                 status=row.permit_status,
-                student_id=row.permit_number,
+                permit_number=row.permit_number or None,
                 start_date=start or date.today(),
                 end_date=end,
             )
@@ -475,7 +484,7 @@ async def import_permits_csv(
                 lot_assignment=row.get("lot_zone", ""),
                 permit_type=row.get("permit_type", "student"),
                 status=row.get("permit_status", "active"),
-                student_id=row.get("permit_number", ""),
+                permit_number=row.get("permit_number") or None,
                 start_date=date.today(),
                 end_date=end,
             )
@@ -499,13 +508,14 @@ async def export_permits(db: AsyncSession = Depends(get_db)):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "id", "student_id", "name", "email", "plates", "lot_assignment",
-        "permit_type", "status", "start_date", "end_date",
+        "id", "permit_number", "student_id", "name", "email", "plates",
+        "lot_assignment", "permit_type", "status", "start_date", "end_date",
     ])
     for p in permits:
         writer.writerow([
-            str(p.id), p.student_id, p.name, p.email or "",
-            ";".join(p.plates), p.lot_assignment, p.permit_type, p.status,
+            str(p.id), p.permit_number or "", p.student_id, p.name,
+            p.email or "", ";".join(p.plates), p.lot_assignment,
+            p.permit_type, p.status,
             p.start_date.isoformat() if p.start_date else "",
             p.end_date.isoformat() if p.end_date else "",
         ])
@@ -547,6 +557,7 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
             "permits": [
                 {
                     "id": str(p.id),
+                    "permit_number": p.permit_number,
                     "name": p.name,
                     "student_id": p.student_id,
                     "plates": p.plates,

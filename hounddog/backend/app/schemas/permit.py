@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class PermitBase(BaseModel):
+    permit_number: str | None = None
     student_id: str = ""
     name: str
     email: str | None = None
@@ -24,6 +25,7 @@ class PermitCreate(PermitBase):
 
 
 class PermitUpdate(BaseModel):
+    permit_number: str | None = None
     student_id: str | None = None
     name: str | None = None
     email: str | None = None

@@ -102,6 +102,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS notes TEXT",
             # Permit email
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
+            # QPS permit numbering
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS permit_number VARCHAR(32)",
+            "CREATE SEQUENCE IF NOT EXISTS qps_permit_number_seq START WITH 1",
             # Lot closure tracking
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT false",
             # SheepDog occupancy sensing

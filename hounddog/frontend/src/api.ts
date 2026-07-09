@@ -27,6 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface Permit {
   id: string;
+  permit_number: string | null;
   student_id: string;
   name: string;
   email: string | null;

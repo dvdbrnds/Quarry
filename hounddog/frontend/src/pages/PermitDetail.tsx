@@ -52,6 +52,7 @@ export default function PermitDetail() {
   ];
 
   const relatedCols: ColumnsType<any> = [
+    { title: "Permit #", dataIndex: "permit_number", key: "permit_number", render: v => v ? <span className="font-mono text-xs">{v}</span> : <span className="text-ink-mute">Legacy</span> },
     { title: "Name", dataIndex: "name", key: "name" },
     { title: "Type", dataIndex: "permit_type", key: "type", render: v => <span className="capitalize">{v}</span> },
     { title: "Status", dataIndex: "status", key: "status", render: v => <span className="capitalize">{v}</span> },
@@ -120,9 +121,13 @@ export default function PermitDetail() {
       <Card className="mb-6">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-2xl font-bold">{p.name}</h2>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-2xl font-bold">{p.name}</h2>
+              {p.permit_number && <span className="font-mono text-sm bg-navy/10 rounded px-2 py-0.5">{p.permit_number}</span>}
+            </div>
             <Descriptions size="small" className="mt-2" column={4}>
-              <Descriptions.Item label="ID">{p.student_id || "N/A"}</Descriptions.Item>
+              <Descriptions.Item label="Permit #">{p.permit_number || <span className="text-ink-mute">Legacy</span>}</Descriptions.Item>
+              <Descriptions.Item label="Student ID">{p.student_id || "N/A"}</Descriptions.Item>
               <Descriptions.Item label="Plates"><span className="font-mono">{p.plates?.join(", ")}</span></Descriptions.Item>
               <Descriptions.Item label="Lot">{p.lot_assignment}</Descriptions.Item>
               <Descriptions.Item label="Type"><span className="capitalize">{p.permit_type}</span></Descriptions.Item>

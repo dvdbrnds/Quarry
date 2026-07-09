@@ -4,8 +4,9 @@ import { api, Permit, ImportResult } from "../api";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Upload,
+  Space, Tabs, Alert, App, Upload, Tooltip,
 } from "antd";
+import { MailOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import LotteryManager from "./LotteryManager";
@@ -232,6 +233,34 @@ export default function Permits() {
     });
   }
 
+  async function handleSendRenewal(p: Permit) {
+    if (!p.email) {
+      message.warning("This permit has no email address");
+      return;
+    }
+    modal.confirm({
+      title: "Send renewal email?",
+      content: `A renewal email will be sent to ${p.email} (${p.name}).`,
+      okText: "Send",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/renewals/send/${p.id}`, {
+            method: "POST",
+            headers: await authHeaders(),
+          });
+          const data = await res.json();
+          if (data.status === "sent") {
+            message.success(data.message);
+          } else {
+            message.warning(data.message);
+          }
+        } catch {
+          message.error("Failed to send renewal email");
+        }
+      },
+    });
+  }
+
   function handleBulkAction() {
     if (!bulkAction || selected.size === 0) return;
     modal.confirm({
@@ -287,6 +316,7 @@ export default function Permits() {
   };
 
   const columns: ColumnsType<Permit> = [
+    { title: "Permit #", dataIndex: "permit_number", key: "permit_number", sorter: true, width: 120, render: (v) => v ? <span className="font-mono text-xs font-medium">{v}</span> : <span className="text-ink-mute">—</span> },
     { title: "Name", dataIndex: "name", key: "name", sorter: true, render: (name) => <span className="font-medium">{name}</span> },
     { title: "Student ID", dataIndex: "student_id", key: "student_id", sorter: true, render: (v) => v || "—" },
     { title: "Plates", dataIndex: "plates", key: "plates", render: (plates: string[]) => <span className="font-mono text-xs">{plates.join(", ")}</span> },
@@ -307,9 +337,16 @@ export default function Permits() {
       ),
     },
     {
-      title: "Actions", key: "actions", width: 120,
+      title: "Actions", key: "actions", width: 180,
       render: (_, p) => (
         <Space onClick={e => e.stopPropagation()}>
+          <Tooltip title={p.email ? `Send renewal to ${p.email}` : "No email on file"}>
+            <Button size="small" icon={<MailOutlined />}
+              disabled={!p.email}
+              onClick={() => handleSendRenewal(p)}>
+              Renew
+            </Button>
+          </Tooltip>
           <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
           <Button type="link" size="small" danger onClick={() => handleDelete(p.id)}>Del</Button>
         </Space>
