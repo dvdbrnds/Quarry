@@ -139,7 +139,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
       <nav className="bg-[#1a2744] text-[#f5f0e8] px-6 py-4 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/quarry-logo.png" alt="Quarry" className="h-8 w-auto" />
+            <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
             <div>
               <h1 className="text-lg font-bold text-[#c9a84c]">Quarry</h1>
               <span className="text-xs text-[#f5f0e8]/60">Parking Permit Lottery</span>

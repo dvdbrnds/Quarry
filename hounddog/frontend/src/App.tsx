@@ -47,7 +47,7 @@ function AdminShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          <img src="/quarry-logo.png" alt="Quarry" className="h-8 w-auto" />
+          <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
           <h1 className="text-lg font-bold tracking-wide text-brass">
             Quarry
           </h1>
@@ -99,7 +99,7 @@ function StudentShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          <img src="/quarry-logo.png" alt="Quarry" className="h-8 w-auto" />
+          <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
           <h1 className="text-lg font-bold tracking-wide text-brass">
             Quarry
           </h1>
