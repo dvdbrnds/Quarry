@@ -185,3 +185,42 @@ class StandalonePermitPurchaseRequest(BaseModel):
 class StandalonePermitPurchaseResponse(BaseModel):
     checkout_url: str
     session_id: str
+
+
+# --- Stripe Direct ---
+
+
+class StripeTransaction(BaseModel):
+    id: str
+    amount: Decimal
+    amount_refunded: Decimal = Decimal("0")
+    net: Decimal = Decimal("0")
+    fee: Decimal = Decimal("0")
+    currency: str = "usd"
+    status: str
+    description: str | None = None
+    customer_email: str | None = None
+    customer_name: str | None = None
+    receipt_url: str | None = None
+    payment_method_type: str | None = None
+    payment_method_last4: str | None = None
+    payment_method_brand: str | None = None
+    metadata: dict = {}
+    created: datetime
+    livemode: bool = False
+
+
+class StripeOverview(BaseModel):
+    total_volume: Decimal = Decimal("0")
+    total_fees: Decimal = Decimal("0")
+    total_net: Decimal = Decimal("0")
+    total_refunded: Decimal = Decimal("0")
+    successful_count: int = 0
+    refunded_count: int = 0
+    failed_count: int = 0
+
+
+class StripeTransactionsResponse(BaseModel):
+    overview: StripeOverview
+    transactions: list[StripeTransaction]
+    has_more: bool = False

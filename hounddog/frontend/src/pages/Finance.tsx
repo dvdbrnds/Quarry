@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty,
+  Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty, Spin, Tabs, Descriptions,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -18,74 +18,62 @@ async function downloadWithAuth(url: string, filename: string) {
 }
 
 interface RevenueReport {
-  total_fines_issued: string;
-  total_collected: string;
-  total_outstanding: string;
-  collection_rate: number;
-  by_method: Record<string, string>;
-  by_status: Record<string, number>;
-  by_payment_type: Record<string, string>;
+  total_fines_issued: string; total_collected: string; total_outstanding: string;
+  collection_rate: number; by_method: Record<string, string>;
+  by_status: Record<string, number>; by_payment_type: Record<string, string>;
 }
 
 interface PaymentListItem {
-  id: string;
-  ticket_id: string | null;
-  amount: string;
-  method: string;
-  stripe_payment_id: string | null;
-  payment_type: string | null;
-  payer_name: string | null;
-  payer_email: string | null;
-  description: string | null;
-  plate: string | null;
-  paid_at: string;
+  id: string; ticket_id: string | null; amount: string; method: string;
+  stripe_payment_id: string | null; payment_type: string | null;
+  payer_name: string | null; payer_email: string | null;
+  description: string | null; plate: string | null; paid_at: string;
 }
 
 interface PaymentListResponse {
-  items: PaymentListItem[];
-  total: number;
-  page: number;
-  page_size: number;
-  pages: number;
+  items: PaymentListItem[]; total: number; page: number; page_size: number; pages: number;
 }
 
-interface TimeSeriesPoint {
-  date: string;
-  citations_amount: string;
-  permits_amount: string;
-  total: string;
+interface TimeSeriesPoint { date: string; citations_amount: string; permits_amount: string; total: string; }
+interface BursarResult { matched: number; unmatched: number; errors: string[]; }
+
+interface StripeTransaction {
+  id: string; amount: string; amount_refunded: string; net: string; fee: string;
+  currency: string; status: string; description: string | null;
+  customer_email: string | null; customer_name: string | null;
+  receipt_url: string | null; payment_method_type: string | null;
+  payment_method_last4: string | null; payment_method_brand: string | null;
+  metadata: Record<string, string>; created: string; livemode: boolean;
 }
 
-interface BursarResult {
-  matched: number;
-  unmatched: number;
-  errors: string[];
+interface StripeOverview {
+  total_volume: string; total_fees: string; total_net: string;
+  total_refunded: string; successful_count: number;
+  refunded_count: number; failed_count: number;
+}
+
+interface StripeTransactionsResponse {
+  overview: StripeOverview; transactions: StripeTransaction[]; has_more: boolean;
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  ticket_payment: "red",
-  permit_purchase: "blue",
-  standalone_permit_purchase: "blue",
-  lottery_permit: "purple",
+  ticket_payment: "red", permit_purchase: "blue", standalone_permit_purchase: "blue", lottery_permit: "purple",
 };
-
 const TYPE_LABELS: Record<string, string> = {
-  ticket_payment: "Citation",
-  permit_purchase: "Permit",
-  standalone_permit_purchase: "Permit",
-  lottery_permit: "Lottery",
+  ticket_payment: "Citation", permit_purchase: "Permit", standalone_permit_purchase: "Permit", lottery_permit: "Lottery",
+};
+const METHOD_LABELS: Record<string, string> = {
+  online_card: "Stripe", online_permit_purchase: "Stripe", bursar: "Bursar",
 };
 
-const METHOD_LABELS: Record<string, string> = {
-  online_card: "Stripe",
-  online_permit_purchase: "Stripe",
-  bursar: "Bursar",
-};
+const fmtDollars = (val: string | number) => `$${Number(val).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
 export default function Finance() {
   const { message } = App.useApp();
   const [report, setReport] = useState<RevenueReport | null>(null);
   const [payments, setPayments] = useState<PaymentListResponse | null>(null);
+  const [stripe, setStripe] = useState<StripeTransactionsResponse | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(true);
   const [timeSeries, setTimeSeries] = useState<TimeSeriesPoint[]>([]);
   const [tsPeriod, setTsPeriod] = useState<"daily" | "monthly">("daily");
   const [bursarResult, setBursarResult] = useState<BursarResult | null>(null);
@@ -101,10 +89,8 @@ export default function Finance() {
   const [glTo, setGlTo] = useState<dayjs.Dayjs | null>(null);
 
   const loadReport = useCallback(async () => {
-    try {
-      const res = await fetch("/api/payments/revenue", { headers: await authHeaders() });
-      if (res.ok) setReport(await res.json());
-    } catch { /* ignore */ }
+    try { const res = await fetch("/api/payments/revenue", { headers: await authHeaders() }); if (res.ok) setReport(await res.json()); }
+    catch { /* ignore */ }
   }, []);
 
   const loadPayments = useCallback(async () => {
@@ -119,6 +105,15 @@ export default function Finance() {
     } catch { /* ignore */ }
   }, [listPage, filterType, filterMethod, filterDateFrom, filterDateTo]);
 
+  const loadStripe = useCallback(async () => {
+    setStripeLoading(true);
+    try {
+      const res = await fetch("/api/payments/stripe-transactions?limit=100", { headers: await authHeaders() });
+      if (res.ok) setStripe(await res.json());
+      else if (res.status === 503) setStripe(null);
+    } catch { /* ignore */ } finally { setStripeLoading(false); }
+  }, []);
+
   const loadTimeSeries = useCallback(async () => {
     try {
       const res = await fetch(`/api/payments/revenue/timeseries?period=${tsPeriod}`, { headers: await authHeaders() });
@@ -128,27 +123,19 @@ export default function Finance() {
 
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadPayments(); }, [loadPayments]);
+  useEffect(() => { loadStripe(); }, [loadStripe]);
   useEffect(() => { loadTimeSeries(); }, [loadTimeSeries]);
 
   async function handleBursarImport() {
     const file = fileRef.current?.files?.[0];
     if (!file) return;
-    setImporting(true);
-    setBursarResult(null);
+    setImporting(true); setBursarResult(null);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const hdrs = await authHeaders();
-      delete hdrs["Content-Type"];
+      const formData = new FormData(); formData.append("file", file);
+      const hdrs = await authHeaders(); delete hdrs["Content-Type"];
       const res = await fetch("/api/payments/bursar-import-csv", { method: "POST", headers: hdrs, body: formData });
-      if (res.ok) {
-        const result = await res.json();
-        setBursarResult(result);
-        message.success(`${result.matched} payments matched`);
-        loadReport(); loadPayments();
-      } else {
-        message.error("Import failed");
-      }
+      if (res.ok) { const result = await res.json(); setBursarResult(result); message.success(`${result.matched} payments matched`); loadReport(); loadPayments(); }
+      else message.error("Import failed");
     } catch { message.error("Import failed"); } finally { setImporting(false); }
   }
 
@@ -160,39 +147,77 @@ export default function Finance() {
     downloadWithAuth(`/api/payments/export/oracle-gl${qs}`, "gl-journal.csv");
   }
 
-  const fmtDollars = (val: string | number) => `$${Number(val).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-
   const citationRevenue = report?.by_payment_type?.ticket_payment;
   const permitRevenue = Object.entries(report?.by_payment_type || {})
     .filter(([k]) => k !== "ticket_payment" && k !== "unknown")
     .reduce((sum, [, v]) => sum + Number(v), 0);
 
+  const stripeColumns: ColumnsType<StripeTransaction> = [
+    {
+      title: "Date", dataIndex: "created", key: "created", width: 160,
+      render: d => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+    },
+    {
+      title: "Status", dataIndex: "status", key: "status", width: 100,
+      render: s => <Tag color={s === "succeeded" ? "green" : s === "failed" ? "red" : s === "pending" ? "gold" : "default"}>{s}</Tag>,
+    },
+    { title: "Description", dataIndex: "description", key: "desc", ellipsis: true, render: v => v || "—" },
+    { title: "Customer", key: "customer", ellipsis: true, render: (_, t) => t.customer_name || t.customer_email || "—" },
+    {
+      title: "Amount", dataIndex: "amount", key: "amount", align: "right",
+      render: v => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
+    },
+    {
+      title: "Fee", dataIndex: "fee", key: "fee", align: "right", width: 80,
+      render: v => Number(v) > 0 ? <span className="text-ink-mute text-xs">{fmtDollars(v)}</span> : "—",
+    },
+    {
+      title: "Net", dataIndex: "net", key: "net", align: "right", width: 100,
+      render: v => Number(v) > 0 ? <span className="font-mono font-medium text-green-700">{fmtDollars(v)}</span> : "—",
+    },
+    {
+      title: "Card", key: "card", width: 110,
+      render: (_, t) => t.payment_method_last4
+        ? <span className="text-xs">{(t.payment_method_brand || "").toUpperCase()} •••• {t.payment_method_last4}</span>
+        : <span className="text-xs text-ink-mute">{t.payment_method_type || "—"}</span>,
+    },
+    {
+      title: "", key: "actions", width: 100,
+      render: (_, t) => (
+        <Space size="small">
+          {t.receipt_url && <a href={t.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600">Receipt</a>}
+          <a href={`https://dashboard.stripe.com/${t.livemode ? "" : "test/"}payments/${t.id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600">Stripe</a>
+        </Space>
+      ),
+    },
+  ];
+
   const paymentColumns: ColumnsType<PaymentListItem> = [
     {
       title: "Date", dataIndex: "paid_at", key: "paid_at", width: 160,
-      render: (d) => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+      render: d => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
     },
     {
       title: "Type", dataIndex: "payment_type", key: "payment_type",
-      render: (ptype) => <Tag color={TYPE_COLORS[ptype] || "default"}>{TYPE_LABELS[ptype] || ptype || "—"}</Tag>,
+      render: ptype => <Tag color={TYPE_COLORS[ptype] || "default"}>{TYPE_LABELS[ptype] || ptype || "—"}</Tag>,
     },
-    { title: "Description", dataIndex: "description", key: "description", ellipsis: true, render: (v) => v || "—" },
-    { title: "Payer", dataIndex: "payer_name", key: "payer_name", ellipsis: true, render: (v) => v || "—" },
+    { title: "Description", dataIndex: "description", key: "description", ellipsis: true, render: v => v || "—" },
+    { title: "Payer", dataIndex: "payer_name", key: "payer_name", ellipsis: true, render: v => v || "—" },
     {
       title: "Amount", dataIndex: "amount", key: "amount", align: "right",
-      render: (v) => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
+      render: v => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
     },
     {
       title: "Method", dataIndex: "method", key: "method",
-      render: (m) => <Tag color={m?.startsWith("online") ? "purple" : "gold"}>{METHOD_LABELS[m] || m}</Tag>,
+      render: m => <Tag color={m?.startsWith("online") ? "purple" : "gold"}>{METHOD_LABELS[m] || m}</Tag>,
     },
     {
       title: "Stripe", dataIndex: "stripe_payment_id", key: "stripe", width: 60,
-      render: (id) => id ? (
-        <a href={`https://dashboard.stripe.com/payments/${id}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800">View</a>
-      ) : <span className="text-gray-300">—</span>,
+      render: id => id ? <a href={`https://dashboard.stripe.com/payments/${id}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600">View</a> : <span className="text-gray-300">—</span>,
     },
   ];
+
+  const ov = stripe?.overview;
 
   return (
     <div>
@@ -204,114 +229,162 @@ export default function Finance() {
         </Space>
       </div>
 
-      {report && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <Card size="small"><Statistic title="Total Fines Issued" value={Number(report.total_fines_issued)} prefix="$" precision={2} /></Card>
-            <Card size="small"><Statistic title="Total Collected" value={Number(report.total_collected)} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
-            <Card size="small"><Statistic title="Outstanding" value={Number(report.total_outstanding)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
-            <Card size="small"><Statistic title="Collection Rate" value={report.collection_rate} suffix="%" precision={1} /></Card>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <Card size="small"><Statistic title="Citation Revenue" value={Number(citationRevenue || 0)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
-            <Card size="small"><Statistic title="Permit Revenue" value={permitRevenue} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <Card title="Revenue by Payment Method">
-              {Object.entries(report.by_method).length === 0
-                ? <Empty description="No payments yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                : <div className="space-y-2">{Object.entries(report.by_method).map(([method, amount]) => (
-                    <div key={method} className="flex justify-between items-center">
-                      <span className="capitalize text-sm">{method.replace("_", " ")}</span>
-                      <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
-                    </div>
-                  ))}</div>}
-            </Card>
-            <Card title="Tickets by Status">
-              {Object.entries(report.by_status).length === 0
-                ? <Empty description="No tickets yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                : <div className="space-y-2">{Object.entries(report.by_status).map(([status, count]) => (
-                    <div key={status} className="flex justify-between items-center">
-                      <span className="capitalize text-sm">{status.replace("_", " ")}</span>
-                      <span className="font-mono text-sm font-medium">{count}</span>
-                    </div>
-                  ))}</div>}
-            </Card>
-          </div>
-        </>
+      {/* Stripe Overview — always visible, pulled live from Stripe */}
+      {stripeLoading ? (
+        <div className="flex justify-center py-8"><Spin /></div>
+      ) : ov ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+          <Card size="small"><Statistic title="Stripe Volume" value={Number(ov.total_volume)} prefix="$" precision={2} valueStyle={{ color: "#15803d", fontWeight: 700 }} /></Card>
+          <Card size="small"><Statistic title="Stripe Fees" value={Number(ov.total_fees)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
+          <Card size="small"><Statistic title="Net Revenue" value={Number(ov.total_net)} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
+          <Card size="small"><Statistic title="Refunded" value={Number(ov.total_refunded)} prefix="$" precision={2} /></Card>
+          <Card size="small"><Statistic title="Successful" value={ov.successful_count} valueStyle={{ color: "#15803d" }} /></Card>
+          <Card size="small"><Statistic title="Refunded" value={ov.refunded_count} /></Card>
+          <Card size="small"><Statistic title="Failed" value={ov.failed_count} valueStyle={ov.failed_count > 0 ? { color: "#b91c1c" } : {}} /></Card>
+        </div>
+      ) : (
+        <Alert type="warning" message="Stripe not configured" description="Set QUARRY_STRIPE_SECRET_KEY to see live Stripe data." className="mb-6" showIcon />
       )}
 
-      <Card title="Revenue Timeline" extra={
-        <Segmented value={tsPeriod} onChange={v => setTsPeriod(v as "daily" | "monthly")}
-          options={[{ label: "Daily", value: "daily" }, { label: "Monthly", value: "monthly" }]} />
-      } className="mb-8">
-        {timeSeries.length === 0
-          ? <Empty description="No revenue data yet" className="py-8" />
-          : <RevenueChart data={timeSeries} />}
-      </Card>
-
-      <Card title="Recent Payments" className="mb-8">
-        <Space className="mb-4" wrap>
-          <Select value={filterType || undefined} onChange={v => { setFilterType(v || ""); setListPage(1); }}
-            placeholder="All Types" allowClear style={{ width: 140 }}
-            options={[
-              { label: "Citation", value: "ticket_payment" },
-              { label: "Permit", value: "permit_purchase" },
-              { label: "Standalone Permit", value: "standalone_permit_purchase" },
-              { label: "Lottery", value: "lottery_permit" },
-            ]}
-          />
-          <Select value={filterMethod || undefined} onChange={v => { setFilterMethod(v || ""); setListPage(1); }}
-            placeholder="All Methods" allowClear style={{ width: 130 }}
-            options={[{ label: "Stripe", value: "online_card" }, { label: "Bursar", value: "bursar" }]}
-          />
-          <DatePicker placeholder="From" value={filterDateFrom} onChange={v => { setFilterDateFrom(v); setListPage(1); }} />
-          <DatePicker placeholder="To" value={filterDateTo} onChange={v => { setFilterDateTo(v); setListPage(1); }} />
-          {(filterType || filterMethod || filterDateFrom || filterDateTo) && (
-            <Button type="link" danger size="small"
-              onClick={() => { setFilterType(""); setFilterMethod(""); setFilterDateFrom(null); setFilterDateTo(null); setListPage(1); }}>
-              Clear filters
-            </Button>
-          )}
-        </Space>
-
-        <Table dataSource={payments?.items || []} columns={paymentColumns} rowKey="id" size="small"
-          pagination={{
-            current: listPage, total: payments?.total || 0, pageSize: 15, onChange: setListPage,
-            showSizeChanger: false, showTotal: t => `${t} payments`,
-          }}
-          locale={{ emptyText: <Empty description="No payments found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-        />
-      </Card>
-
-      <Card title="Oracle GL Journal Export" className="mb-8">
-        <p className="text-sm text-ink-mute mb-4">Export payments in Oracle General Ledger journal format. Optionally filter by date range.</p>
-        <Space>
-          <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} />
-          <DatePicker placeholder="To" value={glTo} onChange={setGlTo} />
-          <Button type="primary" onClick={handleGlExport}>Export GL Journal</Button>
-        </Space>
-      </Card>
-
-      <Card title="Bursar Import">
-        <p className="text-sm text-ink-mute mb-4">
-          Upload a CSV with columns: <code>ticket_id</code>, <code>amount</code>, <code>reference</code>, <code>paid_date</code>.
-        </p>
-        <Space>
-          <input ref={fileRef} type="file" accept=".csv" />
-          <Button type="primary" onClick={handleBursarImport} loading={importing}>Import</Button>
-        </Space>
-        {bursarResult && (
-          <Alert className="mt-4" type={bursarResult.unmatched > 0 ? "warning" : "success"} showIcon
-            message={`${bursarResult.matched} payments matched${bursarResult.unmatched > 0 ? `, ${bursarResult.unmatched} unmatched` : ""}`}
-            description={bursarResult.errors.length > 0 ? (
-              <ul className="list-disc pl-4 text-xs mt-1">{bursarResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
-            ) : undefined}
-          />
-        )}
-      </Card>
+      <Tabs defaultActiveKey="stripe" items={[
+        {
+          key: "stripe", label: `Stripe Transactions${stripe ? ` (${stripe.transactions.length})` : ""}`,
+          children: (
+            <Card>
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-sm text-ink-mute">Live data from Stripe API — no webhook dependency</span>
+                <Button size="small" onClick={loadStripe} loading={stripeLoading}>Refresh</Button>
+              </div>
+              <Table dataSource={stripe?.transactions || []} columns={stripeColumns} rowKey="id" size="small"
+                pagination={{ pageSize: 25, showSizeChanger: false, showTotal: t => `${t} transactions` }}
+                locale={{ emptyText: <Empty description="No Stripe transactions found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                expandable={{
+                  expandedRowRender: t => (
+                    <Descriptions size="small" column={3}>
+                      <Descriptions.Item label="Charge ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
+                      <Descriptions.Item label="Email">{t.customer_email || "—"}</Descriptions.Item>
+                      <Descriptions.Item label="Name">{t.customer_name || "—"}</Descriptions.Item>
+                      <Descriptions.Item label="Amount">{fmtDollars(t.amount)}</Descriptions.Item>
+                      <Descriptions.Item label="Refunded">{Number(t.amount_refunded) > 0 ? fmtDollars(t.amount_refunded) : "—"}</Descriptions.Item>
+                      <Descriptions.Item label="Mode"><Tag color={t.livemode ? "green" : "orange"}>{t.livemode ? "Live" : "Test"}</Tag></Descriptions.Item>
+                      {Object.keys(t.metadata).length > 0 && (
+                        <Descriptions.Item label="Metadata" span={3}>
+                          <div className="text-xs font-mono">{Object.entries(t.metadata).map(([k, v]) => <div key={k}><strong>{k}:</strong> {v}</div>)}</div>
+                        </Descriptions.Item>
+                      )}
+                    </Descriptions>
+                  ),
+                }}
+              />
+            </Card>
+          ),
+        },
+        {
+          key: "quarry", label: "Quarry Payments (DB)",
+          children: (
+            <Card>
+              <Space className="mb-4" wrap>
+                <Select value={filterType || undefined} onChange={v => { setFilterType(v || ""); setListPage(1); }}
+                  placeholder="All Types" allowClear style={{ width: 140 }}
+                  options={[
+                    { label: "Citation", value: "ticket_payment" }, { label: "Permit", value: "permit_purchase" },
+                    { label: "Standalone Permit", value: "standalone_permit_purchase" }, { label: "Lottery", value: "lottery_permit" },
+                  ]} />
+                <Select value={filterMethod || undefined} onChange={v => { setFilterMethod(v || ""); setListPage(1); }}
+                  placeholder="All Methods" allowClear style={{ width: 130 }}
+                  options={[{ label: "Stripe", value: "online_card" }, { label: "Bursar", value: "bursar" }]} />
+                <DatePicker placeholder="From" value={filterDateFrom} onChange={v => { setFilterDateFrom(v); setListPage(1); }} />
+                <DatePicker placeholder="To" value={filterDateTo} onChange={v => { setFilterDateTo(v); setListPage(1); }} />
+                {(filterType || filterMethod || filterDateFrom || filterDateTo) && (
+                  <Button type="link" danger size="small"
+                    onClick={() => { setFilterType(""); setFilterMethod(""); setFilterDateFrom(null); setFilterDateTo(null); setListPage(1); }}>Clear filters</Button>
+                )}
+              </Space>
+              <Table dataSource={payments?.items || []} columns={paymentColumns} rowKey="id" size="small"
+                pagination={{ current: listPage, total: payments?.total || 0, pageSize: 15, onChange: setListPage, showSizeChanger: false, showTotal: t => `${t} payments` }}
+                locale={{ emptyText: <Empty description="No payments found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }} />
+            </Card>
+          ),
+        },
+        {
+          key: "overview", label: "Revenue Overview",
+          children: (
+            <>
+              {report && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <Card size="small"><Statistic title="Total Fines Issued" value={Number(report.total_fines_issued)} prefix="$" precision={2} /></Card>
+                    <Card size="small"><Statistic title="Total Collected" value={Number(report.total_collected)} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
+                    <Card size="small"><Statistic title="Outstanding" value={Number(report.total_outstanding)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
+                    <Card size="small"><Statistic title="Collection Rate" value={report.collection_rate} suffix="%" precision={1} /></Card>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <Card size="small"><Statistic title="Citation Revenue" value={Number(citationRevenue || 0)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
+                    <Card size="small"><Statistic title="Permit Revenue" value={permitRevenue} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <Card title="Revenue by Payment Method">
+                      {Object.entries(report.by_method).length === 0
+                        ? <Empty description="No payments yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                        : <div className="space-y-2">{Object.entries(report.by_method).map(([method, amount]) => (
+                            <div key={method} className="flex justify-between items-center">
+                              <span className="capitalize text-sm">{method.replace("_", " ")}</span>
+                              <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
+                            </div>
+                          ))}</div>}
+                    </Card>
+                    <Card title="Tickets by Status">
+                      {Object.entries(report.by_status).length === 0
+                        ? <Empty description="No tickets yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                        : <div className="space-y-2">{Object.entries(report.by_status).map(([status, count]) => (
+                            <div key={status} className="flex justify-between items-center">
+                              <span className="capitalize text-sm">{status.replace("_", " ")}</span>
+                              <span className="font-mono text-sm font-medium">{count}</span>
+                            </div>
+                          ))}</div>}
+                    </Card>
+                  </div>
+                </>
+              )}
+              <Card title="Revenue Timeline" extra={
+                <Segmented value={tsPeriod} onChange={v => setTsPeriod(v as "daily" | "monthly")}
+                  options={[{ label: "Daily", value: "daily" }, { label: "Monthly", value: "monthly" }]} />
+              }>
+                {timeSeries.length === 0 ? <Empty description="No revenue data yet" className="py-8" /> : <RevenueChart data={timeSeries} />}
+              </Card>
+            </>
+          ),
+        },
+        {
+          key: "tools", label: "Import / Export",
+          children: (
+            <div className="space-y-6">
+              <Card title="Oracle GL Journal Export">
+                <p className="text-sm text-ink-mute mb-4">Export payments in Oracle General Ledger journal format.</p>
+                <Space>
+                  <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} />
+                  <DatePicker placeholder="To" value={glTo} onChange={setGlTo} />
+                  <Button type="primary" onClick={handleGlExport}>Export GL Journal</Button>
+                </Space>
+              </Card>
+              <Card title="Bursar Import">
+                <p className="text-sm text-ink-mute mb-4">Upload a CSV with columns: <code>ticket_id</code>, <code>amount</code>, <code>reference</code>, <code>paid_date</code>.</p>
+                <Space>
+                  <input ref={fileRef} type="file" accept=".csv" />
+                  <Button type="primary" onClick={handleBursarImport} loading={importing}>Import</Button>
+                </Space>
+                {bursarResult && (
+                  <Alert className="mt-4" type={bursarResult.unmatched > 0 ? "warning" : "success"} showIcon
+                    message={`${bursarResult.matched} payments matched${bursarResult.unmatched > 0 ? `, ${bursarResult.unmatched} unmatched` : ""}`}
+                    description={bursarResult.errors.length > 0 ? (
+                      <ul className="list-disc pl-4 text-xs mt-1">{bursarResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                    ) : undefined} />
+                )}
+              </Card>
+            </div>
+          ),
+        },
+      ]} />
     </div>
   );
 }

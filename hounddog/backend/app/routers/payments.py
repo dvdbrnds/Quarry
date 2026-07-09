@@ -36,6 +36,9 @@ from ..schemas.payment import (
     RevenueTimeSeriesPoint,
     StandalonePermitPurchaseRequest,
     StandalonePermitPurchaseResponse,
+    StripeOverview,
+    StripeTransaction,
+    StripeTransactionsResponse,
     TicketLookup,
     TicketLookupList,
 )
@@ -930,6 +933,91 @@ async def revenue_report(
         by_method=by_method,
         by_status=by_status,
         by_payment_type=by_payment_type,
+    )
+
+
+@router.get("/stripe-transactions", response_model=StripeTransactionsResponse)
+async def stripe_transactions(
+    limit: int = Query(50, ge=1, le=100),
+    starting_after: str | None = None,
+    user: OktaUser = Depends(require_admin()),
+):
+    """Pull transactions directly from Stripe API — no webhook dependency."""
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    params: dict = {"limit": limit, "expand": ["data.balance_transaction"]}
+    if starting_after:
+        params["starting_after"] = starting_after
+
+    try:
+        charges = stripe.Charge.list(**params)
+    except stripe.StripeError as e:
+        raise HTTPException(502, f"Stripe API error: {str(e)}")
+
+    transactions: list[StripeTransaction] = []
+    overview = StripeOverview()
+
+    for ch in charges.data:
+        fee = Decimal("0")
+        net = Decimal("0")
+        bt = getattr(ch, "balance_transaction", None)
+        if bt and hasattr(bt, "fee"):
+            fee = Decimal(bt.fee) / 100
+            net = Decimal(bt.net) / 100
+
+        amount = Decimal(ch.amount) / 100
+        refunded = Decimal(ch.amount_refunded) / 100
+
+        pm_type = None
+        pm_last4 = None
+        pm_brand = None
+        if ch.payment_method_details:
+            pmd = ch.payment_method_details
+            pm_type = getattr(pmd, "type", None)
+            card = getattr(pmd, "card", None)
+            if card:
+                pm_last4 = getattr(card, "last4", None)
+                pm_brand = getattr(card, "brand", None)
+
+        transactions.append(StripeTransaction(
+            id=ch.id,
+            amount=amount,
+            amount_refunded=refunded,
+            net=net,
+            fee=fee,
+            currency=ch.currency,
+            status=ch.status,
+            description=ch.description,
+            customer_email=getattr(ch, "receipt_email", None) or (ch.billing_details.email if ch.billing_details else None),
+            customer_name=ch.billing_details.name if ch.billing_details else None,
+            receipt_url=getattr(ch, "receipt_url", None),
+            payment_method_type=pm_type,
+            payment_method_last4=pm_last4,
+            payment_method_brand=pm_brand,
+            metadata=dict(ch.metadata) if ch.metadata else {},
+            created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
+            livemode=ch.livemode,
+        ))
+
+        if ch.status == "succeeded":
+            overview.successful_count += 1
+            overview.total_volume += amount
+            overview.total_fees += fee
+            overview.total_net += net
+        if ch.refunded:
+            overview.refunded_count += 1
+            overview.total_refunded += refunded
+        if ch.status == "failed":
+            overview.failed_count += 1
+
+    return StripeTransactionsResponse(
+        overview=overview,
+        transactions=transactions,
+        has_more=charges.has_more,
     )
 
 
