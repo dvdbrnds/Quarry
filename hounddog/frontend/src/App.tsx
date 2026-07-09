@@ -18,6 +18,7 @@ import AlertUnsubscribe from "./pages/AlertUnsubscribe";
 import SignagePlayer from "./pages/SignagePlayer";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
+import LotteryApply from "./pages/LotteryApply";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout } from "./auth";
@@ -59,7 +60,6 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/finance">Finance</NavItem>
         <NavItem to="/alerts">Alerts</NavItem>
         <NavItem to="/settings">Settings</NavItem>
-        <NavItem to="/student/permits">Student View</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-bone/70">{user.email}</span>
@@ -135,6 +135,7 @@ export default function App() {
   const isNotificationsRoute = location.pathname.startsWith("/notifications/");
   const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
   const isSignageRoute = location.pathname.startsWith("/signage/player");
+  const isLotteryRoute = location.pathname.startsWith("/lottery");
   const isAuthCallback = location.pathname === "/auth/callback";
 
   if (isAuthCallback) {
@@ -192,6 +193,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/signage/player/:screenId" element={<SignagePlayer />} />
+      </Routes>
+    );
+  }
+
+  if (isLotteryRoute) {
+    return (
+      <Routes>
+        <Route path="/lottery" element={<LotteryApply />} />
       </Routes>
     );
   }

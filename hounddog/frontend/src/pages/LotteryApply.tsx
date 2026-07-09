@@ -1,0 +1,381 @@
+import { useCallback, useEffect, useState } from "react";
+import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space, App } from "antd";
+import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, type AuthUser } from "../auth";
+
+interface AvailablePermit {
+  id: string; code: string; label: string; eligible: string; price: string;
+  max_capacity: number; remaining: number; lot_assignments: string[];
+  valid_days: number; min_class_year: number | null;
+  application_closes_at: string | null; requires_lottery: boolean;
+}
+
+interface MyApplication {
+  id: string; student_name: string; class_year: number; plate: string;
+  status: string; permit_type_label: string; permit_type_code: string;
+  permit_type_price: string; lot_assignments: string[];
+  lot_preferences: string[]; assigned_lot: string | null;
+  waitlist_position: number | null; offer_expires_at: string | null; created_at: string;
+}
+
+interface OktaProfile {
+  display_name: string; given_name: string; family_name: string;
+  email: string; class_year: number | null;
+}
+
+const STATUS_LABELS: Record<string, { text: string; color: string }> = {
+  pending: { text: "Entered in lottery", color: "gold" },
+  selected: { text: "Selected — accept your offer!", color: "green" },
+  waitlisted: { text: "Waitlisted", color: "blue" },
+  accepted: { text: "Permit active", color: "lime" },
+  expired: { text: "Offer expired", color: "default" },
+  declined: { text: "Declined", color: "default" },
+};
+
+export default function LotteryApply() {
+  const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await initAuth();
+        const authed = await isAuthenticated();
+        if (!authed) { await login(); return; }
+        const u = await fetchCurrentUser();
+        setUser(u);
+        setAuthState(u ? "ready" : "error");
+      } catch { setAuthState("error"); }
+    })();
+  }, []);
+
+  if (authState === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Spin size="large" />
+          <p className="mt-4 text-gray-500">Signing you in...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authState === "error" || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="max-w-md text-center">
+          <h2 className="text-xl font-bold text-red-600 mb-2">Sign-In Error</h2>
+          <p className="text-gray-500 mb-4">We couldn't verify your identity. Make sure you're using your university account.</p>
+          <Button onClick={() => window.location.reload()}>Try Again</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <App>
+      <LotteryPage user={user} />
+    </App>
+  );
+}
+
+function LotteryPage({ user }: { user: AuthUser }) {
+  const { modal, message } = App.useApp();
+  const [available, setAvailable] = useState<AvailablePermit[]>([]);
+  const [applications, setApplications] = useState<MyApplication[]>([]);
+  const [applying, setApplying] = useState<AvailablePermit | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const headers = await authHeaders();
+      const [avRes, myRes] = await Promise.all([
+        fetch("/api/student/permits/available", { headers }),
+        fetch("/api/student/permits/my-applications", { headers }),
+      ]);
+      if (avRes.ok) setAvailable(await avRes.json());
+      if (myRes.ok) setApplications(await myRes.json());
+    } catch { message.error("Failed to load permit data"); } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("accepted")) {
+      message.success("Payment received — your permit is now active!");
+      window.history.replaceState({}, "", "/lottery");
+      load();
+    }
+  }, [load]);
+
+  async function handleAccept(appId: string) {
+    try {
+      const res = await fetch(`/api/student/permits/${appId}/accept`, { method: "POST", headers: await authHeaders() });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Accept failed"); }
+      const { checkout_url } = await res.json();
+      window.location.href = checkout_url;
+    } catch (e: any) { message.error(e.message); }
+  }
+
+  function handleDecline(appId: string) {
+    modal.confirm({
+      title: "Decline this offer?",
+      content: "Your spot will go to the next person on the waitlist. This cannot be undone.",
+      okText: "Decline Offer", okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/student/permits/${appId}/decline`, { method: "POST", headers: await authHeaders() });
+          if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Decline failed"); }
+          message.success("Offer declined"); load();
+        } catch (e: any) { message.error(e.message); }
+      },
+    });
+  }
+
+  const appliedTypeIds = new Set(applications.filter(a => !["expired", "declined"].includes(a.status)).map(a => a.permit_type_code));
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-[#1a2744] text-[#f5f0e8] px-6 py-4 shadow-md">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/quarry-logo.png" alt="Quarry" className="h-8 w-auto" />
+            <div>
+              <h1 className="text-lg font-bold text-[#c9a84c]">Quarry</h1>
+              <span className="text-xs text-[#f5f0e8]/60">Parking Permit Lottery</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-[#f5f0e8]/80">{user.email}</span>
+            <button onClick={() => logout()} className="text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8] transition-colors">Sign out</button>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-3xl mx-auto px-6 py-10">
+        {loading ? (
+          <div className="flex justify-center py-20"><Spin size="large" /></div>
+        ) : (
+          <div className="space-y-8">
+            <div>
+              <h2 className="text-2xl font-bold text-[#1a2744]">Parking Permit Lottery</h2>
+              <p className="text-gray-500 mt-1">Apply for a parking permit below. Winners are selected after the application window closes.</p>
+            </div>
+
+            {applications.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Your Applications</h3>
+                <div className="space-y-3">
+                  {applications.map(app => {
+                    const st = STATUS_LABELS[app.status] || { text: app.status, color: "default" };
+                    const isDone = ["expired", "declined"].includes(app.status);
+                    return (
+                      <Card key={app.id} className={isDone ? "opacity-50" : ""}>
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-semibold text-[#1a2744]">{app.permit_type_label}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Plate: <span className="font-mono font-medium">{app.plate}</span> &middot; Class of {app.class_year}
+                            </div>
+                            <div className="text-xs text-gray-500">Lots: {app.lot_assignments.join(", ")}</div>
+                            {app.assigned_lot && <div className="text-xs text-green-700 font-medium mt-1">Assigned: Lot {app.assigned_lot}</div>}
+                            {app.status === "waitlisted" && app.waitlist_position != null && (
+                              <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>
+                            )}
+                            {app.status === "selected" && app.offer_expires_at && (
+                              <div className="text-sm text-green-700 font-medium mt-2">
+                                Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-2">
+                            <Tag color={st.color}>{st.text}</Tag>
+                            {app.status === "selected" && (
+                              <Space>
+                                <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>Accept &amp; Pay ${Number(app.permit_type_price).toFixed(0)}</Button>
+                                <Button size="small" danger onClick={() => handleDecline(app.id)}>Decline</Button>
+                              </Space>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {available.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Open Permits</h3>
+                <div className="space-y-4">
+                  {available.map(pt => {
+                    const alreadyApplied = appliedTypeIds.has(pt.code);
+                    return (
+                      <Card key={pt.id}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-[#1a2744] text-lg">{pt.label}</span>
+                              {pt.requires_lottery && <Tag color="purple">Lottery</Tag>}
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1">{pt.eligible}</p>
+                            <div className="text-sm text-gray-500 mt-2">
+                              Lots: <span className="font-medium">{pt.lot_assignments.join(", ")}</span> &middot; Valid {pt.valid_days} days
+                            </div>
+                            <div className="flex items-center gap-4 mt-2">
+                              <span className="text-xs text-gray-400">{pt.remaining} of {pt.max_capacity} spots</span>
+                              {pt.application_closes_at && (
+                                <span className="text-xs text-amber-700 font-medium">
+                                  Deadline: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                                </span>
+                              )}
+                            </div>
+                            {pt.min_class_year && <div className="text-xs text-gray-400 mt-1">Eligibility: Class of {pt.min_class_year} or earlier</div>}
+                          </div>
+                          <div className="text-right ml-6">
+                            <div className="text-2xl font-bold text-[#1a2744]">${Number(pt.price).toFixed(0)}</div>
+                            <div className="mt-3">
+                              {alreadyApplied ? (
+                                <Tag color="blue">Applied</Tag>
+                              ) : pt.remaining <= 0 ? (
+                                <Tag color="red">Full</Tag>
+                              ) : (
+                                <Button type="primary" onClick={() => setApplying(pt)} style={{ background: "#1a2744" }}>Apply Now</Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {available.length === 0 && applications.length === 0 && (
+              <Card className="text-center py-12">
+                <Empty description={<span className="text-gray-500">No permit lotteries are currently open. Check back later.</span>} />
+              </Card>
+            )}
+
+            <div className="text-center text-xs text-gray-400 pt-4 border-t">
+              Moravian University Parking Services — Quarry
+            </div>
+          </div>
+        )}
+      </main>
+
+      <ApplyModal permit={applying} onClose={() => setApplying(null)}
+        onSuccess={() => { setApplying(null); message.success("Application submitted! You're entered in the lottery."); load(); }}
+        onError={msg => { message.error(msg); setApplying(null); }} />
+    </div>
+  );
+}
+
+function ApplyModal({ permit, onClose, onSuccess, onError }: {
+  permit: AvailablePermit | null; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
+}) {
+  const [form] = Form.useForm();
+  const [lotPreferences, setLotPreferences] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [profile, setProfile] = useState<OktaProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  useEffect(() => {
+    if (permit) {
+      form.resetFields();
+      setLotPreferences(permit.lot_assignments);
+      setProfileLoading(true);
+      (async () => {
+        try {
+          const res = await fetch("/api/auth/profile", { headers: await authHeaders() });
+          if (res.ok) {
+            const p: OktaProfile = await res.json();
+            setProfile(p);
+            const prefill: Record<string, unknown> = {};
+            if (p.display_name) prefill.name = p.display_name;
+            if (p.class_year) prefill.class_year = p.class_year;
+            form.setFieldsValue(prefill);
+          }
+        } catch { /* manual entry fallback */ }
+        finally { setProfileLoading(false); }
+      })();
+    }
+  }, [permit, form]);
+
+  function moveLot(index: number, direction: -1 | 1) {
+    const n = [...lotPreferences];
+    const t = index + direction;
+    if (t < 0 || t >= n.length) return;
+    [n[index], n[t]] = [n[t], n[index]];
+    setLotPreferences(n);
+  }
+
+  async function handleFinish(values: any) {
+    if (!permit) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/student/permits/apply", {
+        method: "POST", headers: await authHeaders(),
+        body: JSON.stringify({
+          permit_type_id: permit.id, student_name: values.name,
+          plate: values.plate.toUpperCase().trim(), class_year: values.class_year,
+          phone: values.phone || null, lot_preferences: lotPreferences,
+        }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Application failed"); }
+      onSuccess();
+    } catch (e: any) { onError(e.message); onClose(); } finally { setSubmitting(false); }
+  }
+
+  const nameFromOkta = !!profile?.display_name;
+  const classYearFromOkta = !!profile?.class_year;
+
+  return (
+    <Modal open={!!permit} onCancel={onClose} footer={null} title={permit ? `Apply for ${permit.label}` : ""} destroyOnClose width={520}>
+      {permit && (
+        <div className="pt-2">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b">
+            <span className="text-gray-500">{permit.eligible}</span>
+            <span className="text-lg font-bold text-[#1a2744]">${Number(permit.price).toFixed(0)}</span>
+          </div>
+          {profileLoading ? <div className="flex justify-center py-4"><Spin size="small" /></div> : (
+            <Form form={form} layout="vertical" onFinish={handleFinish}>
+              <Form.Item name="name" label="Full Name" rules={[{ required: true }]} tooltip={nameFromOkta ? "From your university account" : undefined}>
+                <Input disabled={nameFromOkta} className={nameFromOkta ? "bg-gray-50" : ""} />
+              </Form.Item>
+              <Form.Item name="plate" label="License Plate" rules={[{ required: true }]}>
+                <Input placeholder="ABC1234" className="font-mono" />
+              </Form.Item>
+              <Form.Item name="class_year" label="Graduation Year" rules={[{ required: true }]} tooltip={classYearFromOkta ? "From your university account" : undefined}>
+                <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
+              </Form.Item>
+              <Form.Item name="phone" label="Phone (optional)">
+                <Input placeholder="610-555-0123" />
+              </Form.Item>
+              {permit.lot_assignments.length > 1 && (
+                <Form.Item label="Lot Preference (drag to reorder — #1 is top choice)">
+                  <div className="space-y-1.5">
+                    {lotPreferences.map((lot, idx) => (
+                      <div key={lot} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}.</span>
+                        <span className="text-sm font-medium flex-1">Lot {lot}</span>
+                        <Button type="text" size="small" disabled={idx === 0} onClick={() => moveLot(idx, -1)}>▲</Button>
+                        <Button type="text" size="small" disabled={idx === lotPreferences.length - 1} onClick={() => moveLot(idx, 1)}>▼</Button>
+                      </div>
+                    ))}
+                  </div>
+                </Form.Item>
+              )}
+              <div className="flex justify-end gap-3 pt-4 border-t mt-4">
+                <Button onClick={onClose}>Cancel</Button>
+                <Button type="primary" htmlType="submit" loading={submitting} style={{ background: "#1a2744" }}>Submit Application</Button>
+              </div>
+            </Form>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
