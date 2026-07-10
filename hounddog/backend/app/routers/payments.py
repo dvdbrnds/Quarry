@@ -47,6 +47,19 @@ from ..websocket import manager
 
 router = APIRouter()
 
+PERMIT_PAYMENT_TYPES = {"permit_purchase", "lottery_permit", "standalone_permit_purchase"}
+
+
+def _build_gl_string(fund: str, org: str, account: str, activity: str) -> str:
+    sep = settings.gl_segment_separator
+    return sep.join([fund, org, account, activity, settings.gl_segment5, settings.gl_segment6])
+
+
+def _revenue_gl(is_permit: bool) -> str:
+    acct = settings.gl_account_permits if is_permit else settings.gl_account_citations
+    activity = settings.gl_activity_permits if is_permit else settings.gl_activity_citations
+    return _build_gl_string(settings.gl_fund, settings.gl_org, acct, activity)
+
 
 # --- Public Endpoints (no auth, student-facing) ---
 
@@ -1453,20 +1466,6 @@ async def payments_for_ticket(
         select(Payment).where(Payment.ticket_id == ticket_id).order_by(Payment.paid_at)
     )
     return result.scalars().all()
-
-
-PERMIT_PAYMENT_TYPES = {"permit_purchase", "lottery_permit", "standalone_permit_purchase"}
-
-
-def _build_gl_string(fund: str, org: str, account: str, activity: str) -> str:
-    sep = settings.gl_segment_separator
-    return sep.join([fund, org, account, activity, settings.gl_segment5, settings.gl_segment6])
-
-
-def _revenue_gl(is_permit: bool) -> str:
-    acct = settings.gl_account_permits if is_permit else settings.gl_account_citations
-    activity = settings.gl_activity_permits if is_permit else settings.gl_activity_citations
-    return _build_gl_string(settings.gl_fund, settings.gl_org, acct, activity)
 
 
 @router.get("/export/csv")
