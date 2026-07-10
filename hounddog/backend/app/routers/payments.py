@@ -1064,6 +1064,119 @@ async def stripe_backfill_emails(
     }
 
 
+@router.post("/stripe-backfill-payments")
+async def stripe_backfill_payments(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Backfill the payments table from Stripe PaymentIntents.
+
+    Iterates all succeeded PaymentIntents and creates a local Payment
+    record for any that don't already exist.
+    """
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    created = 0
+    skipped = 0
+    errors: list[str] = []
+
+    starting_after = None
+    while True:
+        params: dict = {"limit": 100, "expand": ["data.latest_charge"]}
+        if starting_after:
+            params["starting_after"] = starting_after
+
+        try:
+            page = stripe.PaymentIntent.list(**params)
+        except Exception as e:
+            errors.append(f"PaymentIntent.list failed: {e}")
+            break
+
+        if not page.data:
+            break
+
+        for pi in page.data:
+            if pi.status != "succeeded":
+                continue
+
+            existing = await db.execute(
+                select(Payment).where(Payment.stripe_payment_id == pi.id)
+            )
+            if existing.scalar():
+                skipped += 1
+                continue
+
+            md = pi.metadata.to_dict() if getattr(pi, "metadata", None) else {}
+            ptype = md.get("type", "unknown")
+            amount_cents = pi.amount or 0
+            email = pi.receipt_email or md.get("student_email") or md.get("email") or ""
+            payer_name = md.get("payer_name") or md.get("student_name") or ""
+            plate = md.get("plate") or ""
+            description = pi.description or md.get("description") or ""
+
+            is_permit = ptype in PERMIT_PAYMENT_TYPES
+            method = "online_permit_purchase" if is_permit else "online_card"
+
+            ticket_id = None
+            if md.get("ticket_id"):
+                try:
+                    ticket_id = uuid.UUID(md["ticket_id"])
+                except ValueError:
+                    pass
+
+            if not description:
+                if is_permit:
+                    label = md.get("permit_type_label", "permit")
+                    description = f"Parking permit — {label}"
+                elif ticket_id:
+                    ref = md.get("ticket_ref", str(ticket_id)[:8].upper())
+                    description = f"Citation #{ref} — {plate}"
+                else:
+                    description = f"Stripe payment {pi.id[:16]}"
+
+            paid_at = None
+            if hasattr(pi, "created") and pi.created:
+                paid_at = datetime.fromtimestamp(pi.created, tz=timezone.utc)
+
+            payment = Payment(
+                ticket_id=ticket_id,
+                amount=Decimal(amount_cents) / 100,
+                method=method,
+                stripe_payment_id=pi.id,
+                payment_type=ptype,
+                payer_name=payer_name or None,
+                payer_email=email or None,
+                plate=plate or None,
+                description=description or None,
+            )
+            if paid_at:
+                payment.paid_at = paid_at
+
+            db.add(payment)
+            created += 1
+
+            if ticket_id and ptype == "ticket_payment":
+                ticket = await db.get(Ticket, ticket_id)
+                if ticket and ticket.status != "paid":
+                    ticket.status = "paid"
+
+        if not page.has_more:
+            break
+        starting_after = page.data[-1].id
+
+    await db.commit()
+
+    return {
+        "created": created,
+        "skipped_existing": skipped,
+        "errors": errors,
+    }
+
+
 @router.get("/stripe-debug")
 async def stripe_debug(user: OktaUser = Depends(require_admin())):
     """Diagnostic: show what Stripe sees with the configured key."""

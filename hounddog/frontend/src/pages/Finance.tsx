@@ -94,6 +94,8 @@ export default function Finance() {
   const [glTo, setGlTo] = useState<dayjs.Dayjs | null>(null);
   const [backfillRunning, setBackfillRunning] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ updated: number; already_set: number; skipped_no_email: number; errors: string[]; details: { id: string; email: string; source: string }[] } | null>(null);
+  const [payBackfillRunning, setPayBackfillRunning] = useState(false);
+  const [payBackfillResult, setPayBackfillResult] = useState<{ created: number; skipped_existing: number; errors: string[] } | null>(null);
 
   const loadReport = useCallback(async () => {
     try { const res = await fetch("/api/payments/revenue", { headers: await authHeaders() }); if (res.ok) setReport(await res.json()); }
@@ -471,6 +473,25 @@ export default function Finance() {
                   <DatePicker placeholder="To" value={glTo} onChange={setGlTo} />
                   <Button type="primary" onClick={handleGlExport}>Export GL Journal</Button>
                 </Space>
+              </Card>
+              <Card title="Stripe Payment Backfill">
+                <p className="text-sm text-ink-mute mb-4">Pull all succeeded PaymentIntents from Stripe into the local payments table. Skips any already imported.</p>
+                <Button type="primary" loading={payBackfillRunning} onClick={async () => {
+                  setPayBackfillRunning(true);
+                  setPayBackfillResult(null);
+                  try {
+                    const res = await fetch("/api/payments/stripe-backfill-payments", { method: "POST", headers: await authHeaders() });
+                    if (res.ok) { const r = await res.json(); setPayBackfillResult(r); message.success(`${r.created} payments imported`); loadReport(); loadPayments(); }
+                    else message.error("Backfill failed");
+                  } catch { message.error("Backfill failed"); } finally { setPayBackfillRunning(false); }
+                }}>Backfill from Stripe</Button>
+                {payBackfillResult && (
+                  <Alert className="mt-4" type={payBackfillResult.errors.length > 0 ? "warning" : "success"} showIcon
+                    message={`${payBackfillResult.created} created, ${payBackfillResult.skipped_existing} already existed`}
+                    description={payBackfillResult.errors.length > 0 ? (
+                      <ul className="list-disc pl-4 text-xs mt-1">{payBackfillResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                    ) : undefined} />
+                )}
               </Card>
               <Card title="Bursar Import">
                 <p className="text-sm text-ink-mute mb-4">Upload a CSV with columns: <code>ticket_id</code>, <code>amount</code>, <code>reference</code>, <code>paid_date</code>.</p>
