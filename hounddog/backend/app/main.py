@@ -182,6 +182,8 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMPTZ DEFAULT now()
             )""",
             "ALTER TABLE renewal_tokens ADD COLUMN IF NOT EXISTS response VARCHAR(32)",
+            # Campus grouping for parking lots
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS campus VARCHAR(64)",
         ]
         for migration in migrations:
             await conn.execute(text(migration))
