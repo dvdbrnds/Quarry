@@ -585,7 +585,7 @@ function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onB
                   <div><strong>Rank:</strong> #{previewStudent.rank} of {result.selected.length}</div>
                   <div><strong>Email:</strong> {previewStudent.student_email}</div>
                   <div><strong>Class:</strong> {previewStudent.class_year}</div>
-                  <div><strong>Plate:</strong> {previewStudent.plate}{previewStudent.plate_state ? ` (${previewStudent.plate_state})` : ""}</div>
+                  <div><strong>Plate:</strong> {previewStudent.plate}</div>
                   <div><strong>Lot Prefs:</strong> {previewStudent.lot_preferences.length > 0 ? previewStudent.lot_preferences.join(" > ") : "None"}</div>
                 </div>
               </div>
