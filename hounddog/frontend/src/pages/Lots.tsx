@@ -12,6 +12,7 @@ const DESIGNATION_OPTIONS = [
   { code: "FS", label: "FS — Faculty/Staff Only" },
   { code: "FSC", label: "FSC — Faculty/Staff + Commuter (time-split)" },
   { code: "C", label: "C — Commuter" },
+  { code: "PC", label: "PC — Premium Commuter" },
   { code: "PR", label: "PR — Premium Resident" },
   { code: "RS", label: "RS — Resident & Seminary" },
   { code: "VPR", label: "VPR — Visitor / Premium Resident" },
