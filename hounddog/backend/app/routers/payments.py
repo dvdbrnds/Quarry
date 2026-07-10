@@ -1455,6 +1455,20 @@ async def payments_for_ticket(
     return result.scalars().all()
 
 
+PERMIT_PAYMENT_TYPES = {"permit_purchase", "lottery_permit", "standalone_permit_purchase"}
+
+
+def _build_gl_string(fund: str, org: str, account: str, activity: str) -> str:
+    sep = settings.gl_segment_separator
+    return sep.join([fund, org, account, activity, settings.gl_segment5, settings.gl_segment6])
+
+
+def _revenue_gl(is_permit: bool) -> str:
+    acct = settings.gl_account_permits if is_permit else settings.gl_account_citations
+    activity = settings.gl_activity_permits if is_permit else settings.gl_activity_citations
+    return _build_gl_string(settings.gl_fund, settings.gl_org, acct, activity)
+
+
 @router.get("/export/csv")
 async def export_payments(
     db: AsyncSession = Depends(get_db),
@@ -1466,17 +1480,31 @@ async def export_payments(
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "id", "ticket_id", "amount", "method", "stripe_payment_id",
-        "bursar_reference", "payment_type", "payer_name", "payer_email",
-        "description", "plate", "paid_at",
+        "id", "ticket_id", "amount", "method", "payment_type",
+        "stripe_payment_id", "bursar_reference",
+        "payer_name", "payer_email", "plate",
+        "description", "gl_revenue_account",
+        "paid_at", "created_at",
     ])
     for p in payments:
+        ptype = p.payment_type or ""
+        is_permit = ptype in PERMIT_PAYMENT_TYPES
+
         writer.writerow([
-            str(p.id), str(p.ticket_id), str(p.amount), p.method,
-            p.stripe_payment_id or "", p.bursar_reference or "",
-            p.payment_type or "", p.payer_name or "", p.payer_email or "",
-            p.description or "", p.plate or "",
+            str(p.id),
+            str(p.ticket_id) if p.ticket_id else "",
+            str(p.amount),
+            p.method or "",
+            ptype,
+            p.stripe_payment_id or "",
+            p.bursar_reference or "",
+            p.payer_name or "",
+            p.payer_email or "",
+            p.plate or "",
+            p.description or "",
+            _revenue_gl(is_permit),
             p.paid_at.isoformat() if p.paid_at else "",
+            p.created_at.isoformat() if p.created_at else "",
         ])
 
     output.seek(0)
@@ -1488,6 +1516,21 @@ async def export_payments(
     )
 
 
+def _fetch_stripe_fee(payment_intent_id: str) -> tuple[int, int]:
+    """Return (fee_cents, net_cents) from Stripe balance_transaction."""
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+    try:
+        pi = stripe.PaymentIntent.retrieve(
+            payment_intent_id,
+            expand=["latest_charge.balance_transaction"],
+        )
+        bt = pi.latest_charge.balance_transaction
+        return bt.fee, bt.net
+    except Exception:
+        return 0, 0
+
+
 @router.get("/export/oracle-gl")
 async def export_oracle_gl(
     since: date | None = None,
@@ -1497,9 +1540,12 @@ async def export_oracle_gl(
 ):
     """Export payments as Oracle Cloud Financials FBDI journal import format.
 
-    Produces a two-line entry per payment:
-      - Debit line: Cash account (bank/merchant deposit)
-      - Credit line: Revenue account (citations or permits)
+    Produces a balanced 3-line entry per Stripe payment:
+      1. Debit: Net cash (gross minus Stripe fee)
+      2. Debit: Stripe processing fee
+      3. Credit: Revenue (full gross amount)
+
+    Non-Stripe payments (bursar) produce a 2-line entry with no fee line.
     """
     from fastapi.responses import StreamingResponse
 
@@ -1513,10 +1559,14 @@ async def export_oracle_gl(
     result = await db.execute(query)
     payments = result.scalars().all()
 
-    sep = settings.gl_segment_separator
-    cash_string = sep.join([settings.gl_fund, settings.gl_org, settings.gl_cash_account, settings.gl_program])
-    citation_string = sep.join([settings.gl_fund, settings.gl_org, settings.gl_account_citations, settings.gl_program])
-    permit_string = sep.join([settings.gl_fund, settings.gl_org, settings.gl_account_permits, settings.gl_program])
+    net_cash_string = _build_gl_string(
+        settings.gl_fund, settings.gl_org_net_cash,
+        settings.gl_account_net_cash, settings.gl_activity_zero,
+    )
+    stripe_fee_string = _build_gl_string(
+        settings.gl_fund, settings.gl_org,
+        settings.gl_account_stripe_fees, settings.gl_activity_zero,
+    )
 
     batch_date = date.today().isoformat()
     batch_name = f"QUARRY-{batch_date}"
@@ -1526,49 +1576,90 @@ async def export_oracle_gl(
     writer.writerow([
         "LedgerName", "AccountingDate", "UserJeSource", "UserJeCategory",
         "CurrencyCode", "JeBatchName", "JeHeaderName", "JeLineName",
-        "Segment1", "Segment2", "Segment3", "Segment4",
+        "Segment1", "Segment2", "Segment3", "Segment4", "Segment5", "Segment6",
         "AccountCombination", "EnteredDrAmount", "EnteredCrAmount",
         "LineDescription", "Reference1", "Reference2", "Reference3",
         "Reference4", "Reference5",
     ])
 
+    def _write_row(
+        acct_date: str, header_name: str, line_name: str,
+        fund: str, org: str, account: str, activity: str,
+        combo: str, dr: str, cr: str,
+        desc: str, ref_id: str, ticket_ref: str,
+        line_method: str, payment_id: str, ticket_id_str: str,
+    ):
+        writer.writerow([
+            settings.gl_ledger, acct_date, settings.gl_source,
+            settings.gl_category_revenue, "USD", batch_name, header_name,
+            line_name,
+            fund, org, account, activity, settings.gl_segment5, settings.gl_segment6,
+            combo, dr, cr,
+            desc,
+            ref_id, ticket_ref, line_method,
+            payment_id, ticket_id_str,
+        ])
+
     for p in payments:
         acct_date = p.paid_at.strftime("%Y-%m-%d") if p.paid_at else batch_date
-
-        is_permit = p.method in ("online_permit_purchase",)
-        revenue_string = permit_string if is_permit else citation_string
-        revenue_account = settings.gl_account_permits if is_permit else settings.gl_account_citations
+        ptype = p.payment_type or ""
+        is_permit = ptype in PERMIT_PAYMENT_TYPES
         category = "Permit Revenue" if is_permit else "Citation Revenue"
 
         ticket_ref = str(p.ticket_id)[:8].upper() if p.ticket_id else ""
         ref_id = p.stripe_payment_id or p.bursar_reference or str(p.id)[:8]
-
         header_name = f"{settings.gl_source}-{acct_date}"
-        amount_str = f"{p.amount:.2f}"
+        description = p.description or f"Parking {category}"
+        line_method = ptype or p.method or ""
+        pid_str = str(p.id)
+        tid_str = str(p.ticket_id) if p.ticket_id else ""
 
-        # Debit: Cash/Bank
-        writer.writerow([
-            settings.gl_ledger, acct_date, settings.gl_source,
-            settings.gl_category_revenue, "USD", batch_name, header_name,
-            f"DR-{ref_id[:12]}",
-            settings.gl_fund, settings.gl_org, settings.gl_cash_account, settings.gl_program,
-            cash_string, amount_str, "",
-            f"Parking {category} - {p.method}",
-            ref_id, ticket_ref, p.method,
-            str(p.id), str(p.ticket_id) if p.ticket_id else "",
-        ])
+        revenue_acct = settings.gl_account_permits if is_permit else settings.gl_account_citations
+        revenue_activity = settings.gl_activity_permits if is_permit else settings.gl_activity_citations
+        revenue_string = _revenue_gl(is_permit)
 
-        # Credit: Revenue
-        writer.writerow([
-            settings.gl_ledger, acct_date, settings.gl_source,
-            settings.gl_category_revenue, "USD", batch_name, header_name,
-            f"CR-{ref_id[:12]}",
-            settings.gl_fund, settings.gl_org, revenue_account, settings.gl_program,
-            revenue_string, "", amount_str,
-            f"Parking {category} - {p.method}",
-            ref_id, ticket_ref, p.method,
-            str(p.id), str(p.ticket_id) if p.ticket_id else "",
-        ])
+        gross = p.amount
+        fee_cents = 0
+        net_cents = 0
+
+        if p.stripe_payment_id:
+            fee_cents, net_cents = _fetch_stripe_fee(p.stripe_payment_id)
+
+        if fee_cents > 0:
+            net_amount = Decimal(net_cents) / 100
+            fee_amount = Decimal(fee_cents) / 100
+        else:
+            net_amount = gross
+            fee_amount = Decimal(0)
+
+        # Line 1: Debit — Net cash
+        _write_row(
+            acct_date, header_name, f"DR-CASH-{ref_id[:8]}",
+            settings.gl_fund, settings.gl_org_net_cash,
+            settings.gl_account_net_cash, settings.gl_activity_zero,
+            net_cash_string, f"{net_amount:.2f}", "",
+            description, ref_id, ticket_ref, line_method, pid_str, tid_str,
+        )
+
+        # Line 2: Debit — Stripe processing fee (only for Stripe payments)
+        if fee_amount > 0:
+            _write_row(
+                acct_date, header_name, f"DR-FEE-{ref_id[:8]}",
+                settings.gl_fund, settings.gl_org,
+                settings.gl_account_stripe_fees, settings.gl_activity_zero,
+                stripe_fee_string, f"{fee_amount:.2f}", "",
+                f"Stripe fee - {description}", ref_id, ticket_ref,
+                line_method, pid_str, tid_str,
+            )
+
+        # Line 3: Credit — Revenue (full gross amount)
+        _write_row(
+            acct_date, header_name, f"CR-REV-{ref_id[:8]}",
+            settings.gl_fund, settings.gl_org,
+            revenue_acct, revenue_activity,
+            revenue_string, "", f"{gross:.2f}",
+            description, ref_id, ticket_ref, line_method, pid_str, tid_str,
+        )
 
     output.seek(0)
     filename = f"quarry_gl_journal_{batch_date}.csv"

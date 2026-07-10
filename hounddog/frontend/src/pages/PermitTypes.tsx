@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authHeaders } from "../auth";
 import {
-  Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Progress,
+  Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Progress, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -17,17 +17,37 @@ interface PermitTypeRow {
   offer_window_days: number; lottery_run_at: string | null;
 }
 
-function PermitTypeForm({ initial, onSave, onCancel }: { initial?: PermitTypeRow; onSave: () => void; onCancel: () => void }) {
+interface LotForSelect {
+  name: string;
+  designation_code: string;
+  total_spaces: number;
+  access_schedule: { season: string; rules: { allowed_permit_types: string[] }[] }[];
+}
+
+function getLotsForPermitCode(lots: LotForSelect[], code: string): string[] {
+  return lots
+    .filter(lot =>
+      lot.access_schedule?.some(season =>
+        season.rules?.some(rule =>
+          rule.allowed_permit_types?.includes(code)
+        )
+      )
+    )
+    .map(lot => lot.name);
+}
+
+function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitTypeRow; onSave: () => void; onCancel: () => void; lots: LotForSelect[] }) {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const requiresLottery = Form.useWatch("requires_lottery", form);
+  const code = Form.useWatch("code", form);
 
   useEffect(() => {
     if (initial) {
       form.setFieldsValue({
         ...initial,
-        lot_assignments: initial.lot_assignments.join(", "),
+        lot_assignments: initial.lot_assignments,
         min_class_year: initial.min_class_year?.toString() ?? "",
         application_opens_at: initial.application_opens_at ? dayjs(initial.application_opens_at) : null,
         application_closes_at: initial.application_closes_at ? dayjs(initial.application_closes_at) : null,
@@ -35,12 +55,23 @@ function PermitTypeForm({ initial, onSave, onCancel }: { initial?: PermitTypeRow
     } else { form.resetFields(); }
   }, [initial, form]);
 
+  function autoPopulateLots() {
+    if (!code) { message.warning("Enter a permit type code first"); return; }
+    const matched = getLotsForPermitCode(lots, code);
+    if (matched.length === 0) {
+      message.info(`No lots have "${code}" in their access schedule rules`);
+      return;
+    }
+    form.setFieldsValue({ lot_assignments: matched });
+    message.success(`Found ${matched.length} lot(s) with "${code}" in access rules`);
+  }
+
   async function handleFinish(values: any) {
     setSaving(true);
     const body: Record<string, unknown> = {
       code: values.code, label: values.label, eligible: values.eligible, price: values.price,
       max_capacity: values.max_capacity, valid_days: values.valid_days,
-      lot_assignments: (values.lot_assignments || "").split(",").map((l: string) => l.trim()).filter(Boolean),
+      lot_assignments: values.lot_assignments || [],
       is_purchasable_online: values.is_purchasable_online ?? false,
       sort_order: values.sort_order ?? 0,
       requires_lottery: values.requires_lottery ?? false,
@@ -59,10 +90,15 @@ function PermitTypeForm({ initial, onSave, onCancel }: { initial?: PermitTypeRow
     } catch { message.error("Failed to save"); } finally { setSaving(false); }
   }
 
+  const lotOptions = lots.map(l => ({
+    label: `${l.name}${l.designation_code ? ` (${l.designation_code})` : ""} — ${l.total_spaces} spaces`,
+    value: l.name,
+  }));
+
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
-        initialValues={{ price: "0.00", max_capacity: 100, valid_days: 365, sort_order: 0, lottery_strategy: "seniority_timestamp", offer_window_days: 5 }}>
+        initialValues={{ price: "0.00", max_capacity: 100, valid_days: 365, sort_order: 0, lottery_strategy: "seniority_timestamp", offer_window_days: 5, lot_assignments: [] }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="label" label="Label" rules={[{ required: true }]}><Input /></Form.Item>
@@ -70,7 +106,22 @@ function PermitTypeForm({ initial, onSave, onCancel }: { initial?: PermitTypeRow
           <Form.Item name="price" label="Price ($)"><Input type="number" step="0.01" /></Form.Item>
           <Form.Item name="max_capacity" label="Max Capacity"><InputNumber className="w-full" /></Form.Item>
           <Form.Item name="valid_days" label="Valid Days"><InputNumber className="w-full" /></Form.Item>
-          <Form.Item name="lot_assignments" label="Lot Assignments (comma-separated)"><Input placeholder="A, F, H, M" /></Form.Item>
+          <Form.Item name="lot_assignments" label={
+            <span className="flex items-center gap-2">
+              Lot Assignments
+              <Tooltip title="Auto-fill lots whose access schedule includes this permit type code">
+                <Button type="link" size="small" className="!p-0 !h-auto text-xs" onClick={autoPopulateLots}>Auto from schedule</Button>
+              </Tooltip>
+            </span>
+          }>
+            <Select
+              mode="multiple"
+              options={lotOptions}
+              placeholder="Select lots..."
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
           <Form.Item name="sort_order" label="Sort Order"><InputNumber className="w-full" /></Form.Item>
         </div>
         <Space className="mb-4">
@@ -111,14 +162,21 @@ export default function PermitTypes() {
   const { modal, message } = App.useApp();
   const navigate = useNavigate();
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
+  const [lots, setLots] = useState<LotForSelect[]>([]);
   const [editing, setEditing] = useState<PermitTypeRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const res = await fetch("/api/permit-types?all=true", { headers: await authHeaders() }); if (res.ok) setTypes(await res.json()); }
-    finally { setLoading(false); }
+    try {
+      const [ptRes, lotRes] = await Promise.all([
+        fetch("/api/permit-types?all=true", { headers: await authHeaders() }),
+        fetch("/api/lots", { headers: await authHeaders() }),
+      ]);
+      if (ptRes.ok) setTypes(await ptRes.json());
+      if (lotRes.ok) setLots(await lotRes.json());
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -185,7 +243,7 @@ export default function PermitTypes() {
         <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>
       </div>
       {(creating || editing) && (
-        <PermitTypeForm initial={editing ?? undefined}
+        <PermitTypeForm initial={editing ?? undefined} lots={lots}
           onSave={() => { setCreating(false); setEditing(null); load(); }}
           onCancel={() => { setCreating(false); setEditing(null); }} />
       )}

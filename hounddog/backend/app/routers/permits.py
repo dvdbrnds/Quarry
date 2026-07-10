@@ -508,16 +508,25 @@ async def export_permits(db: AsyncSession = Depends(get_db)):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "id", "permit_number", "student_id", "name", "email", "plates",
-        "lot_assignment", "permit_type", "status", "start_date", "end_date",
+        "permit_number", "student_id", "name", "email", "phone",
+        "plates", "lot_assignment", "permit_type", "beacon_id",
+        "status", "start_date", "end_date", "created_at",
     ])
     for p in permits:
         writer.writerow([
-            str(p.id), p.permit_number or "", p.student_id, p.name,
-            p.email or "", ";".join(p.plates), p.lot_assignment,
-            p.permit_type, p.status,
+            p.permit_number or "",
+            p.student_id,
+            p.name,
+            p.email or "",
+            p.phone or "",
+            ";".join(p.plates),
+            p.lot_assignment,
+            p.permit_type,
+            p.beacon_id or "",
+            p.status,
             p.start_date.isoformat() if p.start_date else "",
             p.end_date.isoformat() if p.end_date else "",
+            p.created_at.isoformat() if p.created_at else "",
         ])
 
     output.seek(0)
