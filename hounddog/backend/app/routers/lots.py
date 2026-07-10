@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, OktaUser
+from ..auth.okta import get_current_user, require_admin, OktaUser
 from ..database import get_db
 from ..models.lot import ParkingLot
 from ..models.lot_closure import LotClosure
@@ -35,6 +35,71 @@ from ..services.email import send_lot_closure_notification, send_lot_reopen_noti
 logger = logging.getLogger("quarry.lots")
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+COMMUTER_EVENING_SCHEDULE = [
+    {
+        "season": "year_round",
+        "label": "Year-Round",
+        "rules": [
+            {
+                "start": "07:00",
+                "end": "16:00",
+                "days": ["mon", "tue", "wed", "thu", "fri"],
+                "allowed_permit_types": ["faculty_staff"],
+                "label": "Faculty/Staff Only (Weekday Daytime)",
+            },
+            {
+                "start": "16:00",
+                "end": "07:00",
+                "days": ["mon", "tue", "wed", "thu", "fri"],
+                "allowed_permit_types": [
+                    "faculty_staff",
+                    "commuter_undergrad",
+                    "commuter_grad",
+                    "premium_commuter",
+                ],
+                "label": "Faculty/Staff + Commuter (Evenings & Overnight)",
+            },
+            {
+                "start": "00:00",
+                "end": "23:59",
+                "days": ["sat", "sun"],
+                "allowed_permit_types": [
+                    "faculty_staff",
+                    "commuter_undergrad",
+                    "commuter_grad",
+                    "premium_commuter",
+                ],
+                "label": "Faculty/Staff + Commuter (Weekends)",
+            },
+        ],
+    }
+]
+
+
+@router.post("/apply-commuter-evening")
+async def apply_commuter_evening_access(
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Apply commuter student evening access (4PM-7AM) to all faculty/staff lots."""
+    result = await db.execute(
+        select(ParkingLot).where(
+            ParkingLot.deleted_at.is_(None),
+            ParkingLot.designation_code.in_(["FS", "FSC"]),
+        )
+    )
+    lots = result.scalars().all()
+
+    updated = []
+    for lot in lots:
+        lot.access_schedule = COMMUTER_EVENING_SCHEDULE
+        lot.designation_code = "FSC"
+        lot.designation_label = "Faculty/Staff + Commuter (time-split)"
+        updated.append(lot.name)
+
+    await db.flush()
+    return {"updated": len(updated), "lots": updated}
 
 
 @router.get("", response_model=list[LotRead])

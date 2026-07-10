@@ -491,6 +491,21 @@ export default function Lots() {
     });
   }
 
+  function applyCommuterEvening() {
+    modal.confirm({
+      title: "Apply commuter evening access?",
+      content: "This will update all Faculty/Staff lots to allow commuter students between 4 PM and 7 AM (and all day on weekends).",
+      okText: "Apply",
+      onOk: async () => {
+        const res = await fetch("/api/lots/apply-commuter-evening", { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+        if (!res.ok) throw new Error("Failed");
+        const data = await res.json();
+        message.success(`Updated ${data.updated} lot(s): ${data.lots.join(", ")}`);
+        load();
+      },
+    });
+  }
+
   function handleReopen(lot: Lot) {
     modal.confirm({
       title: `Reopen ${lot.name}?`,
@@ -538,7 +553,10 @@ export default function Lots() {
       <div className="w-80 flex-shrink-0 flex flex-col bg-white rounded-xl shadow overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-bold">Parking Lots</h2>
-          <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New Lot</Button>
+          <Space>
+            <Button size="small" disabled={isEditing} onClick={applyCommuterEvening}>Apply Commuter Evening</Button>
+            <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New Lot</Button>
+          </Space>
         </div>
 
         <div className="flex-1 overflow-y-auto">

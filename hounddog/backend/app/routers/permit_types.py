@@ -667,6 +667,7 @@ async def generate_test_applications(
             class_year=class_year,
             permit_type_id=pt.id,
             plate=_random_plate(),
+            plate_state=random.choice(["PA", "NJ", "NY", "CT", "MD", "DE", "VA"]),
             phone=None,
             lot_preferences=lot_prefs,
             is_test_entry=True,

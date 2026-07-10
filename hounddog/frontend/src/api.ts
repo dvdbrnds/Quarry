@@ -31,7 +31,7 @@ export interface Permit {
   student_id: string;
   name: string;
   email: string | null;
-  phone: string | null;
+  phone: string;
   sms_opt_in: boolean;
   plates: string[];
   lot_assignment: string;

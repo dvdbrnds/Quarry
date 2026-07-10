@@ -5,9 +5,17 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict
 
 
+class LotAccessInfo(BaseModel):
+    name: str
+    designation_code: str = ""
+    is_time_restricted: bool = False
+    restriction_label: str = ""
+
+
 class ApplicationSubmit(BaseModel):
     permit_type_id: uuid.UUID
     plate: str
+    plate_state: str = ""
     student_name: str
     class_year: int
     phone: str | None = None
@@ -24,6 +32,7 @@ class ApplicationRead(BaseModel):
     class_year: int
     permit_type_id: uuid.UUID
     plate: str
+    plate_state: str = ""
     phone: str | None = None
     lot_preferences: list[str] = []
     assigned_lot: str | None = None
@@ -41,6 +50,7 @@ class ApplicationWithType(ApplicationRead):
     permit_type_code: str = ""
     permit_type_price: Decimal = Decimal("0.00")
     lot_assignments: list[str] = []
+    lot_details: list[LotAccessInfo] = []
 
 
 class AvailablePermitType(BaseModel):
@@ -52,6 +62,7 @@ class AvailablePermitType(BaseModel):
     max_capacity: int
     remaining: int
     lot_assignments: list[str]
+    lot_details: list[LotAccessInfo] = []
     valid_days: int
     min_class_year: int | None = None
     application_closes_at: datetime | None = None

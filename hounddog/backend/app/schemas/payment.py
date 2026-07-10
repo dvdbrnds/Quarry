@@ -175,6 +175,7 @@ class StandalonePermitPurchaseRequest(BaseModel):
     permit_type_id: uuid.UUID
     student_name: str
     plate: str
+    plate_state: str = ""
     email: str
     phone: str | None = None
     class_year: int | None = None

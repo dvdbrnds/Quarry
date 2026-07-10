@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm,
+  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -17,7 +17,7 @@ interface PermitTypeRow {
 
 interface Application {
   id: string; student_email: string; student_name: string; class_year: number;
-  plate: string; phone: string | null; lot_preferences: string[];
+  plate: string; plate_state: string; phone: string | null; lot_preferences: string[];
   assigned_lot: string | null; status: string; lottery_rank: number | null;
   waitlist_position: number | null; offer_expires_at: string | null;
   is_test_entry: boolean; created_at: string; updated_at: string;
@@ -35,6 +35,34 @@ interface SimulatedApp {
 
 interface ActivityEvent { id: string; student_name: string; old_status: string; new_status: string; timestamp: string; }
 
+interface LotInfo { name: string; designation_code: string; }
+
+const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
+
+function lotIsRestricted(lotName: string, permitCode: string, lotLookup: Record<string, LotInfo>): boolean {
+  if (!COMMUTER_CODES.has(permitCode)) return false;
+  const lot = lotLookup[lotName];
+  return !!lot && (lot.designation_code === "FS" || lot.designation_code === "FSC");
+}
+
+function AdminLotTags({ lots, permitCode, lotLookup }: { lots: string[]; permitCode: string; lotLookup: Record<string, LotInfo> }) {
+  if (!lots.length) return <span className="text-ink-mute">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {lots.map(name => {
+        const restricted = lotIsRestricted(name, permitCode, lotLookup);
+        return restricted ? (
+          <Tooltip key={name} title="After 4 PM & weekends">
+            <Tag color="gold" className="!text-[10px]">{name} *</Tag>
+          </Tooltip>
+        ) : (
+          <Tag key={name} color="blue" className="!text-[10px]">{name}</Tag>
+        );
+      })}
+    </span>
+  );
+}
+
 const STRATEGY_LABELS: Record<string, string> = {
   seniority_weighted: "Seniority Weighted", pure_random: "Pure Random",
   class_priority: "Class Priority", seniority_timestamp: "Seniority + Timestamp",
@@ -51,10 +79,18 @@ export default function LotteryManager() {
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [selected, setSelected] = useState<PermitTypeRow | null>(null);
   const [view, setView] = useState<View>("overview");
+  const [lotLookup, setLotLookup] = useState<Record<string, LotInfo>>({});
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/permit-types?all=true", { headers: await authHeaders() });
-    if (res.ok) { const all: PermitTypeRow[] = await res.json(); setTypes(all.filter(t => t.is_active)); }
+    const [ptRes, lotRes] = await Promise.all([
+      fetch("/api/permit-types?all=true", { headers: await authHeaders() }),
+      fetch("/api/lots", { headers: await authHeaders() }),
+    ]);
+    if (ptRes.ok) { const all: PermitTypeRow[] = await ptRes.json(); setTypes(all.filter(t => t.is_active)); }
+    if (lotRes.ok) {
+      const lots: { name: string; designation_code: string }[] = await lotRes.json();
+      setLotLookup(Object.fromEntries(lots.map(l => [l.name, { name: l.name, designation_code: l.designation_code }])));
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -70,13 +106,13 @@ export default function LotteryManager() {
     }
   }, [load, selected]);
 
-  if (view === "overview" || !selected) return <OverviewGrid types={types} onSelect={openManage} onReload={load} />;
+  if (view === "overview" || !selected) return <OverviewGrid types={types} onSelect={openManage} onReload={load} lotLookup={lotLookup} />;
   if (view === "simulate") return <SimulationView permitType={selected} onBack={goBack} />;
   if (view === "live") return <LiveDashboard permitType={selected} onBack={goBack} />;
-  return <ManageView permitType={selected} onBack={goBack} onSimulate={() => setView("simulate")} onGoLive={() => setView("live")} onReload={reloadSelected} />;
+  return <ManageView permitType={selected} onBack={goBack} onSimulate={() => setView("simulate")} onGoLive={() => setView("live")} onReload={reloadSelected} lotLookup={lotLookup} />;
 }
 
-function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => void }) {
+function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => void; lotLookup: Record<string, LotInfo> }) {
   const { modal, message } = App.useApp();
   const now = new Date();
   const [toggling, setToggling] = useState<string | null>(null);
@@ -116,7 +152,7 @@ function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; o
     { title: "Permit Type", key: "label", render: (_, pt) => <><div className="font-medium">{pt.label}</div><div className="text-xs text-ink-mute">{pt.code}</div></> },
     { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
-    { title: "Lots", key: "lots", render: (_, pt) => pt.lot_assignments.join(", ") || "—" },
+    { title: "Lots", key: "lots", render: (_, pt) => pt.lot_assignments.length ? <AdminLotTags lots={pt.lot_assignments} permitCode={pt.code} lotLookup={lotLookup} /> : "—" },
     { title: "", key: "action", render: (_, pt) => <Button size="small" loading={toggling === pt.id} onClick={() => enableLottery(pt)} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Enable Lottery</Button> },
   ];
 
@@ -151,7 +187,7 @@ function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; o
                 <div className="text-xs text-ink-mute space-y-1 mb-4">
                   <div>Strategy: {STRATEGY_LABELS[pt.lottery_strategy] || pt.lottery_strategy}</div>
                   <div>Capacity: {pt.max_capacity} &middot; {pt.remaining} remaining</div>
-                  <div>Lots: {pt.lot_assignments.join(", ") || "None"}</div>
+                  <div className="flex items-center flex-wrap gap-0.5">Lots: {pt.lot_assignments.length ? <AdminLotTags lots={pt.lot_assignments} permitCode={pt.code} lotLookup={lotLookup} /> : "None"}</div>
                   {pt.application_closes_at && <div>Closes: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
                   {pt.lottery_run_at && <div className="text-green-700">Ran: {new Date(pt.lottery_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
                 </div>
@@ -176,8 +212,8 @@ function OverviewGrid({ types, onSelect, onReload }: { types: PermitTypeRow[]; o
   );
 }
 
-function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
-  permitType: PermitTypeRow; onBack: () => void; onSimulate: () => void; onGoLive: () => void; onReload: () => Promise<void>;
+function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLookup }: {
+  permitType: PermitTypeRow; onBack: () => void; onSimulate: () => void; onGoLive: () => void; onReload: () => Promise<void>; lotLookup: Record<string, LotInfo>;
 }) {
   const { modal, message: msg } = App.useApp();
   const [applications, setApplications] = useState<Application[]>([]);
@@ -352,7 +388,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
     { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}</> },
     { title: "Email", dataIndex: "student_email", key: "email", ellipsis: true },
     { title: "Class", dataIndex: "class_year", key: "class" },
-    { title: "Plate", dataIndex: "plate", key: "plate", render: v => <span className="font-mono text-xs">{v}</span> },
+    { title: "Plate", dataIndex: "plate", key: "plate", render: (_v, r: Application) => <span className="font-mono text-xs">{r.plate}{r.plate_state ? ` (${r.plate_state})` : ""}</span> },
     { title: "Status", dataIndex: "status", key: "status", render: s => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag> },
     {
       title: "Rank", key: "rank",
@@ -362,8 +398,28 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload }: {
         {a.offer_expires_at && a.status === "selected" && <span className="ml-1 text-amber-700">(exp {new Date(a.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
       </>,
     },
-    { title: "Lot Prefs", key: "prefs", render: (_, a) => a.lot_preferences?.length > 0 ? a.lot_preferences.join(" > ") : "—" },
-    { title: "Assigned", dataIndex: "assigned_lot", key: "assigned", render: v => v ? <span className="text-green-700 font-medium">{v}</span> : "—" },
+    { title: "Lot Prefs", key: "prefs", render: (_, a) => a.lot_preferences?.length > 0 ? (
+      <span className="inline-flex flex-wrap gap-0.5 items-center">
+        {a.lot_preferences.map((lot, i) => {
+          const restricted = lotIsRestricted(lot, permitType.code, lotLookup);
+          return (
+            <span key={lot} className="inline-flex items-center">
+              {i > 0 && <span className="text-gray-300 mx-0.5">&gt;</span>}
+              {restricted
+                ? <Tooltip title="After 4 PM & weekends"><Tag color="gold" className="!text-[10px] !m-0">{lot}</Tag></Tooltip>
+                : <Tag color="blue" className="!text-[10px] !m-0">{lot}</Tag>}
+            </span>
+          );
+        })}
+      </span>
+    ) : "—" },
+    { title: "Assigned", dataIndex: "assigned_lot", key: "assigned", render: (v: string | null) => {
+      if (!v) return "—";
+      const restricted = lotIsRestricted(v, permitType.code, lotLookup);
+      return restricted
+        ? <Tooltip title="After 4 PM & weekends"><Tag color="gold">{v}</Tag></Tooltip>
+        : <span className="text-green-700 font-medium">{v}</span>;
+    }},
     { title: "Applied", dataIndex: "created_at", key: "applied", render: d => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) },
     { title: "", key: "actions", width: 120, render: (_, a) => (
       <Space>
@@ -529,7 +585,7 @@ function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onB
                   <div><strong>Rank:</strong> #{previewStudent.rank} of {result.selected.length}</div>
                   <div><strong>Email:</strong> {previewStudent.student_email}</div>
                   <div><strong>Class:</strong> {previewStudent.class_year}</div>
-                  <div><strong>Plate:</strong> {previewStudent.plate}</div>
+                  <div><strong>Plate:</strong> {previewStudent.plate}{previewStudent.plate_state ? ` (${previewStudent.plate_state})` : ""}</div>
                   <div><strong>Lot Prefs:</strong> {previewStudent.lot_preferences.length > 0 ? previewStudent.lot_preferences.join(" > ") : "None"}</div>
                 </div>
               </div>

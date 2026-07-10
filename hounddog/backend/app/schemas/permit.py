@@ -9,7 +9,7 @@ class PermitBase(BaseModel):
     student_id: str = ""
     name: str
     email: str | None = None
-    phone: str | None = None
+    phone: str = ""
     sms_opt_in: bool = False
     plates: list[str] = []
     lot_assignment: str = ""

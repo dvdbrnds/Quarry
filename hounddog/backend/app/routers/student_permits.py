@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, get_current_user
 from ..config import settings
 from ..database import get_db
+from ..models.lot import ParkingLot
 from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
@@ -17,9 +18,39 @@ from ..schemas.permit_application import (
     ApplicationSubmit,
     ApplicationWithType,
     AvailablePermitType,
+    LotAccessInfo,
 )
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
+
+
+async def _load_lot_lookup(db: AsyncSession) -> dict[str, ParkingLot]:
+    result = await db.execute(
+        select(ParkingLot).where(ParkingLot.deleted_at.is_(None))
+    )
+    return {lot.name: lot for lot in result.scalars().all()}
+
+
+def _build_lot_details(
+    lot_names: list[str],
+    permit_type_code: str,
+    lot_lookup: dict[str, ParkingLot],
+) -> list[LotAccessInfo]:
+    details: list[LotAccessInfo] = []
+    is_commuter = permit_type_code in COMMUTER_CODES
+    for name in lot_names:
+        lot = lot_lookup.get(name)
+        designation = lot.designation_code if lot else ""
+        restricted = is_commuter and designation in ("FS", "FSC")
+        details.append(LotAccessInfo(
+            name=name,
+            designation_code=designation,
+            is_time_restricted=restricted,
+            restriction_label="After 4 PM & weekends" if restricted else "",
+        ))
+    return details
 
 
 @router.get("/available", response_model=list[AvailablePermitType])
@@ -36,6 +67,8 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
         ).order_by(PermitType.sort_order)
     )
     types = result.scalars().all()
+
+    lot_lookup = await _load_lot_lookup(db)
 
     out: list[AvailablePermitType] = []
     for pt in types:
@@ -57,6 +90,7 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
             max_capacity=pt.max_capacity,
             remaining=remaining,
             lot_assignments=pt.lot_assignments,
+            lot_details=_build_lot_details(pt.lot_assignments, pt.code, lot_lookup),
             valid_days=pt.valid_days,
             min_class_year=pt.min_class_year,
             application_closes_at=pt.application_closes_at,
@@ -119,6 +153,7 @@ async def submit_application(
         class_year=data.class_year,
         permit_type_id=pt.id,
         plate=data.plate.upper().strip(),
+        plate_state=data.plate_state.upper().strip(),
         phone=data.phone,
         lot_preferences=data.lot_preferences,
         is_test_entry=user.is_staff,
@@ -128,12 +163,14 @@ async def submit_application(
     await db.flush()
     await db.refresh(app)
 
+    lot_lookup = await _load_lot_lookup(db)
     return ApplicationWithType(
         **{k: v for k, v in app.__dict__.items() if not k.startswith("_")},
         permit_type_label=pt.label,
         permit_type_code=pt.code,
         permit_type_price=pt.price,
         lot_assignments=pt.lot_assignments,
+        lot_details=_build_lot_details(pt.lot_assignments, pt.code, lot_lookup),
     )
 
 
@@ -150,15 +187,20 @@ async def my_applications(
     )
     apps = result.scalars().all()
 
+    lot_lookup = await _load_lot_lookup(db)
+
     out: list[ApplicationWithType] = []
     for app in apps:
         pt = await db.get(PermitType, app.permit_type_id)
+        pt_code = pt.code if pt else ""
+        pt_lots = pt.lot_assignments if pt else []
         out.append(ApplicationWithType(
             **{k: v for k, v in app.__dict__.items() if not k.startswith("_")},
             permit_type_label=pt.label if pt else "",
-            permit_type_code=pt.code if pt else "",
+            permit_type_code=pt_code,
             permit_type_price=pt.price if pt else 0,
-            lot_assignments=pt.lot_assignments if pt else [],
+            lot_assignments=pt_lots,
+            lot_details=_build_lot_details(pt_lots, pt_code, lot_lookup),
         ))
     return out
 

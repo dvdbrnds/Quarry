@@ -432,6 +432,7 @@ async def standalone_permit_purchase(
             "permit_type_code": permit_type.code,
             "student_name": data.student_name,
             "plate": data.plate.upper().strip(),
+            "plate_state": data.plate_state.upper().strip(),
             "email": data.email,
             "phone": data.phone or "",
             "class_year": str(data.class_year) if data.class_year else "",

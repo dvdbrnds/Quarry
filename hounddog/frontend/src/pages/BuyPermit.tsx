@@ -90,7 +90,8 @@ function PurchaseModal({ permit, onClose, onError }: {
     try {
       const res = await fetch("/api/payments/standalone-purchase", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permit_type_id: permit.id, student_name: values.name, plate: values.plate.toUpperCase().trim(), email: values.email,
+        body: JSON.stringify({ permit_type_id: permit.id, student_name: values.name, plate: values.plate.toUpperCase().trim(),
+          plate_state: (values.plate_state || "").toUpperCase().trim(), email: values.email,
           phone: values.phone || null, class_year: values.class_year || null }),
       });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Purchase failed"); }
@@ -107,7 +108,10 @@ function PurchaseModal({ permit, onClose, onError }: {
           <Form form={form} layout="vertical" onFinish={handleFinish}>
             <Form.Item name="name" label="Full Name" rules={[{ required: true }]}><Input /></Form.Item>
             <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}><Input placeholder="you@moravian.edu" /></Form.Item>
-            <Form.Item name="plate" label="License Plate" rules={[{ required: true }]}><Input placeholder="ABC1234" className="font-mono" /></Form.Item>
+            <div className="grid grid-cols-3 gap-3">
+              <Form.Item name="plate" label="License Plate" rules={[{ required: true }]} className="col-span-2"><Input placeholder="ABC1234" className="font-mono" /></Form.Item>
+              <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}><Input placeholder="PA" maxLength={2} className="font-mono uppercase" /></Form.Item>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Form.Item name="class_year" label="Graduation Year"><InputNumber min={2024} max={2035} placeholder="2027" className="w-full" /></Form.Item>
               <Form.Item name="phone" label="Phone"><Input placeholder="610-555-0123" /></Form.Item>

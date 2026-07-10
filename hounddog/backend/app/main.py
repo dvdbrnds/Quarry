@@ -102,6 +102,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS notes TEXT",
             # Permit email
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
+            # Backfill null phone to empty string
+            "UPDATE permits SET phone = '' WHERE phone IS NULL",
             # QPS permit numbering
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS permit_number VARCHAR(32)",
             "CREATE SEQUENCE IF NOT EXISTS qps_permit_number_seq START WITH 1",
@@ -156,6 +158,8 @@ async def lifespan(app: FastAPI):
             # Lottery test entries and Okta metadata
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS is_test_entry BOOLEAN DEFAULT false",
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS okta_metadata JSONB",
+            # Plate state on permit applications
+            "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS plate_state VARCHAR(2) DEFAULT ''",
             # First-year restriction on permit types
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS min_class_year INTEGER",
             # Renewal tokens for faculty/staff magic-link renewal

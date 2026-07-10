@@ -18,6 +18,7 @@ class PermitApplication(Base):
     class_year: Mapped[int] = mapped_column(Integer)
     permit_type_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("permit_types.id"))
     plate: Mapped[str] = mapped_column(String(32))
+    plate_state: Mapped[str] = mapped_column(String(2), default="")
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     lot_preferences: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     assigned_lot: Mapped[str | None] = mapped_column(String(128), nullable=True)

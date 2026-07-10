@@ -70,7 +70,7 @@ function PermitForm({
       plates: values.plates.split(",").map((p: string) => p.trim().toUpperCase()).filter(Boolean),
       student_id: values.student_id,
       email: values.email || null,
-      phone: values.phone || null,
+      phone: values.phone,
       beacon_id: values.beacon_id || null,
       lot_assignment: values.lot_assignment,
       permit_type: values.permit_type,
@@ -133,7 +133,7 @@ function PermitForm({
           <Form.Item name="email" label="Email">
             <Input type="email" placeholder="student@university.edu" />
           </Form.Item>
-          <Form.Item name="phone" label="Phone">
+          <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone is required" }]}>
             <Input placeholder="+1 (555) 123-4567" />
           </Form.Item>
           <Form.Item name="beacon_id" label="Beacon ID (SheepDog)">

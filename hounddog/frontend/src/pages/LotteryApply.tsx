@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space, App } from "antd";
+import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space, App, Tooltip } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, type AuthUser } from "../auth";
+
+interface LotDetail {
+  name: string;
+  designation_code: string;
+  is_time_restricted: boolean;
+  restriction_label: string;
+}
 
 interface AvailablePermit {
   id: string; code: string; label: string; eligible: string; price: string;
   max_capacity: number; remaining: number; lot_assignments: string[];
+  lot_details: LotDetail[];
   valid_days: number; min_class_year: number | null;
   application_closes_at: string | null; requires_lottery: boolean;
 }
 
 interface MyApplication {
-  id: string; student_name: string; class_year: number; plate: string;
+  id: string; student_name: string; class_year: number; plate: string; plate_state: string;
   status: string; permit_type_label: string; permit_type_code: string;
   permit_type_price: string; lot_assignments: string[];
+  lot_details: LotDetail[];
   lot_preferences: string[]; assigned_lot: string | null;
   waitlist_position: number | null; offer_expires_at: string | null; created_at: string;
 }
@@ -75,6 +84,23 @@ export default function LotteryApply() {
     <App>
       <LotteryPage user={user} />
     </App>
+  );
+}
+
+function LotTags({ details }: { details: LotDetail[] }) {
+  if (!details?.length) return null;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {details.map(d => (
+        d.is_time_restricted ? (
+          <Tooltip key={d.name} title={d.restriction_label}>
+            <Tag color="gold" className="!text-xs">Lot {d.name} *</Tag>
+          </Tooltip>
+        ) : (
+          <Tag key={d.name} color="blue" className="!text-xs">Lot {d.name}</Tag>
+        )
+      ))}
+    </span>
   );
 }
 
@@ -175,9 +201,11 @@ function LotteryPage({ user }: { user: AuthUser }) {
                           <div>
                             <div className="font-semibold text-[#1a2744]">{app.permit_type_label}</div>
                             <div className="text-xs text-gray-500 mt-1">
-                              Plate: <span className="font-mono font-medium">{app.plate}</span> &middot; Class of {app.class_year}
+                              Plate: <span className="font-mono font-medium">{app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
                             </div>
-                            <div className="text-xs text-gray-500">Lots: {app.lot_assignments.join(", ")}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {app.lot_details?.length ? <LotTags details={app.lot_details} /> : <>Lots: {app.lot_assignments.join(", ")}</>}
+                            </div>
                             {app.assigned_lot && <div className="text-xs text-green-700 font-medium mt-1">Assigned: Lot {app.assigned_lot}</div>}
                             {app.status === "waitlisted" && app.waitlist_position != null && (
                               <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>
@@ -221,7 +249,14 @@ function LotteryPage({ user }: { user: AuthUser }) {
                             </div>
                             <p className="text-sm text-gray-500 mt-1">{pt.eligible}</p>
                             <div className="text-sm text-gray-500 mt-2">
-                              Lots: <span className="font-medium">{pt.lot_assignments.join(", ")}</span> &middot; Valid {pt.valid_days} days
+                              <div className="flex items-center flex-wrap gap-1">
+                                <span>Lots:</span>
+                                {pt.lot_details?.length ? <LotTags details={pt.lot_details} /> : <span className="font-medium">{pt.lot_assignments.join(", ")}</span>}
+                              </div>
+                              <div className="mt-1">Valid {pt.valid_days} days</div>
+                              {pt.lot_details?.some(d => d.is_time_restricted) && (
+                                <div className="text-xs text-amber-700 mt-1">* Evening & weekend access only (after 4 PM weekdays, all day Sat/Sun)</div>
+                              )}
                             </div>
                             <div className="flex items-center gap-4 mt-2">
                               <span className="text-xs text-gray-400">{pt.remaining} of {pt.max_capacity} spots</span>
@@ -320,8 +355,8 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
         method: "POST", headers: await authHeaders(),
         body: JSON.stringify({
           permit_type_id: permit.id, student_name: values.name,
-          plate: values.plate.toUpperCase().trim(), class_year: values.class_year,
-          phone: values.phone || null, lot_preferences: lotPreferences,
+          plate: values.plate.toUpperCase().trim(), plate_state: (values.plate_state || "").toUpperCase().trim(),
+          class_year: values.class_year, phone: values.phone || null, lot_preferences: lotPreferences,
         }),
       });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Application failed"); }
@@ -345,9 +380,14 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
               <Form.Item name="name" label="Full Name" rules={[{ required: true }]} tooltip={nameFromOkta ? "From your university account" : undefined}>
                 <Input disabled={nameFromOkta} className={nameFromOkta ? "bg-gray-50" : ""} />
               </Form.Item>
-              <Form.Item name="plate" label="License Plate" rules={[{ required: true }]}>
-                <Input placeholder="ABC1234" className="font-mono" />
-              </Form.Item>
+              <div className="grid grid-cols-3 gap-3">
+                <Form.Item name="plate" label="License Plate" rules={[{ required: true }]} className="col-span-2">
+                  <Input placeholder="ABC1234" className="font-mono" />
+                </Form.Item>
+                <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}>
+                  <Input placeholder="PA" maxLength={2} className="font-mono uppercase" />
+                </Form.Item>
+              </div>
               <Form.Item name="class_year" label="Graduation Year" rules={[{ required: true }]} tooltip={classYearFromOkta ? "From your university account" : undefined}>
                 <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
               </Form.Item>
@@ -357,14 +397,22 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
               {permit.lot_assignments.length > 1 && (
                 <Form.Item label="Lot Preference (drag to reorder — #1 is top choice)">
                   <div className="space-y-1.5">
-                    {lotPreferences.map((lot, idx) => (
-                      <div key={lot} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}.</span>
-                        <span className="text-sm font-medium flex-1">Lot {lot}</span>
-                        <Button type="text" size="small" disabled={idx === 0} onClick={() => moveLot(idx, -1)}>▲</Button>
-                        <Button type="text" size="small" disabled={idx === lotPreferences.length - 1} onClick={() => moveLot(idx, 1)}>▼</Button>
-                      </div>
-                    ))}
+                    {lotPreferences.map((lot, idx) => {
+                      const detail = permit.lot_details?.find(d => d.name === lot);
+                      return (
+                        <div key={lot} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${detail?.is_time_restricted ? "bg-amber-50 border border-amber-200" : "bg-gray-50"}`}>
+                          <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}.</span>
+                          <div className="flex-1">
+                            <span className="text-sm font-medium">Lot {lot}</span>
+                            {detail?.is_time_restricted && (
+                              <div className="text-[11px] text-amber-700">Evening & weekends only</div>
+                            )}
+                          </div>
+                          <Button type="text" size="small" disabled={idx === 0} onClick={() => moveLot(idx, -1)}>▲</Button>
+                          <Button type="text" size="small" disabled={idx === lotPreferences.length - 1} onClick={() => moveLot(idx, 1)}>▼</Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </Form.Item>
               )}
