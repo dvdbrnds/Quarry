@@ -150,6 +150,13 @@ async def lifespan(app: FastAPI):
             )""",
             # Standalone permit purchases: ticket_id must be nullable
             "ALTER TABLE payments ALTER COLUMN ticket_id DROP NOT NULL",
+            # Payment metadata columns
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_type VARCHAR(48)",
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_name VARCHAR(256)",
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_email VARCHAR(256)",
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS description VARCHAR(512)",
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS plate VARCHAR(20)",
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS bursar_reference VARCHAR(128)",
             # Lottery strategy on permit types
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_strategy VARCHAR(64) DEFAULT 'seniority_timestamp'",
             # Lot preferences on permit applications
