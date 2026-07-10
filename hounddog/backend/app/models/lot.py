@@ -22,6 +22,7 @@ class ParkingLot(Base):
     is_snow_lot: Mapped[bool] = mapped_column(Boolean, default=False)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     has_sheepdog: Mapped[bool] = mapped_column(Boolean, default=False)
+    lot_type: Mapped[str] = mapped_column(String(32), default="lot")
     campus: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

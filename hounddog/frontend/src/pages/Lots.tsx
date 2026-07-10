@@ -42,6 +42,11 @@ const CAMPUS_OPTIONS = [
   { value: "remote", label: "Remote Campus" },
 ];
 
+const LOT_TYPE_OPTIONS = [
+  { value: "lot", label: "Parking Lot" },
+  { value: "street", label: "Street Parking" },
+];
+
 function LotForm({
   initial, boundary, onBoundaryChange, onSave, onCancel,
 }: {
@@ -57,6 +62,7 @@ function LotForm({
     if (initial) {
       form.setFieldsValue({
         name: initial.name,
+        lot_type: initial.lot_type ?? "lot",
         designation_code: initial.designation_code ?? "",
         campus: initial.campus ?? "",
         total_spaces: initial.total_spaces,
@@ -89,6 +95,7 @@ function LotForm({
         designation_label: designLabel,
         is_snow_lot: values.is_snow_lot ?? false,
         has_sheepdog: values.has_sheepdog ?? false,
+        lot_type: values.lot_type ?? "lot",
         campus: values.campus || null,
         notes: values.notes || null,
         ...(parsedSchedule !== undefined ? { access_schedule: parsedSchedule } : {}),
@@ -103,13 +110,18 @@ function LotForm({
   return (
     <div className="p-4 border-t border-gray-200 bg-gray-50 overflow-y-auto max-h-[50vh]">
       <Form form={form} layout="vertical" onFinish={handleFinish} size="small"
-        initialValues={{ total_spaces: 0, handicap_spaces: 0, designation_code: "", campus: "" }}>
-        <Form.Item name="name" label="Lot Name" rules={[{ required: true }]}>
-          <Input placeholder="e.g. Lot A" />
+        initialValues={{ total_spaces: 0, handicap_spaces: 0, designation_code: "", campus: "", lot_type: "lot" }}>
+        <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+          <Input placeholder="e.g. Lot A or Main St" />
         </Form.Item>
-        <Form.Item name="campus" label="Campus">
-          <Select options={CAMPUS_OPTIONS} />
-        </Form.Item>
+        <div className="grid grid-cols-2 gap-2">
+          <Form.Item name="lot_type" label="Type">
+            <Select options={LOT_TYPE_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="campus" label="Campus">
+            <Select options={CAMPUS_OPTIONS} />
+          </Form.Item>
+        </div>
         <Form.Item name="designation_code" label="Designation">
           <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
         </Form.Item>
@@ -456,6 +468,7 @@ export default function Lots() {
   const [spotsVisible, setSpotsVisible] = useState(true);
 
   const [selectedCampus, setSelectedCampus] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
 
   const [closeReason, setCloseReason] = useState("");
   const [closeReopensAt, setCloseReopensAt] = useState<dayjs.Dayjs | null>(null);
@@ -463,9 +476,11 @@ export default function Lots() {
   const [closeSubmitting, setCloseSubmitting] = useState(false);
 
   const filteredLots = useMemo(() => {
-    if (selectedCampus === "all") return lots;
-    return lots.filter(l => l.campus === selectedCampus);
-  }, [lots, selectedCampus]);
+    let result = lots;
+    if (selectedCampus !== "all") result = result.filter(l => l.campus === selectedCampus);
+    if (selectedType !== "all") result = result.filter(l => (l.lot_type || "lot") === selectedType);
+    return result;
+  }, [lots, selectedCampus, selectedType]);
 
   const selectedLot = lots.find(l => l.id === selectedLotId);
   const isSheepDogLot = selectedLot?.has_sheepdog ?? false;
@@ -557,27 +572,42 @@ export default function Lots() {
     <div className="flex gap-6 h-[calc(100vh-7rem)]">
       <div className="w-80 flex-shrink-0 flex flex-col bg-white rounded-xl shadow overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Parking Lots</h2>
-          <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New Lot</Button>
+          <h2 className="text-lg font-bold">Parking</h2>
+          <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New</Button>
         </div>
-        {lots.some(l => l.campus) && (
-          <div className="px-3 py-2 border-b border-gray-100">
-            <Segmented
-              size="small"
-              block
-              value={selectedCampus}
-              onChange={v => { setSelectedCampus(v as string); setSelectedLotId(null); }}
-              options={[
-                { label: "All", value: "all" },
-                ...CAMPUS_OPTIONS.filter(c => c.value && lots.some(l => l.campus === c.value))
-                  .map(c => ({ label: c.label, value: c.value })),
-              ]}
-            />
+        {(lots.some(l => l.campus) || lots.some(l => l.lot_type === "street")) && (
+          <div className="px-3 py-2 border-b border-gray-100 space-y-1.5">
+            {lots.some(l => l.campus) && (
+              <Segmented
+                size="small"
+                block
+                value={selectedCampus}
+                onChange={v => { setSelectedCampus(v as string); setSelectedLotId(null); }}
+                options={[
+                  { label: "All", value: "all" },
+                  ...CAMPUS_OPTIONS.filter(c => c.value && lots.some(l => l.campus === c.value))
+                    .map(c => ({ label: c.label, value: c.value })),
+                ]}
+              />
+            )}
+            {lots.some(l => l.lot_type === "street") && (
+              <Segmented
+                size="small"
+                block
+                value={selectedType}
+                onChange={v => { setSelectedType(v as string); setSelectedLotId(null); }}
+                options={[
+                  { label: "All Types", value: "all" },
+                  { label: "Lots", value: "lot" },
+                  { label: "Streets", value: "street" },
+                ]}
+              />
+            )}
           </div>
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {filteredLots.length === 0 && <Empty description={lots.length === 0 ? 'No lots yet. Click "+ New Lot"' : "No lots on this campus"} className="py-12" />}
+          {filteredLots.length === 0 && <Empty description={lots.length === 0 ? 'No parking yet. Click "+ New"' : "No matches for this filter"} className="py-12" />}
           {filteredLots.map(lot => (
             <div key={lot.id}>
               <div onClick={() => handleSelectLot(lot.id)}
@@ -586,9 +616,10 @@ export default function Lots() {
                   <div>
                     <Space>
                       <h3 className="font-semibold text-sm">{lot.name}</h3>
+                      {lot.lot_type === "street" && <Tag color="default" className="!text-[10px]">Street</Tag>}
                       {lot.campus && <Tag color="blue" className="!text-[10px]">{CAMPUS_OPTIONS.find(c => c.value === lot.campus)?.label ?? lot.campus}</Tag>}
                       {lot.has_sheepdog && <Tag color="gold" className="!text-[10px]">SD</Tag>}
-                      {lot.is_closed && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
+                      {lot.is_closed && lot.lot_type !== "street" && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
                     </Space>
                     <p className="text-xs text-ink-mute mt-0.5">
                       {lot.designation_code && <Tag className="!text-[10px]">{lot.designation_code}</Tag>}
@@ -600,9 +631,9 @@ export default function Lots() {
                   </div>
                   {!isEditing && (
                     <Space className="ml-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                      {lot.is_closed
+                      {lot.lot_type !== "street" && (lot.is_closed
                         ? <Button type="link" size="small" onClick={() => handleReopen(lot)}>Reopen</Button>
-                        : <Button type="link" size="small" danger onClick={() => setClosingLot(lot)}>Close</Button>}
+                        : <Button type="link" size="small" danger onClick={() => setClosingLot(lot)}>Close</Button>)}
                       <Button type="link" size="small" onClick={() => startEdit(lot)}>Edit</Button>
                       <Button type="link" size="small" danger onClick={() => handleDeleteLot(lot)}>Delete</Button>
                     </Space>

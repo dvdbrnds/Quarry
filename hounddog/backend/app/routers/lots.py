@@ -120,6 +120,7 @@ async def create_lot(data: LotCreate, db: AsyncSession = Depends(get_db)):
         access_schedule=access_schedule,
         is_snow_lot=data.is_snow_lot,
         has_sheepdog=data.has_sheepdog,
+        lot_type=data.lot_type,
         campus=data.campus,
         notes=data.notes,
     )
@@ -254,6 +255,8 @@ async def update_lot(
         lot.is_snow_lot = data.is_snow_lot
     if data.has_sheepdog is not None:
         lot.has_sheepdog = data.has_sheepdog
+    if data.lot_type is not None:
+        lot.lot_type = data.lot_type
     if data.campus is not None:
         lot.campus = data.campus or None
     if data.notes is not None:
