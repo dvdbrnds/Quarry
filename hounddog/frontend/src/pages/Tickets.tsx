@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders } from "../auth";
@@ -44,16 +45,25 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function Tickets() {
   const { modal, message } = App.useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useCurrentUser();
   const isAdmin = user?.role === "admin";
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [search, setSearch] = useState(searchParams.get("search") ?? "");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "");
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") ?? "");
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (statusFilter) params.set("status", statusFilter);
+    if (categoryFilter) params.set("category", categoryFilter);
+    setSearchParams(params, { replace: true });
+  }, [search, statusFilter, categoryFilter, setSearchParams]);
 
   const load = useCallback(async () => {
     setLoading(true);

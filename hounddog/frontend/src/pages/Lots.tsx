@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, Coordinate, Lot, LotZone, ParkingSpot } from "../api";
 import { loadConfig } from "../auth";
 import LotMap from "../components/LotMap";
 import {
-  Button, Input, InputNumber, Select, Checkbox, Modal, Form, DatePicker, Tag, Space, App, Card, Empty,
+  Button, Input, InputNumber, Select, Checkbox, Modal, Form, DatePicker, Tag, Space, App, Card, Empty, Segmented,
 } from "antd";
 import dayjs from "dayjs";
 
@@ -35,6 +35,13 @@ const ZONE_TYPE_OPTIONS = [
   { value: "reserved_tenant", label: "Reserved Tenant" },
 ];
 
+const CAMPUS_OPTIONS = [
+  { value: "", label: "— None —" },
+  { value: "north", label: "North Campus" },
+  { value: "south", label: "South Campus" },
+  { value: "remote", label: "Remote Campus" },
+];
+
 function LotForm({
   initial, boundary, onBoundaryChange, onSave, onCancel,
 }: {
@@ -51,6 +58,7 @@ function LotForm({
       form.setFieldsValue({
         name: initial.name,
         designation_code: initial.designation_code ?? "",
+        campus: initial.campus ?? "",
         total_spaces: initial.total_spaces,
         handicap_spaces: initial.handicap_spaces,
         is_snow_lot: initial.is_snow_lot,
@@ -81,6 +89,7 @@ function LotForm({
         designation_label: designLabel,
         is_snow_lot: values.is_snow_lot ?? false,
         has_sheepdog: values.has_sheepdog ?? false,
+        campus: values.campus || null,
         notes: values.notes || null,
         ...(parsedSchedule !== undefined ? { access_schedule: parsedSchedule } : {}),
       };
@@ -94,9 +103,12 @@ function LotForm({
   return (
     <div className="p-4 border-t border-gray-200 bg-gray-50 overflow-y-auto max-h-[50vh]">
       <Form form={form} layout="vertical" onFinish={handleFinish} size="small"
-        initialValues={{ total_spaces: 0, handicap_spaces: 0, designation_code: "" }}>
+        initialValues={{ total_spaces: 0, handicap_spaces: 0, designation_code: "", campus: "" }}>
         <Form.Item name="name" label="Lot Name" rules={[{ required: true }]}>
           <Input placeholder="e.g. Lot A" />
+        </Form.Item>
+        <Form.Item name="campus" label="Campus">
+          <Select options={CAMPUS_OPTIONS} />
         </Form.Item>
         <Form.Item name="designation_code" label="Designation">
           <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
@@ -443,10 +455,17 @@ export default function Lots() {
   const [batchNextNumber, setBatchNextNumber] = useState(1);
   const [spotsVisible, setSpotsVisible] = useState(true);
 
+  const [selectedCampus, setSelectedCampus] = useState<string>("all");
+
   const [closeReason, setCloseReason] = useState("");
   const [closeReopensAt, setCloseReopensAt] = useState<dayjs.Dayjs | null>(null);
   const [closeRecipients, setCloseRecipients] = useState("");
   const [closeSubmitting, setCloseSubmitting] = useState(false);
+
+  const filteredLots = useMemo(() => {
+    if (selectedCampus === "all") return lots;
+    return lots.filter(l => l.campus === selectedCampus);
+  }, [lots, selectedCampus]);
 
   const selectedLot = lots.find(l => l.id === selectedLotId);
   const isSheepDogLot = selectedLot?.has_sheepdog ?? false;
@@ -491,20 +510,6 @@ export default function Lots() {
     });
   }
 
-  function applyCommuterEvening() {
-    modal.confirm({
-      title: "Apply commuter evening access?",
-      content: "This will update all Faculty/Staff lots to allow commuter students between 4 PM and 7 AM (and all day on weekends).",
-      okText: "Apply",
-      onOk: async () => {
-        const res = await fetch("/api/lots/apply-commuter-evening", { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
-        if (!res.ok) throw new Error("Failed");
-        const data = await res.json();
-        message.success(`Updated ${data.updated} lot(s): ${data.lots.join(", ")}`);
-        load();
-      },
-    });
-  }
 
   function handleReopen(lot: Lot) {
     modal.confirm({
@@ -553,15 +558,27 @@ export default function Lots() {
       <div className="w-80 flex-shrink-0 flex flex-col bg-white rounded-xl shadow overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-bold">Parking Lots</h2>
-          <Space>
-            <Button size="small" disabled={isEditing} onClick={applyCommuterEvening}>Apply Commuter Evening</Button>
-            <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New Lot</Button>
-          </Space>
+          <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New Lot</Button>
         </div>
+        {lots.some(l => l.campus) && (
+          <div className="px-3 py-2 border-b border-gray-100">
+            <Segmented
+              size="small"
+              block
+              value={selectedCampus}
+              onChange={v => { setSelectedCampus(v as string); setSelectedLotId(null); }}
+              options={[
+                { label: "All", value: "all" },
+                ...CAMPUS_OPTIONS.filter(c => c.value && lots.some(l => l.campus === c.value))
+                  .map(c => ({ label: c.label, value: c.value })),
+              ]}
+            />
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto">
-          {lots.length === 0 && <Empty description='No lots yet. Click "+ New Lot"' className="py-12" />}
-          {lots.map(lot => (
+          {filteredLots.length === 0 && <Empty description={lots.length === 0 ? 'No lots yet. Click "+ New Lot"' : "No lots on this campus"} className="py-12" />}
+          {filteredLots.map(lot => (
             <div key={lot.id}>
               <div onClick={() => handleSelectLot(lot.id)}
                 className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${lot.id === selectedLotId ? "bg-brass/10 border-l-4 border-l-brass" : "hover:bg-gray-50"}`}>
@@ -569,6 +586,7 @@ export default function Lots() {
                   <div>
                     <Space>
                       <h3 className="font-semibold text-sm">{lot.name}</h3>
+                      {lot.campus && <Tag color="blue" className="!text-[10px]">{CAMPUS_OPTIONS.find(c => c.value === lot.campus)?.label ?? lot.campus}</Tag>}
                       {lot.has_sheepdog && <Tag color="gold" className="!text-[10px]">SD</Tag>}
                       {lot.is_closed && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
                     </Space>
@@ -615,7 +633,7 @@ export default function Lots() {
       </div>
 
       <div className="flex-1 rounded-xl shadow overflow-hidden">
-        <LotMap apiKey={mapsApiKey} lots={lots} selectedLotId={selectedLotId}
+        <LotMap apiKey={mapsApiKey} lots={filteredLots} selectedLotId={selectedLotId}
           onSelectLot={handleSelectLot} editingBoundary={editingBoundary}
           onBoundaryChange={setEditingBoundary} defaultCenter={campusCenter}
           spots={isSheepDogLot && spotsVisible ? spots : []} selectedSpotId={selectedSpotId}

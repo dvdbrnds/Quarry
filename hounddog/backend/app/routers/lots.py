@@ -77,30 +77,6 @@ COMMUTER_EVENING_SCHEDULE = [
 ]
 
 
-@router.post("/apply-commuter-evening")
-async def apply_commuter_evening_access(
-    db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
-):
-    """Apply commuter student evening access (4PM-7AM) to all faculty/staff lots."""
-    result = await db.execute(
-        select(ParkingLot).where(
-            ParkingLot.deleted_at.is_(None),
-            ParkingLot.designation_code.in_(["FS", "FSC"]),
-        )
-    )
-    lots = result.scalars().all()
-
-    updated = []
-    for lot in lots:
-        lot.access_schedule = COMMUTER_EVENING_SCHEDULE
-        lot.designation_code = "FSC"
-        lot.designation_label = "Faculty/Staff + Commuter (time-split)"
-        updated.append(lot.name)
-
-    await db.flush()
-    return {"updated": len(updated), "lots": updated}
-
 
 @router.get("", response_model=list[LotRead])
 async def list_lots(db: AsyncSession = Depends(get_db)):
@@ -127,16 +103,24 @@ async def create_lot(data: LotCreate, db: AsyncSession = Depends(get_db)):
         await db.delete(old)
     await db.flush()
 
+    if data.designation_code == "FSC":
+        access_schedule = COMMUTER_EVENING_SCHEDULE
+        designation_label = "Faculty/Staff + Commuter (time-split)"
+    else:
+        access_schedule = [s.model_dump() for s in data.access_schedule]
+        designation_label = data.designation_label
+
     lot = ParkingLot(
         name=data.name,
         boundary=[c.model_dump() for c in data.boundary],
         total_spaces=data.total_spaces,
         handicap_spaces=data.handicap_spaces,
         designation_code=data.designation_code,
-        designation_label=data.designation_label,
-        access_schedule=[s.model_dump() for s in data.access_schedule],
+        designation_label=designation_label,
+        access_schedule=access_schedule,
         is_snow_lot=data.is_snow_lot,
         has_sheepdog=data.has_sheepdog,
+        campus=data.campus,
         notes=data.notes,
     )
     db.add(lot)
@@ -261,12 +245,17 @@ async def update_lot(
         lot.designation_code = data.designation_code
     if data.designation_label is not None:
         lot.designation_label = data.designation_label
-    if data.access_schedule is not None:
+    if data.designation_code == "FSC":
+        lot.designation_label = "Faculty/Staff + Commuter (time-split)"
+        lot.access_schedule = COMMUTER_EVENING_SCHEDULE
+    elif data.access_schedule is not None:
         lot.access_schedule = [s.model_dump() for s in data.access_schedule]
     if data.is_snow_lot is not None:
         lot.is_snow_lot = data.is_snow_lot
     if data.has_sheepdog is not None:
         lot.has_sheepdog = data.has_sheepdog
+    if data.campus is not None:
+        lot.campus = data.campus or None
     if data.notes is not None:
         lot.notes = data.notes
 

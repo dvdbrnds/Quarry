@@ -155,6 +155,7 @@ export interface Lot {
   is_snow_lot: boolean;
   is_closed: boolean;
   has_sheepdog: boolean;
+  campus: string | null;
   notes: string | null;
   zones?: LotZone[];
   created_at: string;

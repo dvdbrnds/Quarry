@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, Statistic, Spin, Tag, Segmented, Empty } from "antd";
 import { authHeaders, getAccessToken } from "../auth";
 import { useCurrentUser } from "../UserContext";
@@ -137,6 +138,7 @@ const STATUS_DOTS: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const user = useCurrentUser();
   const [data, setData] = useState<DashboardData | null>(null);
   const [period, setPeriod] = useState<Period>("today");
@@ -216,7 +218,7 @@ export default function Dashboard() {
 
         {data && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card size="small" className="!bg-red-50">
+            <Card size="small" className="!bg-red-50 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/tickets?status=appealed")}>
               <Statistic
                 title={<span className="text-red-700">Needs action</span>}
                 value={data.needs_action.total}
@@ -228,7 +230,7 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            <Card size="small">
+            <Card size="small" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/tickets")}>
               <Statistic
                 title={`Issued ${PERIOD_LABELS[period].toLowerCase()}`}
                 value={data.issued_count.total}
@@ -239,7 +241,7 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            <Card size="small">
+            <Card size="small" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/finance")}>
               <Statistic
                 title={`Revenue ${PERIOD_LABELS[period].toLowerCase()}`}
                 value={Number(data.revenue.collected)}
@@ -252,7 +254,7 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            <Card size="small" className="!bg-green-50">
+            <Card size="small" className="!bg-green-50 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/tickets")}>
               <Statistic
                 title={<span className="text-green-700">Resolution rate</span>}
                 value={data.resolution_rate.rate}
@@ -270,7 +272,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card
               title="Action items"
-              extra={<span className="text-xs text-ink-mute">Appeals & escalations needing review</span>}
+              extra={<a className="text-xs" onClick={() => navigate("/tickets?status=appealed")}>View all</a>}
               styles={{ body: { padding: 0 } }}
             >
               {data.action_items.length === 0 ? (
@@ -281,7 +283,9 @@ export default function Dashboard() {
                     const badge = ageBadge(item.issued_at);
                     const borderColor = badge.label.includes("overdue") ? "border-red-400" : "border-amber-400";
                     return (
-                      <div key={item.id} className={`px-5 py-3 border-l-4 ${borderColor} flex items-start gap-3`}>
+                      <div key={item.id}
+                        onClick={() => navigate(`/tickets?search=${item.id.slice(0, 8)}`)}
+                        className={`px-5 py-3 border-l-4 ${borderColor} flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-colors`}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm font-medium text-navy">#{item.id.slice(0, 8)}</span>
@@ -305,7 +309,7 @@ export default function Dashboard() {
 
             <Card
               title={`${PERIOD_LABELS[period]}'s activity`}
-              extra={<span className="text-xs text-ink-mute">Ticket lifecycle events</span>}
+              extra={<a className="text-xs" onClick={() => navigate("/tickets")}>View all</a>}
               styles={{ body: { padding: 0 } }}
             >
               {data.activity.length === 0 ? (
@@ -313,7 +317,9 @@ export default function Dashboard() {
               ) : (
                 <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
                   {data.activity.map((ev) => (
-                    <div key={`${ev.id}-${ev.updated_at}`} className="px-5 py-3 flex items-start gap-3">
+                    <div key={`${ev.id}-${ev.updated_at}`}
+                      onClick={() => navigate(`/tickets?search=${ev.id.slice(0, 8)}`)}
+                      className="px-5 py-3 flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-colors">
                       <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${STATUS_DOTS[ev.status] || "bg-gray-300"}`} />
                       <div className="flex-1 min-w-0 text-sm text-ink">{eventDescription(ev)}</div>
                       <span className="text-xs text-ink-mute shrink-0 whitespace-nowrap">
