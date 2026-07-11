@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, AcademicSeason, Lot, LotClosure } from "../api";
+import { authHeaders } from "../auth";
 import { Button, Select, Modal, Input, Tag, Space, App, Descriptions, DatePicker, Empty } from "antd";
 import dayjs from "dayjs";
+
+interface LotteryPermitType {
+  id: string; code: string; label: string;
+  requires_lottery: boolean;
+  application_opens_at: string | null;
+  application_closes_at: string | null;
+  lottery_run_at: string | null;
+}
+
+interface LotteryEvent {
+  id: string;
+  label: string;
+  type: "opens" | "closes" | "drawing";
+  date: Date;
+}
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -63,9 +79,28 @@ export default function OperationsCalendar() {
   const [editReopensAt, setEditReopensAt] = useState<dayjs.Dayjs | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
+  const [lotteryEvents, setLotteryEvents] = useState<LotteryEvent[]>([]);
+
   const load = useCallback(async () => {
-    const [l, c, s] = await Promise.all([api.lots.list(), api.lots.closures.listAll(), api.academicCalendar.list()]);
+    const [l, c, s, ptRes] = await Promise.all([
+      api.lots.list(),
+      api.lots.closures.listAll(),
+      api.academicCalendar.list(),
+      fetch("/api/permit-types?all=true", { headers: await authHeaders() }),
+    ]);
     setLots(l); setClosures(c); setSeasons(s);
+
+    if (ptRes.ok) {
+      const pts: LotteryPermitType[] = await ptRes.json();
+      const events: LotteryEvent[] = [];
+      for (const pt of pts) {
+        if (!pt.requires_lottery) continue;
+        if (pt.application_opens_at) events.push({ id: `${pt.id}-opens`, label: pt.label, type: "opens", date: new Date(pt.application_opens_at) });
+        if (pt.application_closes_at) events.push({ id: `${pt.id}-closes`, label: pt.label, type: "closes", date: new Date(pt.application_closes_at) });
+        if (pt.lottery_run_at) events.push({ id: `${pt.id}-drawing`, label: pt.label, type: "drawing", date: new Date(pt.lottery_run_at) });
+      }
+      setLotteryEvents(events);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -126,6 +161,17 @@ export default function OperationsCalendar() {
     return filtered.filter(c => dayInRange(day, new Date(c.closes_at), c.reopens_at ? new Date(c.reopens_at) : null));
   }
 
+  function getLotteryEventsForDay(d: number) {
+    return lotteryEvents.filter(e => e.date.getFullYear() === year && e.date.getMonth() === month && e.date.getDate() === d);
+  }
+
+  const LOTTERY_STYLES: Record<string, string> = {
+    opens: "bg-purple-100 text-purple-800 border-purple-300",
+    closes: "bg-purple-200 text-purple-900 border-purple-400",
+    drawing: "bg-purple-500 text-white border-purple-600",
+  };
+  const LOTTERY_LABELS: Record<string, string> = { opens: "Opens", closes: "Closes", drawing: "Drawing" };
+
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -163,6 +209,14 @@ export default function OperationsCalendar() {
             </div>
           );
         }) : <div className="px-3 py-2 rounded-lg text-sm text-ink-mute bg-gray-100">No academic season covers this month</div>}
+        {lotteryEvents.length > 0 && (
+          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm bg-purple-50 text-purple-800">
+            <span className="font-medium">Lotteries:</span>
+            <span className="inline-block w-2.5 h-2.5 rounded bg-purple-100 border border-purple-300" /> Opens
+            <span className="inline-block w-2.5 h-2.5 rounded bg-purple-200 border border-purple-400" /> Closes
+            <span className="inline-block w-2.5 h-2.5 rounded bg-purple-500 border border-purple-600" /> Drawing
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -173,6 +227,7 @@ export default function OperationsCalendar() {
           {cells.map((dayNum, idx) => {
             if (dayNum === null) return <div key={`e-${idx}`} className="min-h-[100px] border-b border-r border-gray-100 bg-gray-50/50" />;
             const dayClosures = getClosuresForDay(dayNum);
+            const dayLotteries = getLotteryEventsForDay(dayNum);
             const isToday = sameDay(new Date(year, month, dayNum), today);
             const daySeason = getSeasonForDay(dayNum);
             const sc = daySeason ? seasonColorMap.get(daySeason.id) : null;
@@ -183,6 +238,13 @@ export default function OperationsCalendar() {
                   {daySeason && <span className="text-[8px] text-ink-mute/60 truncate leading-none">{daySeason.code}</span>}
                 </div>
                 <div className="space-y-0.5 mt-0.5">
+                  {dayLotteries.map(ev => (
+                    <div key={ev.id}
+                      className={`w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded border truncate ${LOTTERY_STYLES[ev.type]}`}
+                      title={`${ev.label} — Lottery ${LOTTERY_LABELS[ev.type]}`}>
+                      🎟 {LOTTERY_LABELS[ev.type]}: {ev.label}
+                    </div>
+                  ))}
                   {dayClosures.slice(0, 3).map(c => (
                     <button key={c.id} onClick={() => setSelectedClosure(c)}
                       className={`w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded border truncate ${STATUS_COLORS[c.status]?.tw || "bg-gray-100 text-gray-500 border-gray-200"}`}
