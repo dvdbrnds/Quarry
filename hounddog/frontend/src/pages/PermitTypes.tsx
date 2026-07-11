@@ -176,11 +176,7 @@ export default function PermitTypes() {
         fetch("/api/lots", { headers: await authHeaders() }),
       ]);
       if (ptRes.ok) setTypes(await ptRes.json());
-      if (lotRes.ok) {
-        const lotData = await lotRes.json();
-        console.log("[PermitTypes] lot names:", lotData.map((l: any) => l.name), "first id:", lotData[0]?.id);
-        setLots(lotData);
-      }
+      if (lotRes.ok) setLots(await lotRes.json());
     } finally { setLoading(false); }
   }, []);
 
@@ -234,26 +230,24 @@ export default function PermitTypes() {
   const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
   const lotLookup: Record<string, LotForSelect> = {};
   for (const l of lots) {
-    lotLookup[l.name.trim()] = l;
+    const name = l.name.trim();
+    lotLookup[name] = l;
     if (l.id) lotLookup[l.id] = l;
+    // "Lot A" → also register "A" so short-form lot_assignments match
+    const lotPrefix = name.match(/^Lot\s+(.+)$/i);
+    if (lotPrefix) lotLookup[lotPrefix[1]] = l;
   }
 
   function calcCapacity(pt: PermitTypeRow) {
-    let fullTime = 0, afterFour = 0, matched = 0;
-    const unmatched: string[] = [];
+    let fullTime = 0, afterFour = 0;
     for (const rawName of pt.lot_assignments) {
-      const name = rawName.trim();
-      const lot = lotLookup[name];
-      if (!lot) { unmatched.push(name); continue; }
-      matched++;
+      const lot = lotLookup[rawName.trim()];
+      if (!lot) continue;
       const restricted = COMMUTER_CODES.has(pt.code) && (lot.designation_code === "FS" || lot.designation_code === "FSC");
       if (restricted) afterFour += lot.total_spaces;
       else fullTime += lot.total_spaces;
     }
-    if (unmatched.length > 0) {
-      console.warn(`[calcCapacity] ${pt.code}: unmatched:`, JSON.stringify(unmatched), "lotKeys:", JSON.stringify(Object.keys(lotLookup).slice(0, 15)));
-    }
-    return { fullTime, afterFour, total: fullTime + afterFour, matched, assigned: pt.lot_assignments.length };
+    return { fullTime, afterFour, total: fullTime + afterFour };
   }
 
   const columns: ColumnsType<PermitTypeRow> = [
@@ -262,9 +256,9 @@ export default function PermitTypes() {
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
     { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
     { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
+      if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
       const calc = calcCapacity(pt);
-      if (calc.assigned === 0) return <span className="text-ink-mute">No lots assigned</span>;
-      if (calc.total === 0) return <span className="text-ink-mute">{calc.matched}/{calc.assigned} lots matched, 0 spaces</span>;
+      if (calc.total === 0) return <span className="text-ink-mute">—</span>;
       return (
         <div>
           <div className="font-medium">{calc.total} spots</div>

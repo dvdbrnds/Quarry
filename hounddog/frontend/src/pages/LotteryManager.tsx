@@ -106,9 +106,12 @@ export default function LotteryManager() {
       const lots: { id: string; name: string; designation_code: string; total_spaces: number }[] = await lotRes.json();
       const lookup: Record<string, LotInfo> = {};
       for (const l of lots) {
+        const name = l.name.trim();
         const info: LotInfo = { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces ?? 0 };
-        lookup[l.name.trim()] = info;
+        lookup[name] = info;
         if (l.id) lookup[l.id] = info;
+        const lotPrefix = name.match(/^Lot\s+(.+)$/i);
+        if (lotPrefix) lookup[lotPrefix[1]] = info;
       }
       setLotLookup(lookup);
     }
