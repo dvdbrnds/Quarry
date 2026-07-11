@@ -4,7 +4,7 @@ import { api, Permit, ImportResult } from "../api";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Upload, Tooltip,
+  Space, Tabs, Alert, App, Upload, Tooltip, Checkbox,
 } from "antd";
 import { MailOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -165,6 +165,7 @@ export default function Permits() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterLot, setFilterLot] = useState("");
+  const [recentOnly, setRecentOnly] = useState(false);
   const [sort, setSort] = useState("");
   const [editing, setEditing] = useState<Permit | null>(null);
   const [creating, setCreating] = useState(false);
@@ -188,7 +189,8 @@ export default function Permits() {
     try {
       const data = await api.permits.list({
         page, search: search || undefined, status: filterStatus || undefined,
-        lot: filterLot || undefined, permit_type: filterType || undefined, sort: sort || undefined,
+        lot: filterLot || undefined, permit_type: filterType || undefined,
+        max_age_years: recentOnly ? 5 : undefined, sort: sort || undefined,
       });
       setPermits(data.items);
       setTotal(data.total);
@@ -197,7 +199,7 @@ export default function Permits() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, filterStatus, filterType, filterLot, sort, message]);
+  }, [page, search, filterStatus, filterType, filterLot, recentOnly, sort, message]);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -449,9 +451,15 @@ export default function Permits() {
                     placeholder="All Lots" allowClear style={{ width: 140 }}
                     options={lots.map(l => ({ label: l.name, value: l.name }))}
                   />
-                  {(filterStatus || filterType || filterLot) && (
+                  <Checkbox
+                    checked={recentOnly}
+                    onChange={e => { setRecentOnly(e.target.checked); setPage(1); }}
+                  >
+                    5 years or younger
+                  </Checkbox>
+                  {(filterStatus || filterType || filterLot || recentOnly) && (
                     <Button type="link" danger size="small"
-                      onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setPage(1); }}>
+                      onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setRecentOnly(false); setPage(1); }}>
                       Clear Filters
                     </Button>
                   )}

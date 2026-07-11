@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Table, App, Typography, Upload, Descriptions, Alert } from "antd";
-import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined } from "@ant-design/icons";
+import { Button, Card, Table, App, Typography, Alert } from "antd";
+import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { authHeaders } from "../auth";
 
@@ -12,6 +12,7 @@ export default function DataManagement() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -75,7 +76,7 @@ export default function DataManagement() {
           <p style={{ fontWeight: 600, color: "#ff4d4f" }}>
             This will permanently replace ALL existing data with the contents of the backup file.
           </p>
-          <p>File: <Text code>{file.name}</Text></p>
+          <p>File: <span className="font-mono text-xs">{file.name}</span></p>
           <p>Size: {(file.size / 1024).toFixed(1)} KB</p>
           <p style={{ marginTop: 12 }}>
             This action cannot be undone. Make sure you have exported a backup of your current data first.
@@ -102,6 +103,41 @@ export default function DataManagement() {
       },
       onCancel: () => {
         if (fileInputRef.current) fileInputRef.current.value = "";
+      },
+    });
+  };
+
+  const ticketCount = tables["tickets"] ?? 0;
+
+  const handleClearTickets = () => {
+    modal.confirm({
+      title: "Clear All Tickets",
+      icon: <WarningOutlined style={{ color: "#ff4d4f" }} />,
+      content: (
+        <div>
+          <p style={{ fontWeight: 600, color: "#ff4d4f" }}>
+            This will permanently delete all {ticketCount.toLocaleString()} tickets and their associated payment records.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            This is intended for clearing test data before going live. This action cannot be undone.
+          </p>
+        </div>
+      ),
+      okText: `Delete ${ticketCount.toLocaleString()} Tickets`,
+      okType: "danger",
+      cancelText: "Cancel",
+      width: 480,
+      onOk: async () => {
+        setClearing(true);
+        try {
+          const result = await api.backup.clearTickets();
+          message.success(`Cleared ${result.deleted.toLocaleString()} tickets`);
+          load();
+        } catch (e: any) {
+          message.error(e.message || "Failed to clear tickets");
+        } finally {
+          setClearing(false);
+        }
       },
     });
   };
@@ -165,6 +201,26 @@ export default function DataManagement() {
             Upload & Restore
           </Button>
         </Card>
+
+        <Card style={{ flex: 1, minWidth: 280 }}>
+          <Title level={5} style={{ marginTop: 0 }}>
+            <DeleteOutlined style={{ marginRight: 8 }} />
+            Clear Test Tickets
+          </Title>
+          <p className="text-ink-mute text-sm mb-4">
+            Delete all {ticketCount.toLocaleString()} tickets and associated payments. Use before going live.
+          </p>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={handleClearTickets}
+            loading={clearing}
+            disabled={ticketCount === 0}
+            size="large"
+          >
+            Clear All Tickets
+          </Button>
+        </Card>
       </div>
 
       <Card title="Current Database Contents" size="small">
@@ -179,9 +235,7 @@ export default function DataManagement() {
               dataIndex: "name",
               key: "name",
               render: (name: string) => (
-                <Text code style={{ fontSize: 12 }}>
-                  {name}
-                </Text>
+                <span className="font-mono text-xs">{name}</span>
               ),
             },
             {

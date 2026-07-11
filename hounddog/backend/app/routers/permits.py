@@ -92,10 +92,15 @@ async def list_permits(
     status: str | None = None,
     lot: str | None = None,
     permit_type: str | None = None,
+    max_age_years: int | None = Query(None, ge=1),
     sort: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Permit).where(Permit.deleted_at.is_(None))
+
+    if max_age_years:
+        cutoff = date.today() - timedelta(days=max_age_years * 365)
+        query = query.where(Permit.start_date >= cutoff)
 
     if search:
         like = f"%{search}%"

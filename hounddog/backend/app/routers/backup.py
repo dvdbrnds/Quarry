@@ -159,3 +159,15 @@ async def restore_backup(
         "skipped": skipped,
         "exported_at": data.get("exported_at"),
     }
+
+
+@router.delete("/clear-tickets")
+async def clear_tickets(
+    _admin: OktaUser = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all rows from the tickets table (and cascading payments)."""
+    count_row = await db.execute(text('SELECT count(*) FROM "tickets"'))
+    count = count_row.scalar() or 0
+    await db.execute(text('TRUNCATE TABLE "tickets" CASCADE'))
+    return {"deleted": count}
