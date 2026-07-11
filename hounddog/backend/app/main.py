@@ -239,6 +239,27 @@ async def lifespan(app: FastAPI):
                    FROM parking_lots WHERE lot_type = 'street'
                ) AS street_lots
                WHERE code = 'premium_commuter'""",
+            # Lottery audit log
+            """CREATE TABLE IF NOT EXISTS lottery_audit_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                permit_type_id UUID NOT NULL,
+                strategy VARCHAR(50) NOT NULL,
+                seed_hash VARCHAR(128),
+                total_applicants INTEGER,
+                eligible_applicants INTEGER,
+                spots_available INTEGER,
+                selected_count INTEGER,
+                waitlisted_count INTEGER,
+                filtered_test_entries INTEGER DEFAULT 0,
+                filtered_unpaid_citations INTEGER DEFAULT 0,
+                run_at TIMESTAMP NOT NULL,
+                run_by VARCHAR(255),
+                warnings TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_lottery_audit_pt ON lottery_audit_log(permit_type_id)",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_seed VARCHAR(128)",
+            "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS admin_notes TEXT",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))

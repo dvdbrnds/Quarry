@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user
@@ -81,6 +81,21 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
         )).scalar() or 0
         remaining = max(0, pt.max_capacity - active_count)
 
+        current_applicants = None
+        approximate_odds = None
+        if pt.requires_lottery:
+            app_count = (await db.execute(
+                select(func.count()).select_from(PermitApplication).where(
+                    PermitApplication.permit_type_id == pt.id,
+                    PermitApplication.status == "pending",
+                )
+            )).scalar() or 0
+            current_applicants = app_count
+            approximate_odds = (
+                f"{min(100, round(pt.max_capacity / app_count * 100))}%"
+                if app_count > 0 else "100%"
+            )
+
         out.append(AvailablePermitType(
             id=pt.id,
             code=pt.code,
@@ -95,6 +110,8 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
             min_class_year=pt.min_class_year,
             application_closes_at=pt.application_closes_at,
             requires_lottery=pt.requires_lottery,
+            current_applicants=current_applicants,
+            approximate_odds=approximate_odds,
         ))
     return out
 
@@ -135,6 +152,23 @@ async def submit_application(
     )
     if existing.scalar():
         raise HTTPException(409, "You already have an active application for this permit type")
+
+    citation_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM tickets
+            WHERE UPPER(plate) = UPPER(:plate)
+              AND status NOT IN ('paid', 'voided', 'resolved_permit')
+        """),
+        {"plate": data.plate.upper().strip()},
+    )
+    unpaid_count = citation_result.scalar() or 0
+    if unpaid_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You have {unpaid_count} unpaid parking citation(s). "
+            f"Pay all outstanding fines before applying for a permit. "
+            f"Visit {settings.public_url}/pay to pay online.",
+        )
 
     okta_profile = {
         "sub": user.sub,
@@ -194,6 +228,12 @@ async def my_applications(
         pt = await db.get(PermitType, app.permit_type_id)
         pt_code = pt.code if pt else ""
         pt_lots = pt.lot_assignments if pt else []
+        waitlist_msg = None
+        if app.status == "waitlisted" and app.waitlist_position:
+            waitlist_msg = (
+                f"You are #{app.waitlist_position} on the waitlist. "
+                "You will be notified by email if a spot becomes available."
+            )
         out.append(ApplicationWithType(
             **{k: v for k, v in app.__dict__.items() if not k.startswith("_")},
             permit_type_label=pt.label if pt else "",
@@ -201,6 +241,7 @@ async def my_applications(
             permit_type_price=pt.price if pt else 0,
             lot_assignments=pt_lots,
             lot_details=_build_lot_details(pt_lots, pt_code, lot_lookup),
+            waitlist_message=waitlist_msg,
         ))
     return out
 
@@ -343,7 +384,8 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
 
     from datetime import timedelta
     next_app.status = "selected"
-    next_app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=pt.offer_window_days)
+    offer_days = pt.offer_window_days if pt.offer_window_days is not None else 5
+    next_app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
     await db.flush()
 
     from ..services.email import send_lottery_selection_email

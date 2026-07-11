@@ -7,6 +7,7 @@ interface AvailablePermit {
   max_capacity: number; remaining: number; lot_assignments: string[];
   valid_days: number; min_class_year: number | null;
   application_closes_at: string | null; requires_lottery: boolean;
+  current_applicants: number | null; approximate_odds: string | null;
 }
 
 interface MyApplication {
@@ -15,6 +16,7 @@ interface MyApplication {
   permit_type_price: string; lot_assignments: string[];
   lot_preferences: string[]; assigned_lot: string | null;
   waitlist_position: number | null; offer_expires_at: string | null; created_at: string;
+  waitlist_message: string | null;
 }
 
 const STATUS_LABELS: Record<string, { text: string; color: string }> = {
@@ -107,7 +109,8 @@ export default function StudentPermits() {
                         Plate: <span className="font-mono">{app.plate}</span> &middot; Class of {app.class_year} &middot; Lots: {app.lot_assignments.join(", ")}
                         {app.assigned_lot && <span className="ml-1 text-green-700 font-medium">&middot; Assigned: {app.assigned_lot}</span>}
                       </div>
-                      {app.status === "waitlisted" && app.waitlist_position != null && <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>}
+                      {app.status === "waitlisted" && app.waitlist_message && <div className="text-xs text-blue-600 mt-1">{app.waitlist_message}</div>}
+                      {app.status === "waitlisted" && !app.waitlist_message && app.waitlist_position != null && <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>}
                       {app.status === "selected" && app.offer_expires_at && <div className="text-xs text-green-700 mt-1">Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
                     </div>
                     <Space>
@@ -141,9 +144,15 @@ export default function StudentPermits() {
                   </div>
                   <div className="text-xs text-ink-mute mt-1">{pt.eligible}</div>
                   <div className="text-xs text-ink-mute mt-1">Lots: {pt.lot_assignments.join(", ")} &middot; Valid {pt.valid_days} days</div>
-                  <Space className="mt-2">
+                  <Space className="mt-2" wrap>
                     <span className="text-xs text-ink-mute">{pt.remaining} of {pt.max_capacity} spots remaining</span>
                     {pt.requires_lottery && <Tag color="purple">Lottery</Tag>}
+                    {pt.requires_lottery && pt.current_applicants != null && (
+                      <span className="text-xs text-ink-mute">{pt.current_applicants} applicant{pt.current_applicants !== 1 ? "s" : ""} so far</span>
+                    )}
+                    {pt.requires_lottery && pt.approximate_odds && (
+                      <span className="text-xs text-blue-600">~{pt.approximate_odds} chance</span>
+                    )}
                   </Space>
                   {pt.application_closes_at && <div className="text-xs text-amber-700 mt-1">Deadline: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
                   {pt.min_class_year && <div className="text-xs text-ink-mute mt-1">Eligibility: Class of {pt.min_class_year} or earlier only</div>}

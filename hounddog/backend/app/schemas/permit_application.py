@@ -51,6 +51,7 @@ class ApplicationWithType(ApplicationRead):
     permit_type_price: Decimal = Decimal("0.00")
     lot_assignments: list[str] = []
     lot_details: list[LotAccessInfo] = []
+    waitlist_message: str | None = None
 
 
 class AvailablePermitType(BaseModel):
@@ -67,6 +68,8 @@ class AvailablePermitType(BaseModel):
     min_class_year: int | None = None
     application_closes_at: datetime | None = None
     requires_lottery: bool = False
+    current_applicants: int | None = None
+    approximate_odds: str | None = None
 
 
 class LotteryResult(BaseModel):

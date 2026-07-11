@@ -1,6 +1,6 @@
 """Configurable lottery engine with pluggable strategies."""
 
-import random
+import random as _random
 from typing import Protocol
 
 from ..models.permit_application import PermitApplication
@@ -13,6 +13,7 @@ class LotteryStrategy(Protocol):
         self,
         applications: list[PermitApplication],
         spots: int,
+        seed: str | None = None,
     ) -> tuple[list[PermitApplication], list[PermitApplication]]:
         """Rank applications into selected and waitlisted groups.
 
@@ -30,9 +31,12 @@ class SeniorityWeightedStrategy:
         self,
         applications: list[PermitApplication],
         spots: int,
+        seed: str | None = None,
     ) -> tuple[list[PermitApplication], list[PermitApplication]]:
         if not applications:
             return [], []
+
+        rng = _random.Random(seed)
 
         max_year = max(a.class_year for a in applications)
         weights = [max_year - a.class_year + 1 for a in applications]
@@ -45,7 +49,7 @@ class SeniorityWeightedStrategy:
             if not pool:
                 break
             apps_list, w_list = zip(*pool)
-            chosen = random.choices(list(apps_list), weights=list(w_list), k=1)[0]
+            chosen = rng.choices(list(apps_list), weights=list(w_list), k=1)[0]
             selected.append(chosen)
             pool = [(a, w) for a, w in pool if a.id != chosen.id]
 
@@ -62,12 +66,14 @@ class PureRandomStrategy:
         self,
         applications: list[PermitApplication],
         spots: int,
+        seed: str | None = None,
     ) -> tuple[list[PermitApplication], list[PermitApplication]]:
         if not applications:
             return [], []
 
+        rng = _random.Random(seed)
         shuffled = list(applications)
-        random.shuffle(shuffled)
+        rng.shuffle(shuffled)
 
         pick_count = min(spots, len(shuffled))
         selected = shuffled[:pick_count]
@@ -86,9 +92,12 @@ class ClassPriorityStrategy:
         self,
         applications: list[PermitApplication],
         spots: int,
+        seed: str | None = None,
     ) -> tuple[list[PermitApplication], list[PermitApplication]]:
         if not applications:
             return [], []
+
+        rng = _random.Random(seed)
 
         by_year: dict[int, list[PermitApplication]] = {}
         for app in applications:
@@ -99,7 +108,7 @@ class ClassPriorityStrategy:
 
         for year in sorted(by_year.keys()):
             group = by_year[year]
-            random.shuffle(group)
+            rng.shuffle(group)
 
             remaining_spots = spots - len(selected)
             if remaining_spots <= 0:
@@ -125,6 +134,7 @@ class SeniorityTimestampStrategy:
         self,
         applications: list[PermitApplication],
         spots: int,
+        seed: str | None = None,
     ) -> tuple[list[PermitApplication], list[PermitApplication]]:
         if not applications:
             return [], []
@@ -147,47 +157,56 @@ STRATEGIES: dict[str, LotteryStrategy] = {
 
 
 def get_strategy(name: str) -> LotteryStrategy:
-    """Look up a strategy by name. Falls back to seniority_weighted if unknown."""
-    return STRATEGIES.get(name, STRATEGIES["seniority_weighted"])
+    """Look up a strategy by name. Falls back to seniority_timestamp if unknown."""
+    return STRATEGIES.get(name, STRATEGIES["seniority_timestamp"])
+
+
+def distribute_capacity(total: int, lot_names: list[str]) -> dict[str, int]:
+    """Distribute total capacity across lots, spreading remainder round-robin."""
+    base = total // len(lot_names)
+    remainder = total % len(lot_names)
+    return {
+        name: base + (1 if i < remainder else 0)
+        for i, name in enumerate(lot_names)
+    }
 
 
 def assign_lots(
     selected: list[PermitApplication],
-    lot_assignments: list[str],
-    max_capacity: int,
-) -> None:
+    lot_capacities: dict[str, int],
+) -> list[str]:
     """Assign each selected applicant their highest-preference lot with remaining capacity.
 
-    Modifies applications in-place, setting `assigned_lot`. If no preferences
-    were submitted, assigns the first lot with capacity. If all preferred lots
-    are full, assigns the first available lot from the permit type's list.
-
-    The max_capacity is split evenly across lots when no per-lot limits exist.
+    Returns a list of warnings (e.g., overflow assignments).
+    Modifies applications in-place, setting `assigned_lot`.
     """
-    if not lot_assignments:
-        return
-
-    per_lot_cap = max(1, max_capacity // len(lot_assignments))
-    lot_counts: dict[str, int] = {lot: 0 for lot in lot_assignments}
+    warnings = []
+    lot_counts: dict[str, int] = {lot: 0 for lot in lot_capacities}
+    lot_order = list(lot_capacities.keys())
 
     for app in selected:
-        preferences = app.lot_preferences if app.lot_preferences else lot_assignments
+        preferences = app.lot_preferences if app.lot_preferences else lot_order
         assigned = False
 
         for pref in preferences:
-            if pref in lot_counts and lot_counts[pref] < per_lot_cap:
+            if pref in lot_counts and lot_counts[pref] < lot_capacities[pref]:
                 app.assigned_lot = pref
                 lot_counts[pref] += 1
                 assigned = True
                 break
 
         if not assigned:
-            for lot in lot_assignments:
-                if lot_counts[lot] < per_lot_cap:
+            for lot in lot_order:
+                if lot_counts[lot] < lot_capacities[lot]:
                     app.assigned_lot = lot
                     lot_counts[lot] += 1
                     assigned = True
                     break
 
         if not assigned:
-            app.assigned_lot = lot_assignments[0]
+            warnings.append(
+                f"All lots at capacity. Applicant {app.id} could not be assigned a lot."
+            )
+            app.assigned_lot = lot_order[0]
+
+    return warnings

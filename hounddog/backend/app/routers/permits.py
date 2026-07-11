@@ -6,11 +6,12 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_, desc, asc
+from sqlalchemy import select, func, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user
 from ..database import get_db
+from ..services.lottery_runner import run_lottery, verify_lottery, LotteryResult
 from ..models.audit_log import AuditLog
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -591,3 +592,121 @@ async def _notify_permit_change(action: str, count: int):
     await manager.broadcast("permit_changed", {"action": action, "count": count})
     from ..services.apns import send_permit_push
     await send_permit_push(action, count)
+
+
+# ── Lottery endpoints ──
+
+
+@router.post("/types/{permit_type_id}/run-lottery")
+async def run_permit_lottery(
+    permit_type_id: str,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: OktaUser = Depends(get_current_user),
+):
+    """Run the lottery for a permit type. Admin only."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        result = await run_lottery(
+            db=db,
+            permit_type_id=permit_type_id,
+            run_by=current_user.email or "unknown",
+            force=force,
+        )
+        await db.commit()
+
+        return {
+            "success": True,
+            "permit_type": result.permit_type_name,
+            "strategy": result.strategy,
+            "seed_hash": result.seed_hash,
+            "total_applicants": result.total_applicants,
+            "eligible_applicants": result.eligible_applicants,
+            "filtered": {
+                "test_entries": result.filtered_test_entries,
+                "unpaid_citations": result.filtered_unpaid_citations,
+            },
+            "spots_available": result.spots_available,
+            "selected": result.selected_count,
+            "waitlisted": result.waitlisted_count,
+            "warnings": result.lot_assignment_warnings,
+            "run_at": result.run_at.isoformat() if result.run_at else None,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/types/{permit_type_id}/lottery-results")
+async def get_lottery_results(
+    permit_type_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: OktaUser = Depends(get_current_user),
+):
+    """Get the results of the most recent lottery draw. Admin only."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    audit_result = await db.execute(
+        text("""
+            SELECT * FROM lottery_audit_log
+            WHERE permit_type_id = :ptid
+            ORDER BY run_at DESC LIMIT 1
+        """),
+        {"ptid": permit_type_id},
+    )
+    audit = audit_result.mappings().one_or_none()
+    if not audit:
+        raise HTTPException(status_code=404, detail="No lottery has been run for this permit type")
+
+    apps_result = await db.execute(
+        text("""
+            SELECT id, student_name, student_email, class_year, plate,
+                   status, lottery_rank, waitlist_position, assigned_lot,
+                   offer_expires_at, admin_notes
+            FROM permit_applications
+            WHERE permit_type_id = :ptid
+              AND status IN ('selected', 'waitlisted', 'ineligible')
+            ORDER BY lottery_rank NULLS LAST, waitlist_position NULLS LAST
+        """),
+        {"ptid": permit_type_id},
+    )
+    applications = [dict(row) for row in apps_result.mappings().all()]
+
+    for app in applications:
+        for key in ("id", "offer_expires_at"):
+            if key in app and app[key] is not None:
+                app[key] = str(app[key])
+
+    return {
+        "audit": {
+            "strategy": audit["strategy"],
+            "seed_hash": audit["seed_hash"],
+            "total_applicants": audit["total_applicants"],
+            "eligible_applicants": audit["eligible_applicants"],
+            "spots_available": audit["spots_available"],
+            "selected_count": audit["selected_count"],
+            "waitlisted_count": audit["waitlisted_count"],
+            "filtered_test_entries": audit.get("filtered_test_entries", 0),
+            "filtered_unpaid_citations": audit.get("filtered_unpaid_citations", 0),
+            "run_at": str(audit["run_at"]),
+            "run_by": audit["run_by"],
+        },
+        "applications": applications,
+    }
+
+
+@router.post("/types/{permit_type_id}/verify-lottery")
+async def verify_permit_lottery(
+    permit_type_id: str,
+    seed: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: OktaUser = Depends(get_current_user),
+):
+    """Verify a lottery draw by providing the original seed. Admin only."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    verification = await verify_lottery(db, permit_type_id, seed)
+    return verification

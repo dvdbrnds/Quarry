@@ -288,6 +288,65 @@ export interface SignageScreen {
   updated_at: string;
 }
 
+export interface LotteryRunResult {
+  success: boolean;
+  permit_type: string;
+  strategy: string;
+  seed_hash: string;
+  total_applicants: number;
+  eligible_applicants: number;
+  filtered: { test_entries: number; unpaid_citations: number };
+  spots_available: number;
+  selected: number;
+  waitlisted: number;
+  warnings: string[];
+  run_at: string | null;
+}
+
+export interface LotteryAudit {
+  strategy: string;
+  seed_hash: string;
+  total_applicants: number;
+  eligible_applicants: number;
+  spots_available: number;
+  selected_count: number;
+  waitlisted_count: number;
+  filtered_test_entries: number;
+  filtered_unpaid_citations: number;
+  run_at: string;
+  run_by: string;
+}
+
+export interface LotteryApplicationResult {
+  id: string;
+  student_name: string;
+  student_email: string;
+  class_year: number;
+  plate: string;
+  status: string;
+  lottery_rank: number | null;
+  waitlist_position: number | null;
+  assigned_lot: string | null;
+  offer_expires_at: string | null;
+  admin_notes: string | null;
+}
+
+export interface LotteryResults {
+  audit: LotteryAudit;
+  applications: LotteryApplicationResult[];
+}
+
+export interface LotteryVerification {
+  verified: boolean;
+  error?: string;
+  seed_hash?: string;
+  strategy?: string;
+  selected_count?: number;
+  waitlisted_count?: number;
+  run_at?: string;
+  run_by?: string;
+}
+
 export const api = {
   academicCalendar: {
     list: () => request<AcademicSeason[]>("/academic-calendar"),
@@ -326,6 +385,18 @@ export const api = {
     renew: (id: string) =>
       request<Permit>(`/permits/${id}/renew`, { method: "POST" }),
     duplicates: () => request<any[]>("/permits/duplicates"),
+    lottery: {
+      run: (permitTypeId: string, force = false) =>
+        request<LotteryRunResult>(`/permits/types/${permitTypeId}/run-lottery?force=${force}`, {
+          method: "POST",
+        }),
+      results: (permitTypeId: string) =>
+        request<LotteryResults>(`/permits/types/${permitTypeId}/lottery-results`),
+      verify: (permitTypeId: string, seed: string) =>
+        request<LotteryVerification>(`/permits/types/${permitTypeId}/verify-lottery?seed=${encodeURIComponent(seed)}`, {
+          method: "POST",
+        }),
+    },
   },
   lots: {
     list: () => request<Lot[]>("/lots"),
