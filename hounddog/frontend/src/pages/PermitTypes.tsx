@@ -255,6 +255,14 @@ export default function PermitTypes() {
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
     { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
+    { title: "Lots", key: "lots", render: (_, pt) => {
+      if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
+      return (
+        <div className="flex flex-wrap gap-1">
+          {pt.lot_assignments.map(l => <Tag key={l} className="!m-0 !text-[11px]">{l}</Tag>)}
+        </div>
+      );
+    }},
     { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
       if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
       const calc = calcCapacity(pt);
