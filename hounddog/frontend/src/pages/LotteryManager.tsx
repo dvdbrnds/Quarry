@@ -35,7 +35,7 @@ interface SimulatedApp {
 
 interface ActivityEvent { id: string; student_name: string; old_status: string; new_status: string; timestamp: string; }
 
-interface LotInfo { name: string; designation_code: string; }
+interface LotInfo { name: string; designation_code: string; total_spaces: number; }
 
 const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
 
@@ -43,6 +43,21 @@ function lotIsRestricted(lotName: string, permitCode: string, lotLookup: Record<
   if (!COMMUTER_CODES.has(permitCode)) return false;
   const lot = lotLookup[lotName];
   return !!lot && (lot.designation_code === "FS" || lot.designation_code === "FSC");
+}
+
+function calculateLotCapacity(lotAssignments: string[], permitCode: string, lotLookup: Record<string, LotInfo>): { fullTime: number; afterFour: number; total: number } {
+  let fullTime = 0;
+  let afterFour = 0;
+  for (const name of lotAssignments) {
+    const lot = lotLookup[name];
+    if (!lot) continue;
+    if (lotIsRestricted(name, permitCode, lotLookup)) {
+      afterFour += lot.total_spaces;
+    } else {
+      fullTime += lot.total_spaces;
+    }
+  }
+  return { fullTime, afterFour, total: fullTime + afterFour };
 }
 
 function AdminLotTags({ lots, permitCode, lotLookup }: { lots: string[]; permitCode: string; lotLookup: Record<string, LotInfo> }) {
@@ -88,8 +103,8 @@ export default function LotteryManager() {
     ]);
     if (ptRes.ok) { const all: PermitTypeRow[] = await ptRes.json(); setTypes(all.filter(t => t.is_active)); }
     if (lotRes.ok) {
-      const lots: { name: string; designation_code: string }[] = await lotRes.json();
-      setLotLookup(Object.fromEntries(lots.map(l => [l.name, { name: l.name, designation_code: l.designation_code }])));
+      const lots: { name: string; designation_code: string; total_spaces: number }[] = await lotRes.json();
+      setLotLookup(Object.fromEntries(lots.map(l => [l.name, { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces ?? 0 }])));
     }
   }, []);
 
@@ -150,7 +165,19 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
 
   const otherColumns: ColumnsType<PermitTypeRow> = [
     { title: "Permit Type", key: "label", render: (_, pt) => <><div className="font-medium">{pt.label}</div><div className="text-xs text-ink-mute">{pt.code}</div></> },
-    { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
+    { title: "Capacity", key: "capacity", render: (_, pt) => {
+      const calc = calculateLotCapacity(pt.lot_assignments, pt.code, lotLookup);
+      return (
+        <div>
+          <div>{pt.max_capacity} set</div>
+          {calc.total > 0 && (
+            <div className="text-[11px] text-ink-mute">
+              {calc.total} from lots{calc.afterFour > 0 ? ` (${calc.afterFour} after 4pm)` : ""}
+            </div>
+          )}
+        </div>
+      );
+    }},
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
     { title: "Lots", key: "lots", render: (_, pt) => pt.lot_assignments.length ? <AdminLotTags lots={pt.lot_assignments} permitCode={pt.code} lotLookup={lotLookup} /> : "—" },
     { title: "", key: "action", render: (_, pt) => <Button size="small" loading={toggling === pt.id} onClick={() => enableLottery(pt)} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Enable Lottery</Button> },
@@ -186,7 +213,19 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
                 </div>
                 <div className="text-xs text-ink-mute space-y-1 mb-4">
                   <div>Strategy: {STRATEGY_LABELS[pt.lottery_strategy] || pt.lottery_strategy}</div>
-                  <div>Capacity: {pt.max_capacity} &middot; {pt.remaining} remaining</div>
+                  <div>Capacity: {pt.max_capacity} set &middot; {pt.remaining} remaining</div>
+                  {(() => {
+                    const calc = calculateLotCapacity(pt.lot_assignments, pt.code, lotLookup);
+                    if (calc.total === 0) return null;
+                    return (
+                      <div>
+                        Lot spots: {calc.total}
+                        {calc.afterFour > 0
+                          ? <span className="text-ink-mute"> ({calc.fullTime} full-time + {calc.afterFour} after 4pm)</span>
+                          : null}
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center flex-wrap gap-0.5">Lots: {pt.lot_assignments.length ? <AdminLotTags lots={pt.lot_assignments} permitCode={pt.code} lotLookup={lotLookup} /> : "None"}</div>
                   {pt.application_closes_at && <div>Closes: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
                   {pt.lottery_run_at && <div className="text-green-700">Ran: {new Date(pt.lottery_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
