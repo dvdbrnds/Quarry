@@ -181,10 +181,12 @@ export default function PermitTypes() {
 
   useEffect(() => { load(); }, [load]);
 
-  function handleDeactivate(id: string) {
+  function handleDeactivate(pt: PermitTypeRow) {
     modal.confirm({
-      title: "Deactivate this permit type?", okText: "Deactivate", okButtonProps: { danger: true },
-      onOk: async () => { await fetch(`/api/permit-types/${id}`, { method: "DELETE", headers: await authHeaders() }); message.success("Deactivated"); load(); },
+      title: `Deactivate "${pt.label}"?`,
+      content: "This will hide the permit type from students, stop new purchases, and remove it from lottery. Existing permits are not affected. You can reactivate it later.",
+      okText: "Deactivate Permit Type", okButtonProps: { danger: true },
+      onOk: async () => { await fetch(`/api/permit-types/${pt.id}`, { method: "DELETE", headers: await authHeaders() }); message.success("Deactivated"); load(); },
     });
   }
 
@@ -198,6 +200,30 @@ export default function PermitTypes() {
       message.success("Activated");
       load();
     } catch { message.error("Failed to activate"); }
+  }
+
+  function handleToggleLottery(pt: PermitTypeRow) {
+    if (pt.requires_lottery) {
+      modal.confirm({
+        title: `Disable lottery for "${pt.label}"?`,
+        content: "The permit type will stay active. Students will no longer apply through the lottery — it will become a regular permit. Existing applications are preserved.",
+        okText: "Disable Lottery",
+        onOk: async () => {
+          await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
+          message.success("Lottery disabled"); load();
+        },
+      });
+    } else {
+      modal.confirm({
+        title: `Enable lottery for "${pt.label}"?`,
+        content: "Students will need to apply through the lottery to get this permit type.",
+        okText: "Enable Lottery",
+        onOk: async () => {
+          await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
+          message.success("Lottery enabled"); load();
+        },
+      });
+    }
   }
 
   const columns: ColumnsType<PermitTypeRow> = [
@@ -226,9 +252,15 @@ export default function PermitTypes() {
       render: (_, pt) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
-          {pt.requires_lottery && pt.is_active && <Button type="link" size="small" onClick={() => navigate("/permits#lottery")}>Lottery</Button>}
+          {pt.is_active && (
+            <Button type="link" size="small" onClick={() => handleToggleLottery(pt)}
+              style={pt.requires_lottery ? { color: "#9333ea" } : undefined}>
+              {pt.requires_lottery ? "Disable Lottery" : "Enable Lottery"}
+            </Button>
+          )}
+          {pt.requires_lottery && pt.is_active && <Button type="link" size="small" onClick={() => navigate("/permits#lottery")}>Manage</Button>}
           {pt.is_active
-            ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt.id)}>Deactivate</Button>
+            ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt)}>Deactivate</Button>
             : <Button type="link" size="small" onClick={() => handleActivate(pt.id)}>Activate</Button>
           }
         </Space>
