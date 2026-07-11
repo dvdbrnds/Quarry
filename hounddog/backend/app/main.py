@@ -227,6 +227,18 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_escalation_student ON escalation_log(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_escalation_type ON escalation_log(escalation_type)",
+            # Extended Premium Commuter gets all street parking lots
+            """UPDATE permit_types
+               SET lot_assignments = (
+                   SELECT ARRAY(SELECT DISTINCT unnest FROM unnest(
+                       permit_types.lot_assignments || street_lots.names
+                   ))
+               )
+               FROM (
+                   SELECT COALESCE(ARRAY_AGG(name), '{}') AS names
+                   FROM parking_lots WHERE lot_type = 'street'
+               ) AS street_lots
+               WHERE code = 'premium_commuter'""",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
