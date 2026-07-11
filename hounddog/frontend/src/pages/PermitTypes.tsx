@@ -228,7 +228,7 @@ export default function PermitTypes() {
     }
   }
 
-  const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
+  const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad"]);
   const lotLookup: Record<string, LotForSelect> = {};
   for (const l of lots) {
     const name = l.name.trim();

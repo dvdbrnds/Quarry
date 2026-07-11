@@ -37,7 +37,7 @@ interface ActivityEvent { id: string; student_name: string; old_status: string; 
 
 interface LotInfo { name: string; designation_code: string; total_spaces: number; }
 
-const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
+const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad"]);
 
 function lotIsRestricted(lotName: string, permitCode: string, lotLookup: Record<string, LotInfo>): boolean {
   if (!COMMUTER_CODES.has(permitCode)) return false;
