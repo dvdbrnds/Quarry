@@ -445,7 +445,18 @@ async def banner_js():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from sqlalchemy import text
+    from .database import engine
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "error": str(exc)},
+        )
+    return {"status": "ok", "version": "1.0.0"}
 
 
 @app.websocket("/ws")

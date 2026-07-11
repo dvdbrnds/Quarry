@@ -908,7 +908,7 @@ async def bursar_import_csv(
          "reference": r["reference"], "paid_date": r["paid_date"]}
         for r in rows
     ])
-    return await bursar_import(payload, db)
+    return await bursar_import(payload, db, user)
 
 
 @router.get("/revenue", response_model=RevenueReport)

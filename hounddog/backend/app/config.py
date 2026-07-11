@@ -3,13 +3,13 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://quarry:quarry@localhost:5432/quarry"
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["https://quarry.moravian.edu"]
     api_key_header: str = "Authorization"
     secret_key: str = ""
     debug: bool = False
 
     # Instance identity (used in QR pairing payload)
-    public_url: str = "http://localhost:8000"
+    public_url: str = "https://quarry.moravian.edu"
     school_name: str = ""
 
     # Okta SSO (Phase 2)
@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     apns_key_id: str = ""
     apns_team_id: str = ""
     apns_bundle_id: str = "edu.moravian.birddog"
-    apns_use_sandbox: bool = True
+    apns_use_sandbox: bool = False
 
     model_config = {"env_prefix": "QUARRY_", "env_file": ".env"}
 
