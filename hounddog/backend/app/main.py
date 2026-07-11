@@ -242,7 +242,40 @@ async def lifespan(app: FastAPI):
                         sort_order=row["sort_order"],
                     ))
                 await session.commit()
-                logger.info("Seeded 11 default violation types")
+                logger.info("Seeded default violation types")
+
+            # One-shot backfill: moving violations added after initial parking-only seed
+            moving_defaults = [
+                {"code": "speeding", "label": "Speeding", "category": "moving", "fine_first": 50, "fine_second": 100, "fine_third_plus": 200, "sort_order": 100},
+                {"code": "stop_sign", "label": "Failure to Stop at Stop Sign", "category": "moving", "fine_first": 50, "fine_second": 100, "fine_third_plus": 200, "sort_order": 101},
+                {"code": "reckless_driving", "label": "Reckless Driving", "category": "moving", "fine_first": 150, "fine_second": 300, "fine_third_plus": 500, "sort_order": 102},
+                {"code": "wrong_way", "label": "Driving Wrong Way / One-Way Violation", "category": "moving", "fine_first": 75, "fine_second": 150, "fine_third_plus": 250, "sort_order": 103},
+                {"code": "pedestrian_failure_yield", "label": "Failure to Yield to Pedestrian", "category": "moving", "fine_first": 75, "fine_second": 150, "fine_third_plus": 250, "sort_order": 104},
+                {"code": "suspended_license", "label": "Driving with Suspended/Revoked License", "category": "moving", "fine_first": 200, "fine_second": 400, "sort_order": 105},
+                {"code": "dui", "label": "Driving Under the Influence", "category": "moving", "fine_first": 500, "sort_order": 106},
+                {"code": "hit_and_run", "label": "Hit and Run / Leaving Scene of Accident", "category": "moving", "fine_first": 300, "sort_order": 107},
+                {"code": "no_headlights", "label": "Operating Without Headlights", "category": "moving", "fine_first": 35, "sort_order": 108},
+                {"code": "cell_phone", "label": "Cell Phone Use While Driving", "category": "moving", "fine_first": 50, "fine_second": 100, "sort_order": 109},
+            ]
+            existing_codes = {
+                row[0] for row in (await session.execute(
+                    select(ViolationType.code).where(ViolationType.code.in_([m["code"] for m in moving_defaults]))
+                )).all()
+            }
+            backfilled = 0
+            for row in moving_defaults:
+                if row["code"] not in existing_codes:
+                    session.add(ViolationType(
+                        code=row["code"], label=row["label"], category=row["category"],
+                        fine_first=Decimal(str(row["fine_first"])),
+                        fine_second=Decimal(str(row["fine_second"])) if row.get("fine_second") else None,
+                        fine_third_plus=Decimal(str(row["fine_third_plus"])) if row.get("fine_third_plus") else None,
+                        sort_order=row["sort_order"],
+                    ))
+                    backfilled += 1
+            if backfilled:
+                await session.commit()
+                logger.info("Backfilled %d moving violation types", backfilled)
 
             pt_count = await session.scalar(select(func.count()).select_from(PermitType))
             if pt_count == 0:
