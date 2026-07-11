@@ -14,7 +14,12 @@ export default function AuthGuard({ children }: Props) {
     (async () => {
       try {
         await initAuth();
-        const authed = await isAuthenticated();
+        let authed = await isAuthenticated();
+        if (!authed) {
+          // Brief retry — token refresh may be in flight
+          await new Promise(r => setTimeout(r, 500));
+          authed = await isAuthenticated();
+        }
         if (!authed) {
           await login();
           return;
