@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Table, App, Typography, Alert } from "antd";
+import { Button, Card, Table, App, Typography } from "antd";
 import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { authHeaders } from "../auth";
@@ -144,14 +144,15 @@ export default function DataManagement() {
 
   return (
     <div>
-      <Alert
-        type="info"
-        showIcon
-        icon={<DatabaseOutlined />}
-        message="Database Backup & Restore"
-        description="Export a complete snapshot of all application data (permits, tickets, lots, audit trail, settings, etc.) or restore from a previously saved backup. Backups do not include uploaded files or application code."
-        style={{ marginBottom: 24 }}
-      />
+      <div className="flex items-start gap-3 rounded-lg border border-brass/30 bg-bone-light px-5 py-4 mb-6">
+        <DatabaseOutlined className="text-brass text-lg mt-0.5" />
+        <div>
+          <div className="font-semibold text-ink mb-1">Database Backup & Restore</div>
+          <div className="text-ink-mute text-sm">
+            Export a complete snapshot of all application data (permits, tickets, lots, audit trail, settings, etc.) or restore from a previously saved backup. Backups do not include uploaded files or application code.
+          </div>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
         <Card style={{ flex: 1, minWidth: 280 }}>
