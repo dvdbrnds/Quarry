@@ -165,15 +165,15 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
 
   const otherColumns: ColumnsType<PermitTypeRow> = [
     { title: "Permit Type", key: "label", render: (_, pt) => <><div className="font-medium">{pt.label}</div><div className="text-xs text-ink-mute">{pt.code}</div></> },
-    { title: "Capacity", key: "capacity", render: (_, pt) => {
+    { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
+    { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
       const calc = calculateLotCapacity(pt.lot_assignments, pt.code, lotLookup);
+      if (calc.total === 0) return <span className="text-ink-mute">—</span>;
       return (
         <div>
-          <div>{pt.max_capacity} set</div>
-          {calc.total > 0 && (
-            <div className="text-[11px] text-ink-mute">
-              {calc.total} from lots{calc.afterFour > 0 ? ` (${calc.afterFour} after 4pm)` : ""}
-            </div>
+          <div className="font-medium">{calc.total} spots</div>
+          {calc.afterFour > 0 && (
+            <div className="text-[11px] text-ink-mute">{calc.fullTime} full-time + {calc.afterFour} after 4pm</div>
           )}
         </div>
       );
