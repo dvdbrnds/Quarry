@@ -513,11 +513,27 @@ export default function Lots() {
   function handleSaved() { cancelEdit(); load(); }
 
   function handleDeleteLot(lot: Lot) {
+    let confirmValue = "";
     modal.confirm({
       title: `Delete ${lot.name}?`,
-      content: `This will permanently remove ${lot.name} and all its zones. This action cannot be undone.`,
-      okText: "Delete Lot", okButtonProps: { danger: true },
+      icon: null,
+      content: (
+        <div>
+          <p className="text-red-600 font-medium mb-2">This will permanently remove {lot.name} and all its zones, spots, and history. This action cannot be undone.</p>
+          <p className="mb-3 text-sm text-ink-mute">Type <strong>{lot.name}</strong> to confirm:</p>
+          <Input
+            placeholder={lot.name}
+            onChange={(e) => { confirmValue = e.target.value; }}
+            autoFocus
+          />
+        </div>
+      ),
+      okText: "Permanently Delete", okButtonProps: { danger: true },
       onOk: async () => {
+        if (confirmValue.trim() !== lot.name) {
+          message.error(`Type "${lot.name}" exactly to confirm deletion.`);
+          throw new Error("cancelled");
+        }
         await api.lots.delete(lot.id);
         if (selectedLotId === lot.id) setSelectedLotId(null);
         message.success("Lot deleted");
