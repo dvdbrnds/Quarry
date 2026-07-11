@@ -175,7 +175,11 @@ export default function PermitTypes() {
         fetch("/api/lots", { headers: await authHeaders() }),
       ]);
       if (ptRes.ok) setTypes(await ptRes.json());
-      if (lotRes.ok) setLots(await lotRes.json());
+      if (lotRes.ok) {
+        const lotData = await lotRes.json();
+        console.log("[PermitTypes] lots loaded:", lotData.length, "sample:", lotData.slice(0, 3).map((l: any) => ({ name: l.name, total_spaces: l.total_spaces, designation_code: l.designation_code })));
+        setLots(lotData);
+      }
     } finally { setLoading(false); }
   }, []);
 
@@ -227,18 +231,24 @@ export default function PermitTypes() {
   }
 
   const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
-  const lotLookup = Object.fromEntries(lots.map(l => [l.name, l]));
+  const lotLookup = Object.fromEntries(lots.map(l => [l.name.trim(), l]));
 
   function calcCapacity(pt: PermitTypeRow) {
-    let fullTime = 0, afterFour = 0;
-    for (const name of pt.lot_assignments) {
+    let fullTime = 0, afterFour = 0, matched = 0;
+    const unmatched: string[] = [];
+    for (const rawName of pt.lot_assignments) {
+      const name = rawName.trim();
       const lot = lotLookup[name];
-      if (!lot) continue;
+      if (!lot) { unmatched.push(name); continue; }
+      matched++;
       const restricted = COMMUTER_CODES.has(pt.code) && (lot.designation_code === "FS" || lot.designation_code === "FSC");
       if (restricted) afterFour += lot.total_spaces;
       else fullTime += lot.total_spaces;
     }
-    return { fullTime, afterFour, total: fullTime + afterFour };
+    if (unmatched.length > 0) {
+      console.warn(`[calcCapacity] ${pt.code}: unmatched lots:`, unmatched, "available:", Object.keys(lotLookup).slice(0, 10));
+    }
+    return { fullTime, afterFour, total: fullTime + afterFour, matched, assigned: pt.lot_assignments.length };
   }
 
   const columns: ColumnsType<PermitTypeRow> = [
@@ -248,7 +258,8 @@ export default function PermitTypes() {
     { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
     { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
       const calc = calcCapacity(pt);
-      if (calc.total === 0) return <span className="text-ink-mute">—</span>;
+      if (calc.assigned === 0) return <span className="text-ink-mute">No lots assigned</span>;
+      if (calc.total === 0) return <span className="text-ink-mute">{calc.matched}/{calc.assigned} lots matched, 0 spaces</span>;
       return (
         <div>
           <div className="font-medium">{calc.total} spots</div>
