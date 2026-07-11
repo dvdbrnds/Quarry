@@ -1,7 +1,7 @@
 import logging
 
 from . import AlertChannel, ChannelResult
-from ..sms import send_sms
+from ..sms import send_sms_async
 from ...config import settings
 
 logger = logging.getLogger("quarry.channels.sms")
@@ -24,7 +24,7 @@ class SmsChannel(AlertChannel):
         for sub in sms_recipients:
             unsub_url = f"{settings.public_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
             body = f"{alert.body_sms}\n\nUnsubscribe: {unsub_url}"
-            if send_sms(sub.phone, body):
+            if await send_sms_async(sub.phone, body):
                 sent += 1
             else:
                 failed += 1

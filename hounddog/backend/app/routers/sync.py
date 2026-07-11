@@ -421,7 +421,7 @@ async def _upload_ticket_impl(
             year_start_day = es.academic_year_start_day if es else 1
 
             today = date.today()
-            if today.month >= year_start_month and today.day >= year_start_day:
+            if (today.month > year_start_month) or (today.month == year_start_month and today.day >= year_start_day):
                 academic_year_start = date(today.year, year_start_month, year_start_day)
             else:
                 academic_year_start = date(today.year - 1, year_start_month, year_start_day)
@@ -553,6 +553,19 @@ async def _upload_ticket_impl(
     except Exception as e:
         import logging
         logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
+
+    try:
+        if permit and getattr(permit, 'student_id', None):
+            from ..services.escalation import check_and_escalate
+            await check_and_escalate(
+                db=db,
+                plate=new_ticket.plate,
+                student_id=permit.student_id,
+                student_name=permit.name,
+                student_email=getattr(permit, 'email', None),
+            )
+    except Exception as e:
+        logger.warning("Escalation check failed (non-fatal): %s", e)
 
     return TicketUploadResponse(
         status="accepted",

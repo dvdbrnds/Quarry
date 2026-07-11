@@ -50,6 +50,22 @@ async def lifespan(app: FastAPI):
             "QUARRY_SECRET_KEY is not set. "
             "Set it to a strong random value before starting the server."
         )
+    if len(settings.secret_key) < 32:
+        raise RuntimeError(
+            "QUARRY_SECRET_KEY is too short. Use at least 32 characters of random hex."
+        )
+
+    if not settings.okta_domain:
+        raise RuntimeError(
+            "QUARRY_OKTA_DOMAIN is not set. "
+            "Set it to your Okta domain (e.g., moravian.okta.com) before starting the server."
+        )
+
+    if settings.stripe_secret_key and not settings.stripe_webhook_secret:
+        raise RuntimeError(
+            "QUARRY_STRIPE_WEBHOOK_SECRET is not set but QUARRY_STRIPE_SECRET_KEY is. "
+            "Set the webhook secret from your Stripe dashboard."
+        )
 
     for attempt in range(1, 11):
         try:
@@ -69,8 +85,10 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation
     async with engine.begin() as conn:
-        migrations = [
-            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
+        await conn.execute(text("SELECT pg_advisory_lock(42)"))
+        try:
+            migrations = [
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
             # Ticket enhancements
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_category VARCHAR(32) DEFAULT 'parking'",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS offense_number INTEGER DEFAULT 1",
@@ -191,9 +209,29 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(32)",
             "CREATE SEQUENCE IF NOT EXISTS quarry_ticket_number_seq START WITH 1",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_number ON tickets (ticket_number) WHERE ticket_number IS NOT NULL",
-        ]
-        for migration in migrations:
-            await conn.execute(text(migration))
+            # Escalation tracking
+            """CREATE TABLE IF NOT EXISTS escalation_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                student_id VARCHAR(50) NOT NULL,
+                student_name VARCHAR(255),
+                student_email VARCHAR(255),
+                plate VARCHAR(50),
+                escalation_type VARCHAR(50) NOT NULL,
+                ticket_count INTEGER NOT NULL,
+                ticket_ids TEXT,
+                status VARCHAR(50) DEFAULT 'sent',
+                details TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                resolved_at TIMESTAMP,
+                resolved_by VARCHAR(255)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_escalation_student ON escalation_log(student_id)",
+            "CREATE INDEX IF NOT EXISTS idx_escalation_type ON escalation_log(escalation_type)",
+            ]
+            for migration in migrations:
+                await conn.execute(text(migration))
+        finally:
+            await conn.execute(text("SELECT pg_advisory_unlock(42)"))
 
     logger.info("Schema migrations applied.")
 

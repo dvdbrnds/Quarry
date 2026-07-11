@@ -1,9 +1,12 @@
 import csv
 import io
+import logging
 import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+
+logger = logging.getLogger("quarry.payments")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy import case, select, func
@@ -528,6 +531,41 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     elif event_type in ("payment_intent.succeeded", "charge.succeeded"):
         await _handle_raw_stripe_event(obj, event_type, db)
 
+    elif event_type == "charge.refunded":
+        payment_intent_id = obj.get("payment_intent")
+        if payment_intent_id:
+            result = await db.execute(
+                select(Payment).where(Payment.stripe_payment_id == payment_intent_id)
+            )
+            payment = result.scalar_one_or_none()
+            if payment:
+                payment.payment_type = "refunded"
+                if payment.ticket_id:
+                    ticket = await db.get(Ticket, payment.ticket_id)
+                    if ticket:
+                        ticket.status = "unpaid"
+                await db.flush()
+                logger.info("Processed refund for payment %s", payment.id)
+
+    elif event_type == "checkout.session.expired":
+        metadata = obj.get("metadata") or {}
+        ticket_id = metadata.get("ticket_id")
+        if ticket_id:
+            ticket = await db.get(Ticket, uuid.UUID(ticket_id))
+            if ticket and ticket.status == "pending_payment":
+                ticket.status = "unpaid"
+                await db.flush()
+                logger.info("Expired checkout for ticket %s, reset to unpaid", ticket_id)
+
+    elif event_type == "charge.dispute.created":
+        charge_id = obj.get("charge")
+        logger.warning(
+            "Stripe dispute created for charge %s, amount %s, reason: %s",
+            charge_id,
+            obj.get("amount"),
+            obj.get("reason"),
+        )
+
     return {"status": "ok"}
 
 
@@ -566,6 +604,14 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     db.add(payment)
     ticket.status = "paid"
     await db.flush()
+
+    try:
+        if ticket.plate:
+            from ..services.escalation import check_and_resolve_on_payment
+            await check_and_resolve_on_payment(db, ticket.plate)
+    except Exception as e:
+        logger.warning("Escalation resolve on payment failed (non-fatal): %s", e)
+
     return True
 
 

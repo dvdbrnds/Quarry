@@ -1,5 +1,6 @@
 """Twilio SMS service for lot closure and general notifications."""
 
+import asyncio
 import logging
 
 from ..config import settings
@@ -43,9 +44,23 @@ def send_sms(to: str, body: str) -> bool:
 
 
 def send_bulk_sms(recipients: list[str], body: str) -> int:
-    """Send SMS to multiple recipients. Returns count of successful sends."""
+    """Send SMS to multiple recipients (sync). Returns count of successful sends."""
     sent = 0
     for phone in recipients:
         if send_sms(phone, body):
             sent += 1
     return sent
+
+
+async def send_sms_async(to: str, body: str) -> bool:
+    """Non-blocking wrapper around send_sms."""
+    return await asyncio.to_thread(send_sms, to, body)
+
+
+async def send_bulk_sms_async(recipients: list[str], body: str) -> int:
+    """Send SMS to multiple recipients without blocking the event loop."""
+    count = 0
+    for phone in recipients:
+        if await send_sms_async(phone, body):
+            count += 1
+    return count

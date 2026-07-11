@@ -97,6 +97,21 @@ class Settings(BaseSettings):
     apns_bundle_id: str = "edu.moravian.birddog"
     apns_use_sandbox: bool = False
 
+    # Escalation thresholds
+    conduct_referral_threshold: int = 3
+    registration_hold_threshold: int = 5
+
+    # Maxient integration (email-based referral by default)
+    maxient_intake_email: str = ""
+    maxient_referral_enabled: bool = True
+    maxient_api_url: str = ""
+    maxient_api_key: str = ""
+
+    # SIS / Registration hold integration
+    sis_hold_enabled: bool = True
+    sis_hold_api_url: str = ""
+    sis_hold_api_key: str = ""
+
     model_config = {"env_prefix": "QUARRY_", "env_file": ".env"}
 
 

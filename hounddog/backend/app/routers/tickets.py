@@ -133,6 +133,28 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
         import logging
         logging.getLogger("quarry.tickets").warning("Citation email failed (non-fatal): %s", e)
 
+    try:
+        if ticket.plate:
+            from ..services.escalation import check_and_escalate
+            esc_permit_result = await db.execute(
+                select(Permit).where(
+                    Permit.plates.contains([ticket.plate.upper()]),
+                    Permit.deleted_at.is_(None),
+                ).limit(1)
+            )
+            esc_permit = esc_permit_result.scalar()
+            if esc_permit and getattr(esc_permit, 'student_id', None):
+                await check_and_escalate(
+                    db=db,
+                    plate=ticket.plate,
+                    student_id=esc_permit.student_id,
+                    student_name=esc_permit.name or ticket.owner_name,
+                    student_email=getattr(esc_permit, 'email', None),
+                )
+    except Exception as e:
+        import logging
+        logging.getLogger("quarry.tickets").warning("Escalation check failed (non-fatal): %s", e)
+
     return ticket
 
 
@@ -410,19 +432,29 @@ async def upload_photo(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
+    import os
+    import re
+
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
-    import os
+    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, f"Invalid file type. Allowed: {', '.join(allowed_types)}")
+
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(413, "File too large. Maximum size is 10MB.")
+
     upload_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "photos")
     os.makedirs(upload_dir, exist_ok=True)
 
-    filename = f"{ticket_id}_{file.filename}"
+    safe_name = re.sub(r'[^\w\-.]', '_', os.path.basename(file.filename or "photo.jpg"))
+    filename = f"{ticket_id}_{safe_name}"
     filepath = os.path.join(upload_dir, filename)
-    content = await file.read()
     with open(filepath, "wb") as f:
-        f.write(content)
+        f.write(contents)
 
     ticket.photo_url = f"/uploads/photos/{filename}"
     await db.flush()

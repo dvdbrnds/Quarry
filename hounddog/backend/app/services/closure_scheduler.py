@@ -12,7 +12,7 @@ from ..models.lot_closure import LotClosure
 from ..models.permit import Permit
 from ..config import settings
 from .email import send_lot_closure_notification, send_lot_reopen_notification
-from .sms import send_bulk_sms
+from .sms import send_bulk_sms_async
 
 logger = logging.getLogger("quarry.scheduler")
 
@@ -132,7 +132,7 @@ async def _process_closures():
                         lot.name, closure.reason or "", closes_str, reopens_str
                     )
                     if sms_body:
-                        sms_count = send_bulk_sms(sms_phones, sms_body)
+                        sms_count = await send_bulk_sms_async(sms_phones, sms_body)
                         logger.info(
                             "SMS sent for closure: lot=%s, sent=%d/%d, emergency=%s",
                             lot.name, sms_count, len(sms_phones), is_emergency,

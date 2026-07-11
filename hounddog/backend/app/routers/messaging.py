@@ -22,7 +22,7 @@ from ..schemas.messaging import (
     SendMessageResult,
 )
 from ..services.email import send_email
-from ..services.sms import send_bulk_sms
+from ..services.sms import send_bulk_sms_async
 
 router = APIRouter(dependencies=[Depends(require_role("admin", "staff"))])
 
@@ -199,7 +199,7 @@ async def send_message(data: SendMessageRequest, db: AsyncSession = Depends(get_
         sms_recipients.extend(data.extra_phones)
         sms_recipients = list(set(sms_recipients))
         if sms_recipients:
-            sms_sent = send_bulk_sms(sms_recipients, sms_body)
+            sms_sent = await send_bulk_sms_async(sms_recipients, sms_body)
 
     return SendMessageResult(emails_sent=emails_sent, sms_sent=sms_sent)
 
