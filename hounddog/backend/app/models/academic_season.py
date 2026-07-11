@@ -12,7 +12,7 @@ class AcademicSeason(Base):
     __tablename__ = "academic_seasons"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(64))
+    code: Mapped[str] = mapped_column(String(64), unique=True)
     label: Mapped[str] = mapped_column(String(256))
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)

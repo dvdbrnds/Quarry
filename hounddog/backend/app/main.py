@@ -270,6 +270,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Seed defaults on startup failed: {e}")
 
+    # Deduplicate academic seasons (keep oldest row per code)
+    try:
+        async with async_session() as session:
+            await session.execute(text("""
+                DELETE FROM academic_seasons
+                WHERE id NOT IN (
+                    SELECT DISTINCT ON (code) id
+                    FROM academic_seasons
+                    ORDER BY code, created_at ASC
+                )
+            """))
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"Dedup academic seasons failed: {e}")
+
+    # Add unique constraint on academic_seasons.code if missing
+    try:
+        async with async_session() as session:
+            await session.execute(text("""
+                DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'uq_academic_seasons_code'
+                    ) THEN
+                        ALTER TABLE academic_seasons ADD CONSTRAINT uq_academic_seasons_code UNIQUE (code);
+                    END IF;
+                END $$;
+            """))
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"Add academic_seasons unique constraint failed: {e}")
+
     # Seed academic calendar if empty
     try:
         from .models import AcademicSeason

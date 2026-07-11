@@ -54,10 +54,13 @@ async def create_season(
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
 ):
+    existing = (await db.execute(
+        select(AcademicSeason).where(AcademicSeason.code == data.code)
+    )).scalar()
+    if existing:
+        raise HTTPException(409, f"Season with code '{data.code}' already exists")
+
     if data.is_default:
-        await db.execute(
-            select(AcademicSeason).where(AcademicSeason.is_default.is_(True))
-        )
         existing_defaults = (
             await db.execute(
                 select(AcademicSeason).where(AcademicSeason.is_default.is_(True))
