@@ -506,4 +506,26 @@ export const api = {
         request<void>(`/signage/screens/${id}`, { method: "DELETE" }),
     },
   },
+  backup: {
+    tables: () => request<{ tables: Record<string, number> }>("/backup/tables"),
+    exportUrl: `${BASE}/backup/export`,
+    restore: async (file: File) => {
+      const token = await getAccessToken();
+      const form = new FormData();
+      form.append("file", file);
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${BASE}/backup/restore`, { method: "POST", headers, body: form });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`${res.status}: ${body}`);
+      }
+      return res.json() as Promise<{
+        status: string;
+        restored: Record<string, number>;
+        skipped: string[];
+        exported_at: string;
+      }>;
+    },
+  },
 };

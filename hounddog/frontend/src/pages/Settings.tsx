@@ -6,6 +6,7 @@ import Devices from "./Devices";
 import ActivityLog from "./ActivityLog";
 import EnforcementSettings from "./EnforcementSettings";
 import Messaging from "./Messaging";
+import DataManagement from "./DataManagement";
 
 const TABS = [
   { key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> },
@@ -14,6 +15,7 @@ const TABS = [
   { key: "devices", label: "Devices", children: <Devices /> },
   { key: "messaging", label: "Messaging", children: <Messaging /> },
   { key: "activity", label: "Activity Log", children: <ActivityLog /> },
+  { key: "data", label: "Data Management", children: <DataManagement /> },
 ];
 
 export default function Settings() {
