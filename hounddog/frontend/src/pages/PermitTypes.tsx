@@ -18,6 +18,7 @@ interface PermitTypeRow {
 }
 
 interface LotForSelect {
+  id: string;
   name: string;
   designation_code: string;
   total_spaces: number;
@@ -177,7 +178,7 @@ export default function PermitTypes() {
       if (ptRes.ok) setTypes(await ptRes.json());
       if (lotRes.ok) {
         const lotData = await lotRes.json();
-        console.log("[PermitTypes] lots loaded:", lotData.length, "sample:", lotData.slice(0, 3).map((l: any) => ({ name: l.name, total_spaces: l.total_spaces, designation_code: l.designation_code })));
+        console.log("[PermitTypes] lot names:", lotData.map((l: any) => l.name), "first id:", lotData[0]?.id);
         setLots(lotData);
       }
     } finally { setLoading(false); }
@@ -231,7 +232,11 @@ export default function PermitTypes() {
   }
 
   const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
-  const lotLookup = Object.fromEntries(lots.map(l => [l.name.trim(), l]));
+  const lotLookup: Record<string, LotForSelect> = {};
+  for (const l of lots) {
+    lotLookup[l.name.trim()] = l;
+    if (l.id) lotLookup[l.id] = l;
+  }
 
   function calcCapacity(pt: PermitTypeRow) {
     let fullTime = 0, afterFour = 0, matched = 0;
@@ -246,7 +251,7 @@ export default function PermitTypes() {
       else fullTime += lot.total_spaces;
     }
     if (unmatched.length > 0) {
-      console.warn(`[calcCapacity] ${pt.code}: unmatched lots:`, unmatched, "available:", Object.keys(lotLookup).slice(0, 10));
+      console.warn(`[calcCapacity] ${pt.code}: unmatched:`, JSON.stringify(unmatched), "lotKeys:", JSON.stringify(Object.keys(lotLookup).slice(0, 15)));
     }
     return { fullTime, afterFour, total: fullTime + afterFour, matched, assigned: pt.lot_assignments.length };
   }

@@ -103,8 +103,14 @@ export default function LotteryManager() {
     ]);
     if (ptRes.ok) { const all: PermitTypeRow[] = await ptRes.json(); setTypes(all.filter(t => t.is_active)); }
     if (lotRes.ok) {
-      const lots: { name: string; designation_code: string; total_spaces: number }[] = await lotRes.json();
-      setLotLookup(Object.fromEntries(lots.map(l => [l.name, { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces ?? 0 }])));
+      const lots: { id: string; name: string; designation_code: string; total_spaces: number }[] = await lotRes.json();
+      const lookup: Record<string, LotInfo> = {};
+      for (const l of lots) {
+        const info: LotInfo = { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces ?? 0 };
+        lookup[l.name.trim()] = info;
+        if (l.id) lookup[l.id] = info;
+      }
+      setLotLookup(lookup);
     }
   }, []);
 
