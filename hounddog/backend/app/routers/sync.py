@@ -480,7 +480,9 @@ async def _upload_ticket_impl(
         if not permit_number:
             permit_number = permit.permit_number or permit.student_id
 
+    from ..services.ticket_numbering import next_ticket_number
     new_ticket = Ticket(
+        ticket_number=await next_ticket_number(db),
         plate=ticket.plate.upper(),
         permit_id=permit_id,
         lot=ticket.lot,
@@ -511,6 +513,7 @@ async def _upload_ticket_impl(
 
     await manager.broadcast("ticket_created", {
         "id": str(new_ticket.id),
+        "ticket_number": new_ticket.ticket_number,
         "plate": new_ticket.plate,
         "lot": new_ticket.lot,
         "status": new_ticket.status,

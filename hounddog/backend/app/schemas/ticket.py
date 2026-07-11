@@ -47,6 +47,7 @@ class TicketRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    ticket_number: str | None = None
     plate: str
     permit_id: uuid.UUID | None = None
     lot: str
@@ -140,6 +141,7 @@ class ActionItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    ticket_number: str | None = None
     plate: str
     lot: str
     status: str
@@ -152,6 +154,7 @@ class ActivityEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    ticket_number: str | None = None
     plate: str
     lot: str
     status: str

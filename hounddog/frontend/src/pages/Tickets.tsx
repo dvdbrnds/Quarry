@@ -7,6 +7,7 @@ import { useCurrentUser } from "../UserContext";
 
 interface Ticket {
   id: string;
+  ticket_number: string | null;
   plate: string;
   lot: string;
   zone: string | null;
@@ -127,6 +128,13 @@ export default function Tickets() {
 
   const columns: ColumnsType<Ticket> = [
     {
+      title: "Ticket #",
+      dataIndex: "ticket_number",
+      key: "ticket_number",
+      width: 120,
+      render: (num: string | null) => <span className="font-mono text-navy font-medium">{num || "—"}</span>,
+    },
+    {
       title: "Plate",
       dataIndex: "plate",
       key: "plate",
@@ -188,7 +196,7 @@ export default function Tickets() {
 
       <Space className="mb-4" wrap>
         <Input.Search
-          placeholder="Search by plate or officer..."
+          placeholder="Search by ticket #, plate, or officer..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           onSearch={() => setPage(1)}
@@ -245,7 +253,7 @@ export default function Tickets() {
         onCancel={() => setSelected(null)}
         title={
           <Space>
-            {selected?.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail"}
+            {selected?.ticket_number || (selected?.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail")}
             {selected?.ticket_category === "moving" && <Tag color="red">Moving Violation</Tag>}
           </Space>
         }

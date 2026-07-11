@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy import select, func, or_, cast, Date
+from sqlalchemy import select, func, or_, cast, Date, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import get_current_user
@@ -53,7 +53,12 @@ async def list_tickets(
     if search:
         like = f"%{search}%"
         query = query.where(
-            or_(Ticket.plate.ilike(like), Ticket.officer_id.ilike(like))
+            or_(
+                Ticket.plate.ilike(like),
+                Ticket.officer_id.ilike(like),
+                Ticket.ticket_number.ilike(like),
+                cast(Ticket.id, String).ilike(like),
+            )
         )
     if status:
         query = query.where(Ticket.status == status)
@@ -78,13 +83,16 @@ async def list_tickets(
 
 @router.post("", response_model=TicketRead, status_code=201)
 async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
+    from ..services.ticket_numbering import next_ticket_number
     ticket = Ticket(**data.model_dump())
+    ticket.ticket_number = await next_ticket_number(db)
     db.add(ticket)
     await db.flush()
     await db.refresh(ticket)
 
     await manager.broadcast("ticket_created", {
         "id": str(ticket.id),
+        "ticket_number": ticket.ticket_number,
         "plate": ticket.plate,
         "lot": ticket.lot,
         "status": ticket.status,

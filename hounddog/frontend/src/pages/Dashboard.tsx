@@ -31,6 +31,7 @@ interface ResolutionRate {
 
 interface ActionItem {
   id: string;
+  ticket_number: string | null;
   plate: string;
   lot: string;
   status: string;
@@ -41,6 +42,7 @@ interface ActionItem {
 
 interface ActivityEvent {
   id: string;
+  ticket_number: string | null;
   plate: string;
   lot: string;
   status: string;
@@ -105,25 +107,25 @@ function ageBadge(issuedAt: string): { label: string; color: "red" | "gold" | "b
 }
 
 function eventDescription(e: ActivityEvent): string {
-  const num = e.id.slice(0, 8);
+  const num = e.ticket_number || e.id.slice(0, 8);
   const fine = `$${Number(e.fine_amount).toFixed(2)}`;
   switch (e.status) {
     case "issued":
-      return `Ticket #${num} issued — ${e.lot || "Unknown lot"}, ${e.violation_type.replace(/_/g, " ")}`;
+      return `${num} issued — ${e.lot || "Unknown lot"}, ${e.violation_type.replace(/_/g, " ")}`;
     case "paid":
-      return `Ticket #${num} paid — ${fine}`;
+      return `${num} paid — ${fine}`;
     case "appealed":
-      return `Appeal filed on #${num}`;
+      return `Appeal filed on ${num}`;
     case "escalated":
-      return `Ticket #${num} escalated`;
+      return `${num} escalated`;
     case "voided":
-      return `Ticket #${num} voided`;
+      return `${num} voided`;
     case "pending_payment":
-      return `Ticket #${num} pending payment — ${fine}`;
+      return `${num} pending payment — ${fine}`;
     case "resolved_permit":
-      return `Ticket #${num} resolved via permit`;
+      return `${num} resolved via permit`;
     default:
-      return `Ticket #${num} — ${e.status}`;
+      return `${num} — ${e.status}`;
   }
 }
 
@@ -284,11 +286,11 @@ export default function Dashboard() {
                     const borderColor = badge.label.includes("overdue") ? "border-red-400" : "border-amber-400";
                     return (
                       <div key={item.id}
-                        onClick={() => navigate(`/tickets?search=${item.id.slice(0, 8)}`)}
+                        onClick={() => navigate(`/tickets?search=${item.ticket_number || item.id.slice(0, 8)}`)}
                         className={`px-5 py-3 border-l-4 ${borderColor} flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-colors`}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm font-medium text-navy">#{item.id.slice(0, 8)}</span>
+                            <span className="font-mono text-sm font-medium text-navy">{item.ticket_number || `#${item.id.slice(0, 8)}`}</span>
                             <span className="text-xs text-ink-mute">{item.plate}</span>
                           </div>
                           {item.appeal_note ? (
@@ -318,7 +320,7 @@ export default function Dashboard() {
                 <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
                   {data.activity.map((ev) => (
                     <div key={`${ev.id}-${ev.updated_at}`}
-                      onClick={() => navigate(`/tickets?search=${ev.id.slice(0, 8)}`)}
+                      onClick={() => navigate(`/tickets?search=${ev.ticket_number || ev.id.slice(0, 8)}`)}
                       className="px-5 py-3 flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-colors">
                       <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${STATUS_DOTS[ev.status] || "bg-gray-300"}`} />
                       <div className="flex-1 min-w-0 text-sm text-ink">{eventDescription(ev)}</div>

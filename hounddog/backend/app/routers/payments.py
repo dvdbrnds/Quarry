@@ -123,7 +123,7 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
         if linked_permit and linked_permit.email:
             payer_email = linked_permit.email
 
-    ticket_ref = str(ticket.id)[:8].upper()
+    ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
 
     session = stripe.checkout.Session.create(
         customer_email=payer_email,
@@ -131,7 +131,7 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
             "price_data": {
                 "currency": "usd",
                 "product_data": {
-                    "name": f"Parking Citation #{ticket_ref}",
+                    "name": f"Parking Citation {ticket_ref}",
                     "description": f"Plate: {ticket.plate} | Violation: {ticket.violation_type}",
                 },
                 "unit_amount": int(ticket.fine_amount * 100),
@@ -339,7 +339,7 @@ async def purchase_permit(
                 "permit_price": str(permit_type.price),
                 "permit_valid_days": str(permit_type.valid_days),
                 "ticket_id": str(ticket.id),
-                "ticket_ref": str(ticket.id)[:8].upper(),
+                "ticket_ref": ticket.ticket_number or str(ticket.id)[:8].upper(),
                 "plate": data.plate.upper(),
                 "student_name": data.student_name,
                 "student_email": data.email,
@@ -548,7 +548,7 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     if not ticket:
         return False
 
-    ticket_ref = str(ticket.id)[:8].upper()
+    ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
     payer_name = metadata.get("payer_name", "") or ticket.owner_name or ticket.driver_name or ""
     payer_email = session.get("customer_email", "") or ""
 

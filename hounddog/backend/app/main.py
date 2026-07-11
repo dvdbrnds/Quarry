@@ -186,6 +186,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS campus VARCHAR(64)",
             # Lot vs street type
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS lot_type VARCHAR(32) DEFAULT 'lot'",
+            # Sequential ticket numbers
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(32)",
+            "CREATE SEQUENCE IF NOT EXISTS quarry_ticket_number_seq START WITH 1",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_number ON tickets (ticket_number) WHERE ticket_number IS NOT NULL",
         ]
         for migration in migrations:
             await conn.execute(text(migration))
