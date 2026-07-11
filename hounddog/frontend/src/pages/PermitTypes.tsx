@@ -22,6 +22,7 @@ interface LotForSelect {
   name: string;
   designation_code: string;
   total_spaces: number;
+  lot_type: string;
   access_schedule: { season: string; rules: { allowed_permit_types: string[] }[] }[];
 }
 
@@ -255,14 +256,16 @@ export default function PermitTypes() {
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
     { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
-    { title: <Tooltip title="Orange = after 4pm only (FS/FSC lots for commuter permits)">Lots</Tooltip>, key: "lots", render: (_, pt) => {
+    { title: <Tooltip title="Orange = after 4pm only (FS/FSC) · Blue = street parking">Lots</Tooltip>, key: "lots", render: (_, pt) => {
       if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
       return (
         <div className="flex flex-wrap gap-1">
           {pt.lot_assignments.map(l => {
             const lot = lotLookup[l.trim()];
             const isRestricted = lot && COMMUTER_CODES.has(pt.code) && (lot.designation_code === "FS" || lot.designation_code === "FSC");
-            return <Tag key={l} color={isRestricted ? "orange" : undefined} className="!m-0 !text-[11px]">{l}{isRestricted ? " *" : ""}</Tag>;
+            const isStreet = lot && lot.lot_type === "street";
+            const color = isRestricted ? "orange" : isStreet ? "blue" : undefined;
+            return <Tag key={l} color={color} className="!m-0 !text-[11px]">{l}{isRestricted ? " *" : ""}</Tag>;
           })}
         </div>
       );
