@@ -253,9 +253,6 @@ export default function PermitTypes() {
 
   const columns: ColumnsType<PermitTypeRow> = [
     { title: "Label", dataIndex: "label", key: "label", render: v => <span className="font-medium">{v}</span> },
-    { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
-    { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
-    { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
     { title: <Tooltip title="Orange = after 4pm only (FS/FSC) · Blue = street parking">Lots</Tooltip>, key: "lots", render: (_, pt) => {
       if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
       return (
@@ -270,6 +267,8 @@ export default function PermitTypes() {
         </div>
       );
     }},
+    { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
+    { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
     { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
       if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
       const calc = calcCapacity(pt);
@@ -299,6 +298,7 @@ export default function PermitTypes() {
         ? <Tag color="purple">Lottery</Tag>
         : pt.is_purchasable_online ? <Tag color="green">Online</Tag> : <Tag>Manual</Tag>,
     },
+    { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     {
       title: "Actions", key: "actions", width: 200,
       render: (_, pt) => (
