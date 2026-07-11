@@ -1,0 +1,14 @@
+---
+description: Always commit and push after completing work
+alwaysApply: true
+---
+
+# Auto Commit & Push
+
+After completing any task that modifies files, always commit and push without being asked:
+
+1. Stage all changed files
+2. Write a concise commit message summarizing the changes
+3. Push to the current remote branch
+
+Do not wait for the user to say "commit" or "push" — do it automatically once the work is done.
