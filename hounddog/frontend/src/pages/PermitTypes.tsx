@@ -226,11 +226,38 @@ export default function PermitTypes() {
     }
   }
 
+  const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
+  const lotLookup = Object.fromEntries(lots.map(l => [l.name, l]));
+
+  function calcCapacity(pt: PermitTypeRow) {
+    let fullTime = 0, afterFour = 0;
+    for (const name of pt.lot_assignments) {
+      const lot = lotLookup[name];
+      if (!lot) continue;
+      const restricted = COMMUTER_CODES.has(pt.code) && (lot.designation_code === "FS" || lot.designation_code === "FSC");
+      if (restricted) afterFour += lot.total_spaces;
+      else fullTime += lot.total_spaces;
+    }
+    return { fullTime, afterFour, total: fullTime + afterFour };
+  }
+
   const columns: ColumnsType<PermitTypeRow> = [
     { title: "Label", dataIndex: "label", key: "label", render: v => <span className="font-medium">{v}</span> },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
     { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
+    { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
+      const calc = calcCapacity(pt);
+      if (calc.total === 0) return <span className="text-ink-mute">—</span>;
+      return (
+        <div>
+          <div className="font-medium">{calc.total} spots</div>
+          {calc.afterFour > 0 && (
+            <div className="text-[11px] text-ink-mute">{calc.fullTime} full-time + {calc.afterFour} after 4pm</div>
+          )}
+        </div>
+      );
+    }},
     {
       title: "Usage", key: "usage",
       render: (_, pt) => (
