@@ -138,7 +138,7 @@ export default function LotteryManager() {
 }
 
 function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => void; lotLookup: Record<string, LotInfo> }) {
-  const { modal, message } = App.useApp();
+  const { message } = App.useApp();
   const now = new Date();
   const [toggling, setToggling] = useState<string | null>(null);
   const lotteryTypes = types.filter(t => t.requires_lottery);
@@ -160,18 +160,6 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
       await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
       message.success("Lottery enabled"); onReload();
     } finally { setToggling(null); }
-  }
-
-  function disableLottery(pt: PermitTypeRow) {
-    modal.confirm({
-      title: `Disable lottery for "${pt.label}"?`, content: "Existing applications will be preserved.",
-      okText: "Disable", okButtonProps: { danger: true },
-      onOk: async () => {
-        setToggling(pt.id);
-        try { await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) }); message.success("Lottery disabled"); onReload(); }
-        finally { setToggling(null); }
-      },
-    });
   }
 
   const otherColumns: ColumnsType<PermitTypeRow> = [
@@ -241,7 +229,6 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
                   {pt.application_closes_at && <div>Closes: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
                   {pt.lottery_run_at && <div className="text-green-700">Ran: {new Date(pt.lottery_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
                 </div>
-                <Button type="text" size="small" danger loading={toggling === pt.id} onClick={(e) => { e.stopPropagation(); disableLottery(pt); }}>Disable</Button>
               </Card>
             );
           })}
@@ -584,6 +571,15 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
         <Space size="small">
           <Button size="small" onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
           <Button size="small" onClick={onGoLive} style={{ borderColor: "#16a34a", color: "#15803d" }}>Live View</Button>
+          <Button size="small" danger onClick={() => modal.confirm({
+            title: `Disable lottery for "${permitType.label}"?`, content: "Existing applications will be preserved.",
+            okText: "Disable", okButtonProps: { danger: true },
+            onOk: async () => {
+              await fetch(`/api/permit-types/${permitType.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
+              msg.success("Lottery disabled");
+              onBack();
+            },
+          })}>Disable Lottery</Button>
         </Space>
       </div>
 
