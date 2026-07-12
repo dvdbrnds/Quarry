@@ -163,6 +163,8 @@ def get_strategy(name: str) -> LotteryStrategy:
 
 def distribute_capacity(total: int, lot_names: list[str]) -> dict[str, int]:
     """Distribute total capacity across lots, spreading remainder round-robin."""
+    if not lot_names:
+        return {}
     base = total // len(lot_names)
     remainder = total % len(lot_names)
     return {

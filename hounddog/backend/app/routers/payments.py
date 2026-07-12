@@ -539,11 +539,11 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             )
             payment = result.scalar_one_or_none()
             if payment:
-                payment.payment_type = "refunded"
+                payment.description = f"[REFUNDED] {payment.description or ''}"
                 if payment.ticket_id:
                     ticket = await db.get(Ticket, payment.ticket_id)
-                    if ticket:
-                        ticket.status = "unpaid"
+                    if ticket and ticket.status == "paid":
+                        ticket.status = "pending_payment"
                 await db.flush()
                 logger.info("Processed refund for payment %s", payment.id)
 
@@ -553,9 +553,9 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         if ticket_id:
             ticket = await db.get(Ticket, uuid.UUID(ticket_id))
             if ticket and ticket.status == "pending_payment":
-                ticket.status = "unpaid"
+                ticket.status = "issued"
                 await db.flush()
-                logger.info("Expired checkout for ticket %s, reset to unpaid", ticket_id)
+                logger.info("Expired checkout for ticket %s, reset to issued", ticket_id)
 
     elif event_type == "charge.dispute.created":
         charge_id = obj.get("charge")
