@@ -483,23 +483,120 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
     )},
   ];
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [showTestTools, setShowTestTools] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  const isOpen = !!permitType.application_opens_at && new Date(permitType.application_opens_at) <= now;
+  const isAccepting = isOpen && !windowClosed;
+  const isReadyToDraw = isOpen && (windowClosed || !hasCloseDate) && !lotteryAlreadyRun && pendingCount > 0;
+
+  async function handleOpenNow() {
+    setOpening(true);
+    try {
+      const res = await fetch(`/api/permit-types/${permitType.id}/open-lottery`, { method: "POST", headers: await authHeaders() });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+      msg.success("Lottery is now open for applications!");
+      await onReload();
+    } catch (e: any) { msg.error(e.message); } finally { setOpening(false); }
+  }
+
+  function renderStatusBanner() {
+    if (lotteryAlreadyRun) {
+      return (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-4 mb-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg font-bold text-green-800">Lottery Complete</span>
+                <Tag color="green">Done</Tag>
+              </div>
+              <p className="text-sm text-green-700">{selectedCount} selected, {waitlistedCount} waitlisted, {acceptedCount} accepted</p>
+            </div>
+            <Space>
+              <Button onClick={handleAdvanceWaitlist} loading={advancing} disabled={selectedCount === 0 && waitlistedCount === 0}>Advance Waitlist</Button>
+              <Button danger onClick={handleResetLottery} loading={resetting}>Reset &amp; Re-run</Button>
+            </Space>
+          </div>
+        </div>
+      );
+    }
+
+    if (isAccepting) {
+      return (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 mb-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg font-bold text-blue-800">Accepting Applications</span>
+                <Tag color="blue">{pendingCount} pending</Tag>
+              </div>
+              <p className="text-sm text-blue-700">
+                Students can apply now at <code className="bg-blue-100 px-1 rounded text-xs">/parking</code>
+                {hasCloseDate && <span> · Closes {new Date(permitType.application_closes_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+                {!hasCloseDate && <span> · Open-ended (no deadline)</span>}
+              </p>
+            </div>
+            <Space>
+              {pendingCount > 0 && <Button type="primary" onClick={handleRunLottery} loading={running}>Draw Winners</Button>}
+              <Button danger onClick={handleCloseApplications}>Stop Accepting</Button>
+            </Space>
+          </div>
+        </div>
+      );
+    }
+
+    if (isReadyToDraw) {
+      return (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 mb-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg font-bold text-amber-800">Ready to Draw</span>
+                <Tag color="gold">{pendingCount} applicants</Tag>
+              </div>
+              <p className="text-sm text-amber-700">Application window is closed. Draw winners when ready.</p>
+            </div>
+            <Button type="primary" size="large" onClick={handleRunLottery} loading={running}>Draw Winners</Button>
+          </div>
+        </div>
+      );
+    }
+
+    // Not open yet
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white px-5 py-6 mb-5 text-center">
+        <p className="text-gray-500 mb-4">This lottery is not open yet. Open it to start accepting student applications.</p>
+        <Space direction="vertical" size="small">
+          <Button type="primary" size="large" onClick={handleOpenNow} loading={opening} style={{ background: "#16a34a", borderColor: "#16a34a" }}>
+            Open Lottery Now
+          </Button>
+          <Button type="link" size="small" onClick={() => setShowSettings(true)} className="text-gray-400">
+            or schedule for a specific date
+          </Button>
+        </Space>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <Space>
           <Button type="text" onClick={onBack}>&larr; Back</Button>
-          <div>
-            <h2 className="text-2xl font-bold text-navy">{permitType.label}</h2>
-            <p className="text-xs text-ink-mute">{STRATEGY_LABELS[permitType.lottery_strategy] || permitType.lottery_strategy}{permitType.min_class_year ? ` · Min class year: ${permitType.min_class_year}` : ""}</p>
-          </div>
+          <h2 className="text-2xl font-bold text-navy">{permitType.label}</h2>
         </Space>
-        <Space>
-          <Button onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
-          <Button onClick={onGoLive} style={{ borderColor: "#16a34a", color: "#15803d" }}>Go Live</Button>
+        <Space size="small">
+          <Button size="small" onClick={() => setShowSettings(!showSettings)} type={showSettings ? "primary" : "default"} ghost={showSettings}>Settings</Button>
+          <Button size="small" onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
+          <Button size="small" onClick={onGoLive} style={{ borderColor: "#16a34a", color: "#15803d" }}>Live View</Button>
         </Space>
       </div>
 
-      <Card className="mb-5" title="Lottery Configuration" size="small">
+      {renderStatusBanner()}
+
+      {showSettings && (
+        <Card className="mb-5" title="Settings" size="small" extra={<Button type="text" size="small" onClick={() => setShowSettings(false)}>Close</Button>}>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
               <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
@@ -509,11 +606,12 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
               <InputNumber value={offerDays} onChange={v => setOfferDays(v ?? 5)} min={1} max={30} className="w-full" /></div>
             <div><label className="block text-xs font-medium text-ink-mute mb-1">Opens</label>
               <DatePicker showTime value={opensAt} onChange={setOpensAt} className="w-full" /></div>
-            <div><label className="block text-xs font-medium text-ink-mute mb-1">Closes</label>
-              <DatePicker showTime value={closesAt} onChange={setClosesAt} className="w-full" /></div>
+            <div><label className="block text-xs font-medium text-ink-mute mb-1">Closes (optional)</label>
+              <DatePicker showTime value={closesAt} onChange={setClosesAt} className="w-full" placeholder="Open-ended" /></div>
           </div>
-          <div className="flex justify-end mt-3"><Button type="primary" onClick={saveConfig} loading={configSaving}>Save Configuration</Button></div>
+          <div className="flex justify-end mt-3"><Button type="primary" onClick={saveConfig} loading={configSaving}>Save</Button></div>
         </Card>
+      )}
 
       <div className="grid grid-cols-6 gap-3 mb-5">
         {[
@@ -540,23 +638,23 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
         </div>
       )}
 
-      <Space className="mb-5" wrap>
-        {hasCloseDate && !windowClosed && <Button danger onClick={handleCloseApplications}>Close Applications</Button>}
-        <Button type="primary" onClick={handleRunLottery} loading={running} disabled={pendingCount === 0}>Run Lottery</Button>
-        <Button onClick={handleAdvanceWaitlist} loading={advancing} disabled={selectedCount === 0 && waitlistedCount === 0}>Advance Waitlist</Button>
-        {lotteryAlreadyRun && <Button danger onClick={handleResetLottery} loading={resetting}>Reset Lottery</Button>}
-        <span className="border-l border-gray-200 h-5 mx-1" />
-        <InputNumber value={genCount} onChange={v => setGenCount(v ?? 50)} min={1} max={500} size="small" style={{ width: 70 }} />
-        <Button onClick={handleGenerateTestData} loading={generating} style={{ borderColor: "#f97316", color: "#ea580c" }}>Generate Test Data</Button>
-        {testCount > 0 && <Button danger type="text" onClick={handleClearTestData} loading={purging}>Clear Test Data</Button>}
-        {!hasCloseDate && <span className="text-xs text-green-700">Open-ended — no deadline</span>}
-        {hasCloseDate && !windowClosed && <span className="text-xs text-amber-700">Window open until {new Date(permitType.application_closes_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
-      </Space>
-
       <Table dataSource={displayedApps} columns={appColumns} rowKey="id" loading={loading} size="small"
         pagination={{ pageSize: 50 }}
         locale={{ emptyText: <Empty description="No applications yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
+
+      <div className="mt-4 border-t pt-4">
+        <Button type="text" size="small" className="text-gray-400" onClick={() => setShowTestTools(!showTestTools)}>
+          {showTestTools ? "Hide" : "Show"} Testing Tools
+        </Button>
+        {showTestTools && (
+          <Space className="mt-2" wrap>
+            <InputNumber value={genCount} onChange={v => setGenCount(v ?? 50)} min={1} max={500} size="small" style={{ width: 70 }} />
+            <Button onClick={handleGenerateTestData} loading={generating} size="small" style={{ borderColor: "#f97316", color: "#ea580c" }}>Generate Test Data</Button>
+            {testCount > 0 && <Button danger type="text" size="small" onClick={handleClearTestData} loading={purging}>Clear Test Data</Button>}
+          </Space>
+        )}
+      </div>
     </div>
   );
 }

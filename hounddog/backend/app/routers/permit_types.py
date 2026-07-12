@@ -390,6 +390,26 @@ async def reset_lottery(
     return {"reset": reset_count, "total_applications": len(all_apps)}
 
 
+@router.post("/{ptype_id}/open-lottery")
+async def open_lottery(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """One-click: enable lottery and open the application window immediately."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    pt.requires_lottery = True
+    pt.application_opens_at = datetime.now(timezone.utc)
+    if not pt.lottery_strategy:
+        pt.lottery_strategy = "seniority_timestamp"
+    await db.flush()
+    await db.refresh(pt)
+    return {"status": "open", "opens_at": pt.application_opens_at.isoformat()}
+
+
 @router.post("/{ptype_id}/close-applications")
 async def close_applications(
     ptype_id: uuid.UUID,
