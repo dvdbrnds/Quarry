@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm, Tooltip, Switch,
+  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -274,8 +274,6 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
   const [configSaving, setConfigSaving] = useState(false);
   const [strategy, setStrategy] = useState(permitType.lottery_strategy);
   const currentYear = new Date().getFullYear();
-  const isCommuter = COMMUTER_CODES.has(permitType.code);
-  const [excludeFreshmen, setExcludeFreshmen] = useState(!isCommuter && !!permitType.min_class_year);
   const [offerDays, setOfferDays] = useState(permitType.offer_window_days);
   const [opensAt, setOpensAt] = useState<dayjs.Dayjs | null>(permitType.application_opens_at ? dayjs(permitType.application_opens_at) : null);
   const [closesAt, setClosesAt] = useState<dayjs.Dayjs | null>(permitType.application_closes_at ? dayjs(permitType.application_closes_at) : null);
@@ -429,7 +427,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
     setConfigSaving(true);
     try {
       await fetch(`/api/permit-types/${permitType.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({
-        lottery_strategy: strategy, min_class_year: excludeFreshmen ? currentYear + 1 : null,
+        lottery_strategy: strategy, min_class_year: currentYear + 1,
         offer_window_days: offerDays, application_opens_at: opensAt?.toISOString() ?? null, application_closes_at: closesAt?.toISOString() ?? null,
       })});
       msg.success("Configuration saved");
@@ -597,11 +595,9 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
             <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
-          <div><label className="block text-xs font-medium text-ink-mute mb-1">Exclude Freshmen</label>
-            <div className="flex items-center gap-2 mt-1">
-              <Switch checked={excludeFreshmen} onChange={setExcludeFreshmen} />
-              <span className="text-xs text-gray-500">{excludeFreshmen ? "Sophomores+ only" : "All class years"}</span>
-            </div></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Eligibility</label>
+            <div className="text-sm text-gray-600 mt-1">Sophomores &amp; up</div>
+            <div className="text-[10px] text-gray-400">Freshmen are excluded from lottery permits</div></div>
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
             <InputNumber value={offerDays} onChange={v => setOfferDays(v ?? 5)} min={1} max={30} className="w-full" /></div>
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Opens</label>
