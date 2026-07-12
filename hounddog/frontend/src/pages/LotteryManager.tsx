@@ -273,7 +273,8 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
   
   const [configSaving, setConfigSaving] = useState(false);
   const [strategy, setStrategy] = useState(permitType.lottery_strategy);
-  const [minClassYear, setMinClassYear] = useState(permitType.min_class_year?.toString() ?? "");
+  const currentYear = new Date().getFullYear();
+  const [minClassYear, setMinClassYear] = useState(permitType.min_class_year?.toString() ?? (currentYear + 1).toString());
   const [offerDays, setOfferDays] = useState(permitType.offer_window_days);
   const [opensAt, setOpensAt] = useState<dayjs.Dayjs | null>(permitType.application_opens_at ? dayjs(permitType.application_opens_at) : null);
   const [closesAt, setClosesAt] = useState<dayjs.Dayjs | null>(permitType.application_closes_at ? dayjs(permitType.application_closes_at) : null);
@@ -427,7 +428,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
     setConfigSaving(true);
     try {
       await fetch(`/api/permit-types/${permitType.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({
-        lottery_strategy: strategy, min_class_year: minClassYear ? parseInt(minClassYear) : null,
+        lottery_strategy: strategy, min_class_year: parseInt(minClassYear) || currentYear + 1,
         offer_window_days: offerDays, application_opens_at: opensAt?.toISOString() ?? null, application_closes_at: closesAt?.toISOString() ?? null,
       })});
       msg.success("Configuration saved");
@@ -596,7 +597,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
             <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Min Class Year</label>
-            <Input value={minClassYear} onChange={e => setMinClassYear(e.target.value)} type="number" placeholder="None" /></div>
+            <InputNumber value={minClassYear ? parseInt(minClassYear) : currentYear + 1} onChange={v => setMinClassYear((v ?? currentYear + 1).toString())} min={currentYear} max={currentYear + 5} className="w-full" /></div>
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
             <InputNumber value={offerDays} onChange={v => setOfferDays(v ?? 5)} min={1} max={30} className="w-full" /></div>
           <div><label className="block text-xs font-medium text-ink-mute mb-1">Opens</label>
