@@ -543,6 +543,103 @@ async def export_permits(db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/emails")
+async def permit_holder_emails(
+    status: str = "active",
+    db: AsyncSession = Depends(get_db),
+):
+    """Get emails for all permit holders, cross-referencing applications for gaps."""
+    permits = (
+        await db.execute(
+            select(Permit)
+            .where(Permit.status == status, Permit.deleted_at.is_(None))
+            .order_by(Permit.name)
+        )
+    ).scalars().all()
+
+    # Build a plate-to-email lookup from permit applications
+    app_emails = await db.execute(
+        text("""
+            SELECT UPPER(plate) AS plate, student_email
+            FROM permit_applications
+            WHERE student_email IS NOT NULL AND student_email != ''
+            ORDER BY created_at DESC
+        """)
+    )
+    plate_email_map: dict[str, str] = {}
+    for row in app_emails.mappings().all():
+        plate_email_map.setdefault(row["plate"], row["student_email"])
+
+    results = []
+    has_email = 0
+    missing_email = 0
+
+    for p in permits:
+        email = p.email
+        source = "permit" if email else None
+
+        if not email:
+            for plate in p.plates:
+                email = plate_email_map.get(plate.upper())
+                if email:
+                    source = "application"
+                    break
+
+        if email:
+            has_email += 1
+        else:
+            missing_email += 1
+
+        results.append({
+            "id": str(p.id),
+            "name": p.name,
+            "email": email,
+            "email_source": source,
+            "student_id": p.student_id,
+            "plates": p.plates,
+            "permit_type": p.permit_type,
+            "lot_assignment": p.lot_assignment,
+            "status": p.status,
+        })
+
+    return {
+        "total": len(results),
+        "has_email": has_email,
+        "missing_email": missing_email,
+        "permits": results,
+    }
+
+
+@router.get("/emails/csv")
+async def export_permit_emails_csv(
+    status: str = "active",
+    db: AsyncSession = Depends(get_db),
+):
+    """Export permit holder emails as CSV, cross-referencing applications for gaps."""
+    data = await permit_holder_emails(status=status, db=db)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["name", "email", "email_source", "student_id", "plates", "permit_type", "lot_assignment"])
+    for p in data["permits"]:
+        writer.writerow([
+            p["name"],
+            p["email"] or "",
+            p["email_source"] or "missing",
+            p["student_id"],
+            ";".join(p["plates"]),
+            p["permit_type"],
+            p["lot_assignment"],
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=permit-emails-{status}.csv"},
+    )
+
+
 @router.get("/duplicates")
 async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
     """Return groups of active permits that share at least one plate."""
