@@ -405,7 +405,8 @@ async def open_lottery(
     pt.application_opens_at = datetime.now(timezone.utc)
     if not pt.lottery_strategy:
         pt.lottery_strategy = "seniority_timestamp"
-    if not pt.min_class_year:
+    is_commuter = pt.code and "commuter" in pt.code.lower()
+    if not pt.min_class_year and not is_commuter:
         pt.min_class_year = datetime.now().year + 1
     await db.flush()
     await db.refresh(pt)
