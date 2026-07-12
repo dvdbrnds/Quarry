@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space, App, Tooltip } from "antd";
-import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
+import type { Lot } from "../api";
+import StudentLotMap from "../components/StudentLotMap";
 
 interface LotDetail {
   name: string;
@@ -110,20 +112,32 @@ function LotteryPage({ user }: { user: AuthUser }) {
   const [applications, setApplications] = useState<MyApplication[]>([]);
   const [applying, setApplying] = useState<AvailablePermit | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [highlightedLots, setHighlightedLots] = useState<string[]>([]);
+  const [mapsApiKey, setMapsApiKey] = useState("");
+  const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
 
   const load = useCallback(async () => {
     try {
       const headers = await authHeaders();
-      const [avRes, myRes] = await Promise.all([
+      const [avRes, myRes, lotsRes] = await Promise.all([
         fetch("/api/student/permits/available", { headers }),
         fetch("/api/student/permits/my-applications", { headers }),
+        fetch("/api/lots", { headers }),
       ]);
       if (avRes.ok) setAvailable(await avRes.json());
       if (myRes.ok) setApplications(await myRes.json());
+      if (lotsRes.ok) setLots(await lotsRes.json());
     } catch { message.error("Failed to load permit data"); } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    loadConfig().then(cfg => {
+      setMapsApiKey(cfg.google_maps_api_key || "");
+      if (cfg.campus_lat && cfg.campus_lng) setCampusCenter({ lat: cfg.campus_lat, lng: cfg.campus_lng });
+    });
+  }, [load]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -163,7 +177,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-[#1a2744] text-[#f5f0e8] px-6 py-4 shadow-md">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
             <div>
@@ -178,125 +192,154 @@ function LotteryPage({ user }: { user: AuthUser }) {
         </div>
       </nav>
 
-      <main className="max-w-3xl mx-auto px-6 py-10">
+      <main className="max-w-7xl mx-auto px-6 py-10">
         {loading ? (
           <div className="flex justify-center py-20"><Spin size="large" /></div>
         ) : (
-          <div className="space-y-8">
-            <div>
-              <h2 className="text-2xl font-bold text-[#1a2744]">Parking Permit Lottery</h2>
-              <p className="text-gray-500 mt-1">Apply for a parking permit below. Winners are selected after the application window closes.</p>
-            </div>
-
-            {applications.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Your Applications</h3>
-                <div className="space-y-3">
-                  {applications.map(app => {
-                    const st = STATUS_LABELS[app.status] || { text: app.status, color: "default" };
-                    const isDone = ["expired", "declined"].includes(app.status);
-                    return (
-                      <Card key={app.id} className={isDone ? "opacity-50" : ""}>
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="font-semibold text-[#1a2744]">{app.permit_type_label}</div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              Plate: <span className="font-mono font-medium">{app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {app.lot_details?.length ? <LotTags details={app.lot_details} /> : <>Lots: {app.lot_assignments.join(", ")}</>}
-                            </div>
-                            {app.assigned_lot && <div className="text-xs text-green-700 font-medium mt-1">Assigned: Lot {app.assigned_lot}</div>}
-                            {app.status === "waitlisted" && app.waitlist_position != null && (
-                              <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>
-                            )}
-                            {app.status === "selected" && app.offer_expires_at && (
-                              <div className="text-sm text-green-700 font-medium mt-2">
-                                Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <Tag color={st.color}>{st.text}</Tag>
-                            {app.status === "selected" && (
-                              <Space>
-                                <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>Accept &amp; Pay ${Number(app.permit_type_price).toFixed(0)}</Button>
-                                <Button size="small" danger onClick={() => handleDecline(app.id)}>Decline</Button>
-                              </Space>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+            {/* Mobile map (shown above cards on small screens) */}
+            {mapsApiKey && lots.length > 0 && (
+              <div className="lg:hidden h-[300px] rounded-xl overflow-hidden shadow">
+                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={highlightedLots} defaultCenter={campusCenter} />
               </div>
             )}
 
-            {available.length > 0 && (
+            {/* Permit cards column */}
+            <div className="lg:col-span-3 space-y-8">
               <div>
-                <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Open Permits</h3>
-                <div className="space-y-4">
-                  {available.map(pt => {
-                    const alreadyApplied = appliedTypeIds.has(pt.code);
-                    return (
-                      <Card key={pt.id}>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-[#1a2744] text-lg">{pt.label}</span>
-                              {pt.requires_lottery && <Tag color="purple">Lottery</Tag>}
-                            </div>
-                            <p className="text-sm text-gray-500 mt-1">{pt.eligible}</p>
-                            <div className="text-sm text-gray-500 mt-2">
-                              <div className="flex items-center flex-wrap gap-1">
-                                <span>Lots:</span>
-                                {pt.lot_details?.length ? <LotTags details={pt.lot_details} /> : <span className="font-medium">{pt.lot_assignments.join(", ")}</span>}
+                <h2 className="text-2xl font-bold text-[#1a2744]">Parking Permit Lottery</h2>
+                <p className="text-gray-500 mt-1">Apply for a parking permit below. Hover over a permit to see its lots on the map.</p>
+              </div>
+
+              {applications.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Your Applications</h3>
+                  <div className="space-y-3">
+                    {applications.map(app => {
+                      const st = STATUS_LABELS[app.status] || { text: app.status, color: "default" };
+                      const isDone = ["expired", "declined"].includes(app.status);
+                      return (
+                        <Card
+                          key={app.id}
+                          className={`transition-shadow ${isDone ? "opacity-50" : "hover:shadow-md"}`}
+                          onMouseEnter={() => !isDone && setHighlightedLots(app.lot_assignments)}
+                          onMouseLeave={() => setHighlightedLots([])}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="font-semibold text-[#1a2744]">{app.permit_type_label}</div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Plate: <span className="font-mono font-medium">{app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
                               </div>
-                              <div className="mt-1">Valid {pt.valid_days} days</div>
-                              {pt.lot_details?.some(d => d.is_time_restricted) && (
-                                <div className="text-xs text-amber-700 mt-1">* Evening & weekend access only (after 4 PM weekdays, all day Sat/Sun)</div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {app.lot_details?.length ? <LotTags details={app.lot_details} /> : <>Lots: {app.lot_assignments.join(", ")}</>}
+                              </div>
+                              {app.assigned_lot && <div className="text-xs text-green-700 font-medium mt-1">Assigned: Lot {app.assigned_lot}</div>}
+                              {app.status === "waitlisted" && app.waitlist_position != null && (
+                                <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>
+                              )}
+                              {app.status === "selected" && app.offer_expires_at && (
+                                <div className="text-sm text-green-700 font-medium mt-2">
+                                  Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-4 mt-2">
-                              <span className="text-xs text-gray-400">{pt.remaining} of {pt.max_capacity} spots</span>
-                              {pt.application_closes_at && (
-                                <span className="text-xs text-amber-700 font-medium">
-                                  Deadline: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
-                                </span>
-                              )}
-                            </div>
-                            {pt.min_class_year && <div className="text-xs text-gray-400 mt-1">Eligibility: Class of {pt.min_class_year} or earlier</div>}
-                          </div>
-                          <div className="text-right ml-6">
-                            <div className="text-2xl font-bold text-[#1a2744]">${Number(pt.price).toFixed(0)}</div>
-                            <div className="mt-3">
-                              {alreadyApplied ? (
-                                <Tag color="blue">Applied</Tag>
-                              ) : pt.remaining <= 0 ? (
-                                <Tag color="red">Full</Tag>
-                              ) : (
-                                <Button type="primary" onClick={() => setApplying(pt)} style={{ background: "#1a2744" }}>Apply Now</Button>
+                            <div className="flex flex-col items-end gap-2">
+                              <Tag color={st.color}>{st.text}</Tag>
+                              {app.status === "selected" && (
+                                <Space>
+                                  <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>Accept &amp; Pay ${Number(app.permit_type_price).toFixed(0)}</Button>
+                                  <Button size="small" danger onClick={() => handleDecline(app.id)}>Decline</Button>
+                                </Space>
                               )}
                             </div>
                           </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {available.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Open Permits</h3>
+                  <div className="space-y-4">
+                    {available.map(pt => {
+                      const alreadyApplied = appliedTypeIds.has(pt.code);
+                      return (
+                        <Card
+                          key={pt.id}
+                          className="transition-shadow hover:shadow-md"
+                          onMouseEnter={() => setHighlightedLots(pt.lot_assignments)}
+                          onMouseLeave={() => setHighlightedLots([])}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-[#1a2744] text-lg">{pt.label}</span>
+                                {pt.requires_lottery && <Tag color="purple">Lottery</Tag>}
+                              </div>
+                              <p className="text-sm text-gray-500 mt-1">{pt.eligible}</p>
+                              <div className="text-sm text-gray-500 mt-2">
+                                <div className="flex items-center flex-wrap gap-1">
+                                  <span>Lots:</span>
+                                  {pt.lot_details?.length ? <LotTags details={pt.lot_details} /> : <span className="font-medium">{pt.lot_assignments.join(", ")}</span>}
+                                </div>
+                                <div className="mt-1">Valid {pt.valid_days} days</div>
+                                {pt.lot_details?.some(d => d.is_time_restricted) && (
+                                  <div className="text-xs text-amber-700 mt-1">* Evening & weekend access only (after 4 PM weekdays, all day Sat/Sun)</div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-4 mt-2">
+                                <span className="text-xs text-gray-400">{pt.remaining} of {pt.max_capacity} spots</span>
+                                {pt.application_closes_at && (
+                                  <span className="text-xs text-amber-700 font-medium">
+                                    Deadline: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                                  </span>
+                                )}
+                              </div>
+                              {pt.min_class_year && <div className="text-xs text-gray-400 mt-1">Eligibility: Class of {pt.min_class_year} or earlier</div>}
+                            </div>
+                            <div className="text-right ml-6">
+                              <div className="text-2xl font-bold text-[#1a2744]">${Number(pt.price).toFixed(0)}</div>
+                              <div className="mt-3">
+                                {alreadyApplied ? (
+                                  <Tag color="blue">Applied</Tag>
+                                ) : pt.remaining <= 0 ? (
+                                  <Tag color="red">Full</Tag>
+                                ) : (
+                                  <Button type="primary" onClick={() => setApplying(pt)} style={{ background: "#1a2744" }}>Apply Now</Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {available.length === 0 && applications.length === 0 && (
+                <Card className="text-center py-12">
+                  <Empty description={<span className="text-gray-500">No permit lotteries are currently open. Check back later.</span>} />
+                </Card>
+              )}
+
+              <div className="text-center text-xs text-gray-400 pt-4 border-t">
+                Moravian University Parking Services — Quarry
+              </div>
+            </div>
+
+            {/* Desktop map (sticky on the right) */}
+            {mapsApiKey && lots.length > 0 && (
+              <div className="hidden lg:block lg:col-span-2">
+                <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
+                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={highlightedLots} defaultCenter={campusCenter} />
                 </div>
               </div>
             )}
-
-            {available.length === 0 && applications.length === 0 && (
-              <Card className="text-center py-12">
-                <Empty description={<span className="text-gray-500">No permit lotteries are currently open. Check back later.</span>} />
-              </Card>
-            )}
-
-            <div className="text-center text-xs text-gray-400 pt-4 border-t">
-              Moravian University Parking Services — Quarry
-            </div>
           </div>
         )}
       </main>
