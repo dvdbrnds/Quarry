@@ -217,7 +217,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
           {lotteryTypes.map(pt => {
             const status = getStatus(pt);
             return (
-              <Card key={pt.id} hoverable>
+              <Card key={pt.id} hoverable className="cursor-pointer" onClick={() => onSelect(pt)}>
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-navy">{pt.label}</h3>
                   <Tag color={status.color}>{status.label}</Tag>
@@ -241,10 +241,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
                   {pt.application_closes_at && <div>Closes: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
                   {pt.lottery_run_at && <div className="text-green-700">Ran: {new Date(pt.lottery_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
                 </div>
-                <Space>
-                  <Button type="primary" size="small" onClick={() => onSelect(pt)}>Manage</Button>
-                  <Button type="text" size="small" danger loading={toggling === pt.id} onClick={() => disableLottery(pt)}>Disable</Button>
-                </Space>
+                <Button type="text" size="small" danger loading={toggling === pt.id} onClick={(e) => { e.stopPropagation(); disableLottery(pt); }}>Disable</Button>
               </Card>
             );
           })}
