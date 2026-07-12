@@ -1,11 +1,10 @@
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
 import { useEffect, useRef } from "react";
-import type { Coordinate, Lot } from "../api";
+import type { Lot } from "../api";
 
 const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
 const BRASS = "#C5A55A";
-const DIM_COLOR = "#94A3B8";
-const STREET_COLOR = "#3B82F6";
+const HIGHLIGHT_STROKE = "#FFFFFF";
 
 interface StudentLotMapProps {
   apiKey: string;
@@ -14,9 +13,10 @@ interface StudentLotMapProps {
   defaultCenter?: { lat: number; lng: number };
 }
 
-function lotBaseColor(lot: Lot): string {
-  if (lot.lot_type === "street") return STREET_COLOR;
-  return DIM_COLOR;
+interface PolyEntry {
+  polygon: google.maps.Polygon;
+  label: google.maps.Marker;
+  lotName: string;
 }
 
 function MapContent({
@@ -25,8 +25,7 @@ function MapContent({
   defaultCenter,
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
-  const polygonsRef = useRef<google.maps.Polygon[]>([]);
-  const labelMarkersRef = useRef<google.maps.Marker[]>([]);
+  const entriesRef = useRef<PolyEntry[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const highlightedRef = useRef(highlightedLots);
   useEffect(() => { highlightedRef.current = highlightedLots; }, [highlightedLots]);
@@ -48,52 +47,23 @@ function MapContent({
     return () => clearTimeout(timer);
   }, [map, lots]);
 
-  // Render lot polygons with highlight support
+  // Create polygons and labels once when lots data loads
   useEffect(() => {
     if (!map) return;
 
-    polygonsRef.current.forEach((p) => p.setMap(null));
-    polygonsRef.current = [];
-    labelMarkersRef.current.forEach((m) => m.setMap(null));
-    labelMarkersRef.current = [];
-
-    const hasHighlight = highlightedLots.length > 0;
+    entriesRef.current.forEach((e) => { e.polygon.setMap(null); e.label.setMap(null); });
+    entriesRef.current = [];
 
     lots.forEach((lot) => {
       if (lot.boundary.length < 3) return;
 
-      const isHighlighted = hasHighlight && highlightedLots.includes(lot.name);
-      const baseColor = lotBaseColor(lot);
-
-      let fillColor: string;
-      let fillOpacity: number;
-      let strokeColor: string;
-      let strokeWeight: number;
-
-      if (!hasHighlight) {
-        fillColor = baseColor;
-        fillOpacity = 0.2;
-        strokeColor = baseColor;
-        strokeWeight = 1;
-      } else if (isHighlighted) {
-        fillColor = BRASS;
-        fillOpacity = 0.5;
-        strokeColor = BRASS;
-        strokeWeight = 3;
-      } else {
-        fillColor = baseColor;
-        fillOpacity = 0.08;
-        strokeColor = baseColor;
-        strokeWeight = 1;
-      }
-
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor,
-        strokeOpacity: 1,
-        strokeWeight,
-        fillColor,
-        fillOpacity,
+        strokeColor: "#6B7280",
+        strokeOpacity: 0.8,
+        strokeWeight: 1,
+        fillColor: "#6B7280",
+        fillOpacity: 0.15,
         map,
         clickable: true,
       });
@@ -103,11 +73,6 @@ function MapContent({
           tooltipRef.current.innerHTML = `<strong>Lot ${lot.name}</strong>`;
           tooltipRef.current.style.display = "block";
         }
-        const hl = highlightedRef.current;
-        const active = hl.length > 0 && hl.includes(lot.name);
-        if (!active) {
-          poly.setOptions({ fillOpacity: 0.35, strokeWeight: 2 });
-        }
       });
       poly.addListener("mousemove", (e: google.maps.MapMouseEvent) => {
         if (tooltipRef.current && e.domEvent instanceof MouseEvent) {
@@ -116,30 +81,14 @@ function MapContent({
         }
       });
       poly.addListener("mouseout", () => {
-        if (tooltipRef.current) {
-          tooltipRef.current.style.display = "none";
-        }
-        const hl = highlightedRef.current;
-        const hasHl = hl.length > 0;
-        const active = hasHl && hl.includes(lot.name);
-        if (active) {
-          poly.setOptions({ fillOpacity: 0.5, strokeWeight: 3 });
-        } else if (hasHl) {
-          poly.setOptions({ fillOpacity: 0.08, strokeWeight: 1 });
-        } else {
-          poly.setOptions({ fillOpacity: 0.2, strokeWeight: 1 });
-        }
+        if (tooltipRef.current) tooltipRef.current.style.display = "none";
       });
-
-      polygonsRef.current.push(poly);
 
       const bounds = new google.maps.LatLngBounds();
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-      const center = bounds.getCenter();
 
-      const labelOpacity = !hasHighlight || isHighlighted;
       const label = new google.maps.Marker({
-        position: center,
+        position: bounds.getCenter(),
         map,
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
         label: {
@@ -149,16 +98,77 @@ function MapContent({
           fontWeight: "bold",
           className: "lot-map-label",
         },
-        opacity: labelOpacity ? 1 : 0.3,
         clickable: false,
       });
-      labelMarkersRef.current.push(label);
+
+      entriesRef.current.push({ polygon: poly, label, lotName: lot.name });
     });
 
     return () => {
-      polygonsRef.current.forEach((p) => p.setMap(null));
-      labelMarkersRef.current.forEach((m) => m.setMap(null));
+      entriesRef.current.forEach((e) => { e.polygon.setMap(null); e.label.setMap(null); });
     };
+  }, [map, lots]);
+
+  // Update polygon styles + pan when highlightedLots changes (no recreate)
+  useEffect(() => {
+    if (!map) return;
+    const hasHighlight = highlightedLots.length > 0;
+
+    entriesRef.current.forEach(({ polygon, label, lotName }) => {
+      const isHighlighted = hasHighlight && highlightedLots.includes(lotName);
+
+      if (!hasHighlight) {
+        polygon.setOptions({
+          fillColor: "#6B7280",
+          fillOpacity: 0.15,
+          strokeColor: "#6B7280",
+          strokeOpacity: 0.8,
+          strokeWeight: 1,
+        });
+        label.setOpacity(1);
+      } else if (isHighlighted) {
+        polygon.setOptions({
+          fillColor: BRASS,
+          fillOpacity: 0.65,
+          strokeColor: HIGHLIGHT_STROKE,
+          strokeOpacity: 1,
+          strokeWeight: 3,
+        });
+        label.setOpacity(1);
+      } else {
+        polygon.setOptions({
+          fillColor: "#1a1a1a",
+          fillOpacity: 0.05,
+          strokeColor: "#4B5563",
+          strokeOpacity: 0.3,
+          strokeWeight: 1,
+        });
+        label.setOpacity(0.2);
+      }
+    });
+
+    // Pan/zoom to highlighted lots, or back to all lots when cleared
+    if (hasHighlight) {
+      const highlighted = lots.filter(
+        (l) => l.boundary.length >= 3 && highlightedLots.includes(l.name),
+      );
+      if (highlighted.length > 0) {
+        const bounds = new google.maps.LatLngBounds();
+        highlighted.forEach((lot) => {
+          lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+        });
+        map.fitBounds(bounds, 60);
+      }
+    } else {
+      const lotsWithBounds = lots.filter((l) => l.boundary.length >= 3);
+      if (lotsWithBounds.length > 0) {
+        const bounds = new google.maps.LatLngBounds();
+        lotsWithBounds.forEach((lot) => {
+          lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+        });
+        map.fitBounds(bounds, 40);
+      }
+    }
   }, [map, lots, highlightedLots]);
 
   return (
