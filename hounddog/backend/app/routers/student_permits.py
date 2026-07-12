@@ -57,13 +57,16 @@ def _build_lot_details(
 async def available_permit_types(db: AsyncSession = Depends(get_db)):
     """List permit types currently open for application."""
     now = datetime.now(timezone.utc)
+    from sqlalchemy import or_
     result = await db.execute(
         select(PermitType).where(
             PermitType.is_active.is_(True),
             PermitType.application_opens_at.isnot(None),
             PermitType.application_opens_at <= now,
-            PermitType.application_closes_at.isnot(None),
-            PermitType.application_closes_at > now,
+            or_(
+                PermitType.application_closes_at.is_(None),
+                PermitType.application_closes_at > now,
+            ),
         ).order_by(PermitType.sort_order)
     )
     types = result.scalars().all()
@@ -129,11 +132,11 @@ async def submit_application(
     if not pt or not pt.is_active:
         raise HTTPException(404, "Permit type not found")
 
-    if not pt.application_opens_at or not pt.application_closes_at:
+    if not pt.application_opens_at:
         raise HTTPException(400, "This permit type is not accepting applications")
     if now < pt.application_opens_at:
         raise HTTPException(400, "Application window has not opened yet")
-    if now > pt.application_closes_at:
+    if pt.application_closes_at and now > pt.application_closes_at:
         raise HTTPException(400, "Application window has closed")
 
     if pt.min_class_year and data.class_year > pt.min_class_year:

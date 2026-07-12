@@ -147,6 +147,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
   function getStatus(pt: PermitTypeRow) {
     if (pt.lottery_run_at) return { label: "Completed", color: "green" as const };
     if (pt.application_closes_at && new Date(pt.application_closes_at) < now) return { label: "Ready to run", color: "gold" as const };
+    if (pt.application_opens_at && new Date(pt.application_opens_at) < now && !pt.application_closes_at) return { label: "Open-ended", color: "blue" as const };
     if (pt.application_opens_at && new Date(pt.application_opens_at) < now) return { label: "Accepting applications", color: "blue" as const };
     if (pt.application_opens_at) return { label: "Scheduled", color: "default" as const };
     return { label: "Not configured", color: "default" as const };
@@ -290,7 +291,8 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
   useEffect(() => { load(); }, [load]);
 
   const now = new Date();
-  const windowClosed = permitType.application_closes_at ? new Date(permitType.application_closes_at) < now : true;
+  const hasCloseDate = !!permitType.application_closes_at;
+  const windowClosed = hasCloseDate ? new Date(permitType.application_closes_at!) < now : false;
   const lotteryAlreadyRun = !!permitType.lottery_run_at;
   const testCount = applications.filter(a => a.is_test_entry).length;
   const realCount = applications.length - testCount;
@@ -539,15 +541,16 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
       )}
 
       <Space className="mb-5" wrap>
-        {!windowClosed && <Button danger onClick={handleCloseApplications}>Close Applications</Button>}
-        <Button type="primary" onClick={handleRunLottery} loading={running} disabled={pendingCount === 0 || !windowClosed}>Run Lottery</Button>
+        {hasCloseDate && !windowClosed && <Button danger onClick={handleCloseApplications}>Close Applications</Button>}
+        <Button type="primary" onClick={handleRunLottery} loading={running} disabled={pendingCount === 0}>Run Lottery</Button>
         <Button onClick={handleAdvanceWaitlist} loading={advancing} disabled={selectedCount === 0 && waitlistedCount === 0}>Advance Waitlist</Button>
         {lotteryAlreadyRun && <Button danger onClick={handleResetLottery} loading={resetting}>Reset Lottery</Button>}
         <span className="border-l border-gray-200 h-5 mx-1" />
         <InputNumber value={genCount} onChange={v => setGenCount(v ?? 50)} min={1} max={500} size="small" style={{ width: 70 }} />
         <Button onClick={handleGenerateTestData} loading={generating} style={{ borderColor: "#f97316", color: "#ea580c" }}>Generate Test Data</Button>
         {testCount > 0 && <Button danger type="text" onClick={handleClearTestData} loading={purging}>Clear Test Data</Button>}
-        {!windowClosed && <span className="text-xs text-amber-700">Window open until {new Date(permitType.application_closes_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+        {!hasCloseDate && <span className="text-xs text-green-700">Open-ended — no deadline</span>}
+        {hasCloseDate && !windowClosed && <span className="text-xs text-amber-700">Window open until {new Date(permitType.application_closes_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
       </Space>
 
       <Table dataSource={displayedApps} columns={appColumns} rowKey="id" loading={loading} size="small"
