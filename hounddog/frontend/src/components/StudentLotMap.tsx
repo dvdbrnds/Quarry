@@ -14,67 +14,39 @@ interface StudentLotMapProps {
   defaultCenter?: { lat: number; lng: number };
 }
 
+interface PolyEntry {
+  polygon: google.maps.Polygon;
+  label: google.maps.Marker;
+  lotName: string;
+}
+
 function MapContent({
   lots,
   highlightedLots,
   defaultCenter,
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
-  const polygonsRef = useRef<google.maps.Polygon[]>([]);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const entriesRef = useRef<PolyEntry[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
-  // Single effect: create polygons with correct styles + zoom
+  // Create polygons + labels once when lots data loads (NOT on highlight changes)
   useEffect(() => {
     if (!map) return;
 
-    // Clean up previous
-    polygonsRef.current.forEach((p) => p.setMap(null));
-    polygonsRef.current = [];
-    markersRef.current.forEach((m) => m.setMap(null));
-    markersRef.current = [];
-
-    const hasHighlight = highlightedLots.length > 0;
+    entriesRef.current.forEach((e) => { e.polygon.setMap(null); e.label.setMap(null); });
+    entriesRef.current = [];
 
     lots.forEach((lot) => {
       if (lot.boundary.length < 3) return;
 
-      const isHighlighted = hasHighlight && highlightedLots.includes(lot.name);
-
-      let fillColor: string;
-      let fillOpacity: number;
-      let strokeColor: string;
-      let strokeWeight: number;
-      let zIndex: number;
-
-      if (!hasHighlight) {
-        fillColor = "#9CA3AF";
-        fillOpacity = 0.25;
-        strokeColor = "#D1D5DB";
-        strokeWeight = 2;
-        zIndex = 1;
-      } else if (isHighlighted) {
-        fillColor = HIGHLIGHT_FILL;
-        fillOpacity = 0.7;
-        strokeColor = HIGHLIGHT_STROKE;
-        strokeWeight = 4;
-        zIndex = 10;
-      } else {
-        fillColor = "#000000";
-        fillOpacity = 0.01;
-        strokeColor = "#6B7280";
-        strokeWeight = 0;
-        zIndex = 0;
-      }
-
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor,
+        strokeColor: "#D1D5DB",
         strokeOpacity: 1,
-        strokeWeight,
-        fillColor,
-        fillOpacity,
-        zIndex,
+        strokeWeight: 2,
+        fillColor: "#9CA3AF",
+        fillOpacity: 0.25,
+        zIndex: 1,
         map,
         clickable: true,
       });
@@ -95,53 +67,74 @@ function MapContent({
         if (tooltipRef.current) tooltipRef.current.style.display = "none";
       });
 
-      polygonsRef.current.push(poly);
-
-      // Lot name label
       const bounds = new google.maps.LatLngBounds();
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
 
-      const labelVisible = !hasHighlight || isHighlighted;
       const label = new google.maps.Marker({
         position: bounds.getCenter(),
         map,
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
         label: {
           text: lot.name,
-          color: isHighlighted ? HIGHLIGHT_FILL : "white",
-          fontSize: isHighlighted ? "14px" : "11px",
+          color: "white",
+          fontSize: "11px",
           fontWeight: "bold",
           className: "lot-map-label",
         },
-        opacity: labelVisible ? 1 : 0,
         clickable: false,
       });
-      markersRef.current.push(label);
+
+      entriesRef.current.push({ polygon: poly, label, lotName: lot.name });
     });
 
-    // Zoom to highlighted lots or reset to campus default
-    if (hasHighlight) {
-      const highlighted = lots.filter(
-        (l) => l.boundary.length >= 3 && highlightedLots.includes(l.name),
-      );
-      if (highlighted.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        highlighted.forEach((lot) => {
-          lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-        });
-        map.fitBounds(bounds, 80);
-      }
-    } else {
-      const center = defaultCenter ?? DEFAULT_CENTER;
-      map.panTo(center);
-      map.setZoom(DEFAULT_ZOOM);
-    }
-
     return () => {
-      polygonsRef.current.forEach((p) => p.setMap(null));
-      markersRef.current.forEach((m) => m.setMap(null));
+      entriesRef.current.forEach((e) => { e.polygon.setMap(null); e.label.setMap(null); });
     };
-  }, [map, lots, highlightedLots, defaultCenter]);
+  }, [map, lots]);
+
+  // Update polygon styles in-place when highlight changes -- NO map movement
+  useEffect(() => {
+    const hasHighlight = highlightedLots.length > 0;
+
+    entriesRef.current.forEach(({ polygon, label, lotName }) => {
+      const isHighlighted = hasHighlight && highlightedLots.includes(lotName);
+
+      if (!hasHighlight) {
+        polygon.setOptions({
+          fillColor: "#9CA3AF",
+          fillOpacity: 0.25,
+          strokeColor: "#D1D5DB",
+          strokeWeight: 2,
+          zIndex: 1,
+        });
+        label.setOptions({
+          opacity: 1,
+          label: { text: lotName, color: "white", fontSize: "11px", fontWeight: "bold", className: "lot-map-label" },
+        });
+      } else if (isHighlighted) {
+        polygon.setOptions({
+          fillColor: HIGHLIGHT_FILL,
+          fillOpacity: 0.7,
+          strokeColor: HIGHLIGHT_STROKE,
+          strokeWeight: 4,
+          zIndex: 10,
+        });
+        label.setOptions({
+          opacity: 1,
+          label: { text: lotName, color: HIGHLIGHT_FILL, fontSize: "14px", fontWeight: "bold", className: "lot-map-label" },
+        });
+      } else {
+        polygon.setOptions({
+          fillColor: "#000000",
+          fillOpacity: 0.01,
+          strokeColor: "#6B7280",
+          strokeWeight: 0,
+          zIndex: 0,
+        });
+        label.setOptions({ opacity: 0 });
+      }
+    });
+  }, [highlightedLots]);
 
   return (
     <>
