@@ -269,7 +269,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
   const [running, setRunning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [showConfig, setShowConfig] = useState(false);
+  
   const [configSaving, setConfigSaving] = useState(false);
   const [strategy, setStrategy] = useState(permitType.lottery_strategy);
   const [minClassYear, setMinClassYear] = useState(permitType.min_class_year?.toString() ?? "");
@@ -492,14 +492,12 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
           </div>
         </Space>
         <Space>
-          <Button onClick={() => setShowConfig(!showConfig)} type={showConfig ? "primary" : "default"} ghost={showConfig}>Configure</Button>
           <Button onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
           <Button onClick={onGoLive} style={{ borderColor: "#16a34a", color: "#15803d" }}>Go Live</Button>
         </Space>
       </div>
 
-      {showConfig && (
-        <Card className="mb-5" title="Lottery Configuration" size="small">
+      <Card className="mb-5" title="Lottery Configuration" size="small">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
               <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
@@ -514,7 +512,6 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
           </div>
           <div className="flex justify-end mt-3"><Button type="primary" onClick={saveConfig} loading={configSaving}>Save Configuration</Button></div>
         </Card>
-      )}
 
       <div className="grid grid-cols-6 gap-3 mb-5">
         {[
