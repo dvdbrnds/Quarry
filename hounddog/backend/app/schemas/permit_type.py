@@ -20,6 +20,7 @@ class PermitTypeBase(BaseModel):
     requires_lottery: bool = False
     lottery_strategy: str = "seniority_timestamp"
     min_class_year: int | None = None
+    allow_freshmen: bool = False
     application_opens_at: datetime | None = None
     application_closes_at: datetime | None = None
     offer_window_days: int = 5
@@ -44,6 +45,7 @@ class PermitTypeUpdate(BaseModel):
     requires_lottery: bool | None = None
     lottery_strategy: str | None = None
     min_class_year: int | None = None
+    allow_freshmen: bool | None = None
     application_opens_at: datetime | None = None
     application_closes_at: datetime | None = None
     offer_window_days: int | None = None

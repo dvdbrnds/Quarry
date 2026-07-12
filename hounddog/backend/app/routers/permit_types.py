@@ -406,9 +406,7 @@ async def open_lottery(
     if not pt.lottery_strategy:
         pt.lottery_strategy = "seniority_timestamp"
 
-    from ..models.enforcement_settings import EnforcementSettings
-    es = await db.get(EnforcementSettings, 1)
-    if es and es.lottery_exclude_freshmen and not pt.min_class_year:
+    if not pt.allow_freshmen and not pt.min_class_year:
         pt.min_class_year = datetime.now().year + 1
     await db.flush()
     await db.refresh(pt)

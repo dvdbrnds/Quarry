@@ -260,7 +260,7 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_lottery_audit_pt ON lottery_audit_log(permit_type_id)",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_seed VARCHAR(128)",
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS admin_notes TEXT",
-            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS lottery_exclude_freshmen BOOLEAN DEFAULT true",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_freshmen BOOLEAN DEFAULT false",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))

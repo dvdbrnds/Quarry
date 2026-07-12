@@ -12,7 +12,6 @@ interface EnforcementSettingsData {
   escalation_threshold: number; permit_fine_reduction: string;
   unpaid_blocks_registration: boolean; towing_enabled: boolean;
   towing_violation_codes: string[]; snow_emergency_active: boolean;
-  lottery_exclude_freshmen: boolean;
   updated_at: string; updated_by: string;
 }
 
@@ -148,9 +147,6 @@ export default function EnforcementSettings() {
             </Checkbox>
             <Checkbox checked={settings.snow_emergency_active} onChange={e => setSettings({ ...settings, snow_emergency_active: e.target.checked })}>
               <span className={settings.snow_emergency_active ? "text-red-600 font-medium" : ""}>Snow Emergency Active</span>
-            </Checkbox>
-            <Checkbox checked={settings.lottery_exclude_freshmen} onChange={e => setSettings({ ...settings, lottery_exclude_freshmen: e.target.checked })}>
-              Exclude freshmen from parking lottery
             </Checkbox>
           </Space>
           <div className="flex items-center gap-4 pt-4 border-t">

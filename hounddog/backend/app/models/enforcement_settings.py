@@ -23,7 +23,6 @@ class EnforcementSettings(Base):
         ARRAY(String), default=lambda: ["disability_area", "fire_hydrant"]
     )
     snow_emergency_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    lottery_exclude_freshmen: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

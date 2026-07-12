@@ -17,7 +17,6 @@ class EnforcementSettingsRead(BaseModel):
     towing_enabled: bool
     towing_violation_codes: list[str]
     snow_emergency_active: bool
-    lottery_exclude_freshmen: bool
     updated_at: datetime
     updated_by: str
 
@@ -33,4 +32,3 @@ class EnforcementSettingsUpdate(BaseModel):
     towing_enabled: bool | None = None
     towing_violation_codes: list[str] | None = None
     snow_emergency_active: bool | None = None
-    lottery_exclude_freshmen: bool | None = None
