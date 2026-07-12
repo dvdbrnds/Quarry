@@ -3,7 +3,8 @@ import { useEffect, useRef } from "react";
 import type { Lot } from "../api";
 
 const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
-const BRASS = "#C5A55A";
+const DEFAULT_ZOOM = 17;
+const HIGHLIGHT_FILL = "#FFD700";
 const HIGHLIGHT_STROKE = "#FFFFFF";
 
 interface StudentLotMapProps {
@@ -27,25 +28,6 @@ function MapContent({
   const map = useMap();
   const entriesRef = useRef<PolyEntry[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
-  const highlightedRef = useRef(highlightedLots);
-  useEffect(() => { highlightedRef.current = highlightedLots; }, [highlightedLots]);
-
-  // Fit map to all lots on initial load
-  useEffect(() => {
-    if (!map) return;
-    const lotsWithBounds = lots.filter((l) => l.boundary.length >= 3);
-    if (lotsWithBounds.length === 0) return;
-
-    const timer = setTimeout(() => {
-      const bounds = new google.maps.LatLngBounds();
-      lotsWithBounds.forEach((lot) => {
-        lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-      });
-      map.fitBounds(bounds, 40);
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [map, lots]);
 
   // Create polygons and labels once when lots data loads
   useEffect(() => {
@@ -59,11 +41,11 @@ function MapContent({
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor: "#6B7280",
+        strokeColor: "#9CA3AF",
         strokeOpacity: 0.8,
         strokeWeight: 1,
-        fillColor: "#6B7280",
-        fillOpacity: 0.15,
+        fillColor: "#9CA3AF",
+        fillOpacity: 0.2,
         map,
         clickable: true,
       });
@@ -94,7 +76,7 @@ function MapContent({
         label: {
           text: lot.name,
           color: "white",
-          fontSize: "11px",
+          fontSize: "12px",
           fontWeight: "bold",
           className: "lot-map-label",
         },
@@ -109,7 +91,7 @@ function MapContent({
     };
   }, [map, lots]);
 
-  // Update polygon styles + pan when highlightedLots changes (no recreate)
+  // Update polygon styles + pan/zoom when highlightedLots changes
   useEffect(() => {
     if (!map) return;
     const hasHighlight = highlightedLots.length > 0;
@@ -119,35 +101,34 @@ function MapContent({
 
       if (!hasHighlight) {
         polygon.setOptions({
-          fillColor: "#6B7280",
-          fillOpacity: 0.15,
-          strokeColor: "#6B7280",
+          fillColor: "#9CA3AF",
+          fillOpacity: 0.2,
+          strokeColor: "#9CA3AF",
           strokeOpacity: 0.8,
           strokeWeight: 1,
         });
         label.setOpacity(1);
       } else if (isHighlighted) {
         polygon.setOptions({
-          fillColor: BRASS,
-          fillOpacity: 0.65,
+          fillColor: HIGHLIGHT_FILL,
+          fillOpacity: 0.7,
           strokeColor: HIGHLIGHT_STROKE,
           strokeOpacity: 1,
-          strokeWeight: 3,
+          strokeWeight: 4,
         });
         label.setOpacity(1);
       } else {
         polygon.setOptions({
-          fillColor: "#1a1a1a",
-          fillOpacity: 0.05,
-          strokeColor: "#4B5563",
-          strokeOpacity: 0.3,
+          fillColor: "#000000",
+          fillOpacity: 0.02,
+          strokeColor: "#6B7280",
+          strokeOpacity: 0.2,
           strokeWeight: 1,
         });
-        label.setOpacity(0.2);
+        label.setOpacity(0.15);
       }
     });
 
-    // Pan/zoom to highlighted lots, or back to all lots when cleared
     if (hasHighlight) {
       const highlighted = lots.filter(
         (l) => l.boundary.length >= 3 && highlightedLots.includes(l.name),
@@ -157,25 +138,20 @@ function MapContent({
         highlighted.forEach((lot) => {
           lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
         });
-        map.fitBounds(bounds, 60);
+        map.fitBounds(bounds, 80);
       }
     } else {
-      const lotsWithBounds = lots.filter((l) => l.boundary.length >= 3);
-      if (lotsWithBounds.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        lotsWithBounds.forEach((lot) => {
-          lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-        });
-        map.fitBounds(bounds, 40);
-      }
+      const center = defaultCenter ?? DEFAULT_CENTER;
+      map.panTo(center);
+      map.setZoom(DEFAULT_ZOOM);
     }
-  }, [map, lots, highlightedLots]);
+  }, [map, lots, highlightedLots, defaultCenter]);
 
   return (
     <>
       <Map
         defaultCenter={defaultCenter ?? DEFAULT_CENTER}
-        defaultZoom={16}
+        defaultZoom={DEFAULT_ZOOM}
         mapTypeId="satellite"
         gestureHandling="cooperative"
         disableDefaultUI
