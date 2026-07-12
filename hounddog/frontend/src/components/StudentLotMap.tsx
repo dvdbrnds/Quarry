@@ -14,6 +14,19 @@ interface StudentLotMapProps {
   defaultCenter?: { lat: number; lng: number };
 }
 
+/**
+ * Normalize a lot name for comparison: strip "Lot " prefix, lowercase, trim.
+ * Handles mismatches between lot_assignments (e.g. "A") and lot.name (e.g. "Lot A").
+ */
+function normalizeLotName(name: string): string {
+  return name.replace(/^lot\s+/i, "").trim().toLowerCase();
+}
+
+function isLotHighlighted(lotName: string, highlightedLots: string[]): boolean {
+  const normalized = normalizeLotName(lotName);
+  return highlightedLots.some((hl) => normalizeLotName(hl) === normalized);
+}
+
 function MapContent({
   lots,
   highlightedLots,
@@ -39,11 +52,10 @@ function MapContent({
     setTimeout(() => map.fitBounds(allBounds, 40), 150);
   }, [map, lots]);
 
-  // Recreate polygons + labels every time lots OR highlightedLots change
+  // Recreate polygons + labels with correct styles when highlight changes
   useEffect(() => {
     if (!map) return;
 
-    // Destroy previous
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
     markersRef.current.forEach((m) => m.setMap(null));
@@ -54,15 +66,15 @@ function MapContent({
     lots.forEach((lot) => {
       if (lot.boundary.length < 3) return;
 
-      const isHighlighted = hasHighlight && highlightedLots.includes(lot.name);
+      const isHighlighted = hasHighlight && isLotHighlighted(lot.name, highlightedLots);
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
         strokeColor: !hasHighlight ? "#D1D5DB" : isHighlighted ? HIGHLIGHT_STROKE : "#6B7280",
-        strokeOpacity: !hasHighlight ? 1 : isHighlighted ? 1 : 0.2,
-        strokeWeight: !hasHighlight ? 2 : isHighlighted ? 4 : 0,
-        fillColor: !hasHighlight ? "#9CA3AF" : isHighlighted ? HIGHLIGHT_FILL : "#000000",
-        fillOpacity: !hasHighlight ? 0.25 : isHighlighted ? 0.7 : 0.01,
+        strokeOpacity: !hasHighlight ? 1 : isHighlighted ? 1 : 0.3,
+        strokeWeight: !hasHighlight ? 2 : isHighlighted ? 4 : 1,
+        fillColor: !hasHighlight ? "#9CA3AF" : isHighlighted ? HIGHLIGHT_FILL : "#374151",
+        fillOpacity: !hasHighlight ? 0.25 : isHighlighted ? 0.7 : 0.1,
         zIndex: isHighlighted ? 10 : 1,
         map,
         clickable: true,
@@ -70,7 +82,7 @@ function MapContent({
 
       poly.addListener("mouseover", () => {
         if (tooltipRef.current) {
-          tooltipRef.current.innerHTML = `<strong>Lot ${lot.name}</strong>`;
+          tooltipRef.current.innerHTML = `<strong>${lot.name}</strong>`;
           tooltipRef.current.style.display = "block";
         }
       });
@@ -102,16 +114,16 @@ function MapContent({
           fontWeight: "bold",
           className: "lot-map-label",
         },
-        opacity: showLabel ? 1 : 0,
+        opacity: showLabel ? 1 : 0.25,
         clickable: false,
       });
       markersRef.current.push(label);
     });
 
-    // Zoom to highlighted lots on hover (don't move on unhover)
+    // Zoom to highlighted lots on hover
     if (hasHighlight) {
       const highlighted = lots.filter(
-        (l) => l.boundary.length >= 3 && highlightedLots.includes(l.name),
+        (l) => l.boundary.length >= 3 && isLotHighlighted(l.name, highlightedLots),
       );
       if (highlighted.length > 0) {
         const bounds = new google.maps.LatLngBounds();
