@@ -134,14 +134,13 @@ export default function PermitDetail() {
               <h2 className="text-2xl font-bold">{p.name}</h2>
               {p.permit_number && <span className="font-mono text-sm bg-navy/10 rounded px-2 py-0.5">{p.permit_number}</span>}
             </div>
-            <Descriptions size="small" className="mt-2" column={4}>
-              <Descriptions.Item label="Permit #">{p.permit_number || <span className="text-ink-mute">Legacy</span>}</Descriptions.Item>
+            <Descriptions size="small" className="mt-2" column={{ xs: 1, sm: 2, md: 3 }}>
               <Descriptions.Item label="Student ID">{p.student_id || "N/A"}</Descriptions.Item>
               <Descriptions.Item label="Plates"><span className="font-mono">{p.plates?.join(", ")}</span></Descriptions.Item>
               <Descriptions.Item label="Lot">{p.lot_assignment}</Descriptions.Item>
-              <Descriptions.Item label="Type"><span className="capitalize">{p.permit_type}</span></Descriptions.Item>
-              {p.email && <Descriptions.Item label="Email">{p.email}</Descriptions.Item>}
-              {p.phone && <Descriptions.Item label="Phone">{p.phone}</Descriptions.Item>}
+              <Descriptions.Item label="Type"><span className="capitalize">{p.permit_type?.replace(/_/g, " ")}</span></Descriptions.Item>
+              <Descriptions.Item label="Email">{p.email || <span className="text-ink-mute italic">No email on file</span>}</Descriptions.Item>
+              <Descriptions.Item label="Phone">{p.phone || <span className="text-ink-mute">—</span>}</Descriptions.Item>
               <Descriptions.Item label="SMS">{p.sms_opt_in ? <Tag color="green">Opted In</Tag> : <Tag>Not opted in</Tag>}</Descriptions.Item>
             </Descriptions>
             <Space className="mt-3">
