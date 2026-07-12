@@ -483,7 +483,6 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
     )},
   ];
 
-  const [showSettings, setShowSettings] = useState(false);
   const [showTestTools, setShowTestTools] = useState(false);
   const [opening, setOpening] = useState(false);
 
@@ -571,9 +570,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
           <Button type="primary" size="large" onClick={handleOpenNow} loading={opening} style={{ background: "#16a34a", borderColor: "#16a34a" }}>
             Open Lottery Now
           </Button>
-          <Button type="link" size="small" onClick={() => setShowSettings(true)} className="text-gray-400">
-            or schedule for a specific date
-          </Button>
+          <span className="text-xs text-gray-400">or set dates in the configuration below</span>
         </Space>
       </div>
     );
@@ -587,7 +584,6 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
           <h2 className="text-2xl font-bold text-navy">{permitType.label}</h2>
         </Space>
         <Space size="small">
-          <Button size="small" onClick={() => setShowSettings(!showSettings)} type={showSettings ? "primary" : "default"} ghost={showSettings}>Settings</Button>
           <Button size="small" onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
           <Button size="small" onClick={onGoLive} style={{ borderColor: "#16a34a", color: "#15803d" }}>Live View</Button>
         </Space>
@@ -595,23 +591,21 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
 
       {renderStatusBanner()}
 
-      {showSettings && (
-        <Card className="mb-5" title="Settings" size="small" extra={<Button type="text" size="small" onClick={() => setShowSettings(false)}>Close</Button>}>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
-              <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
-            <div><label className="block text-xs font-medium text-ink-mute mb-1">Min Class Year</label>
-              <Input value={minClassYear} onChange={e => setMinClassYear(e.target.value)} type="number" placeholder="None" /></div>
-            <div><label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
-              <InputNumber value={offerDays} onChange={v => setOfferDays(v ?? 5)} min={1} max={30} className="w-full" /></div>
-            <div><label className="block text-xs font-medium text-ink-mute mb-1">Opens</label>
-              <DatePicker showTime value={opensAt} onChange={setOpensAt} className="w-full" /></div>
-            <div><label className="block text-xs font-medium text-ink-mute mb-1">Closes (optional)</label>
-              <DatePicker showTime value={closesAt} onChange={setClosesAt} className="w-full" placeholder="Open-ended" /></div>
-          </div>
-          <div className="flex justify-end mt-3"><Button type="primary" onClick={saveConfig} loading={configSaving}>Save</Button></div>
-        </Card>
-      )}
+      <Card className="mb-5" title="Configuration" size="small">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
+            <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Min Class Year</label>
+            <Input value={minClassYear} onChange={e => setMinClassYear(e.target.value)} type="number" placeholder="None" /></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
+            <InputNumber value={offerDays} onChange={v => setOfferDays(v ?? 5)} min={1} max={30} className="w-full" /></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Opens</label>
+            <DatePicker showTime value={opensAt} onChange={setOpensAt} className="w-full" /></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Closes (optional)</label>
+            <DatePicker showTime value={closesAt} onChange={setClosesAt} className="w-full" placeholder="Open-ended" /></div>
+        </div>
+        <div className="flex justify-end mt-3"><Button type="primary" onClick={saveConfig} loading={configSaving}>Save</Button></div>
+      </Card>
 
       <div className="grid grid-cols-6 gap-3 mb-5">
         {[
