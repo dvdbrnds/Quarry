@@ -196,7 +196,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
         {loading ? (
           <div className="flex justify-center py-20"><Spin size="large" /></div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Mobile map (shown above cards on small screens) */}
             {mapsApiKey && lots.length > 0 && (
               <div className="lg:hidden h-[300px] rounded-xl overflow-hidden shadow">
@@ -205,7 +205,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
             )}
 
             {/* Permit cards column */}
-            <div className="lg:col-span-3 space-y-8">
+            <div className="lg:col-span-1 space-y-8">
               <div>
                 <h2 className="text-2xl font-bold text-[#1a2744]">Parking Permit Lottery</h2>
                 <p className="text-gray-500 mt-1">Apply for a parking permit below. Hover over a permit to see its lots on the map.</p>
@@ -334,7 +334,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
 
             {/* Desktop map (sticky on the right) */}
             {mapsApiKey && lots.length > 0 && (
-              <div className="hidden lg:block lg:col-span-2">
+              <div className="hidden lg:block lg:col-span-2 min-w-0">
                 <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
                   <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={highlightedLots} defaultCenter={campusCenter} />
                 </div>

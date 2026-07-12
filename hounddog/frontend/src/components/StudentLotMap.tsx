@@ -29,7 +29,7 @@ function MapContent({
   const entriesRef = useRef<PolyEntry[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
-  // Create polygons + labels once when lots data loads (NOT on highlight changes)
+  // Create polygons + labels once when lots data loads
   useEffect(() => {
     if (!map) return;
 
@@ -87,13 +87,24 @@ function MapContent({
       entriesRef.current.push({ polygon: poly, label, lotName: lot.name });
     });
 
+    // Initial view: fit to all lots that have boundaries
+    const lotsWithBounds = lots.filter((l) => l.boundary.length >= 3);
+    if (lotsWithBounds.length > 0) {
+      const allBounds = new google.maps.LatLngBounds();
+      lotsWithBounds.forEach((lot) => {
+        lot.boundary.forEach((c) => allBounds.extend({ lat: c.latitude, lng: c.longitude }));
+      });
+      setTimeout(() => map.fitBounds(allBounds, 40), 150);
+    }
+
     return () => {
       entriesRef.current.forEach((e) => { e.polygon.setMap(null); e.label.setMap(null); });
     };
   }, [map, lots]);
 
-  // Update polygon styles in-place when highlight changes -- NO map movement
+  // Update polygon styles + zoom to highlighted lots on hover
   useEffect(() => {
+    if (!map) return;
     const hasHighlight = highlightedLots.length > 0;
 
     entriesRef.current.forEach(({ polygon, label, lotName }) => {
@@ -134,7 +145,21 @@ function MapContent({
         label.setOptions({ opacity: 0 });
       }
     });
-  }, [highlightedLots]);
+
+    // Zoom to highlighted lots on hover (don't move on unhover)
+    if (hasHighlight) {
+      const highlighted = lots.filter(
+        (l) => l.boundary.length >= 3 && highlightedLots.includes(l.name),
+      );
+      if (highlighted.length > 0) {
+        const bounds = new google.maps.LatLngBounds();
+        highlighted.forEach((lot) => {
+          lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+        });
+        map.fitBounds(bounds, 60);
+      }
+    }
+  }, [map, lots, highlightedLots]);
 
   return (
     <>
