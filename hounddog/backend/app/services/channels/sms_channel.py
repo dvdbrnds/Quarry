@@ -22,7 +22,7 @@ class SmsChannel(AlertChannel):
         sent = 0
         failed = 0
         for sub in sms_recipients:
-            unsub_url = f"{settings.public_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
+            unsub_url = f"{settings.student_facing_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
             body = f"{alert.body_sms}\n\nUnsubscribe: {unsub_url}"
             if await send_sms_async(sub.phone, body):
                 sent += 1

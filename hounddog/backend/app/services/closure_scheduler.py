@@ -237,7 +237,7 @@ async def _auto_send_renewal_emails():
             )
             db.add(renewal)
 
-            base_url = settings.public_url.rstrip("/")
+            base_url = settings.student_facing_url.rstrip("/")
             renew_url = f"{base_url}/api/renewals/{token}/quick-renew"
             decline_url = f"{base_url}/api/renewals/{token}/decline"
 
@@ -312,7 +312,7 @@ async def _expire_lottery_offers():
                     permit_type_label=pt.label,
                     price=str(pt.price),
                     deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
-                    portal_url=f"{settings.public_url.rstrip('/')}/parking",
+                    portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                     assigned_lot=next_app.assigned_lot,
                 )
                 logger.info(

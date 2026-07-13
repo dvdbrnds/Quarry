@@ -84,7 +84,7 @@ class TicketRead(BaseModel):
     @computed_field
     @property
     def payment_url(self) -> str:
-        return f"{settings.public_url}/pay?ticket={self.id}"
+        return f"{settings.student_facing_url}/pay?ticket={self.id}"
 
 
 class AppealRequest(BaseModel):

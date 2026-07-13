@@ -117,7 +117,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                     vt_lbl = vt_row.scalar()
                     if vt_lbl:
                         vtype_label = vt_lbl
-                payment_url = f"{settings.public_url}/pay?ticket={ticket.id}"
+                payment_url = f"{settings.student_facing_url}/pay?ticket={ticket.id}"
                 await send_citation_email(
                     recipient_email=permit.email,
                     plate=ticket.plate,

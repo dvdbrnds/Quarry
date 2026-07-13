@@ -250,7 +250,7 @@ async def _notify_student_of_hold(
 <p>A hold has been placed on your university account due to <strong>{ticket_count} unpaid
 parking violations</strong>. You will be unable to register for classes until all
 outstanding parking fines are paid.</p>
-<p><a href="{settings.public_url}/pay" style="display:inline-block;padding:12px 24px;background:#1a2744;color:#fff;text-decoration:none;border-radius:4px;">Pay Citations Now</a></p>
+<p><a href="{settings.student_facing_url}/pay" style="display:inline-block;padding:12px 24px;background:#1a2744;color:#fff;text-decoration:none;border-radius:4px;">Pay Citations Now</a></p>
 <p>If you believe this is in error, please contact the Parking Office.</p>
 <hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">
 <p style="font-size:12px;color:#888;">Moravian University Parking Services &mdash; Quarry</p>

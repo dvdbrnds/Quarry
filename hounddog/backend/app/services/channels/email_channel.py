@@ -24,7 +24,7 @@ class EmailChannel(AlertChannel):
         failed = 0
 
         for sub in email_recipients:
-            unsub_url = f"{settings.public_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
+            unsub_url = f"{settings.student_facing_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
             html = f"""
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2 style="color: #1a2744;">{alert.subject}</h2>

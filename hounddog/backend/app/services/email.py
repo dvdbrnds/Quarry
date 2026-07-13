@@ -109,7 +109,7 @@ def build_preference_footer(token: str) -> str:
     """Build an HTML footer linking to the notification preferences page."""
     if not token:
         return ""
-    url = f"{settings.public_url}/notifications/{token}"
+    url = f"{settings.student_facing_url}/notifications/{token}"
     return (
         f'<p style="font-size: 11px; color: #aaa; margin-top: 8px;">'
         f'<a href="{url}" style="color: #aaa;">Manage notification preferences</a></p>'

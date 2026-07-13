@@ -4,16 +4,21 @@ Complete these steps in order. Each step depends on the one before it.
 
 ---
 
-## Step 1: DNS Record
+## Step 1: DNS Records
 
-- [ ] Create a DNS A record pointing to your Coolify server:
-  - **Name:** `quarry.moravian.edu` (or your chosen subdomain)
+- [ ] Create a DNS A record for the admin domain:
+  - **Name:** `quarry.moravian.edu`
   - **Type:** A
   - **Value:** Your Coolify server's IP address
   - **TTL:** 300
-- [ ] If internal/DMZ only, add to your internal DNS server
-- [ ] If public-facing, add to your public DNS provider
-- [ ] Verify propagation: `ping quarry.moravian.edu`
+- [ ] Create a DNS record for the student-facing vanity domain:
+  - **Name:** `parking.moravian.edu`
+  - **Type:** CNAME
+  - **Value:** `quarry.moravian.edu` (or A record to the same IP)
+  - **TTL:** 300
+- [ ] If internal/DMZ only, add both to your internal DNS server
+- [ ] If public-facing, add both to your public DNS provider
+- [ ] Verify propagation: `ping quarry.moravian.edu` and `ping parking.moravian.edu`
 
 ---
 
@@ -47,7 +52,7 @@ Complete these steps in order. Each step depends on the one before it.
   - This tells Coolify to use only the `hounddog/` subdirectory from the monorepo
 - [ ] Click **Continue**
 - [ ] On the application configuration page:
-  - [ ] Set **Domains** (FQDN) to `https://quarry.moravian.edu`
+  - [ ] Set **Domains** (FQDN) to `https://quarry.moravian.edu,https://parking.moravian.edu`
   - [ ] Set **Ports Exposes** to `3200`
     - This is the port nginx listens on inside the container
 - [ ] **Do NOT deploy yet** — set environment variables first (Step 5)
@@ -70,9 +75,11 @@ Complete these steps in order. Each step depends on the one before it.
 - [ ] Grant type: **Authorization Code** (default, leave checked)
 - [ ] Add Sign-in redirect URIs:
   - [ ] `https://quarry.moravian.edu/auth/callback`
+  - [ ] `https://parking.moravian.edu/auth/callback`
   - [ ] `http://localhost:5173/auth/callback`
 - [ ] Add Sign-out redirect URIs:
   - [ ] `https://quarry.moravian.edu`
+  - [ ] `https://parking.moravian.edu`
   - [ ] `http://localhost:5173`
 - [ ] Set Controlled access: **Limit access to selected groups** (or "Allow everyone")
 - [ ] Click **Save**
@@ -133,7 +140,14 @@ Go to your Quarry application in Coolify → **Environment Variables** tab.
 - [ ] `QUARRY_DEBUG`
   - Set to `false`
 - [ ] `QUARRY_CORS_ORIGINS`
-  - Set to `["https://quarry.moravian.edu"]`
+  - Set to `["https://quarry.moravian.edu","https://parking.moravian.edu"]`
+
+### Student-facing vanity URL (optional)
+
+- [ ] `QUARRY_STUDENT_URL`
+  - Set to `https://parking.moravian.edu`
+  - All student-facing links (payment, permits, alerts, lottery emails) will use this domain
+  - If omitted, falls back to `QUARRY_PUBLIC_URL`
 
 ### Okta SSO (add later — do NOT create these vars until Okta is ready)
 
@@ -181,6 +195,7 @@ Go to your Quarry application in Coolify → **Environment Variables** tab.
 - [ ] Confirm you are redirected to the Okta login page
 - [ ] Log in with your Moravian credentials
 - [ ] Confirm you land on the Quarry dashboard with your email and role badge in the top-right corner
+- [ ] Visit `https://parking.moravian.edu` and confirm the student parking portal loads
 
 ---
 

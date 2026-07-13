@@ -170,7 +170,7 @@ async def submit_application(
             status_code=400,
             detail=f"You have {unpaid_count} unpaid parking citation(s). "
             f"Pay all outstanding fines before applying for a permit. "
-            f"Visit {settings.public_url}/pay to pay online.",
+            f"Visit {settings.student_facing_url}/pay to pay online.",
         )
 
     okta_profile = {
@@ -399,6 +399,6 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
         permit_type_label=pt.label,
         price=str(pt.price),
         deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
-        portal_url=f"{settings.public_url.rstrip('/')}/parking",
+        portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
         assigned_lot=next_app.assigned_lot,
     )

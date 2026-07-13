@@ -265,7 +265,7 @@ async def _notify_selected(selected, permit_type, offer_expires):
         if not email:
             continue
         try:
-            portal_url = f"{settings.public_url.rstrip('/')}/student/permits"
+            portal_url = f"{settings.student_facing_url.rstrip('/')}/student/permits"
             await send_lottery_selection_email(
                 recipient_email=email,
                 student_name=name,

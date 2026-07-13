@@ -227,7 +227,7 @@ async def list_preferences(
     result = []
     for permit, pref in rows:
         token = pref.opt_out_token if pref else ""
-        pref_url = f"{settings.public_url}/notifications/{token}" if token else ""
+        pref_url = f"{settings.student_facing_url}/notifications/{token}" if token else ""
         result.append(PermitNotificationStatus(
             permit_id=permit.id,
             name=permit.name,

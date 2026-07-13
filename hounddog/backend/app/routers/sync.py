@@ -142,7 +142,7 @@ async def ticket_creation_test(
                 "plate": row[1],
                 "status": row[2],
                 "issued_at": str(row[3]),
-                "payment_url": f"{settings.public_url}/pay?ticket={tid}",
+                "payment_url": f"{settings.student_facing_url}/pay?ticket={tid}",
             })
         steps["recent_tickets"] = recent
     except Exception as e:
@@ -541,7 +541,7 @@ async def _upload_ticket_impl(
         "ticket_category": new_ticket.ticket_category,
     })
 
-    payment_url = f"{settings.public_url}/pay?ticket={new_ticket.id}"
+    payment_url = f"{settings.student_facing_url}/pay?ticket={new_ticket.id}"
 
     notification_sent = False
     notification_email: str | None = None

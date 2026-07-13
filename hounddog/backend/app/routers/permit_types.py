@@ -280,7 +280,7 @@ async def run_lottery(
             permit_type_label=pt.label,
             price=str(pt.price),
             deadline=offer_deadline.strftime("%B %d, %Y"),
-            portal_url=f"{settings.public_url.rstrip('/')}/parking",
+            portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
             assigned_lot=app.assigned_lot,
         )
 
@@ -341,7 +341,7 @@ async def advance_waitlist(
             permit_type_label=pt.label,
             price=str(pt.price),
             deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
-            portal_url=f"{settings.public_url.rstrip('/')}/parking",
+            portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
             assigned_lot=next_app.assigned_lot,
         )
 
@@ -463,7 +463,7 @@ async def manually_select_application(
         permit_type_label=pt.label,
         price=str(pt.price),
         deadline=app.offer_expires_at.strftime("%B %d, %Y"),
-        portal_url=f"{settings.public_url.rstrip('/')}/parking",
+        portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
         assigned_lot=app.assigned_lot,
     )
 

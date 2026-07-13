@@ -140,7 +140,7 @@ async def send_renewal_campaign(
         )
         db.add(renewal)
 
-        base_url = settings.public_url.rstrip("/")
+        base_url = settings.student_facing_url.rstrip("/")
         renew_url = f"{base_url}/api/renewals/{token}/quick-renew"
         decline_url = f"{base_url}/api/renewals/{token}/decline"
 
@@ -194,7 +194,7 @@ async def send_renewal_to_permit(
     )
     db.add(renewal)
 
-    base_url = settings.public_url.rstrip("/")
+    base_url = settings.student_facing_url.rstrip("/")
     renew_url = f"{base_url}/api/renewals/{token}/quick-renew"
     decline_url = f"{base_url}/api/renewals/{token}/decline"
 

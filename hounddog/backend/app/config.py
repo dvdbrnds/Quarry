@@ -10,7 +10,14 @@ class Settings(BaseSettings):
 
     # Instance identity (used in QR pairing payload)
     public_url: str = "https://quarry.moravian.edu"
+    # Student-facing vanity URL (e.g. https://parking.moravian.edu).
+    # Falls back to public_url when empty.
+    student_url: str = ""
     school_name: str = ""
+
+    @property
+    def student_facing_url(self) -> str:
+        return self.student_url or self.public_url
 
     # Okta SSO (Phase 2)
     okta_domain: str = ""
