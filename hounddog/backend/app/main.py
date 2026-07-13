@@ -22,6 +22,7 @@ from .routers import (
     permit_types,
     permits,
     renewals,
+    resident_plates,
     signage,
     student_permits,
     sync,
@@ -262,6 +263,16 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_seed VARCHAR(128)",
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS admin_notes TEXT",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_freshmen BOOLEAN DEFAULT false",
+            """CREATE TABLE IF NOT EXISTS resident_plates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                plate VARCHAR(20) NOT NULL,
+                plate_state VARCHAR(2) DEFAULT '',
+                street_id UUID REFERENCES parking_lots(id) ON DELETE SET NULL,
+                notes TEXT,
+                added_by VARCHAR(256) DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_resident_plates_plate ON resident_plates(plate)",
             # Omnilert replacement: alert templates
             """CREATE TABLE IF NOT EXISTS alert_templates (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -651,6 +662,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
 app.include_router(permits.router, prefix="/api/permits", tags=["permits"])
 app.include_router(lots.router, prefix="/api/lots", tags=["lots"])
+app.include_router(resident_plates.router, prefix="/api/resident-plates", tags=["resident-plates"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(sync.diagnostic_router, prefix="/api/sync", tags=["sync-diagnostic"])
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])

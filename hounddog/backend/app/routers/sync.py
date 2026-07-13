@@ -27,12 +27,14 @@ from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
 from ..schemas.lot import LotZoneRead
 from ..schemas.parking_spot import SpotRead
+from ..models.resident_plate import ResidentPlate
 from ..schemas.sync import (
     PushTokenRegister,
     SyncCalendarResponse,
     SyncLotsResponse,
     SyncLotWithZones,
     SyncPermitsResponse,
+    SyncResidentPlatesResponse,
     SyncSettingsResponse,
     SyncStatusResponse,
     SyncViolationTypesResponse,
@@ -181,6 +183,24 @@ async def sync_permits(
 
     return SyncPermitsResponse(
         permits=permits,
+        server_timestamp=datetime.now(timezone.utc),
+        full_sync=full_sync,
+    )
+
+
+@router.get("/resident-plates", response_model=SyncResidentPlatesResponse)
+async def sync_resident_plates(
+    since: datetime | None = Query(None),
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    full_sync = since is None
+    query = select(ResidentPlate)
+    if since:
+        query = query.where(ResidentPlate.created_at > since)
+    plates = (await db.execute(query.order_by(ResidentPlate.created_at))).scalars().all()
+    return SyncResidentPlatesResponse(
+        resident_plates=plates,
         server_timestamp=datetime.now(timezone.utc),
         full_sync=full_sync,
     )

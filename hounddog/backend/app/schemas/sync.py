@@ -10,6 +10,13 @@ from .parking_spot import SpotRead
 from .violation_type import ViolationTypeRead
 from .academic_season import AcademicSeasonRead
 from .enforcement_settings import EnforcementSettingsRead
+from .resident_plate import ResidentPlateRead
+
+
+class SyncResidentPlatesResponse(BaseModel):
+    resident_plates: list[ResidentPlateRead]
+    server_timestamp: datetime
+    full_sync: bool = False
 
 
 class SyncPermitsResponse(BaseModel):

@@ -17,6 +17,7 @@ from .payment import Payment
 from .permit import Permit
 from .permit_application import PermitApplication
 from .renewal_token import RenewalToken
+from .resident_plate import ResidentPlate
 from .signage_screen import SignageScreen
 from .permit_type import PermitType
 from .subscriber_group import SubscriberGroup, subscriber_group_members
@@ -45,6 +46,7 @@ __all__ = [
     "PermitApplication",
     "PermitType",
     "RenewalToken",
+    "ResidentPlate",
     "SubscriberGroup",
     "subscriber_group_members",
     "Ticket",
