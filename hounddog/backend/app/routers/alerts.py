@@ -46,7 +46,6 @@ from ..schemas.alerts import (
     ResponseRateStats,
     RunningScenario,
     SisSubscriberSyncConfig,
-    SisSubscriberSyncConfigUpdate,
     SubscriberCreate,
     SubscriberGroupCreate,
     SubscriberGroupRead,
@@ -54,7 +53,6 @@ from ..schemas.alerts import (
     SubscriberRead,
     SubscriberUpdate,
     WeatherAlertConfig,
-    WeatherAlertConfigUpdate,
 )
 from ..services.alert_dispatcher import clear_alert, dispatch_alert
 from ..services.channels import get_registry
@@ -1268,19 +1266,17 @@ async def get_after_action_report(
 # Desktop alert SSE endpoint
 # ---------------------------------------------------------------------------
 
-import asyncio as _asyncio_mod
-_desktop_connections: list[_asyncio_mod.Queue] = []
-
-
 @public_router.get("/desktop/sse")
 async def desktop_alert_sse(request: Request):
     """SSE stream for desktop alert clients. Pushes alert events
     in real-time for system tray notifications."""
-    import asyncio as _asyncio
-    import json as _json
+    import asyncio
 
-    queue: _asyncio.Queue = _asyncio.Queue(maxsize=50)
-    _desktop_connections.append(queue)
+    from ..services.desktop_broadcast import get_connections
+
+    connections = get_connections()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=50)
+    connections.append(queue)
 
     async def stream():
         try:
@@ -1289,52 +1285,18 @@ async def desktop_alert_sse(request: Request):
                 if await request.is_disconnected():
                     break
                 try:
-                    msg = await _asyncio.wait_for(queue.get(), timeout=30)
+                    msg = await asyncio.wait_for(queue.get(), timeout=30)
                     yield msg
-                except _asyncio.TimeoutError:
+                except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
         finally:
-            _desktop_connections.remove(queue)
+            connections.remove(queue)
 
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-async def broadcast_desktop_alert(alert: AlertLog):
-    """Push an alert to all connected desktop clients."""
-    import asyncio as _asyncio
-    import json as _json
-
-    data = _json.dumps({
-        "id": str(alert.id),
-        "category": alert.category,
-        "subject": alert.subject,
-        "body_text": alert.body_text,
-        "sent_by": alert.sent_by,
-        "sent_at": alert.sent_at.isoformat() if alert.sent_at else None,
-    })
-    payload = f"event: alert\ndata: {data}\n\n"
-
-    for q in _desktop_connections[:]:
-        try:
-            q.put_nowait(payload)
-        except _asyncio.QueueFull:
-            pass
-
-
-async def broadcast_desktop_clear(alert_id: str):
-    import asyncio as _asyncio
-    import json as _json
-
-    payload = f'event: clear\ndata: {_json.dumps({"id": alert_id})}\n\n'
-    for q in _desktop_connections[:]:
-        try:
-            q.put_nowait(payload)
-        except _asyncio.QueueFull:
-            pass
 
 
 # ---------------------------------------------------------------------------

@@ -643,6 +643,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    stop_weather_monitor()
     stop_scheduler()
 
 

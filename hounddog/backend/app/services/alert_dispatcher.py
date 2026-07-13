@@ -130,8 +130,8 @@ async def dispatch_alert(
     await db.flush()
 
     try:
-        from ..routers.alerts import broadcast_desktop_alert
-        await broadcast_desktop_alert(alert)
+        from .desktop_broadcast import broadcast_alert
+        await broadcast_alert(alert)
     except Exception as e:
         logger.warning("Desktop broadcast failed: %s", e)
 
@@ -159,8 +159,8 @@ async def clear_alert(alert_id, cleared_by: str, db: AsyncSession) -> AlertLog |
     await db.refresh(alert)
 
     try:
-        from ..routers.alerts import broadcast_desktop_clear
-        await broadcast_desktop_clear(str(alert.id))
+        from .desktop_broadcast import broadcast_clear
+        await broadcast_clear(str(alert.id))
     except Exception as e:
         logger.warning("Desktop clear broadcast failed: %s", e)
 
