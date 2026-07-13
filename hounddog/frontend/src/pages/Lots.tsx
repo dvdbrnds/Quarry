@@ -586,8 +586,8 @@ export default function Lots() {
   const isEditing = creating || editing !== null;
 
   return (
-    <div className="flex gap-6 h-[calc(100vh-7rem)]">
-      <div className="w-80 flex-shrink-0 flex flex-col bg-white rounded-xl shadow overflow-hidden">
+    <div className="flex gap-6 h-[calc(100vh-7rem)] min-w-0">
+      <div className="w-80 flex-shrink-0 flex flex-col bg-white rounded-xl shadow overflow-hidden max-w-80">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-bold">Parking</h2>
           <Button type="primary" size="small" disabled={isEditing} onClick={startCreate}>+ New</Button>
@@ -628,17 +628,17 @@ export default function Lots() {
           {filteredLots.map(lot => (
             <div key={lot.id}>
               <div onClick={() => handleSelectLot(lot.id)}
-                className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${lot.id === selectedLotId ? "bg-brass/10 border-l-4 border-l-brass" : "hover:bg-gray-50"}`}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <Space>
-                      <h3 className="font-semibold text-sm">{lot.name}</h3>
+                className={`p-3 border-b border-gray-100 cursor-pointer transition-colors ${lot.id === selectedLotId ? "bg-brass/10 border-l-4 border-l-brass" : "hover:bg-gray-50"}`}>
+                <div className="flex items-start gap-2 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <h3 className="font-semibold text-sm truncate">{lot.name}</h3>
                       {lot.lot_type === "street" && <Tag color="default" className="!text-[10px]">Street</Tag>}
                       {lot.campus && <Tag color="blue" className="!text-[10px]">{CAMPUS_OPTIONS.find(c => c.value === lot.campus)?.label ?? lot.campus}</Tag>}
                       {lot.has_sheepdog && <Tag color="gold" className="!text-[10px]">SD</Tag>}
                       {lot.is_closed && lot.lot_type !== "street" && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
-                    </Space>
-                    <p className="text-xs text-ink-mute mt-0.5">
+                    </div>
+                    <p className="text-xs text-ink-mute mt-0.5 truncate">
                       {lot.designation_code && <Tag className="!text-[10px]">{lot.designation_code}</Tag>}
                       {lot.boundary.length >= 3
                         ? lot.total_spaces > 0 ? `${lot.total_spaces} spaces` : "Boundary set"
@@ -647,13 +647,13 @@ export default function Lots() {
                     </p>
                   </div>
                   {!isEditing && (
-                    <Space className="ml-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1 flex-shrink-0 text-xs" onClick={e => e.stopPropagation()}>
                       {lot.lot_type !== "street" && (lot.is_closed
-                        ? <Button type="link" size="small" onClick={() => handleReopen(lot)}>Reopen</Button>
-                        : <Button type="link" size="small" danger onClick={() => setClosingLot(lot)}>Close</Button>)}
-                      <Button type="link" size="small" onClick={() => startEdit(lot)}>Edit</Button>
-                      <Button type="link" size="small" danger onClick={() => handleDeleteLot(lot)}>Delete</Button>
-                    </Space>
+                        ? <Button type="link" size="small" className="!px-1" onClick={() => handleReopen(lot)}>Reopen</Button>
+                        : <Button type="link" size="small" className="!px-1" danger onClick={() => setClosingLot(lot)}>Close</Button>)}
+                      <Button type="link" size="small" className="!px-1" onClick={() => startEdit(lot)}>Edit</Button>
+                      <Button type="link" size="small" className="!px-1" danger onClick={() => handleDeleteLot(lot)}>Delete</Button>
+                    </div>
                   )}
                 </div>
               </div>
