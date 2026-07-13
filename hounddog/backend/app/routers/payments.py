@@ -288,6 +288,8 @@ async def purchase_permit(
         raise HTTPException(404, "Permit type not found")
     if not permit_type.is_purchasable_online:
         raise HTTPException(400, "This permit type is not available for online purchase")
+    if permit_type.requires_lottery:
+        raise HTTPException(400, "Lottery permits cannot be purchased directly")
 
     # Check capacity
     active_count_result = await db.execute(

@@ -125,7 +125,7 @@ export default function Pay() {
               </Button>
               <Space className="w-full">
                 <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
-                <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Permit Instead</Button>
+                <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Commuter Permit</Button>
               </Space>
             </Space>
           </Card>
@@ -190,9 +190,9 @@ function PermitModal({ permits, onClose, onSelect }: {
   permits: AvailablePermitsResponse; onClose: () => void; onSelect: (id: string) => void;
 }) {
   return (
-    <Modal open onCancel={onClose} footer={<Button onClick={onClose}>Close</Button>} title="Buy a Permit Instead" width={520}>
-      <p className="text-sm text-ink-mute mb-4">Your ticket fine will be reduced to ${Number(permits.ticket_fine_after_purchase).toFixed(2)}.</p>
-      {permits.permit_types.length === 0 ? <Empty description="No permits available" /> : (
+    <Modal open onCancel={onClose} footer={<Button onClick={onClose}>Close</Button>} title="Buy a Commuter Permit" width={520}>
+      <p className="text-sm text-ink-mute mb-4">Purchase a commuter parking permit and your ticket fine will be reduced to ${Number(permits.ticket_fine_after_purchase).toFixed(2)}. Subject to availability.</p>
+      {permits.permit_types.length === 0 ? <Empty description="No commuter permits currently available" /> : (
         <div className="space-y-3 max-h-80 overflow-y-auto">
           {permits.permit_types.map(pt => (
             <Card key={pt.id} size="small" hoverable>
