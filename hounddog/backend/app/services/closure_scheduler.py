@@ -350,6 +350,12 @@ async def _run_loop():
         except Exception as e:
             logger.error("Scheduler tick (renewal emails) failed: %s", e, exc_info=True)
 
+        try:
+            from .alert_scheduler import process_scheduled_alerts
+            await process_scheduled_alerts()
+        except Exception as e:
+            logger.error("Scheduler tick (scheduled alerts) failed: %s", e, exc_info=True)
+
         await asyncio.sleep(60)
 
 

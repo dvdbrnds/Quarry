@@ -69,6 +69,8 @@ class AlertSendRequest(BaseModel):
     response_options: list[str] | None = None
     group_ids: list[uuid.UUID] | None = None
     is_checkin: bool = False
+    scheduled_for: datetime | None = None
+    recurrence_rule: str | None = None
 
 
 class AlertSendPreview(BaseModel):
@@ -131,6 +133,8 @@ class AlertLogRead(BaseModel):
     response_options: list[str] | None = None
     is_checkin: bool = False
     target_group_ids: list[str] | None = None
+    scheduled_for: datetime | None = None
+    recurrence_rule: str | None = None
     sent_at: datetime
 
 
@@ -301,3 +305,81 @@ class RunningScenario(BaseModel):
     total_steps: int
     started_at: datetime
     started_by: str
+
+
+# --- Analytics / Reporting schemas ---
+
+
+class AlertDeliverySummary(BaseModel):
+    total_alerts: int = 0
+    total_emails: int = 0
+    total_sms: int = 0
+    avg_channels_per_alert: float = 0.0
+    by_category: dict[str, int] = {}
+    by_month: list[dict] = []
+
+
+class ChannelDeliveryStats(BaseModel):
+    channel: str
+    total_sent: int = 0
+    total_failed: int = 0
+    success_rate: float = 0.0
+
+
+class ResponseRateStats(BaseModel):
+    alert_id: uuid.UUID
+    subject: str
+    category: str
+    total_subscribers: int = 0
+    total_responses: int = 0
+    response_rate: float = 0.0
+    checkin_safe: int = 0
+    checkin_help: int = 0
+    sent_at: datetime
+
+
+class AlertAnalyticsDashboard(BaseModel):
+    summary: AlertDeliverySummary
+    channel_stats: list[ChannelDeliveryStats]
+    recent_response_rates: list[ResponseRateStats]
+
+
+class AfterActionReport(BaseModel):
+    alert_id: uuid.UUID
+    subject: str
+    category: str
+    sent_by: str
+    sent_at: datetime
+    cleared_at: datetime | None
+    channel_results: dict | None
+    total_subscribers: int
+    total_responses: int
+    response_rate: float
+    response_breakdown: dict[str, int]
+    timeline: list[dict]
+
+
+class WeatherAlertConfig(BaseModel):
+    enabled: bool
+    zone_id: str
+    poll_interval_seconds: int
+    event_mappings: list[dict]
+
+
+class WeatherAlertConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    zone_id: str | None = None
+    poll_interval_seconds: int | None = None
+    event_mappings: list[dict] | None = None
+
+
+class SisSubscriberSyncConfig(BaseModel):
+    enabled: bool
+    sync_url: str
+    last_sync_at: datetime | None = None
+    total_synced: int = 0
+
+
+class SisSubscriberSyncConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    sync_url: str | None = None

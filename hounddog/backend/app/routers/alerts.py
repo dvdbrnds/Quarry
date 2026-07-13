@@ -19,7 +19,10 @@ from ..models.alert_template import AlertTemplate
 from ..models.subscriber_group import SubscriberGroup, subscriber_group_members
 from ..schemas.alerts import (
     ActiveAlertRead,
+    AfterActionReport,
+    AlertAnalyticsDashboard,
     AlertChannelRead,
+    AlertDeliverySummary,
     AlertLogRead,
     AlertResponseRead,
     AlertResponseSummary,
@@ -35,17 +38,23 @@ from ..schemas.alerts import (
     AlertTestRequest,
     AlertTestSendRequest,
     AlertTestSendResult,
+    ChannelDeliveryStats,
     CheckInStatus,
     GroupMembersBatch,
     PublicSubscribeRequest,
     PublicSubscribeResponse,
+    ResponseRateStats,
     RunningScenario,
+    SisSubscriberSyncConfig,
+    SisSubscriberSyncConfigUpdate,
     SubscriberCreate,
     SubscriberGroupCreate,
     SubscriberGroupRead,
     SubscriberGroupUpdate,
     SubscriberRead,
     SubscriberUpdate,
+    WeatherAlertConfig,
+    WeatherAlertConfigUpdate,
 )
 from ..services.alert_dispatcher import clear_alert, dispatch_alert
 from ..services.channels import get_registry
@@ -257,27 +266,32 @@ async def send_alert(
         options_str = ", ".join(response_options)
         sms_body = f"{sms_body}\n\nReply: {options_str}"
 
+    is_scheduled = data.scheduled_for is not None
+
     log_entry = AlertLog(
         category=data.category,
         subject=data.subject,
         body_text=data.body_text,
         body_sms=sms_body,
         sent_by=user.email,
-        status="active",
+        status="scheduled" if is_scheduled else "active",
         response_options=response_options,
         is_checkin=data.is_checkin,
         target_group_ids=[str(g) for g in data.group_ids] if data.group_ids else None,
+        scheduled_for=data.scheduled_for,
+        recurrence_rule=data.recurrence_rule,
     )
     db.add(log_entry)
     await db.flush()
     await db.refresh(log_entry)
 
-    channel_results = await dispatch_alert(
-        log_entry.id, db,
-        group_ids=data.group_ids,
-    )
-
-    await db.refresh(log_entry)
+    channel_results = {}
+    if not is_scheduled:
+        channel_results = await dispatch_alert(
+            log_entry.id, db,
+            group_ids=data.group_ids,
+        )
+        await db.refresh(log_entry)
 
     return AlertSendResult(
         alert_id=log_entry.id,
@@ -1062,3 +1076,310 @@ async def export_subscribers(db: AsyncSession = Depends(get_db)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=alert_subscribers.csv"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Scheduled alerts management
+# ---------------------------------------------------------------------------
+
+
+@admin_router.get("/scheduled", response_model=list[AlertLogRead])
+async def list_scheduled_alerts(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(AlertLog)
+        .where(AlertLog.status == "scheduled")
+        .order_by(AlertLog.scheduled_for)
+    )
+    return result.scalars().all()
+
+
+@admin_router.delete("/scheduled/{alert_id}", status_code=204)
+async def cancel_scheduled_alert(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    alert = await db.get(AlertLog, alert_id)
+    if not alert or alert.status != "scheduled":
+        raise HTTPException(404, "Scheduled alert not found")
+    alert.status = "cancelled"
+    await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Analytics & reporting
+# ---------------------------------------------------------------------------
+
+
+@admin_router.get("/analytics", response_model=AlertAnalyticsDashboard)
+async def get_analytics(
+    days: int = Query(90, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    all_alerts = await db.execute(
+        select(AlertLog).where(
+            AlertLog.sent_at >= cutoff,
+            AlertLog.status.notin_(["scheduled", "cancelled"]),
+        )
+    )
+    alerts = all_alerts.scalars().all()
+
+    total_emails = sum(a.email_count for a in alerts)
+    total_sms = sum(a.sms_count for a in alerts)
+
+    by_category: dict[str, int] = {}
+    by_month: dict[str, dict] = {}
+    channel_totals: dict[str, dict] = {}
+
+    for a in alerts:
+        by_category[a.category] = by_category.get(a.category, 0) + 1
+
+        month_key = a.sent_at.strftime("%Y-%m")
+        if month_key not in by_month:
+            by_month[month_key] = {"month": month_key, "count": 0, "emails": 0, "sms": 0}
+        by_month[month_key]["count"] += 1
+        by_month[month_key]["emails"] += a.email_count
+        by_month[month_key]["sms"] += a.sms_count
+
+        if a.channel_results:
+            for ch_name, ch_data in a.channel_results.items():
+                if ch_name not in channel_totals:
+                    channel_totals[ch_name] = {"sent": 0, "failed": 0}
+                channel_totals[ch_name]["sent"] += ch_data.get("sent", 0)
+                channel_totals[ch_name]["failed"] += ch_data.get("failed", 0)
+
+    total_channels_used = sum(
+        len(a.channel_results) for a in alerts if a.channel_results
+    )
+    avg_channels = total_channels_used / len(alerts) if alerts else 0
+
+    channel_stats = []
+    for ch_name, totals in channel_totals.items():
+        total = totals["sent"] + totals["failed"]
+        channel_stats.append(ChannelDeliveryStats(
+            channel=ch_name,
+            total_sent=totals["sent"],
+            total_failed=totals["failed"],
+            success_rate=(totals["sent"] / total * 100) if total > 0 else 0,
+        ))
+
+    response_alerts = [a for a in alerts if a.response_options]
+    recent_rates = []
+    for a in response_alerts[:20]:
+        resp_count = await db.scalar(
+            select(func.count()).select_from(AlertResponse).where(AlertResponse.alert_id == a.id)
+        )
+        sub_count = await db.scalar(
+            select(func.count()).select_from(AlertSubscriber).where(AlertSubscriber.sms_opt_in.is_(True))
+        )
+        safe = 0
+        help_count = 0
+        if a.is_checkin:
+            safe = await db.scalar(
+                select(func.count()).select_from(AlertResponse).where(
+                    AlertResponse.alert_id == a.id,
+                    func.upper(AlertResponse.response_text) == "SAFE",
+                )
+            ) or 0
+            help_count = await db.scalar(
+                select(func.count()).select_from(AlertResponse).where(
+                    AlertResponse.alert_id == a.id,
+                    func.upper(AlertResponse.response_text) == "HELP",
+                )
+            ) or 0
+
+        recent_rates.append(ResponseRateStats(
+            alert_id=a.id,
+            subject=a.subject,
+            category=a.category,
+            total_subscribers=sub_count or 0,
+            total_responses=resp_count or 0,
+            response_rate=(resp_count / sub_count * 100) if sub_count else 0,
+            checkin_safe=safe,
+            checkin_help=help_count,
+            sent_at=a.sent_at,
+        ))
+
+    return AlertAnalyticsDashboard(
+        summary=AlertDeliverySummary(
+            total_alerts=len(alerts),
+            total_emails=total_emails,
+            total_sms=total_sms,
+            avg_channels_per_alert=round(avg_channels, 1),
+            by_category=by_category,
+            by_month=sorted(by_month.values(), key=lambda x: x["month"]),
+        ),
+        channel_stats=channel_stats,
+        recent_response_rates=recent_rates,
+    )
+
+
+@admin_router.get("/analytics/after-action/{alert_id}", response_model=AfterActionReport)
+async def get_after_action_report(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    alert = await db.get(AlertLog, alert_id)
+    if not alert:
+        raise HTTPException(404, "Alert not found")
+
+    resp_result = await db.execute(
+        select(AlertResponse).where(AlertResponse.alert_id == alert_id).order_by(AlertResponse.received_at)
+    )
+    responses = resp_result.scalars().all()
+
+    sub_count = await db.scalar(
+        select(func.count()).select_from(AlertSubscriber).where(AlertSubscriber.sms_opt_in.is_(True))
+    ) or 0
+
+    breakdown: dict[str, int] = {}
+    for r in responses:
+        key = r.response_text.upper().strip() if r.response_text else "NO_TEXT"
+        breakdown[key] = breakdown.get(key, 0) + 1
+
+    timeline = []
+    for r in responses:
+        timeline.append({
+            "time": r.received_at.isoformat(),
+            "phone": r.phone,
+            "response": r.response_text,
+            "channel": r.channel,
+        })
+
+    return AfterActionReport(
+        alert_id=alert.id,
+        subject=alert.subject,
+        category=alert.category,
+        sent_by=alert.sent_by,
+        sent_at=alert.sent_at,
+        cleared_at=alert.cleared_at,
+        channel_results=alert.channel_results,
+        total_subscribers=sub_count,
+        total_responses=len(responses),
+        response_rate=(len(responses) / sub_count * 100) if sub_count else 0,
+        response_breakdown=breakdown,
+        timeline=timeline,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Desktop alert SSE endpoint
+# ---------------------------------------------------------------------------
+
+import asyncio as _asyncio_mod
+_desktop_connections: list[_asyncio_mod.Queue] = []
+
+
+@public_router.get("/desktop/sse")
+async def desktop_alert_sse(request: Request):
+    """SSE stream for desktop alert clients. Pushes alert events
+    in real-time for system tray notifications."""
+    import asyncio as _asyncio
+    import json as _json
+
+    queue: _asyncio.Queue = _asyncio.Queue(maxsize=50)
+    _desktop_connections.append(queue)
+
+    async def stream():
+        try:
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await _asyncio.wait_for(queue.get(), timeout=30)
+                    yield msg
+                except _asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            _desktop_connections.remove(queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def broadcast_desktop_alert(alert: AlertLog):
+    """Push an alert to all connected desktop clients."""
+    import asyncio as _asyncio
+    import json as _json
+
+    data = _json.dumps({
+        "id": str(alert.id),
+        "category": alert.category,
+        "subject": alert.subject,
+        "body_text": alert.body_text,
+        "sent_by": alert.sent_by,
+        "sent_at": alert.sent_at.isoformat() if alert.sent_at else None,
+    })
+    payload = f"event: alert\ndata: {data}\n\n"
+
+    for q in _desktop_connections[:]:
+        try:
+            q.put_nowait(payload)
+        except _asyncio.QueueFull:
+            pass
+
+
+async def broadcast_desktop_clear(alert_id: str):
+    import asyncio as _asyncio
+    import json as _json
+
+    payload = f'event: clear\ndata: {_json.dumps({"id": alert_id})}\n\n'
+    for q in _desktop_connections[:]:
+        try:
+            q.put_nowait(payload)
+        except _asyncio.QueueFull:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Weather config endpoints
+# ---------------------------------------------------------------------------
+
+
+@admin_router.get("/weather/config", response_model=WeatherAlertConfig)
+async def get_weather_config():
+    from ..services.weather_monitor import _get_event_mappings
+    mappings = _get_event_mappings()
+    return WeatherAlertConfig(
+        enabled=settings.nws_alerts_enabled,
+        zone_id=settings.nws_zone_id,
+        poll_interval_seconds=settings.nws_poll_interval_seconds,
+        event_mappings=[
+            {"event": k, **v} for k, v in mappings.items()
+        ],
+    )
+
+
+@admin_router.get("/weather/recent")
+async def get_recent_weather_events():
+    from ..services.weather_monitor import get_seen_events
+    return {"seen_events": list(get_seen_events())}
+
+
+# ---------------------------------------------------------------------------
+# SIS Subscriber Sync endpoints
+# ---------------------------------------------------------------------------
+
+
+@admin_router.get("/sis-sync/status", response_model=SisSubscriberSyncConfig)
+async def get_sis_sync_status():
+    from ..services.sis_subscriber_sync import get_sync_status
+    status = get_sync_status()
+    return SisSubscriberSyncConfig(**status)
+
+
+@admin_router.post("/sis-sync/trigger")
+async def trigger_sis_sync():
+    from ..services.sis_subscriber_sync import sync_subscribers
+    try:
+        await sync_subscribers()
+        from ..services.sis_subscriber_sync import get_sync_status
+        return get_sync_status()
+    except Exception as e:
+        raise HTTPException(500, f"Sync failed: {str(e)}")

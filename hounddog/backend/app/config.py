@@ -112,6 +112,17 @@ class Settings(BaseSettings):
     sis_hold_api_url: str = ""
     sis_hold_api_key: str = ""
 
+    # NWS Weather Auto-Triggers
+    nws_alerts_enabled: bool = False
+    nws_zone_id: str = "PAC077"
+    nws_poll_interval_seconds: int = 120
+    nws_event_mappings: str = ""
+
+    # SIS Subscriber Sync (Colleague)
+    sis_subscriber_sync_enabled: bool = False
+    sis_subscriber_sync_url: str = ""
+    sis_subscriber_sync_key: str = ""
+
     model_config = {"env_prefix": "QUARRY_", "env_file": ".env"}
 
 

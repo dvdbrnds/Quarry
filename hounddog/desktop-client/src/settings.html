@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Quarry Alerts Settings</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f0;
+      color: #1a1a2e;
+      padding: 24px;
+    }
+    h1 { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #1a1a2e; }
+    .form-group { margin-bottom: 16px; }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d1d1;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+    }
+    input[type="text"]:focus { outline: none; border-color: #c5a55a; }
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .checkbox-group label {
+      text-transform: none;
+      font-weight: 400;
+      font-size: 14px;
+      color: #1a1a2e;
+      margin-bottom: 0;
+    }
+    button {
+      background: #1a1a2e;
+      color: #f5f5f0;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:hover { background: #2a2a4e; }
+    .status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+    .version {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 10px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Quarry Desktop Alerts</h1>
+
+  <div class="form-group">
+    <label>Server URL</label>
+    <input type="text" id="serverUrl" placeholder="https://quarry.moravian.edu">
+  </div>
+
+  <div class="checkbox-group">
+    <input type="checkbox" id="soundEnabled">
+    <label for="soundEnabled">Play notification sound</label>
+  </div>
+
+  <div class="checkbox-group">
+    <input type="checkbox" id="showOnStartup">
+    <label for="showOnStartup">Start with system</label>
+  </div>
+
+  <button id="saveBtn">Save & Reconnect</button>
+  <div class="status" id="status"></div>
+  <div class="version">v1.0.0</div>
+
+  <script>
+    const Store = require("electron-store");
+    const store = new Store();
+
+    document.getElementById("serverUrl").value = store.get("serverUrl", "https://quarry.moravian.edu");
+    document.getElementById("soundEnabled").checked = store.get("soundEnabled", true);
+    document.getElementById("showOnStartup").checked = store.get("showOnStartup", true);
+
+    document.getElementById("saveBtn").addEventListener("click", () => {
+      const url = document.getElementById("serverUrl").value.trim();
+      if (!url) return;
+
+      store.set("serverUrl", url);
+      store.set("soundEnabled", document.getElementById("soundEnabled").checked);
+      store.set("showOnStartup", document.getElementById("showOnStartup").checked);
+
+      document.getElementById("status").textContent = "Settings saved. Reconnecting...";
+
+      const { ipcRenderer } = require("electron");
+      window.close();
+    });
+  </script>
+</body>
+</html>

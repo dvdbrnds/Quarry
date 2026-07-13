@@ -4,6 +4,7 @@ import {
   AlertSendResult, AlertTestSendResult, AlertLogEntry, SignageScreen,
   AlertTemplate, AlertResponseSummary, AlertResponseEntry, CheckInStatus,
   SubscriberGroup, AlertScenario, ScenarioStep, RunningScenario,
+  AlertAnalyticsDashboard, AfterActionReport, WeatherAlertConfig, SisSubscriberSyncConfig,
 } from "../api";
 import {
   Tabs, Table, Button, Input, Select, Checkbox, Tag, Card, Form, Alert, Space, App, Spin, Empty, Modal, Segmented,
@@ -83,11 +84,15 @@ export default function Alerts() {
       <Tabs items={[
         { key: "send", label: "Send Alert", children: <SendSection onSent={loadActive} /> },
         { key: "templates", label: "Templates", children: <TemplatesSection /> },
+        { key: "scheduled", label: "Scheduled", children: <ScheduledSection /> },
         { key: "history", label: "History", children: <HistorySection /> },
+        { key: "analytics", label: "Analytics", children: <AnalyticsSection /> },
         { key: "subscribers", label: "Subscribers", children: <SubscribersSection /> },
         { key: "groups", label: "Groups", children: <GroupsSection /> },
         { key: "scenarios", label: "Scenarios", children: <ScenariosSection /> },
         { key: "channels", label: "Channels", children: <ChannelsSection /> },
+        { key: "weather", label: "Weather", children: <WeatherSection /> },
+        { key: "sis-sync", label: "SIS Sync", children: <SisSyncSection /> },
         { key: "test", label: "Test", children: <TestConsole /> },
         { key: "signage", label: "Signage", children: <SignageSection /> },
       ]} />
@@ -118,6 +123,9 @@ function SendSection({ onSent }: { onSent: () => void }) {
   const [requestResponses, setRequestResponses] = useState(false);
   const [responseOptions, setResponseOptions] = useState("1=Safe, 2=Need Help");
   const [isCheckin, setIsCheckin] = useState(false);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [recurrenceRule, setRecurrenceRule] = useState<string | null>(null);
 
   useEffect(() => {
     api.alerts.templates.list().then(setTemplates);
@@ -173,9 +181,15 @@ function SendSection({ onSent }: { onSent: () => void }) {
             response_options: opts || null,
             group_ids: selectedGroupIds.length > 0 ? selectedGroupIds : null,
             is_checkin: isCheckin,
+            scheduled_for: isScheduled && scheduledFor ? new Date(scheduledFor).toISOString() : null,
+            recurrence_rule: isScheduled ? recurrenceRule : null,
           });
           setResult(r); setSubject(""); setBodyText(""); setBodySms(""); onSent();
-          message.success(`Alert sent: ${r.emails_sent} emails, ${r.sms_sent} SMS`);
+          if (isScheduled) {
+            message.success("Alert scheduled successfully");
+          } else {
+            message.success(`Alert sent: ${r.emails_sent} emails, ${r.sms_sent} SMS`);
+          }
         } catch { message.error("Failed to send alert"); } finally { setSending(false); }
       },
     });
@@ -231,6 +245,33 @@ function SendSection({ onSent }: { onSent: () => void }) {
           </div>
         )}
 
+        <Space direction="vertical" className="w-full">
+          <Checkbox checked={isScheduled} onChange={e => { setIsScheduled(e.target.checked); if (!e.target.checked) { setScheduledFor(""); setRecurrenceRule(null); } }}>
+            Schedule for later
+          </Checkbox>
+          {isScheduled && (
+            <div className="flex gap-4 items-end">
+              <div>
+                <label className="block text-xs text-ink-mute mb-1">Send At</label>
+                <input type="datetime-local" value={scheduledFor} onChange={e => setScheduledFor(e.target.value)}
+                  className="border rounded px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-mute mb-1">Repeat</label>
+                <Select value={recurrenceRule} onChange={setRecurrenceRule} allowClear placeholder="No repeat" style={{ width: 160 }}
+                  options={[
+                    { label: "Daily", value: "daily" },
+                    { label: "Weekly", value: "weekly" },
+                    { label: "Biweekly", value: "biweekly" },
+                    { label: "Monthly", value: "monthly" },
+                    { label: "Quarterly", value: "quarterly" },
+                    { label: "Yearly", value: "yearly" },
+                  ]} />
+              </div>
+            </div>
+          )}
+        </Space>
+
         {preview && (
           <Card size="small" className="bg-bone/30">
             <h4 className="font-medium text-sm mb-2">Recipients Preview</h4>
@@ -250,8 +291,8 @@ function SendSection({ onSent }: { onSent: () => void }) {
               ))}</div>
             ) : undefined} />
         )}
-        <Button type="primary" danger={isEmergency} onClick={handleSend} disabled={!subject} loading={sending}>
-          {isCheckin ? "Send Check-In" : isEmergency ? "Send Emergency Alert" : "Send Alert"}
+        <Button type="primary" danger={isEmergency && !isScheduled} onClick={handleSend} disabled={!subject || (isScheduled && !scheduledFor)} loading={sending}>
+          {isScheduled ? "Schedule Alert" : isCheckin ? "Send Check-In" : isEmergency ? "Send Emergency Alert" : "Send Alert"}
         </Button>
       </div>
     </Card>
@@ -1198,5 +1239,436 @@ function ScreenForm({ initial, onSave, onCancel }: { initial?: SignageScreen; on
         </Space>
       </form>
     </Card>
+  );
+}
+
+
+// ===========================================================================
+// Scheduled Alerts Section
+// ===========================================================================
+
+function ScheduledSection() {
+  const { modal, message } = App.useApp();
+  const [alerts, setAlerts] = useState<AlertLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setAlerts(await api.alerts.scheduled.list()); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  function handleCancel(a: AlertLogEntry) {
+    modal.confirm({
+      title: "Cancel scheduled alert?",
+      content: `"${a.subject}" scheduled for ${new Date(a.scheduled_for!).toLocaleString()}`,
+      okText: "Cancel Alert", okButtonProps: { danger: true },
+      onOk: async () => {
+        try { await api.alerts.scheduled.cancel(a.id); message.success("Scheduled alert cancelled"); load(); }
+        catch { message.error("Failed to cancel"); }
+      },
+    });
+  }
+
+  const RECURRENCE_LABELS: Record<string, string> = {
+    daily: "Daily", weekly: "Weekly", biweekly: "Biweekly",
+    monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly",
+  };
+
+  const columns: ColumnsType<AlertLogEntry> = [
+    { title: "Subject", dataIndex: "subject", key: "subject" },
+    { title: "Category", dataIndex: "category", key: "category",
+      render: (c: string) => { const ci = CATEGORIES.find(cat => cat.id === c); return <Tag color={ci?.color}>{ci?.label ?? c}</Tag>; }
+    },
+    { title: "Scheduled For", dataIndex: "scheduled_for", key: "scheduled_for",
+      render: (v: string) => v ? new Date(v).toLocaleString() : "—",
+    },
+    { title: "Repeat", dataIndex: "recurrence_rule", key: "recurrence_rule",
+      render: (v: string | null) => v ? <Tag color="blue">{RECURRENCE_LABELS[v] ?? v}</Tag> : "—",
+    },
+    { title: "Created By", dataIndex: "sent_by", key: "sent_by" },
+    { title: "", key: "actions", render: (_: unknown, record: AlertLogEntry) => (
+      <Button type="link" danger size="small" onClick={() => handleCancel(record)}>Cancel</Button>
+    )},
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Scheduled & Recurring Alerts</h3>
+        <Button onClick={load}>Refresh</Button>
+      </div>
+      <Table dataSource={alerts} columns={columns} rowKey="id" loading={loading} pagination={false}
+        locale={{ emptyText: <Empty description="No scheduled alerts" /> }} />
+    </div>
+  );
+}
+
+
+// ===========================================================================
+// Analytics Section
+// ===========================================================================
+
+function AnalyticsSection() {
+  const { message } = App.useApp();
+  const [dashboard, setDashboard] = useState<AlertAnalyticsDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(90);
+  const [afterAction, setAfterAction] = useState<AfterActionReport | null>(null);
+  const [aaModalOpen, setAaModalOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setDashboard(await api.alerts.analytics.dashboard(days)); } finally { setLoading(false); }
+  }, [days]);
+  useEffect(() => { load(); }, [load]);
+
+  async function showAfterAction(alertId: string) {
+    try {
+      const report = await api.alerts.analytics.afterAction(alertId);
+      setAfterAction(report);
+      setAaModalOpen(true);
+    } catch { message.error("Failed to load report"); }
+  }
+
+  if (loading) return <Spin className="w-full flex justify-center py-12" />;
+  if (!dashboard) return <Empty description="No analytics data" />;
+
+  const { summary, channel_stats, recent_response_rates } = dashboard;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Alert Analytics</h3>
+        <Select value={days} onChange={setDays} style={{ width: 140 }}
+          options={[
+            { label: "Last 30 days", value: 30 },
+            { label: "Last 90 days", value: 90 },
+            { label: "Last 180 days", value: 180 },
+            { label: "Last year", value: 365 },
+          ]} />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card size="small"><Statistic title="Total Alerts" value={summary.total_alerts} /></Card>
+        <Card size="small"><Statistic title="Emails Sent" value={summary.total_emails} /></Card>
+        <Card size="small"><Statistic title="SMS Sent" value={summary.total_sms} /></Card>
+        <Card size="small"><Statistic title="Avg Channels/Alert" value={summary.avg_channels_per_alert} precision={1} /></Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card title="Alerts by Category" size="small">
+          {Object.keys(summary.by_category).length === 0
+            ? <Empty description="No data" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            : <div className="space-y-2">
+                {Object.entries(summary.by_category).map(([cat, count]) => {
+                  const ci = CATEGORIES.find(c => c.id === cat);
+                  const pct = summary.total_alerts > 0 ? Math.round(count / summary.total_alerts * 100) : 0;
+                  return (
+                    <div key={cat} className="flex items-center gap-3">
+                      <Tag color={ci?.color}>{ci?.label ?? cat}</Tag>
+                      <Progress percent={pct} size="small" className="flex-1" format={() => `${count}`} />
+                    </div>
+                  );
+                })}
+              </div>}
+        </Card>
+
+        <Card title="Channel Delivery" size="small">
+          {channel_stats.length === 0
+            ? <Empty description="No channel data" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            : <div className="space-y-2">
+                {channel_stats.map(cs => (
+                  <div key={cs.channel} className="flex items-center gap-3">
+                    <span className="text-xs font-medium w-20 capitalize">{cs.channel}</span>
+                    <Progress percent={Math.round(cs.success_rate)} size="small" className="flex-1"
+                      status={cs.success_rate >= 95 ? "success" : cs.success_rate >= 80 ? "normal" : "exception"} />
+                    <span className="text-xs text-ink-mute">{cs.total_sent} sent</span>
+                  </div>
+                ))}
+              </div>}
+        </Card>
+      </div>
+
+      {summary.by_month.length > 0 && (
+        <Card title="Monthly Trend" size="small">
+          <div className="overflow-x-auto">
+            <div className="flex gap-2 items-end min-w-[400px]" style={{ height: 120 }}>
+              {summary.by_month.map(m => {
+                const maxCount = Math.max(...summary.by_month.map(x => x.count), 1);
+                const h = Math.max((m.count / maxCount) * 100, 4);
+                return (
+                  <div key={m.month} className="flex flex-col items-center flex-1">
+                    <span className="text-xs font-medium mb-1">{m.count}</span>
+                    <div className="w-full bg-blue-500 rounded-t" style={{ height: `${h}px` }} />
+                    <span className="text-[10px] text-ink-mute mt-1">{m.month.slice(5)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {recent_response_rates.length > 0 && (
+        <Card title="Response Rates" size="small">
+          <Table dataSource={recent_response_rates} rowKey="alert_id" pagination={false} size="small"
+            columns={[
+              { title: "Alert", dataIndex: "subject", key: "subject", ellipsis: true },
+              { title: "Category", dataIndex: "category", key: "category",
+                render: (c: string) => { const ci = CATEGORIES.find(cat => cat.id === c); return <Tag color={ci?.color}>{ci?.label ?? c}</Tag>; }
+              },
+              { title: "Responses", key: "responses",
+                render: (_: unknown, r: typeof recent_response_rates[0]) => `${r.total_responses} / ${r.total_subscribers}`,
+              },
+              { title: "Rate", dataIndex: "response_rate", key: "rate",
+                render: (v: number) => <Progress type="circle" percent={Math.round(v)} size={32} />,
+              },
+              { title: "Safe / Help", key: "checkin",
+                render: (_: unknown, r: typeof recent_response_rates[0]) =>
+                  r.checkin_safe || r.checkin_help
+                    ? <span className="text-xs"><span className="text-green-600">{r.checkin_safe} safe</span> / <span className="text-red-600">{r.checkin_help} help</span></span>
+                    : "—",
+              },
+              { title: "Sent", dataIndex: "sent_at", key: "sent_at",
+                render: (v: string) => new Date(v).toLocaleDateString(),
+              },
+              { title: "", key: "report",
+                render: (_: unknown, r: typeof recent_response_rates[0]) => (
+                  <Button type="link" size="small" onClick={() => showAfterAction(r.alert_id)}>After-Action</Button>
+                ),
+              },
+            ]} />
+        </Card>
+      )}
+
+      <Modal title="After-Action Report" open={aaModalOpen} onCancel={() => setAaModalOpen(false)} footer={null} width={700}>
+        {afterAction && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div><span className="text-xs text-ink-mute">Subject</span><p className="font-medium">{afterAction.subject}</p></div>
+              <div><span className="text-xs text-ink-mute">Category</span><p><Tag color={CATEGORIES.find(c => c.id === afterAction.category)?.color}>{afterAction.category}</Tag></p></div>
+              <div><span className="text-xs text-ink-mute">Sent By</span><p>{afterAction.sent_by}</p></div>
+              <div><span className="text-xs text-ink-mute">Sent At</span><p>{new Date(afterAction.sent_at).toLocaleString()}</p></div>
+              {afterAction.cleared_at && (
+                <div><span className="text-xs text-ink-mute">Cleared At</span><p>{new Date(afterAction.cleared_at).toLocaleString()}</p></div>
+              )}
+            </div>
+
+            <Card size="small" title="Response Summary">
+              <div className="grid grid-cols-3 gap-4">
+                <Statistic title="Total Subscribers" value={afterAction.total_subscribers} />
+                <Statistic title="Total Responses" value={afterAction.total_responses} />
+                <Statistic title="Response Rate" value={afterAction.response_rate} suffix="%" precision={1} />
+              </div>
+            </Card>
+
+            {Object.keys(afterAction.response_breakdown).length > 0 && (
+              <Card size="small" title="Response Breakdown">
+                <div className="flex gap-4 flex-wrap">
+                  {Object.entries(afterAction.response_breakdown).map(([resp, count]) => (
+                    <Tag key={resp} color={resp === "SAFE" ? "green" : resp === "HELP" ? "red" : "default"}>
+                      {resp}: {count}
+                    </Tag>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {afterAction.channel_results && (
+              <Card size="small" title="Channel Results">
+                <div className="space-y-1">
+                  {Object.entries(afterAction.channel_results).map(([ch, r]) => (
+                    <div key={ch} className="flex items-center gap-3 text-sm">
+                      <span className="font-medium capitalize w-24">{ch}</span>
+                      <span className="text-green-600">{r.sent} sent</span>
+                      {r.failed > 0 && <span className="text-red-600">{r.failed} failed</span>}
+                      {r.error && <span className="text-ink-mute text-xs">({r.error})</span>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {afterAction.timeline.length > 0 && (
+              <Card size="small" title={`Response Timeline (${afterAction.timeline.length})`}>
+                <div className="max-h-60 overflow-y-auto space-y-1">
+                  {afterAction.timeline.map((entry, i) => (
+                    <div key={i} className="flex gap-3 text-xs">
+                      <span className="text-ink-mute w-36">{new Date(entry.time).toLocaleString()}</span>
+                      <span className="w-28 font-mono">{entry.phone}</span>
+                      <Tag>{entry.response}</Tag>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+
+// ===========================================================================
+// Weather Auto-Triggers Section
+// ===========================================================================
+
+function WeatherSection() {
+  const { message } = App.useApp();
+  const [config, setConfig] = useState<WeatherAlertConfig | null>(null);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cfg, r] = await Promise.all([
+        api.alerts.weather.config(),
+        api.alerts.weather.recent(),
+      ]);
+      setConfig(cfg);
+      setRecent(r.seen_events);
+    } catch {
+      message.error("Failed to load weather config");
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <Spin className="w-full flex justify-center py-12" />;
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold">NWS Weather Auto-Triggers</h3>
+
+      <Card size="small">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <span className="text-xs text-ink-mute">Status</span>
+            <p><Tag color={config?.enabled ? "green" : "default"}>{config?.enabled ? "Active" : "Disabled"}</Tag></p>
+          </div>
+          <div>
+            <span className="text-xs text-ink-mute">Zone ID</span>
+            <p className="font-mono text-sm">{config?.zone_id}</p>
+          </div>
+          <div>
+            <span className="text-xs text-ink-mute">Poll Interval</span>
+            <p>{config?.poll_interval_seconds}s</p>
+          </div>
+        </div>
+        <p className="text-xs text-ink-mute mt-3">
+          Configure via environment variables: QUARRY_NWS_ALERTS_ENABLED, QUARRY_NWS_ZONE_ID, QUARRY_NWS_POLL_INTERVAL_SECONDS
+        </p>
+      </Card>
+
+      <Card title="Event Mappings" size="small">
+        {config?.event_mappings.length === 0
+          ? <Empty description="No event mappings configured" />
+          : (
+            <Table dataSource={config?.event_mappings ?? []} rowKey="event" pagination={false} size="small"
+              columns={[
+                { title: "Weather Event", dataIndex: "event", key: "event" },
+                { title: "Category", dataIndex: "category", key: "category",
+                  render: (c: string) => { const ci = CATEGORIES.find(cat => cat.id === c); return <Tag color={ci?.color}>{ci?.label ?? c}</Tag>; }
+                },
+                { title: "Auto-Send", dataIndex: "auto_send", key: "auto_send",
+                  render: (v: boolean) => <Tag color={v ? "green" : "default"}>{v ? "Yes" : "Manual"}</Tag>,
+                },
+              ]} />
+          )}
+      </Card>
+
+      <Card title={`Recent Events (${recent.length} seen this session)`} size="small">
+        {recent.length === 0
+          ? <Empty description="No weather events seen since server start" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          : (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {recent.map((id, i) => <div key={i} className="text-xs font-mono text-ink-mute">{id}</div>)}
+            </div>
+          )}
+      </Card>
+    </div>
+  );
+}
+
+
+// ===========================================================================
+// SIS Subscriber Sync Section
+// ===========================================================================
+
+function SisSyncSection() {
+  const { message } = App.useApp();
+  const [config, setConfig] = useState<SisSubscriberSyncConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setConfig(await api.alerts.sisSync.status()); }
+    catch { message.error("Failed to load SIS sync status"); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const result = await api.alerts.sisSync.trigger();
+      setConfig(result);
+      message.success(`SIS sync complete: ${result.total_synced} records`);
+    } catch (err: any) {
+      message.error(`Sync failed: ${err.message}`);
+    } finally { setSyncing(false); }
+  }
+
+  if (loading) return <Spin className="w-full flex justify-center py-12" />;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">SIS / Colleague Subscriber Sync</h3>
+        <Button type="primary" onClick={handleSync} loading={syncing} disabled={!config?.enabled}>
+          Sync Now
+        </Button>
+      </div>
+
+      <Card size="small">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <span className="text-xs text-ink-mute">Status</span>
+            <p><Tag color={config?.enabled ? "green" : "default"}>{config?.enabled ? "Enabled" : "Disabled"}</Tag></p>
+          </div>
+          <div>
+            <span className="text-xs text-ink-mute">Sync URL</span>
+            <p className="font-mono text-xs truncate">{config?.sync_url || "Not configured"}</p>
+          </div>
+          <div>
+            <span className="text-xs text-ink-mute">Last Sync</span>
+            <p className="text-sm">{config?.last_sync_at ? new Date(config.last_sync_at).toLocaleString() : "Never"}</p>
+          </div>
+          <div>
+            <span className="text-xs text-ink-mute">Records Synced</span>
+            <p className="text-sm font-medium">{config?.total_synced ?? 0}</p>
+          </div>
+        </div>
+        <p className="text-xs text-ink-mute mt-4">
+          Configure via environment variables: QUARRY_SIS_SUBSCRIBER_SYNC_ENABLED, QUARRY_SIS_SUBSCRIBER_SYNC_URL, QUARRY_SIS_SUBSCRIBER_SYNC_KEY
+        </p>
+      </Card>
+
+      <Alert type="info" showIcon
+        message="How SIS Sync Works"
+        description={
+          <ul className="text-xs list-disc ml-4 mt-1 space-y-1">
+            <li>Pulls student and staff directory from the configured SIS API endpoint</li>
+            <li>Creates or updates alert subscribers with email, phone, and name</li>
+            <li>Auto-assigns subscribers to groups based on role (Students, Faculty & Staff, etc.)</li>
+            <li>Handles classification-based groups (First Year, Sophomore, Junior, Senior)</li>
+            <li>Distinguishes Residential vs Commuter students when SIS provides that data</li>
+          </ul>
+        }
+      />
+    </div>
   );
 }

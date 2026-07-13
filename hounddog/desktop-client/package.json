@@ -1,0 +1,40 @@
+{
+  "name": "quarry-desktop-alerts",
+  "version": "1.0.0",
+  "description": "Quarry HoundDog Desktop Alert Client — system tray app for campus emergency notifications",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "edu.moravian.quarry.alerts",
+    "productName": "Quarry Alerts",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "eventsource": "^2.0.2"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  }
+}

@@ -253,6 +253,8 @@ export interface AlertLogEntry {
   response_options: string[] | null;
   is_checkin: boolean;
   target_group_ids: string[] | null;
+  scheduled_for: string | null;
+  recurrence_rule: string | null;
   sent_at: string;
 }
 
@@ -358,6 +360,69 @@ export interface RunningScenario {
   total_steps: number;
   started_at: string;
   started_by: string;
+}
+
+export interface AlertDeliverySummary {
+  total_alerts: number;
+  total_emails: number;
+  total_sms: number;
+  avg_channels_per_alert: number;
+  by_category: Record<string, number>;
+  by_month: { month: string; count: number; emails: number; sms: number }[];
+}
+
+export interface ChannelDeliveryStats {
+  channel: string;
+  total_sent: number;
+  total_failed: number;
+  success_rate: number;
+}
+
+export interface ResponseRateStats {
+  alert_id: string;
+  subject: string;
+  category: string;
+  total_subscribers: number;
+  total_responses: number;
+  response_rate: number;
+  checkin_safe: number;
+  checkin_help: number;
+  sent_at: string;
+}
+
+export interface AlertAnalyticsDashboard {
+  summary: AlertDeliverySummary;
+  channel_stats: ChannelDeliveryStats[];
+  recent_response_rates: ResponseRateStats[];
+}
+
+export interface AfterActionReport {
+  alert_id: string;
+  subject: string;
+  category: string;
+  sent_by: string;
+  sent_at: string;
+  cleared_at: string | null;
+  channel_results: Record<string, { sent: number; failed: number; error?: string | null }> | null;
+  total_subscribers: number;
+  total_responses: number;
+  response_rate: number;
+  response_breakdown: Record<string, number>;
+  timeline: { time: string; phone: string; response: string; channel: string }[];
+}
+
+export interface WeatherAlertConfig {
+  enabled: boolean;
+  zone_id: string;
+  poll_interval_seconds: number;
+  event_mappings: { event: string; category: string; auto_send: boolean; template_id?: string }[];
+}
+
+export interface SisSubscriberSyncConfig {
+  enabled: boolean;
+  sync_url: string;
+  last_sync_at: string | null;
+  total_synced: number;
 }
 
 export interface SignageScreen {
@@ -583,6 +648,8 @@ export const api = {
       response_options?: string[] | null;
       group_ids?: string[] | null;
       is_checkin?: boolean;
+      scheduled_for?: string | null;
+      recurrence_rule?: string | null;
     }) =>
       request<AlertSendResult>("/alerts/send", { method: "POST", body: JSON.stringify(data) }),
     clear: (alertId: string) =>
@@ -708,6 +775,27 @@ export const api = {
         }
         return res.json() as Promise<{ message: string; subscriber_id: string }>;
       }),
+    scheduled: {
+      list: () => request<AlertLogEntry[]>("/alerts/scheduled"),
+      cancel: (id: string) =>
+        request<void>(`/alerts/scheduled/${id}`, { method: "DELETE" }),
+    },
+    analytics: {
+      dashboard: (days?: number) => {
+        const qs = days ? `?days=${days}` : "";
+        return request<AlertAnalyticsDashboard>(`/alerts/analytics${qs}`);
+      },
+      afterAction: (alertId: string) =>
+        request<AfterActionReport>(`/alerts/analytics/after-action/${alertId}`),
+    },
+    weather: {
+      config: () => request<WeatherAlertConfig>("/alerts/weather/config"),
+      recent: () => request<{ seen_events: string[] }>("/alerts/weather/recent"),
+    },
+    sisSync: {
+      status: () => request<SisSubscriberSyncConfig>("/alerts/sis-sync/status"),
+      trigger: () => request<SisSubscriberSyncConfig>("/alerts/sis-sync/trigger", { method: "POST" }),
+    },
   },
   signage: {
     screens: {

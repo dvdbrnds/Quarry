@@ -302,6 +302,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS is_checkin BOOLEAN DEFAULT false",
             "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS target_group_ids JSONB",
             "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMPTZ",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS recurrence_rule VARCHAR(256)",
             # Omnilert replacement: subscriber groups
             """CREATE TABLE IF NOT EXISTS subscriber_groups (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -636,6 +637,9 @@ async def lifespan(app: FastAPI):
 
     from .services.closure_scheduler import start_scheduler, stop_scheduler
     start_scheduler()
+
+    from .services.weather_monitor import start_weather_monitor, stop_weather_monitor
+    start_weather_monitor()
 
     yield
 
