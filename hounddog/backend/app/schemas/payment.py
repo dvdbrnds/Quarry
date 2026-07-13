@@ -64,6 +64,7 @@ class TicketLookup(BaseModel):
     issued_at: datetime
     ticket_category: str = "parking"
     vehicle_description: str | None = None
+    is_commuter_lot: bool = False
 
 
 class TicketLookupList(BaseModel):

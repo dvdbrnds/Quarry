@@ -5,6 +5,7 @@ interface TicketResult {
   id: string; plate: string; lot: string; violation_type: string;
   fine_amount: string; status: string; issued_at: string;
   ticket_category: string; vehicle_description: string | null;
+  is_commuter_lot: boolean;
 }
 
 interface AvailablePermit {
@@ -125,7 +126,7 @@ export default function Pay() {
               </Button>
               <Space className="w-full">
                 <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
-                <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Commuter Permit</Button>
+                {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Commuter Permit</Button>}
               </Space>
             </Space>
           </Card>

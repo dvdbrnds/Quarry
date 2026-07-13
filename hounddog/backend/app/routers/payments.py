@@ -16,6 +16,7 @@ from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
+from ..models.lot import ParkingLot
 from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -67,6 +68,30 @@ def _revenue_gl(is_permit: bool) -> str:
 # --- Public Endpoints (no auth, student-facing) ---
 
 
+async def _check_commuter_lot(lot_name: str, db: AsyncSession) -> bool:
+    """Return True if the lot name corresponds to a commuter lot or street."""
+    if not lot_name:
+        return False
+    lot_result = await db.execute(
+        select(ParkingLot).where(func.lower(ParkingLot.name) == lot_name.lower())
+    )
+    lot = lot_result.scalar()
+    if not lot:
+        return False
+    return lot.designation_code in COMMUTER_DESIGNATION_CODES or lot.lot_type == "street"
+
+
+async def _ticket_to_lookup(ticket: Ticket, db: AsyncSession) -> dict:
+    """Convert a Ticket ORM object to a TicketLookup-compatible dict."""
+    data = {
+        c.key: getattr(ticket, c.key)
+        for c in Ticket.__table__.columns
+        if c.key in TicketLookup.model_fields
+    }
+    data["is_commuter_lot"] = await _check_commuter_lot(ticket.lot, db)
+    return data
+
+
 @router.get("/lookup", response_model=TicketLookupList)
 async def lookup_by_plate(
     plate: str,
@@ -86,7 +111,9 @@ async def lookup_by_plate(
         .order_by(Ticket.issued_at.desc())
         .limit(20)
     )
-    return TicketLookupList(tickets=result.scalars().all())
+    tickets = result.scalars().all()
+    lookups = [await _ticket_to_lookup(t, db) for t in tickets]
+    return TicketLookupList(tickets=lookups)
 
 
 @router.get("/lookup/{ticket_id}", response_model=TicketLookup)
@@ -98,7 +125,7 @@ async def lookup_by_id(
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    return ticket
+    return await _ticket_to_lookup(ticket, db)
 
 
 @router.post("/checkout", response_model=CheckoutResponse)
@@ -220,20 +247,45 @@ async def dispute_ticket(
     )
 
 
+COMMUTER_DESIGNATION_CODES = {"C", "PC", "FSC"}
+
+
 @router.get("/permits/available", response_model=AvailablePermitsResponse)
 async def available_permits(
     ticket_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public endpoint — check which permit types are available for purchase."""
-    # Get enforcement settings for fine reduction amount
+    """Public endpoint — check which permit types are available for purchase.
+
+    Only returns commuter permits, and only when the ticket was issued in a
+    commuter-eligible lot (designation C, PC, FSC) or on a street.
+    """
     es_result = await db.execute(
         select(EnforcementSettings).where(EnforcementSettings.id == 1)
     )
     es = es_result.scalar()
     fine_reduction = es.permit_fine_reduction if es else Decimal("0.00")
 
-    # Get purchasable permit types (exclude lottery types — those go through /student/permits)
+    if ticket_id:
+        ticket = await db.get(Ticket, ticket_id)
+        if ticket and ticket.lot:
+            lot_result = await db.execute(
+                select(ParkingLot).where(
+                    func.lower(ParkingLot.name) == ticket.lot.lower()
+                )
+            )
+            lot = lot_result.scalar()
+            if lot:
+                is_commuter_lot = (
+                    lot.designation_code in COMMUTER_DESIGNATION_CODES
+                    or lot.lot_type == "street"
+                )
+                if not is_commuter_lot:
+                    return AvailablePermitsResponse(
+                        permit_types=[],
+                        ticket_fine_after_purchase=fine_reduction,
+                    )
+
     result = await db.execute(
         select(PermitType).where(
             PermitType.is_active.is_(True),
