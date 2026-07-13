@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, Coordinate, Lot, LotZone, ParkingSpot } from "../api";
-import { authHeaders, loadConfig } from "../auth";
+import { loadConfig } from "../auth";
 import LotMap from "../components/LotMap";
 import {
-  Button, Input, InputNumber, Select, Checkbox, Modal, Form, DatePicker, Tag, Space, App, Card, Empty, Segmented, Table, Popconfirm, Spin,
+  Button, Input, InputNumber, Select, Checkbox, Modal, Form, DatePicker, Tag, Space, App, Empty, Segmented, Spin,
 } from "antd";
 import dayjs from "dayjs";
 
@@ -668,7 +668,6 @@ export default function Lots() {
                       onStartBatch={startBatchPlacing} onStopBatch={() => { setBatchPlacing(false); setPlacingSpot(false); }}
                       spotsVisible={spotsVisible} onToggleVisible={() => setSpotsVisible(v => !v)} />
                   )}
-                  {lot.lot_type === "street" && <ResidentPlatesPanel streetId={lot.id} />}
                 </>
               )}
             </div>
@@ -714,98 +713,3 @@ export default function Lots() {
   );
 }
 
-interface ResidentPlate {
-  id: string;
-  plate: string;
-  plate_state: string;
-  street_id: string | null;
-  notes: string | null;
-  added_by: string;
-  created_at: string;
-}
-
-function ResidentPlatesPanel({ streetId }: { streetId: string }) {
-  const { message } = App.useApp();
-  const [plates, setPlates] = useState<ResidentPlate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
-  const [newPlate, setNewPlate] = useState("");
-  const [newState, setNewState] = useState("");
-  const [newNotes, setNewNotes] = useState("");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/resident-plates?street_id=${streetId}`, { headers: await authHeaders() });
-      if (res.ok) setPlates(await res.json());
-    } finally { setLoading(false); }
-  }, [streetId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function handleAdd() {
-    if (!newPlate.trim()) return;
-    setAdding(true);
-    try {
-      const res = await fetch("/api/resident-plates", {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify({ plate: newPlate.trim(), plate_state: newState.trim(), street_id: streetId, notes: newNotes.trim() || null }),
-      });
-      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
-      message.success("Resident plate tagged");
-      setNewPlate(""); setNewState(""); setNewNotes("");
-      load();
-    } catch (e: any) { message.error(e.message); } finally { setAdding(false); }
-  }
-
-  async function handleRemove(id: string) {
-    try {
-      await fetch(`/api/resident-plates/${id}`, { method: "DELETE", headers: await authHeaders() });
-      message.success("Removed");
-      load();
-    } catch { message.error("Failed to remove"); }
-  }
-
-  return (
-    <div className="p-4 border-t border-gray-200 bg-blue-50/30">
-      <h4 className="text-sm font-semibold text-navy mb-3 flex items-center gap-2">
-        Local Residents
-        <Tag color="blue" className="!text-[10px]">{plates.length}</Tag>
-      </h4>
-
-      <div className="flex gap-2 mb-3">
-        <Input value={newPlate} onChange={e => setNewPlate(e.target.value.toUpperCase())}
-          placeholder="Plate #" size="small" className="font-mono" style={{ width: 110 }}
-          onPressEnter={handleAdd} />
-        <Input value={newState} onChange={e => setNewState(e.target.value.toUpperCase())}
-          placeholder="ST" size="small" maxLength={2} className="font-mono" style={{ width: 50 }} />
-        <Input value={newNotes} onChange={e => setNewNotes(e.target.value)}
-          placeholder="Notes (optional)" size="small" className="flex-1" />
-        <Button type="primary" size="small" onClick={handleAdd} loading={adding}>Add</Button>
-      </div>
-
-      {loading ? <Spin size="small" /> : plates.length === 0 ? (
-        <p className="text-xs text-ink-mute">No resident plates tagged for this street yet.</p>
-      ) : (
-        <Table<ResidentPlate> dataSource={plates} rowKey="id" size="small" pagination={false}
-          columns={[
-            { title: "Plate", key: "plate", width: 100, render: (_, r) =>
-              <span className="font-mono text-xs">{r.plate}{r.plate_state ? ` (${r.plate_state})` : ""}</span>
-            },
-            { title: "Notes", dataIndex: "notes", key: "notes", render: v => v || "—", ellipsis: true },
-            { title: "Added By", dataIndex: "added_by", key: "added_by", width: 160, render: v => <span className="text-xs">{v}</span> },
-            { title: "Date", dataIndex: "created_at", key: "date", width: 100, render: v =>
-              <span className="text-xs">{new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-            },
-            { title: "", key: "actions", width: 60, render: (_, r) =>
-              <Popconfirm title="Remove this plate?" onConfirm={() => handleRemove(r.id)} okText="Remove" okButtonProps={{ danger: true }}>
-                <Button type="text" size="small" danger>Remove</Button>
-              </Popconfirm>
-            },
-          ]}
-        />
-      )}
-    </div>
-  );
-}
