@@ -6,6 +6,7 @@ block others.
 
 import asyncio
 import logging
+import uuid as _uuid
 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,10 +18,35 @@ from .channels import ChannelResult, get_registry
 logger = logging.getLogger("quarry.dispatcher")
 
 
-async def _get_subscribers(alert: AlertLog, db: AsyncSession) -> list:
+async def _get_subscribers(
+    alert: AlertLog,
+    db: AsyncSession,
+    group_ids: list[_uuid.UUID] | None = None,
+) -> list:
     is_emergency = alert.category == "emergency"
 
-    if is_emergency:
+    if group_ids:
+        from ..models.subscriber_group import subscriber_group_members
+        q = (
+            select(AlertSubscriber)
+            .join(
+                subscriber_group_members,
+                AlertSubscriber.id == subscriber_group_members.c.subscriber_id,
+            )
+            .where(
+                subscriber_group_members.c.group_id.in_(group_ids),
+                or_(
+                    AlertSubscriber.email.isnot(None),
+                    AlertSubscriber.phone.isnot(None),
+                ),
+            )
+        )
+        if not is_emergency:
+            q = q.where(
+                AlertSubscriber.categories.op("@>")(f'["{alert.category}"]'),
+            )
+        q = q.distinct()
+    elif is_emergency:
         q = select(AlertSubscriber).where(
             or_(
                 AlertSubscriber.email.isnot(None),
@@ -45,6 +71,7 @@ async def dispatch_alert(
     db: AsyncSession,
     channels: list[str] | None = None,
     test_subscribers: list | None = None,
+    group_ids: list[_uuid.UUID] | None = None,
 ) -> dict[str, dict]:
     """
     Fan out an alert to all configured channels.
@@ -55,6 +82,7 @@ async def dispatch_alert(
         channels: optional list of channel names to limit delivery to
         test_subscribers: if provided, use these instead of querying
             the subscriber table (for isolated test sends)
+        group_ids: optional list of subscriber group UUIDs to filter recipients
 
     Returns:
         dict of channel_name -> {sent, failed, error}
@@ -63,7 +91,11 @@ async def dispatch_alert(
     if not alert:
         raise ValueError(f"Alert {alert_id} not found")
 
-    subscribers = test_subscribers if test_subscribers is not None else await _get_subscribers(alert, db)
+    if test_subscribers is not None:
+        subscribers = test_subscribers
+    else:
+        subscribers = await _get_subscribers(alert, db, group_ids=group_ids)
+
     registry = get_registry()
 
     eligible = [

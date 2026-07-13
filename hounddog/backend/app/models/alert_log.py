@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Integer, Text, func, JSON
+from sqlalchemy import String, DateTime, Integer, Text, Boolean, func, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,4 +23,8 @@ class AlertLog(Base):
     cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cleared_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
     channel_results: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    response_options: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    is_checkin: Mapped[bool] = mapped_column(Boolean, default=False)
+    target_group_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -250,6 +250,9 @@ export interface AlertLogEntry {
   cleared_at: string | null;
   cleared_by: string | null;
   channel_results: Record<string, { sent: number; failed: number; error?: string | null }> | null;
+  response_options: string[] | null;
+  is_checkin: boolean;
+  target_group_ids: string[] | null;
   sent_at: string;
 }
 
@@ -275,6 +278,86 @@ export interface AlertTestSendResult {
   failed: number;
   error: string | null;
   status: string;
+}
+
+export interface AlertTemplate {
+  id: string;
+  name: string;
+  category: string;
+  subject: string;
+  body_text: string;
+  body_sms: string;
+  created_by: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertResponseEntry {
+  id: string;
+  alert_id: string;
+  subscriber_id: string | null;
+  phone: string | null;
+  channel: string;
+  response_text: string;
+  received_at: string;
+}
+
+export interface AlertResponseSummary {
+  alert_id: string;
+  total_sent: number;
+  total_responses: number;
+  response_counts: Record<string, number>;
+  non_responder_count: number;
+  first_response_at: string | null;
+  last_response_at: string | null;
+}
+
+export interface CheckInStatus {
+  alert_id: string;
+  total_subscribers: number;
+  responded_safe: number;
+  responded_help: number;
+  no_response: number;
+  help_details: AlertResponseEntry[];
+}
+
+export interface SubscriberGroup {
+  id: string;
+  name: string;
+  description: string;
+  group_type: string;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertScenario {
+  id: string;
+  name: string;
+  description: string;
+  steps: ScenarioStep[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScenarioStep {
+  action: "send_alert" | "wait" | "clear_previous";
+  template_id?: string;
+  group_ids?: string[];
+  channels?: string[];
+  delay_seconds?: number;
+}
+
+export interface RunningScenario {
+  task_id: string;
+  scenario_id: string;
+  scenario_name: string;
+  current_step: number;
+  total_steps: number;
+  started_at: string;
+  started_by: string;
 }
 
 export interface SignageScreen {
@@ -497,6 +580,9 @@ export const api = {
       body_sms?: string;
       send_email?: boolean;
       send_sms?: boolean;
+      response_options?: string[] | null;
+      group_ids?: string[] | null;
+      is_checkin?: boolean;
     }) =>
       request<AlertSendResult>("/alerts/send", { method: "POST", body: JSON.stringify(data) }),
     clear: (alertId: string) =>
@@ -528,6 +614,62 @@ export const api = {
       if (params?.offset) qs.set("offset", String(params.offset));
       if (params?.include_tests) qs.set("include_tests", "true");
       return request<AlertLogEntry[]>(`/alerts/history?${qs}`);
+    },
+    templates: {
+      list: (category?: string) => {
+        const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+        return request<AlertTemplate[]>(`/alerts/templates${qs}`);
+      },
+      get: (id: string) => request<AlertTemplate>(`/alerts/templates/${id}`),
+      create: (data: Partial<AlertTemplate>) =>
+        request<AlertTemplate>("/alerts/templates", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<AlertTemplate>) =>
+        request<AlertTemplate>(`/alerts/templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request<void>(`/alerts/templates/${id}`, { method: "DELETE" }),
+    },
+    responses: {
+      summary: (alertId: string) =>
+        request<AlertResponseSummary>(`/alerts/${alertId}/responses`),
+      detail: (alertId: string) =>
+        request<AlertResponseEntry[]>(`/alerts/${alertId}/responses/detail`),
+      nonResponders: (alertId: string) =>
+        request<AlertSubscriber[]>(`/alerts/${alertId}/non-responders`),
+      checkinStatus: (alertId: string) =>
+        request<CheckInStatus>(`/alerts/${alertId}/checkin-status`),
+      resendNonResponders: (alertId: string) =>
+        request<AlertSendResult>(`/alerts/${alertId}/resend-non-responders`, { method: "POST" }),
+    },
+    groups: {
+      list: () => request<SubscriberGroup[]>("/alerts/groups"),
+      get: (id: string) => request<SubscriberGroup>(`/alerts/groups/${id}`),
+      create: (data: { name: string; description?: string; group_type?: string }) =>
+        request<SubscriberGroup>("/alerts/groups", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<SubscriberGroup>) =>
+        request<SubscriberGroup>(`/alerts/groups/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request<void>(`/alerts/groups/${id}`, { method: "DELETE" }),
+      members: (id: string) =>
+        request<AlertSubscriber[]>(`/alerts/groups/${id}/members`),
+      addMembers: (id: string, subscriberIds: string[]) =>
+        request<{ added: number }>(`/alerts/groups/${id}/members`, { method: "POST", body: JSON.stringify({ subscriber_ids: subscriberIds }) }),
+      removeMembers: (id: string, subscriberIds: string[]) =>
+        request<{ removed: number }>(`/alerts/groups/${id}/members`, { method: "DELETE", body: JSON.stringify({ subscriber_ids: subscriberIds }) }),
+    },
+    scenarios: {
+      list: () => request<AlertScenario[]>("/alerts/scenarios"),
+      get: (id: string) => request<AlertScenario>(`/alerts/scenarios/${id}`),
+      create: (data: { name: string; description?: string; steps: ScenarioStep[] }) =>
+        request<AlertScenario>("/alerts/scenarios", { method: "POST", body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<AlertScenario>) =>
+        request<AlertScenario>(`/alerts/scenarios/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        request<void>(`/alerts/scenarios/${id}`, { method: "DELETE" }),
+      run: (id: string) =>
+        request<{ task_id: string }>(`/alerts/scenarios/${id}/run`, { method: "POST" }),
+      running: () => request<RunningScenario[]>("/alerts/scenarios/running"),
+      abort: (taskId: string) =>
+        request<void>(`/alerts/scenarios/running/${taskId}/abort`, { method: "POST" }),
     },
     subscribers: {
       list: (params?: { search?: string; category?: string }) => {

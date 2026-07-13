@@ -42,7 +42,8 @@ async def lifespan(app: FastAPI):
         Permit, PermitApplication, ParkingLot, Device, Ticket, Payment,
         ViolationType, PermitType, AcademicSeason, LotZone, EnforcementSettings,
         AuditLog, LotClosure, MessageTemplate, NotificationPreference,
-        AlertSubscriber, AlertLog, RenewalToken,
+        AlertSubscriber, AlertLog, AlertTemplate, AlertResponse, AlertScenario,
+        SubscriberGroup, subscriber_group_members, RenewalToken,
     )
     # Fail fast if secret_key was not overridden from the default
     if not settings.secret_key:
@@ -261,6 +262,61 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS lottery_seed VARCHAR(128)",
             "ALTER TABLE permit_applications ADD COLUMN IF NOT EXISTS admin_notes TEXT",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_freshmen BOOLEAN DEFAULT false",
+            # Omnilert replacement: alert templates
+            """CREATE TABLE IF NOT EXISTS alert_templates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(256) NOT NULL,
+                category VARCHAR(64) NOT NULL,
+                subject VARCHAR(512) NOT NULL,
+                body_text TEXT DEFAULT '',
+                body_sms VARCHAR(320) DEFAULT '',
+                created_by VARCHAR(256) NOT NULL,
+                is_default BOOLEAN DEFAULT false,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            # Omnilert replacement: two-way SMS responses
+            """CREATE TABLE IF NOT EXISTS alert_responses (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                alert_id UUID NOT NULL REFERENCES alert_log(id) ON DELETE CASCADE,
+                subscriber_id UUID REFERENCES alert_subscribers(id) ON DELETE SET NULL,
+                phone VARCHAR(32),
+                channel VARCHAR(32) DEFAULT 'sms',
+                response_text VARCHAR(320) DEFAULT '',
+                received_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_alert_responses_alert ON alert_responses(alert_id)",
+            "CREATE INDEX IF NOT EXISTS idx_alert_responses_subscriber ON alert_responses(subscriber_id)",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS response_options JSONB",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS is_checkin BOOLEAN DEFAULT false",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS target_group_ids JSONB",
+            "ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMPTZ",
+            # Omnilert replacement: subscriber groups
+            """CREATE TABLE IF NOT EXISTS subscriber_groups (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(256) NOT NULL,
+                description TEXT DEFAULT '',
+                group_type VARCHAR(64) DEFAULT 'custom',
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            """CREATE TABLE IF NOT EXISTS subscriber_group_members (
+                subscriber_id UUID NOT NULL REFERENCES alert_subscribers(id) ON DELETE CASCADE,
+                group_id UUID NOT NULL REFERENCES subscriber_groups(id) ON DELETE CASCADE,
+                PRIMARY KEY (subscriber_id, group_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_sgm_subscriber ON subscriber_group_members(subscriber_id)",
+            "CREATE INDEX IF NOT EXISTS idx_sgm_group ON subscriber_group_members(group_id)",
+            # Omnilert replacement: alert scenarios
+            """CREATE TABLE IF NOT EXISTS alert_scenarios (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(256) NOT NULL,
+                description TEXT DEFAULT '',
+                steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+                created_by VARCHAR(256),
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
@@ -503,6 +559,57 @@ async def lifespan(app: FastAPI):
                 logger.info("Seeded %d default message templates", len(default_templates))
     except Exception as e:
         logger.warning(f"Seed message templates on startup failed: {e}")
+
+    # Seed default alert templates if none exist
+    try:
+        from .models import AlertTemplate
+        async with async_session() as session:
+            at_count = await session.scalar(select(func.count()).select_from(AlertTemplate))
+            if at_count == 0:
+                default_alert_templates = [
+                    {"name": "Active Shooter", "category": "emergency", "subject": "ACTIVE SHOOTER — Seek shelter immediately", "body_text": "ACTIVE SHOOTER reported on campus. Run, Hide, Fight. Shelter in place immediately. Lock and barricade doors. Silence phones. Do not exit until all-clear is given by campus police.", "body_sms": "ACTIVE SHOOTER on campus. Run, Hide, Fight. Shelter in place NOW.", "is_default": True},
+                    {"name": "Tornado Warning", "category": "emergency", "subject": "TORNADO WARNING — Take shelter now", "body_text": "A TORNADO WARNING has been issued for the campus area. Take shelter immediately in the lowest interior room away from windows. Stay sheltered until the all-clear is given.", "body_sms": "TORNADO WARNING for campus. Take shelter in lowest interior room NOW.", "is_default": False},
+                    {"name": "Campus Lockdown", "category": "emergency", "subject": "CAMPUS LOCKDOWN — Shelter in place", "body_text": "Campus is under LOCKDOWN. Shelter in place immediately. Lock and barricade doors. Do not exit buildings until the all-clear is given by campus police.", "body_sms": "LOCKDOWN: Campus locked down. Shelter in place. Do not exit buildings.", "is_default": False},
+                    {"name": "Weather Closure", "category": "campus_closing", "subject": "Campus Closed — Severe Weather", "body_text": "Due to severe weather conditions, campus is closed effective immediately. All classes and campus activities are cancelled. Stay home and monitor for updates.", "body_sms": "Campus closed due to severe weather. All classes cancelled. Stay home.", "is_default": True},
+                    {"name": "Power Outage", "category": "general", "subject": "Power Outage Advisory", "body_text": "A power outage has been reported affecting campus buildings. Facilities is working to restore power. Updates will follow as more information becomes available.", "body_sms": "Power outage reported on campus. Updates to follow.", "is_default": False},
+                    {"name": "IT Outage", "category": "general", "subject": "IT Systems Outage", "body_text": "Campus IT systems are currently experiencing an outage. This may affect email, internet, and other campus services. IT is working to restore service. Updates will follow.", "body_sms": "IT systems are currently down. Updates to follow.", "is_default": True},
+                    {"name": "All-Clear", "category": "emergency", "subject": "ALL CLEAR — Resume normal activity", "body_text": "The emergency situation has been resolved. The ALL CLEAR has been given. You may resume normal activities. Thank you for your cooperation.", "body_sms": "ALL CLEAR: Emergency ended. Resume normal activity.", "is_default": False},
+                ]
+                for tmpl in default_alert_templates:
+                    session.add(AlertTemplate(**tmpl, created_by="system"))
+                await session.commit()
+                logger.info("Seeded %d default alert templates", len(default_alert_templates))
+    except Exception as e:
+        logger.warning(f"Seed alert templates on startup failed: {e}")
+
+    # Seed default subscriber groups if none exist
+    try:
+        from .models import SubscriberGroup
+        async with async_session() as session:
+            sg_count = await session.scalar(select(func.count()).select_from(SubscriberGroup))
+            if sg_count == 0:
+                default_groups = [
+                    {"name": "Monocacy Hall", "group_type": "building"},
+                    {"name": "Comenius Hall", "group_type": "building"},
+                    {"name": "HUB", "group_type": "building"},
+                    {"name": "Zinzendorf Hall", "group_type": "building"},
+                    {"name": "Colonial Hall", "group_type": "building"},
+                    {"name": "PPHAC", "group_type": "building"},
+                    {"name": "Sally", "group_type": "building"},
+                    {"name": "Steel Field", "group_type": "building"},
+                    {"name": "Breidegam Athletics", "group_type": "building"},
+                    {"name": "Main Street Offices", "group_type": "building"},
+                    {"name": "1742", "group_type": "building"},
+                    {"name": "Faculty", "group_type": "role"},
+                    {"name": "Staff", "group_type": "role"},
+                    {"name": "Students", "group_type": "role"},
+                ]
+                for grp in default_groups:
+                    session.add(SubscriberGroup(**grp))
+                await session.commit()
+                logger.info("Seeded %d default subscriber groups", len(default_groups))
+    except Exception as e:
+        logger.warning(f"Seed subscriber groups on startup failed: {e}")
 
     # Auto-expire permits on startup
     try:

@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api, ActiveAlert, AlertChannelInfo, AlertSubscriber, AlertSendPreview,
   AlertSendResult, AlertTestSendResult, AlertLogEntry, SignageScreen,
+  AlertTemplate, AlertResponseSummary, AlertResponseEntry, CheckInStatus,
+  SubscriberGroup, AlertScenario, ScenarioStep, RunningScenario,
 } from "../api";
 import {
   Tabs, Table, Button, Input, Select, Checkbox, Tag, Card, Form, Alert, Space, App, Spin, Empty, Modal, Segmented,
+  InputNumber, Progress, Statistic,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
@@ -36,6 +39,10 @@ const CHANNEL_ENV_HINTS: Record<string, string> = {
   signage: "Always on", banner: "Always on", teams: "QUARRY_TEAMS_WEBHOOK_URL",
   extron: "QUARRY_EXTRON_ROOM_AGENT_URL", pa: "QUARRY_QSYS_CORE_HOST",
   zoom_phone: "QUARRY_ZOOM_ACCOUNT_ID, QUARRY_ZOOM_CLIENT_ID, ...",
+};
+
+const GROUP_TYPE_LABELS: Record<string, string> = {
+  building: "Building", department: "Department", role: "Role", custom: "Custom",
 };
 
 export default function Alerts() {
@@ -75,8 +82,11 @@ export default function Alerts() {
 
       <Tabs items={[
         { key: "send", label: "Send Alert", children: <SendSection onSent={loadActive} /> },
+        { key: "templates", label: "Templates", children: <TemplatesSection /> },
         { key: "history", label: "History", children: <HistorySection /> },
         { key: "subscribers", label: "Subscribers", children: <SubscribersSection /> },
+        { key: "groups", label: "Groups", children: <GroupsSection /> },
+        { key: "scenarios", label: "Scenarios", children: <ScenariosSection /> },
         { key: "channels", label: "Channels", children: <ChannelsSection /> },
         { key: "test", label: "Test", children: <TestConsole /> },
         { key: "signage", label: "Signage", children: <SignageSection /> },
@@ -84,6 +94,11 @@ export default function Alerts() {
     </div>
   );
 }
+
+
+// ===========================================================================
+// Send Section (with template picker, response options, groups, check-in)
+// ===========================================================================
 
 function SendSection({ onSent }: { onSent: () => void }) {
   const { modal, message } = App.useApp();
@@ -97,9 +112,38 @@ function SendSection({ onSent }: { onSent: () => void }) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<AlertSendResult | null>(null);
 
+  const [templates, setTemplates] = useState<AlertTemplate[]>([]);
+  const [groups, setGroups] = useState<SubscriberGroup[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [requestResponses, setRequestResponses] = useState(false);
+  const [responseOptions, setResponseOptions] = useState("1=Safe, 2=Need Help");
+  const [isCheckin, setIsCheckin] = useState(false);
+
+  useEffect(() => {
+    api.alerts.templates.list().then(setTemplates);
+    api.alerts.groups.list().then(setGroups);
+  }, []);
+
   useEffect(() => { api.alerts.preview(category).then(setPreview); }, [category]);
 
   const isEmergency = category === "emergency";
+
+  function applyTemplate(templateId: string) {
+    const t = templates.find(tpl => tpl.id === templateId);
+    if (!t) return;
+    setCategory(t.category);
+    setSubject(t.subject);
+    setBodyText(t.body_text);
+    setBodySms(t.body_sms);
+  }
+
+  function handleSaveAsTemplate() {
+    const name = window.prompt("Template name:");
+    if (!name) return;
+    api.alerts.templates.create({ name, category, subject, body_text: bodyText, body_sms: bodySms })
+      .then((t) => { setTemplates(prev => [...prev, t]); message.success("Template saved"); })
+      .catch(() => message.error("Failed to save template"));
+  }
 
   function handleSend() {
     const catInfo = CATEGORIES.find(c => c.id === category);
@@ -110,6 +154,8 @@ function SendSection({ onSent }: { onSent: () => void }) {
           <p><strong>Category:</strong> {catInfo?.label}</p>
           <p><strong>Subject:</strong> {subject}</p>
           {preview && <p><strong>Recipients:</strong> {sendEmail ? `${preview.email_recipient_count} email` : ""}{sendEmail && sendSms ? ", " : ""}{sendSms ? `${preview.sms_recipient_count} SMS` : ""}</p>}
+          {selectedGroupIds.length > 0 && <p><strong>Groups:</strong> {selectedGroupIds.map(gid => groups.find(g => g.id === gid)?.name).filter(Boolean).join(", ")}</p>}
+          {isCheckin && <p className="text-blue-600 font-medium">Safety Check-In enabled — subscribers will be asked to reply SAFE or HELP.</p>}
           {isEmergency && <p className="text-red-600 font-medium">This will immediately notify all subscribers.</p>}
         </div>
       ),
@@ -118,7 +164,16 @@ function SendSection({ onSent }: { onSent: () => void }) {
       onOk: async () => {
         setSending(true); setResult(null);
         try {
-          const r = await api.alerts.send({ category, subject, body_text: bodyText, body_sms: bodySms, send_email: sendEmail, send_sms: sendSms });
+          const opts = requestResponses || isCheckin
+            ? (isCheckin ? ["SAFE", "HELP"] : responseOptions.split(",").map(s => s.trim()).filter(Boolean))
+            : undefined;
+          const r = await api.alerts.send({
+            category, subject, body_text: bodyText, body_sms: bodySms,
+            send_email: sendEmail, send_sms: sendSms,
+            response_options: opts || null,
+            group_ids: selectedGroupIds.length > 0 ? selectedGroupIds : null,
+            is_checkin: isCheckin,
+          });
           setResult(r); setSubject(""); setBodyText(""); setBodySms(""); onSent();
           message.success(`Alert sent: ${r.emails_sent} emails, ${r.sms_sent} SMS`);
         } catch { message.error("Failed to send alert"); } finally { setSending(false); }
@@ -130,6 +185,13 @@ function SendSection({ onSent }: { onSent: () => void }) {
     <Card>
       <div className="space-y-5">
         <div>
+          <label className="block text-xs font-medium text-ink-mute mb-2">Load Template</label>
+          <Select placeholder="Select a template..." allowClear style={{ width: 360 }}
+            onChange={(v) => { if (v) applyTemplate(v); }}
+            options={templates.map(t => ({ label: `${t.name} (${CATEGORIES.find(c => c.id === t.category)?.label ?? t.category})`, value: t.id }))}
+          />
+        </div>
+        <div>
           <label className="block text-xs font-medium text-ink-mute mb-2">Alert Category</label>
           <Segmented value={category} onChange={v => setCategory(v as string)}
             options={CATEGORIES.map(c => ({ label: c.label, value: c.id }))} />
@@ -138,7 +200,37 @@ function SendSection({ onSent }: { onSent: () => void }) {
         <div><label className="block text-xs font-medium text-ink-mute mb-1">Subject</label><Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Alert subject line..." /></div>
         <div><label className="block text-xs font-medium text-ink-mute mb-1">Email Body</label><Input.TextArea value={bodyText} onChange={e => setBodyText(e.target.value)} rows={5} /></div>
         <div><label className="block text-xs font-medium text-ink-mute mb-1">SMS Body <span className={`ml-2 text-xs ${bodySms.length > 160 ? "text-red-600 font-bold" : "text-ink-mute"}`}>{bodySms.length}/160</span></label><Input.TextArea value={bodySms} onChange={e => setBodySms(e.target.value)} rows={3} /></div>
-        <Space><Checkbox checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}>Send via Email</Checkbox><Checkbox checked={sendSms} onChange={e => setSendSms(e.target.checked)}>Send via SMS</Checkbox></Space>
+        {subject && <Button type="link" size="small" onClick={handleSaveAsTemplate}>Save as Template</Button>}
+
+        <Space direction="vertical" className="w-full">
+          <Space>
+            <Checkbox checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}>Send via Email</Checkbox>
+            <Checkbox checked={sendSms} onChange={e => setSendSms(e.target.checked)}>Send via SMS</Checkbox>
+          </Space>
+          <Space>
+            <Checkbox checked={requestResponses} onChange={e => { setRequestResponses(e.target.checked); if (!e.target.checked) setIsCheckin(false); }}>Request SMS Responses</Checkbox>
+            {requestResponses && (
+              <Checkbox checked={isCheckin} onChange={e => setIsCheckin(e.target.checked)}>Safety Check-In</Checkbox>
+            )}
+          </Space>
+          {requestResponses && !isCheckin && (
+            <div>
+              <label className="block text-xs text-ink-mute mb-1">Response Options (comma-separated)</label>
+              <Input value={responseOptions} onChange={e => setResponseOptions(e.target.value)} placeholder="1=Safe, 2=Need Help" style={{ width: 360 }} />
+            </div>
+          )}
+          {isCheckin && <Alert type="info" showIcon message="Subscribers will be asked to reply SAFE or HELP. Responses will be tracked in real time." />}
+        </Space>
+
+        {groups.length > 0 && (
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-1">Target Groups (optional — leave empty for all subscribers)</label>
+            <Select mode="multiple" value={selectedGroupIds} onChange={setSelectedGroupIds} placeholder="All subscribers"
+              style={{ width: "100%" }} allowClear
+              options={groups.map(g => ({ label: `${g.name} (${g.member_count})`, value: g.id }))} />
+          </div>
+        )}
+
         {preview && (
           <Card size="small" className="bg-bone/30">
             <h4 className="font-medium text-sm mb-2">Recipients Preview</h4>
@@ -159,29 +251,147 @@ function SendSection({ onSent }: { onSent: () => void }) {
             ) : undefined} />
         )}
         <Button type="primary" danger={isEmergency} onClick={handleSend} disabled={!subject} loading={sending}>
-          {isEmergency ? "Send Emergency Alert" : "Send Alert"}
+          {isCheckin ? "Send Check-In" : isEmergency ? "Send Emergency Alert" : "Send Alert"}
         </Button>
       </div>
     </Card>
   );
 }
 
+
+// ===========================================================================
+// Templates Section
+// ===========================================================================
+
+function TemplatesSection() {
+  const { modal, message } = App.useApp();
+  const [templates, setTemplates] = useState<AlertTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<AlertTemplate | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(async () => { setLoading(true); try { setTemplates(await api.alerts.templates.list()); } finally { setLoading(false); } }, []);
+  useEffect(() => { load(); }, [load]);
+
+  function handleDelete(t: AlertTemplate) {
+    modal.confirm({
+      title: `Delete template "${t.name}"?`, okText: "Delete", okButtonProps: { danger: true },
+      onOk: async () => { await api.alerts.templates.delete(t.id); message.success("Deleted"); load(); },
+    });
+  }
+
+  const columns: ColumnsType<AlertTemplate> = [
+    { title: "Name", dataIndex: "name", key: "name" },
+    { title: "Category", dataIndex: "category", key: "cat", render: c => <Tag color={CATEGORIES.find(ci => ci.id === c)?.color}>{CATEGORIES.find(ci => ci.id === c)?.label ?? c}</Tag> },
+    { title: "Subject", dataIndex: "subject", key: "subject", ellipsis: true },
+    { title: "Default", dataIndex: "is_default", key: "default", render: v => v ? <Tag color="green">Default</Tag> : null },
+    { title: "Actions", key: "actions", width: 120, render: (_, t) => <Space><Button type="link" size="small" onClick={() => { setEditing(t); setCreating(false); }}>Edit</Button><Button type="link" size="small" danger onClick={() => handleDelete(t)}>Delete</Button></Space> },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Alert Templates</h3>
+        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ Add Template</Button>
+      </div>
+      {(creating || editing) && (
+        <TemplateForm initial={editing ?? undefined} onSave={() => { setCreating(false); setEditing(null); load(); }} onCancel={() => { setCreating(false); setEditing(null); }} />
+      )}
+      <Table dataSource={templates} columns={columns} rowKey="id" loading={loading} size="small" pagination={false} />
+    </div>
+  );
+}
+
+function TemplateForm({ initial, onSave, onCancel }: { initial?: AlertTemplate; onSave: () => void; onCancel: () => void }) {
+  const { message } = App.useApp();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "emergency");
+  const [subject, setSubject] = useState(initial?.subject ?? "");
+  const [bodyText, setBodyText] = useState(initial?.body_text ?? "");
+  const [bodySms, setBodySms] = useState(initial?.body_sms ?? "");
+  const [isDefault, setIsDefault] = useState(initial?.is_default ?? false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true);
+    try {
+      if (initial) await api.alerts.templates.update(initial.id, { name, category, subject, body_text: bodyText, body_sms: bodySms, is_default: isDefault });
+      else await api.alerts.templates.create({ name, category, subject, body_text: bodyText, body_sms: bodySms, is_default: isDefault });
+      message.success(initial ? "Template updated" : "Template created"); onSave();
+    } catch { message.error("Failed to save"); } finally { setSaving(false); }
+  }
+
+  return (
+    <Card title={initial ? "Edit Template" : "Add Template"}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Name</label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-1">Category</label>
+            <Select value={category} onChange={setCategory} style={{ width: "100%" }} options={CATEGORIES.map(c => ({ label: c.label, value: c.id }))} />
+          </div>
+        </div>
+        <div><label className="block text-xs font-medium text-ink-mute mb-1">Subject</label><Input value={subject} onChange={e => setSubject(e.target.value)} required /></div>
+        <div><label className="block text-xs font-medium text-ink-mute mb-1">Email Body</label><Input.TextArea value={bodyText} onChange={e => setBodyText(e.target.value)} rows={4} /></div>
+        <div><label className="block text-xs font-medium text-ink-mute mb-1">SMS Body <span className={`ml-2 text-xs ${bodySms.length > 160 ? "text-red-600 font-bold" : ""}`}>{bodySms.length}/160</span></label><Input.TextArea value={bodySms} onChange={e => setBodySms(e.target.value)} rows={2} /></div>
+        <Checkbox checked={isDefault} onChange={e => setIsDefault(e.target.checked)}>Set as default for this category</Checkbox>
+        <Space><Button onClick={onCancel}>Cancel</Button><Button type="primary" htmlType="submit" loading={saving}>{initial ? "Update" : "Create Template"}</Button></Space>
+      </form>
+    </Card>
+  );
+}
+
+
+// ===========================================================================
+// History Section (with response summary)
+// ===========================================================================
+
 function HistorySection() {
+  const { message } = App.useApp();
   const [entries, setEntries] = useState<AlertLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [includeTests, setIncludeTests] = useState(false);
+  const [responseModal, setResponseModal] = useState<string | null>(null);
+  const [responseSummary, setResponseSummary] = useState<AlertResponseSummary | null>(null);
+  const [checkinStatus, setCheckinStatus] = useState<CheckInStatus | null>(null);
+  const [responseDetails, setResponseDetails] = useState<AlertResponseEntry[]>([]);
 
   useEffect(() => {
     setLoading(true);
     api.alerts.history({ limit: 100, include_tests: includeTests }).then(setEntries).finally(() => setLoading(false));
   }, [includeTests]);
 
+  async function openResponses(alertId: string, isCheckin: boolean) {
+    setResponseModal(alertId);
+    try {
+      const [summary, details] = await Promise.all([
+        api.alerts.responses.summary(alertId),
+        api.alerts.responses.detail(alertId),
+      ]);
+      setResponseSummary(summary);
+      setResponseDetails(details);
+      if (isCheckin) {
+        setCheckinStatus(await api.alerts.responses.checkinStatus(alertId));
+      } else {
+        setCheckinStatus(null);
+      }
+    } catch { message.error("Failed to load responses"); }
+  }
+
+  async function handleResend(alertId: string) {
+    try {
+      const r = await api.alerts.responses.resendNonResponders(alertId);
+      message.success(`Re-sent to non-responders: ${r.sms_sent} SMS`);
+    } catch { message.error("Failed to resend"); }
+  }
+
   const columns: ColumnsType<AlertLogEntry> = [
     { title: "Time", dataIndex: "sent_at", key: "time", width: 160, render: d => new Date(d).toLocaleString() },
     { title: "Category", dataIndex: "category", key: "cat", render: c => <Tag color={CATEGORIES.find(ci => ci.id === c)?.color}>{CATEGORIES.find(ci => ci.id === c)?.label ?? c}</Tag> },
-    { title: "Status", dataIndex: "status", key: "status", render: s => <Tag color={s === "active" ? "red" : s === "test" ? "blue" : "default"}>{s}</Tag> },
+    { title: "Status", dataIndex: "status", key: "status", render: (s, e) => <Space size={4}><Tag color={s === "active" ? "red" : s === "test" ? "blue" : "default"}>{s}</Tag>{e.is_checkin && <Tag color="cyan">Check-In</Tag>}</Space> },
     { title: "Subject", dataIndex: "subject", key: "subject", ellipsis: true },
     { title: "Delivery", key: "delivery", render: (_, e) => `${e.email_count} email, ${e.sms_count} SMS` },
+    { title: "Responses", key: "responses", render: (_, e) => e.response_options ? <Button type="link" size="small" onClick={() => openResponses(e.id, e.is_checkin)}>View</Button> : "—" },
     { title: "Sent By", dataIndex: "sent_by", key: "by", ellipsis: true },
   ];
 
@@ -209,9 +419,398 @@ function HistorySection() {
         pagination={false}
         locale={{ emptyText: <Empty description="No alerts sent yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
+
+      <Modal title="Alert Responses" open={!!responseModal} onCancel={() => setResponseModal(null)} footer={null} width={640}>
+        {checkinStatus ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-4 gap-4">
+              <Card size="small"><Statistic title="Total" value={checkinStatus.total_subscribers} /></Card>
+              <Card size="small"><Statistic title="Safe" value={checkinStatus.responded_safe} valueStyle={{ color: "#52c41a" }} /></Card>
+              <Card size="small"><Statistic title="Need Help" value={checkinStatus.responded_help} valueStyle={{ color: "#ff4d4f" }} /></Card>
+              <Card size="small"><Statistic title="No Response" value={checkinStatus.no_response} valueStyle={{ color: "#faad14" }} /></Card>
+            </div>
+            {checkinStatus.total_subscribers > 0 && (
+              <Progress percent={Math.round(((checkinStatus.responded_safe + checkinStatus.responded_help) / checkinStatus.total_subscribers) * 100)} status={checkinStatus.responded_help > 0 ? "exception" : "active"} />
+            )}
+            {checkinStatus.responded_help > 0 && (
+              <div>
+                <h4 className="font-medium text-sm text-red-600 mb-2">HELP Responses</h4>
+                {checkinStatus.help_details.map(d => <div key={d.id} className="text-sm bg-red-50 rounded p-2 mb-1"><span className="font-mono">{d.phone}</span> — {new Date(d.received_at).toLocaleTimeString()}</div>)}
+              </div>
+            )}
+            {checkinStatus.no_response > 0 && responseModal && (
+              <Button type="primary" danger onClick={() => handleResend(responseModal)}>Re-send to {checkinStatus.no_response} Non-Responders</Button>
+            )}
+          </div>
+        ) : responseSummary ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <Card size="small"><Statistic title="Total Sent" value={responseSummary.total_sent} /></Card>
+              <Card size="small"><Statistic title="Responses" value={responseSummary.total_responses} /></Card>
+              <Card size="small"><Statistic title="Non-Responders" value={responseSummary.non_responder_count} /></Card>
+            </div>
+            {Object.keys(responseSummary.response_counts).length > 0 && (
+              <div>
+                <h4 className="font-medium text-sm mb-2">Response Breakdown</h4>
+                <Space wrap>{Object.entries(responseSummary.response_counts).map(([key, count]) => (
+                  <Tag key={key} color="blue">{key}: {count}</Tag>
+                ))}</Space>
+              </div>
+            )}
+            {responseDetails.length > 0 && (
+              <div>
+                <h4 className="font-medium text-sm mb-2">Individual Responses</h4>
+                <Table dataSource={responseDetails} rowKey="id" size="small" pagination={{ pageSize: 20 }}
+                  columns={[
+                    { title: "Phone", dataIndex: "phone", key: "phone", render: v => <span className="font-mono text-xs">{v || "—"}</span> },
+                    { title: "Response", dataIndex: "response_text", key: "response" },
+                    { title: "Time", dataIndex: "received_at", key: "time", render: v => new Date(v).toLocaleTimeString() },
+                  ]} />
+              </div>
+            )}
+            {responseSummary.non_responder_count > 0 && responseModal && (
+              <Button type="primary" danger onClick={() => handleResend(responseModal)}>Re-send to {responseSummary.non_responder_count} Non-Responders</Button>
+            )}
+          </div>
+        ) : <Spin className="py-8 flex justify-center" />}
+      </Modal>
     </div>
   );
 }
+
+
+// ===========================================================================
+// Groups Section
+// ===========================================================================
+
+function GroupsSection() {
+  const { modal, message } = App.useApp();
+  const [groups, setGroups] = useState<SubscriberGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<SubscriberGroup | null>(null);
+  const [managingMembers, setManagingMembers] = useState<SubscriberGroup | null>(null);
+  const [members, setMembers] = useState<AlertSubscriber[]>([]);
+  const [allSubscribers, setAllSubscribers] = useState<AlertSubscriber[]>([]);
+  const [addIds, setAddIds] = useState<string[]>([]);
+
+  const load = useCallback(async () => { setLoading(true); try { setGroups(await api.alerts.groups.list()); } finally { setLoading(false); } }, []);
+  useEffect(() => { load(); }, [load]);
+
+  function handleDelete(g: SubscriberGroup) {
+    modal.confirm({
+      title: `Delete group "${g.name}"?`, okText: "Delete", okButtonProps: { danger: true },
+      onOk: async () => { await api.alerts.groups.delete(g.id); message.success("Group deleted"); load(); },
+    });
+  }
+
+  async function openMembers(g: SubscriberGroup) {
+    setManagingMembers(g);
+    const [m, all] = await Promise.all([api.alerts.groups.members(g.id), api.alerts.subscribers.list()]);
+    setMembers(m);
+    setAllSubscribers(all);
+    setAddIds([]);
+  }
+
+  async function handleAddMembers() {
+    if (!managingMembers || addIds.length === 0) return;
+    const result = await api.alerts.groups.addMembers(managingMembers.id, addIds);
+    message.success(`Added ${result.added} members`);
+    setAddIds([]);
+    setMembers(await api.alerts.groups.members(managingMembers.id));
+    load();
+  }
+
+  async function handleRemoveMember(subscriberId: string) {
+    if (!managingMembers) return;
+    await api.alerts.groups.removeMembers(managingMembers.id, [subscriberId]);
+    setMembers(prev => prev.filter(m => m.id !== subscriberId));
+    load();
+  }
+
+  const columns: ColumnsType<SubscriberGroup> = [
+    { title: "Name", dataIndex: "name", key: "name" },
+    { title: "Type", dataIndex: "group_type", key: "type", render: v => <Tag>{GROUP_TYPE_LABELS[v] ?? v}</Tag> },
+    { title: "Members", dataIndex: "member_count", key: "members" },
+    { title: "Actions", key: "actions", width: 200, render: (_, g) => (
+      <Space>
+        <Button type="link" size="small" onClick={() => openMembers(g)}>Members</Button>
+        <Button type="link" size="small" onClick={() => { setEditing(g); setCreating(false); }}>Edit</Button>
+        <Button type="link" size="small" danger onClick={() => handleDelete(g)}>Delete</Button>
+      </Space>
+    )},
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Subscriber Groups</h3>
+        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ Add Group</Button>
+      </div>
+      {(creating || editing) && (
+        <GroupForm initial={editing ?? undefined} onSave={() => { setCreating(false); setEditing(null); load(); }} onCancel={() => { setCreating(false); setEditing(null); }} />
+      )}
+      <Table dataSource={groups} columns={columns} rowKey="id" loading={loading} size="small" pagination={false} />
+
+      <Modal title={`Members — ${managingMembers?.name}`} open={!!managingMembers} onCancel={() => setManagingMembers(null)} footer={null} width={640}>
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Select mode="multiple" value={addIds} onChange={setAddIds} placeholder="Add subscribers..." style={{ flex: 1 }}
+              options={allSubscribers.filter(s => !members.some(m => m.id === s.id)).map(s => ({ label: `${s.name} (${s.email || s.phone})`, value: s.id }))}
+              filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+            />
+            <Button type="primary" onClick={handleAddMembers} disabled={addIds.length === 0}>Add</Button>
+          </div>
+          <Table dataSource={members} rowKey="id" size="small" pagination={{ pageSize: 20 }}
+            columns={[
+              { title: "Name", dataIndex: "name", key: "name" },
+              { title: "Email", dataIndex: "email", key: "email", ellipsis: true, render: v => v || "—" },
+              { title: "Phone", dataIndex: "phone", key: "phone", render: v => v ? <span className="font-mono text-xs">{v}</span> : "—" },
+              { title: "", key: "rm", width: 60, render: (_, s) => <Button type="text" size="small" danger onClick={() => handleRemoveMember(s.id)}>Remove</Button> },
+            ]} />
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function GroupForm({ initial, onSave, onCancel }: { initial?: SubscriberGroup; onSave: () => void; onCancel: () => void }) {
+  const { message } = App.useApp();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [groupType, setGroupType] = useState(initial?.group_type ?? "custom");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true);
+    try {
+      if (initial) await api.alerts.groups.update(initial.id, { name, description, group_type: groupType });
+      else await api.alerts.groups.create({ name, description, group_type: groupType });
+      message.success(initial ? "Group updated" : "Group created"); onSave();
+    } catch { message.error("Failed to save"); } finally { setSaving(false); }
+  }
+
+  return (
+    <Card title={initial ? "Edit Group" : "Add Group"}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Name</label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Type</label>
+            <Select value={groupType} onChange={setGroupType} style={{ width: "100%" }}
+              options={Object.entries(GROUP_TYPE_LABELS).map(([v, l]) => ({ label: l, value: v }))} />
+          </div>
+        </div>
+        <div><label className="block text-xs font-medium text-ink-mute mb-1">Description</label><Input.TextArea value={description} onChange={e => setDescription(e.target.value)} rows={2} /></div>
+        <Space><Button onClick={onCancel}>Cancel</Button><Button type="primary" htmlType="submit" loading={saving}>{initial ? "Update" : "Create Group"}</Button></Space>
+      </form>
+    </Card>
+  );
+}
+
+
+// ===========================================================================
+// Scenarios Section
+// ===========================================================================
+
+function ScenariosSection() {
+  const { modal, message } = App.useApp();
+  const [scenarios, setScenarios] = useState<AlertScenario[]>([]);
+  const [templates, setTemplates] = useState<AlertTemplate[]>([]);
+  const [groups, setGroups] = useState<SubscriberGroup[]>([]);
+  const [running, setRunning] = useState<RunningScenario[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<AlertScenario | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [s, t, g, r] = await Promise.all([
+        api.alerts.scenarios.list(), api.alerts.templates.list(),
+        api.alerts.groups.list(), api.alerts.scenarios.running(),
+      ]);
+      setScenarios(s); setTemplates(t); setGroups(g); setRunning(r);
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  function handleDelete(s: AlertScenario) {
+    modal.confirm({
+      title: `Delete scenario "${s.name}"?`, okText: "Delete", okButtonProps: { danger: true },
+      onOk: async () => { await api.alerts.scenarios.delete(s.id); message.success("Deleted"); load(); },
+    });
+  }
+
+  function handleRun(s: AlertScenario) {
+    modal.confirm({
+      title: `Run scenario "${s.name}"?`,
+      content: `This will execute ${s.steps.length} steps in sequence. Are you sure?`,
+      okText: "Run Scenario", okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const { task_id } = await api.alerts.scenarios.run(s.id);
+          message.success(`Scenario started (task: ${task_id.slice(0, 8)}...)`);
+          load();
+        } catch { message.error("Failed to start scenario"); }
+      },
+    });
+  }
+
+  async function handleAbort(taskId: string) {
+    try { await api.alerts.scenarios.abort(taskId); message.success("Scenario aborted"); load(); }
+    catch { message.error("Failed to abort"); }
+  }
+
+  const columns: ColumnsType<AlertScenario> = [
+    { title: "Name", dataIndex: "name", key: "name" },
+    { title: "Description", dataIndex: "description", key: "desc", ellipsis: true },
+    { title: "Steps", key: "steps", render: (_, s) => s.steps.length },
+    { title: "Actions", key: "actions", width: 200, render: (_, s) => (
+      <Space>
+        <Button type="primary" size="small" onClick={() => handleRun(s)}>Run</Button>
+        <Button type="link" size="small" onClick={() => { setEditing(s); setCreating(false); }}>Edit</Button>
+        <Button type="link" size="small" danger onClick={() => handleDelete(s)}>Delete</Button>
+      </Space>
+    )},
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Alert Scenarios</h3>
+        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ Add Scenario</Button>
+      </div>
+
+      {running.length > 0 && (
+        <Card size="small" className="!border-l-4 !border-l-red-500">
+          <h4 className="font-medium text-sm mb-2">Running Scenarios</h4>
+          {running.map(r => (
+            <div key={r.task_id} className="flex items-center justify-between py-1">
+              <div>
+                <span className="font-medium">{r.scenario_name}</span>
+                <span className="text-xs text-ink-mute ml-2">Step {r.current_step}/{r.total_steps} — by {r.started_by}</span>
+              </div>
+              <Button size="small" danger onClick={() => handleAbort(r.task_id)}>Abort</Button>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {(creating || editing) && (
+        <ScenarioForm initial={editing ?? undefined} templates={templates} groups={groups}
+          onSave={() => { setCreating(false); setEditing(null); load(); }}
+          onCancel={() => { setCreating(false); setEditing(null); }} />
+      )}
+      <Table dataSource={scenarios} columns={columns} rowKey="id" loading={loading} size="small" pagination={false} />
+    </div>
+  );
+}
+
+function ScenarioForm({ initial, templates, groups, onSave, onCancel }: {
+  initial?: AlertScenario; templates: AlertTemplate[]; groups: SubscriberGroup[];
+  onSave: () => void; onCancel: () => void;
+}) {
+  const { message } = App.useApp();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [steps, setSteps] = useState<ScenarioStep[]>(initial?.steps ?? []);
+  const [saving, setSaving] = useState(false);
+
+  function addStep(action: "send_alert" | "wait" | "clear_previous") {
+    setSteps([...steps, { action, delay_seconds: action === "wait" ? 60 : 0 }]);
+  }
+
+  function updateStep(i: number, patch: Partial<ScenarioStep>) {
+    const updated = [...steps];
+    updated[i] = { ...updated[i], ...patch };
+    setSteps(updated);
+  }
+
+  function removeStep(i: number) { setSteps(steps.filter((_, j) => j !== i)); }
+
+  function moveStep(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= steps.length) return;
+    const updated = [...steps];
+    [updated[i], updated[j]] = [updated[j], updated[i]];
+    setSteps(updated);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true);
+    try {
+      if (initial) await api.alerts.scenarios.update(initial.id, { name, description, steps });
+      else await api.alerts.scenarios.create({ name, description, steps });
+      message.success(initial ? "Scenario updated" : "Scenario created"); onSave();
+    } catch { message.error("Failed to save"); } finally { setSaving(false); }
+  }
+
+  return (
+    <Card title={initial ? "Edit Scenario" : "Add Scenario"}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Name</label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
+          <div><label className="block text-xs font-medium text-ink-mute mb-1">Description</label><Input value={description} onChange={e => setDescription(e.target.value)} /></div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-ink-mute">Steps</label>
+            <Space>
+              <Button size="small" onClick={() => addStep("send_alert")}>+ Send Alert</Button>
+              <Button size="small" onClick={() => addStep("wait")}>+ Wait</Button>
+              <Button size="small" onClick={() => addStep("clear_previous")}>+ Clear Previous</Button>
+            </Space>
+          </div>
+          {steps.length === 0 ? <Empty description="No steps" image={Empty.PRESENTED_IMAGE_SIMPLE} /> : (
+            <div className="space-y-2">
+              {steps.map((step, i) => (
+                <Card key={i} size="small" className="!bg-bone/30">
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col gap-1">
+                      <Button size="small" type="text" onClick={() => moveStep(i, -1)} disabled={i === 0}>↑</Button>
+                      <Button size="small" type="text" onClick={() => moveStep(i, 1)} disabled={i === steps.length - 1}>↓</Button>
+                    </div>
+                    <div className="flex-1">
+                      <Tag color={step.action === "send_alert" ? "blue" : step.action === "wait" ? "gold" : "default"} className="mb-2">
+                        {step.action === "send_alert" ? "Send Alert" : step.action === "wait" ? "Wait" : "Clear Previous"}
+                      </Tag>
+                      {step.action === "send_alert" && (
+                        <div className="space-y-2">
+                          <Select placeholder="Select template..." value={step.template_id} onChange={v => updateStep(i, { template_id: v })}
+                            style={{ width: "100%" }}
+                            options={templates.map(t => ({ label: `${t.name} (${t.category})`, value: t.id }))} />
+                          <Select mode="multiple" placeholder="Target groups (optional)" value={step.group_ids || []}
+                            onChange={v => updateStep(i, { group_ids: v })} style={{ width: "100%" }}
+                            options={groups.map(g => ({ label: g.name, value: g.id }))} />
+                        </div>
+                      )}
+                      {step.action === "wait" && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs">Wait</span>
+                          <InputNumber size="small" min={1} value={step.delay_seconds} onChange={v => updateStep(i, { delay_seconds: v ?? 60 })} />
+                          <span className="text-xs">seconds</span>
+                        </div>
+                      )}
+                    </div>
+                    <Button type="text" size="small" danger onClick={() => removeStep(i)}>Remove</Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Space><Button onClick={onCancel}>Cancel</Button><Button type="primary" htmlType="submit" loading={saving} disabled={steps.length === 0}>{initial ? "Update" : "Create Scenario"}</Button></Space>
+      </form>
+    </Card>
+  );
+}
+
+
+// ===========================================================================
+// Subscribers Section (unchanged from original)
+// ===========================================================================
 
 function SubscribersSection() {
   const { modal, message } = App.useApp();
@@ -335,6 +934,11 @@ function SubscriberForm({ initial, onSave, onCancel }: { initial?: AlertSubscrib
   );
 }
 
+
+// ===========================================================================
+// Channels Section (unchanged)
+// ===========================================================================
+
 function ChannelsSection() {
   const [channels, setChannels] = useState<AlertChannelInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -365,6 +969,11 @@ function ChannelsSection() {
     </div>
   );
 }
+
+
+// ===========================================================================
+// Test Console (unchanged)
+// ===========================================================================
 
 function TestConsole() {
   const { message } = App.useApp();
@@ -481,6 +1090,11 @@ function TestConsole() {
     </div>
   );
 }
+
+
+// ===========================================================================
+// Signage Section (unchanged)
+// ===========================================================================
 
 function SignageSection() {
   const { modal, message } = App.useApp();

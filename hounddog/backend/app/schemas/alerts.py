@@ -66,6 +66,9 @@ class AlertSendRequest(BaseModel):
     body_sms: str = ""
     send_email: bool = True
     send_sms: bool = True
+    response_options: list[str] | None = None
+    group_ids: list[uuid.UUID] | None = None
+    is_checkin: bool = False
 
 
 class AlertSendPreview(BaseModel):
@@ -125,6 +128,9 @@ class AlertLogRead(BaseModel):
     cleared_at: datetime | None = None
     cleared_by: str | None = None
     channel_results: dict | None = None
+    response_options: list[str] | None = None
+    is_checkin: bool = False
+    target_group_ids: list[str] | None = None
     sent_at: datetime
 
 
@@ -149,3 +155,149 @@ class AlertChannelRead(BaseModel):
     name: str
     configured: bool
     emergency_only: bool
+
+
+# --- Alert Template schemas ---
+
+
+class AlertTemplateCreate(BaseModel):
+    name: str
+    category: str
+    subject: str
+    body_text: str = ""
+    body_sms: str = ""
+    is_default: bool = False
+
+
+class AlertTemplateUpdate(BaseModel):
+    name: str | None = None
+    category: str | None = None
+    subject: str | None = None
+    body_text: str | None = None
+    body_sms: str | None = None
+    is_default: bool | None = None
+
+
+class AlertTemplateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    category: str
+    subject: str
+    body_text: str
+    body_sms: str
+    created_by: str
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- Alert Response schemas (two-way SMS) ---
+
+
+class AlertResponseRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    alert_id: uuid.UUID
+    subscriber_id: uuid.UUID | None
+    phone: str | None
+    channel: str
+    response_text: str
+    received_at: datetime
+
+
+class AlertResponseSummary(BaseModel):
+    alert_id: uuid.UUID
+    total_sent: int
+    total_responses: int
+    response_counts: dict[str, int] = {}
+    non_responder_count: int
+    first_response_at: datetime | None = None
+    last_response_at: datetime | None = None
+
+
+class CheckInStatus(BaseModel):
+    alert_id: uuid.UUID
+    total_subscribers: int
+    responded_safe: int
+    responded_help: int
+    no_response: int
+    help_details: list[AlertResponseRead] = []
+
+
+# --- Subscriber Group schemas ---
+
+
+class SubscriberGroupCreate(BaseModel):
+    name: str
+    description: str = ""
+    group_type: str = "custom"
+
+
+class SubscriberGroupUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    group_type: str | None = None
+
+
+class SubscriberGroupRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str
+    group_type: str
+    member_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class GroupMembersBatch(BaseModel):
+    subscriber_ids: list[uuid.UUID]
+
+
+# --- Alert Scenario schemas ---
+
+
+class ScenarioStep(BaseModel):
+    action: str
+    template_id: uuid.UUID | None = None
+    group_ids: list[uuid.UUID] | None = None
+    channels: list[str] | None = None
+    delay_seconds: int = 0
+
+
+class AlertScenarioCreate(BaseModel):
+    name: str
+    description: str = ""
+    steps: list[ScenarioStep]
+
+
+class AlertScenarioUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    steps: list[ScenarioStep] | None = None
+
+
+class AlertScenarioRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str
+    steps: list[dict]
+    created_by: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RunningScenario(BaseModel):
+    task_id: str
+    scenario_id: uuid.UUID
+    scenario_name: str
+    current_step: int
+    total_steps: int
+    started_at: datetime
+    started_by: str
