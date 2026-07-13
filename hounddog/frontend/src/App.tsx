@@ -136,6 +136,7 @@ export default function App() {
   const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
   const isSignageRoute = location.pathname.startsWith("/signage/player");
   const isLotteryRoute = location.pathname === "/parking";
+  const isRootRoute = location.pathname === "/";
   const isAuthCallback = location.pathname === "/auth/callback";
 
   if (isAuthCallback) {
@@ -195,6 +196,10 @@ export default function App() {
         <Route path="/signage/player/:screenId" element={<SignagePlayer />} />
       </Routes>
     );
+  }
+
+  if (isRootRoute) {
+    return <Navigate to="/parking" replace />;
   }
 
   if (isLotteryRoute) {
