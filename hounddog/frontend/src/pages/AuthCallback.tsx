@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { initAuth, handleCallback } from "../auth";
+import { initAuth, handleCallback, fetchCurrentUser } from "../auth";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -9,7 +9,19 @@ export default function AuthCallback() {
   useEffect(() => {
     initAuth()
       .then(() => handleCallback())
-      .then(() => navigate("/dashboard", { replace: true }))
+      .then(() => fetchCurrentUser())
+      .then((user) => {
+        const savedPath = sessionStorage.getItem("quarry_return_path");
+        sessionStorage.removeItem("quarry_return_path");
+
+        if (savedPath) {
+          navigate(savedPath, { replace: true });
+        } else if (user?.role === "admin" || user?.role === "staff") {
+          navigate("/dashboard", { replace: true });
+        } else {
+          navigate("/parking", { replace: true });
+        }
+      })
       .catch((err) => setError(err.message || "Login failed"));
   }, [navigate]);
 

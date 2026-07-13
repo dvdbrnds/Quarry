@@ -67,18 +67,26 @@ export async function logout(): Promise<void> {
     window.location.href = "/";
     return;
   }
+
+  // Grab ID token before clearing — needed for Okta's logout endpoint
+  let idToken: string | undefined;
   try {
-    await oktaAuth.revokeAccessToken();
+    const tok = await oktaAuth.tokenManager.get("idToken");
+    idToken = (tok as { idToken: string })?.idToken;
   } catch {}
-  try {
-    await oktaAuth.revokeRefreshToken();
-  } catch {}
+
+  try { await oktaAuth.revokeAccessToken(); } catch {}
+  try { await oktaAuth.revokeRefreshToken(); } catch {}
   await oktaAuth.tokenManager.clear();
-  try {
-    await oktaAuth.signOut({ postLogoutRedirectUri: window.location.origin });
-  } catch {
-    window.location.href = "/";
-  }
+
+  // Redirect to Okta's logout endpoint to kill the SSO session,
+  // then Okta redirects back to our post-logout URI.
+  const config = await loadConfig();
+  const logoutUrl = new URL(`https://${config.okta_domain}/oauth2/default/v1/logout`);
+  logoutUrl.searchParams.set("post_logout_redirect_uri", window.location.origin);
+  if (idToken) logoutUrl.searchParams.set("id_token_hint", idToken);
+  logoutUrl.searchParams.set("client_id", config.okta_client_id);
+  window.location.href = logoutUrl.toString();
 }
 
 export async function getAccessToken(): Promise<string | null> {

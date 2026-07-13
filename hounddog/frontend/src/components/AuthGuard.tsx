@@ -21,6 +21,7 @@ export default function AuthGuard({ children }: Props) {
           authed = await isAuthenticated();
         }
         if (!authed) {
+          sessionStorage.setItem("quarry_return_path", window.location.pathname);
           await login();
           return;
         }
