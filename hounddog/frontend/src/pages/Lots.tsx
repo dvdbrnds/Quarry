@@ -49,10 +49,10 @@ const LOT_TYPE_OPTIONS = [
 ];
 
 function LotForm({
-  initial, boundary, onBoundaryChange, onSave, onCancel,
+  initial, boundary, onBoundaryChange, onSave, onCancel, children,
 }: {
   initial?: Lot; boundary: Coordinate[]; onBoundaryChange: (c: Coordinate[]) => void;
-  onSave: () => void; onCancel: () => void;
+  onSave: () => void; onCancel: () => void; children?: React.ReactNode;
 }) {
   const { message } = App.useApp();
   const [form] = Form.useForm();
@@ -109,57 +109,60 @@ function LotForm({
   }
 
   return (
-    <div className="p-4 border-t border-gray-200 bg-gray-50 overflow-y-auto max-h-[50vh]">
-      <Form form={form} layout="vertical" onFinish={handleFinish} size="small"
-        initialValues={{ total_spaces: 0, handicap_spaces: 0, designation_code: "", campus: "", lot_type: "lot" }}>
-        <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-          <Input placeholder="e.g. Lot A or Main St" />
-        </Form.Item>
-        <div className="grid grid-cols-2 gap-2">
-          <Form.Item name="lot_type" label="Type">
-            <Select options={LOT_TYPE_OPTIONS} />
+    <div className="border-t border-gray-200 bg-gray-50 overflow-y-auto max-h-[60vh]">
+      <div className="p-4">
+        <Form form={form} layout="vertical" onFinish={handleFinish} size="small"
+          initialValues={{ total_spaces: 0, handicap_spaces: 0, designation_code: "", campus: "", lot_type: "lot" }}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input placeholder="e.g. Lot A or Main St" />
           </Form.Item>
-          <Form.Item name="campus" label="Campus">
-            <Select options={CAMPUS_OPTIONS} />
+          <div className="grid grid-cols-2 gap-2">
+            <Form.Item name="lot_type" label="Type">
+              <Select options={LOT_TYPE_OPTIONS} />
+            </Form.Item>
+            <Form.Item name="campus" label="Campus">
+              <Select options={CAMPUS_OPTIONS} />
+            </Form.Item>
+          </div>
+          <Form.Item name="designation_code" label="Designation">
+            <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
           </Form.Item>
-        </div>
-        <Form.Item name="designation_code" label="Designation">
-          <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
-        </Form.Item>
-        <div className="grid grid-cols-2 gap-2">
-          <Form.Item name="total_spaces" label="Total Spaces">
-            <InputNumber className="w-full" />
+          <div className="grid grid-cols-2 gap-2">
+            <Form.Item name="total_spaces" label="Total Spaces">
+              <InputNumber className="w-full" />
+            </Form.Item>
+            <Form.Item name="handicap_spaces" label="HC Spaces">
+              <InputNumber className="w-full" />
+            </Form.Item>
+          </div>
+          <Form.Item name="is_snow_lot" valuePropName="checked">
+            <Checkbox>Snow lot (prohibited 11pm-7am during snow regulations)</Checkbox>
           </Form.Item>
-          <Form.Item name="handicap_spaces" label="HC Spaces">
-            <InputNumber className="w-full" />
+          <Form.Item name="has_sheepdog" valuePropName="checked">
+            <Checkbox>SheepDog occupancy monitoring</Checkbox>
           </Form.Item>
-        </div>
-        <Form.Item name="is_snow_lot" valuePropName="checked">
-          <Checkbox>Snow lot (prohibited 11pm-7am during snow regulations)</Checkbox>
-        </Form.Item>
-        <Form.Item name="has_sheepdog" valuePropName="checked">
-          <Checkbox>SheepDog occupancy monitoring</Checkbox>
-        </Form.Item>
-        <Form.Item name="notes" label="Notes">
-          <Input placeholder="EV charging, flood risk, etc." />
-        </Form.Item>
-        <Form.Item name="access_schedule_json" label="Access Schedule (JSON)"
-          help={scheduleError ? <span className="text-red-500">{scheduleError}</span> : "Array of season schedules"}>
-          <Input.TextArea rows={4} className="font-mono text-xs"
-            placeholder={'[\n  {"season": "fall_spring", "label": "Fall/Spring", "rules": [...]}\n]'} />
-        </Form.Item>
-        <p className="text-xs text-ink-mute mb-3">
-          {boundary.length === 0
-            ? 'Click "Draw Boundary" on the map, then click to place points.'
-            : `${boundary.length} points — drag vertices to adjust.`}
-        </p>
-        <Space>
-          <Button type="primary" htmlType="submit" loading={saving} disabled={boundary.length < 3}>
-            {initial ? "Update" : "Create"}
-          </Button>
-          <Button onClick={onCancel}>Cancel</Button>
-        </Space>
-      </Form>
+          <Form.Item name="notes" label="Notes">
+            <Input placeholder="EV charging, flood risk, etc." />
+          </Form.Item>
+          <Form.Item name="access_schedule_json" label="Access Schedule (JSON)"
+            help={scheduleError ? <span className="text-red-500">{scheduleError}</span> : "Array of season schedules"}>
+            <Input.TextArea rows={4} className="font-mono text-xs"
+              placeholder={'[\n  {"season": "fall_spring", "label": "Fall/Spring", "rules": [...]}\n]'} />
+          </Form.Item>
+          <p className="text-xs text-ink-mute mb-3">
+            {boundary.length === 0
+              ? 'Click "Draw Boundary" on the map, then click to place points.'
+              : `${boundary.length} points — drag vertices to adjust.`}
+          </p>
+          <Space>
+            <Button type="primary" htmlType="submit" loading={saving} disabled={boundary.length < 3}>
+              {initial ? "Update" : "Create"}
+            </Button>
+            <Button onClick={onCancel}>Cancel</Button>
+          </Space>
+        </Form>
+      </div>
+      {children}
     </div>
   );
 }
@@ -657,26 +660,27 @@ export default function Lots() {
                   )}
                 </div>
               </div>
-              {lot.id === selectedLotId && !isEditing && (
-                <>
-                  <ZonePanel lotId={lot.id} />
-                  {lot.has_sheepdog && (
-                    <SpotPanel lotId={lot.id} spots={spots} selectedSpotId={selectedSpotId}
-                      onSelectSpot={setSelectedSpotId} onSpotsChanged={loadSpots}
-                      onStartPlacing={() => setPlacingSpot(true)} placingSpot={placingSpot}
-                      batchPlacing={batchPlacing} batchNextNumber={batchNextNumber}
-                      onStartBatch={startBatchPlacing} onStopBatch={() => { setBatchPlacing(false); setPlacingSpot(false); }}
-                      spotsVisible={spotsVisible} onToggleVisible={() => setSpotsVisible(v => !v)} />
-                  )}
-                </>
-              )}
             </div>
           ))}
         </div>
 
         {isEditing && (
           <LotForm initial={editing ?? undefined} boundary={editingBoundary ?? []}
-            onBoundaryChange={setEditingBoundary} onSave={handleSaved} onCancel={cancelEdit} />
+            onBoundaryChange={setEditingBoundary} onSave={handleSaved} onCancel={cancelEdit}>
+            {editing && (
+              <>
+                <ZonePanel lotId={editing.id} />
+                {editing.has_sheepdog && (
+                  <SpotPanel lotId={editing.id} spots={spots} selectedSpotId={selectedSpotId}
+                    onSelectSpot={setSelectedSpotId} onSpotsChanged={loadSpots}
+                    onStartPlacing={() => setPlacingSpot(true)} placingSpot={placingSpot}
+                    batchPlacing={batchPlacing} batchNextNumber={batchNextNumber}
+                    onStartBatch={startBatchPlacing} onStopBatch={() => { setBatchPlacing(false); setPlacingSpot(false); }}
+                    spotsVisible={spotsVisible} onToggleVisible={() => setSpotsVisible(v => !v)} />
+                )}
+              </>
+            )}
+          </LotForm>
         )}
       </div>
 
