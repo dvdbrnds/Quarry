@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Permits from "./pages/Permits";
 import Lots from "./pages/Lots";
 import Dashboard from "./pages/Dashboard";
@@ -21,9 +21,37 @@ import StudentPermits from "./pages/StudentPermits";
 import LotteryApply from "./pages/LotteryApply";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
-import { logout } from "./auth";
+import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
 import type { AuthUser } from "./auth";
 import { UserContext } from "./UserContext";
+import { useState, useEffect } from "react";
+
+function RootRedirect() {
+  const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    initAuth()
+      .then(() => isAuthenticated())
+      .then(async (authed) => {
+        if (!authed) {
+          navigate("/parking", { replace: true });
+          return;
+        }
+        const user = await fetchCurrentUser();
+        if (user?.role === "admin" || user?.role === "staff") {
+          navigate("/dashboard", { replace: true });
+        } else {
+          navigate("/parking", { replace: true });
+        }
+      })
+      .catch(() => navigate("/parking", { replace: true }))
+      .finally(() => setChecking(false));
+  }, [navigate]);
+
+  if (checking) return null;
+  return null;
+}
 
 function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   return (
@@ -198,16 +226,16 @@ export default function App() {
     );
   }
 
-  if (isRootRoute) {
-    return <Navigate to="/parking" replace />;
-  }
-
   if (isLotteryRoute) {
     return (
       <Routes>
         <Route path="/parking" element={<LotteryApply />} />
       </Routes>
     );
+  }
+
+  if (isRootRoute) {
+    return <RootRedirect />;
   }
 
   return (
