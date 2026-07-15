@@ -137,7 +137,7 @@ export default function LotteryManager() {
   return <ManageView permitType={selected} onBack={goBack} onSimulate={() => setView("simulate")} onGoLive={() => setView("live")} onReload={reloadSelected} lotLookup={lotLookup} />;
 }
 
-function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => void; lotLookup: Record<string, LotInfo> }) {
+function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => Promise<void> | void; lotLookup: Record<string, LotInfo> }) {
   const { modal, message } = App.useApp();
   const now = new Date();
   const [toggling, setToggling] = useState<string | null>(null);
@@ -158,9 +158,11 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
   async function enableLottery(pt: PermitTypeRow) {
     setToggling(pt.id);
     try {
-      await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
-      message.success("Lottery enabled"); onReload();
-    } finally { setToggling(null); }
+      const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || "Failed to enable lottery"); }
+      message.success("Lottery enabled");
+      await onReload();
+    } catch (e: any) { message.error(e.message); } finally { setToggling(null); }
   }
 
   async function batchToggle(ids: string[], enable: boolean) {
@@ -173,7 +175,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
       const result = await res.json();
       message.success(`Lottery ${enable ? "enabled" : "disabled"} for ${result.updated} permit type(s)`);
-      onReload();
+      await onReload();
     } catch (e: any) { message.error(e.message); } finally { setBatchToggling(false); }
   }
 
