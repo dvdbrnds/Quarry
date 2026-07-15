@@ -61,6 +61,7 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(PermitType).where(
             PermitType.is_active.is_(True),
+            PermitType.requires_lottery.is_(True),
             PermitType.application_opens_at.isnot(None),
             PermitType.application_opens_at <= now,
             or_(
