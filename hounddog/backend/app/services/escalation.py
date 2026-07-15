@@ -163,22 +163,44 @@ async def _send_maxient_email_referral(
 ):
     from app.services.email import send_email
 
+    from app.services.email import email_shell
+
+    school = settings.school_name or "Campus"
     subject = f"Parking Conduct Referral \u2014 {student_name or student_id} ({ticket_count} violations)"
-    body = f"""<div style="font-family: sans-serif; max-width: 600px;">
-<h2>Automatic Parking Conduct Referral</h2>
-<table>
-<tr><td><strong>Student:</strong></td><td>{student_name or 'Unknown'} ({student_id})</td></tr>
-<tr><td><strong>Email:</strong></td><td>{student_email or 'Unknown'}</td></tr>
-<tr><td><strong>License Plate:</strong></td><td>{plate}</td></tr>
-<tr><td><strong>Total Unpaid Violations:</strong></td><td>{ticket_count}</td></tr>
-<tr><td><strong>Threshold:</strong></td><td>{settings.conduct_referral_threshold}</td></tr>
-</table>
-<p><strong>Ticket IDs:</strong></p>
-<ul>{''.join(f'<li>{tid}</li>' for tid in ticket_ids)}</ul>
-<p>This referral was generated automatically by the Quarry parking system
-when the student exceeded {settings.conduct_referral_threshold} unpaid parking violations.</p>
-<p><a href="{settings.public_url}/admin/tickets?student={student_id}">View details</a></p>
-</div>"""
+    ticket_list = "".join(f'<li style="font-size:14px;padding:2px 0;">{tid}</li>' for tid in ticket_ids)
+    inner = (
+        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Automatic Conduct Referral</h2>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+        'text-transform:uppercase;letter-spacing:1px;">Student Details</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Student</td>'
+        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{student_name or "Unknown"} ({student_id})</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Email</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{student_email or "Unknown"}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">License Plate</td>'
+        f'<td style="padding:10px 16px;font-family:monospace;font-weight:600;font-size:14px;">{plate}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Unpaid Violations</td>'
+        f'<td style="padding:10px 16px;font-weight:600;color:#dc2626;font-size:14px;">{ticket_count}</td></tr>'
+        '<tr>'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Threshold</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{settings.conduct_referral_threshold}</td></tr>'
+        '</table>'
+        f'<p style="color:#333;font-size:14px;font-weight:600;margin:16px 0 4px;">Ticket IDs:</p>'
+        f'<ul style="margin:0 0 20px;padding-left:20px;color:#333;">{ticket_list}</ul>'
+        f'<p style="color:#666;font-size:13px;line-height:1.6;">This referral was generated '
+        f'automatically when the student exceeded {settings.conduct_referral_threshold} unpaid '
+        'parking violations.</p>'
+        '<div style="text-align:center;margin:24px 0;">'
+        f'<a href="{settings.public_url}/admin/tickets?student={student_id}" '
+        'style="display:inline-block;padding:12px 32px;background:#1a2744;color:#ffffff;'
+        'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
+        'View Details</a></div>'
+    )
+    body = email_shell(school, inner)
 
     try:
         await send_email(
@@ -241,20 +263,24 @@ async def _notify_student_of_hold(
     if not student_email:
         return
 
-    from app.services.email import send_email
+    from app.services.email import send_email, email_shell
 
+    school = settings.school_name or "Campus"
     subject = "Registration Hold \u2014 Unpaid Parking Violations"
-    body = f"""<div style="font-family: sans-serif; max-width: 600px;">
-<h2>Registration Hold Notice</h2>
-<p>Dear {student_name or 'Student'},</p>
-<p>A hold has been placed on your university account due to <strong>{ticket_count} unpaid
-parking violations</strong>. You will be unable to register for classes until all
-outstanding parking fines are paid.</p>
-<p><a href="{settings.student_facing_url}/pay" style="display:inline-block;padding:12px 24px;background:#1a2744;color:#fff;text-decoration:none;border-radius:4px;">Pay Citations Now</a></p>
-<p>If you believe this is in error, please contact the Parking Office.</p>
-<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">
-<p style="font-size:12px;color:#888;">Moravian University Parking Services &mdash; Quarry</p>
-</div>"""
+    inner = (
+        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Registration Hold Notice</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {student_name or "Student"},</p>'
+        '<p style="color:#333;font-size:15px;line-height:1.6;">A hold has been placed on your '
+        f'university account due to <strong>{ticket_count} unpaid parking violations</strong>. '
+        'You will be unable to register for classes until all outstanding parking fines are paid.</p>'
+        '<div style="text-align:center;margin:28px 0;">'
+        f'<a href="{settings.student_facing_url}/pay" style="display:inline-block;padding:16px 40px;'
+        'background:#1a2744;color:#ffffff;text-decoration:none;border-radius:8px;'
+        'font-weight:700;font-size:16px;">Pay Citations Now</a></div>'
+        '<p style="color:#666;font-size:13px;text-align:center;">If you believe this is in error, '
+        'please contact the Parking Office.</p>'
+    )
+    body = email_shell(school, inner)
 
     try:
         await send_email(to=[student_email], subject=subject, body_html=body)
@@ -269,29 +295,51 @@ async def _notify_admin_of_hold(
     plate: str,
     ticket_count: int,
 ):
-    from app.services.email import send_email
+    from app.services.email import send_email, email_shell
 
     admin_email = settings.smtp_from_address
     if not admin_email:
         return
 
+    school = settings.school_name or "Campus"
     subject = f"Registration Hold Triggered \u2014 {student_name or student_id}"
-    manual_note = (
-        "<p><strong>The SIS API is not configured \u2014 please place the hold manually in Banner/Workday.</strong></p>"
-        if not settings.sis_hold_api_url
-        else "<p>The hold has been placed via the SIS API.</p>"
+    if settings.sis_hold_api_url:
+        status_badge = (
+            '<div style="background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;'
+            'font-size:14px;font-weight:600;margin:20px 0;">Hold placed via SIS API</div>'
+        )
+    else:
+        status_badge = (
+            '<div style="background:#fef2f2;color:#991b1b;padding:10px 16px;border-radius:8px;'
+            'font-size:14px;font-weight:600;margin:20px 0;">SIS API not configured &mdash; '
+            'please place the hold manually in Banner/Workday</div>'
+        )
+    inner = (
+        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Registration Hold Triggered</h2>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+        'text-transform:uppercase;letter-spacing:1px;">Student Details</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Student</td>'
+        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{student_name or "Unknown"} ({student_id})</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Email</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{student_email or "Unknown"}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Plate</td>'
+        f'<td style="padding:10px 16px;font-family:monospace;font-weight:600;font-size:14px;">{plate}</td></tr>'
+        '<tr>'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Unpaid Violations</td>'
+        f'<td style="padding:10px 16px;font-weight:600;color:#dc2626;font-size:14px;">{ticket_count}</td></tr>'
+        '</table>'
+        f'{status_badge}'
+        '<div style="text-align:center;margin:24px 0;">'
+        f'<a href="{settings.public_url}/admin/tickets?student={student_id}" '
+        'style="display:inline-block;padding:12px 32px;background:#1a2744;color:#ffffff;'
+        'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
+        'View Details</a></div>'
     )
-    body = f"""<div style="font-family: sans-serif; max-width: 600px;">
-<h2>Registration Hold Triggered</h2>
-<table>
-<tr><td><strong>Student:</strong></td><td>{student_name or 'Unknown'} ({student_id})</td></tr>
-<tr><td><strong>Email:</strong></td><td>{student_email or 'Unknown'}</td></tr>
-<tr><td><strong>Plate:</strong></td><td>{plate}</td></tr>
-<tr><td><strong>Unpaid Violations:</strong></td><td>{ticket_count}</td></tr>
-</table>
-{manual_note}
-<p><a href="{settings.public_url}/admin/tickets?student={student_id}">View details</a></p>
-</div>"""
+    body = email_shell(school, inner)
 
     try:
         await send_email(to=[admin_email], subject=subject, body_html=body)

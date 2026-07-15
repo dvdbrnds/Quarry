@@ -1,4 +1,4 @@
-"""Shared async SMTP email service for lot closures and citation delivery."""
+"""Shared async SMTP email service with branded templates."""
 
 import logging
 from email.mime.multipart import MIMEMultipart
@@ -9,6 +9,28 @@ import aiosmtplib
 from ..config import settings
 
 logger = logging.getLogger("quarry.email")
+
+_HEADER_BG = "#1a2744"
+_GOLD = "#c9a84c"
+_FOOTER_BG = "#f5f0e8"
+
+
+def email_shell(school: str, inner_html: str, footer_extra: str = "") -> str:
+    """Wrap inner content in the branded Quarry email shell."""
+    return (
+        '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;'
+        'max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;">'
+        f'<div style="background:{_HEADER_BG};padding:28px 32px;text-align:center;">'
+        f'<h1 style="color:{_GOLD};margin:0;font-size:22px;letter-spacing:1px;font-weight:700;">QUARRY</h1>'
+        f'<p style="color:#f5f0e8;margin:6px 0 0;font-size:12px;letter-spacing:0.5px;">{school} Parking Services</p>'
+        '</div>'
+        f'<div style="padding:32px 32px 24px;">{inner_html}</div>'
+        f'<div style="background:{_FOOTER_BG};padding:20px 32px;text-align:center;">'
+        f'{footer_extra}'
+        f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services &middot; Powered by Quarry</p>'
+        '</div>'
+        '</div>'
+    )
 
 
 async def send_email(
@@ -70,24 +92,34 @@ async def send_lot_closure_notification(
     school = school_name or settings.school_name or "Campus"
     subject = f"Parking Lot Closed: {lot_name}"
 
-    reopen_line = ""
+    reopen_row = ""
     if reopens_at:
-        reopen_line = f"<p><strong>Expected Reopening:</strong> {reopens_at}</p>"
+        reopen_row = (
+            '<tr style="border-bottom:1px solid #eee;">'
+            '<td style="padding:10px 16px;color:#666;font-size:14px;">Expected Reopening</td>'
+            f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{reopens_at}</td></tr>'
+        )
 
-    body_html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a2744;">Parking Lot Closure Notice</h2>
-        <p>This is to inform you that <strong>{lot_name}</strong> at {school}
-        has been closed effective <strong>{closes_at}</strong>.</p>
-        <p><strong>Reason:</strong> {reason}</p>
-        {reopen_line}
-        <p>Please make alternative parking arrangements. Vehicles remaining in the
-        closed lot may be subject to towing.</p>
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
-        <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
-        {{preference_footer}}
-    </div>
-    """
+    inner = (
+        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Lot Closure</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">This is to inform you that '
+        f'<strong>{lot_name}</strong> at {school} has been closed effective '
+        f'<strong>{closes_at}</strong>.</p>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+        'text-transform:uppercase;letter-spacing:1px;">Closure Details</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Lot</td>'
+        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{lot_name}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Reason</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{reason}</td></tr>'
+        f'{reopen_row}'
+        '</table>'
+        '<p style="color:#333;font-size:14px;line-height:1.6;">Please make alternative parking '
+        'arrangements. Vehicles remaining in the closed lot may be subject to towing.</p>'
+    )
+    body_html = email_shell(school, inner)
 
     body_text = (
         f"PARKING LOT CLOSURE NOTICE\n\n"
@@ -124,15 +156,16 @@ async def send_lot_reopen_notification(
     school = school_name or settings.school_name or "Campus"
     subject = f"Parking Lot Reopened: {lot_name}"
 
-    body_html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a2744;">Parking Lot Reopened</h2>
-        <p><strong>{lot_name}</strong> at {school} has been reopened and is
-        available for parking.</p>
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
-        <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
-    </div>
-    """
+    inner = (
+        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Lot Reopened</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;"><strong>{lot_name}</strong> '
+        f'at {school} has been reopened and is available for parking.</p>'
+        '<div style="text-align:center;margin:24px 0;">'
+        '<span style="display:inline-block;padding:10px 24px;background:#dcfce7;color:#166534;'
+        'border-radius:8px;font-weight:600;font-size:15px;">Lot Open</span>'
+        '</div>'
+    )
+    body_html = email_shell(school, inner)
 
     body_text = (
         f"PARKING LOT REOPENED\n\n"
@@ -160,45 +193,49 @@ async def send_citation_email(
     from_addr = settings.citation_from_address or None
     subject = f"Parking Citation Issued — {plate}"
 
-    officer_line = ""
+    officer_row = ""
     if officer_name:
-        officer_line = f"<p><strong>Issuing Officer:</strong> {officer_name}</p>"
+        officer_row = (
+            '<tr style="border-bottom:1px solid #eee;">'
+            '<td style="padding:10px 16px;color:#666;font-size:14px;">Officer</td>'
+            f'<td style="padding:10px 16px;font-size:14px;">{officer_name}</td></tr>'
+        )
 
-    body_html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a2744;">Parking Citation Notice</h2>
-        <p>A parking citation has been issued for vehicle <strong>{plate}</strong>.</p>
-
-        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-            <tr><td style="padding: 6px 0; color: #666;">Citation ID</td>
-                <td style="padding: 6px 0; font-weight: bold;">{ticket_id}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Plate</td>
-                <td style="padding: 6px 0; font-family: monospace; font-weight: bold;">{plate}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Violation</td>
-                <td style="padding: 6px 0;">{violation_label}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Location</td>
-                <td style="padding: 6px 0;">{lot}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Date/Time</td>
-                <td style="padding: 6px 0;">{issued_at}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Fine Amount</td>
-                <td style="padding: 6px 0; font-weight: bold; color: #c0392b;">${fine_amount}</td></tr>
-        </table>
-
-        {officer_line}
-
-        <p><a href="{payment_url}"
-              style="display: inline-block; padding: 12px 24px; background: #1a2744;
-                     color: white; text-decoration: none; border-radius: 6px;
-                     font-weight: bold;">Pay Citation Online</a></p>
-
-        <p style="font-size: 13px; color: #666; margin-top: 16px;">
-        If you believe this citation was issued in error, you may file an appeal
-        through the payment portal above.</p>
-
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
-        <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
-    </div>
-    """
+    inner = (
+        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Citation Notice</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">A parking citation has been '
+        f'issued for vehicle <strong style="font-family:monospace;">{plate}</strong>.</p>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+        'text-transform:uppercase;letter-spacing:1px;">Citation Details</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Citation ID</td>'
+        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{ticket_id}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Plate</td>'
+        f'<td style="padding:10px 16px;font-family:monospace;font-weight:600;font-size:14px;">{plate}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Violation</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{violation_label}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Location</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{lot}</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Date/Time</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{issued_at}</td></tr>'
+        f'{officer_row}'
+        '<tr>'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Fine Amount</td>'
+        f'<td style="padding:10px 16px;font-weight:700;color:#dc2626;font-size:16px;">${fine_amount}</td></tr>'
+        '</table>'
+        '<div style="text-align:center;margin:28px 0;">'
+        f'<a href="{payment_url}" style="display:inline-block;padding:16px 40px;background:#1a2744;'
+        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;">'
+        'Pay Citation Online</a></div>'
+        '<p style="font-size:13px;color:#666;text-align:center;">If you believe this citation '
+        'was issued in error, you may file an appeal through the payment portal above.</p>'
+    )
+    body_html = email_shell(school, inner)
 
     body_text = (
         f"PARKING CITATION NOTICE\n\n"
@@ -233,58 +270,49 @@ async def send_lottery_selection_email(
     first_name = student_name.split()[0] if student_name else "Student"
     subject = f"You've Been Selected — {permit_type_label} Parking Permit"
 
-    lot_line = ""
+    lot_row = ""
     if assigned_lot:
-        lot_line = f'<tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Assigned Lot</td><td style="padding: 8px 0; font-weight: bold; font-size: 14px;">{assigned_lot}</td></tr>'
-
-    price_line = ""
+        lot_row = (
+            '<tr style="border-bottom:1px solid #eee;">'
+            '<td style="padding:10px 16px;color:#666;font-size:14px;">Assigned Lot</td>'
+            f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{assigned_lot}</td></tr>'
+        )
+    price_row = ""
     if price and price != "0" and price != "0.00":
-        price_line = f'<tr><td style="padding: 8px 0; color: #666; font-size: 14px;">Permit Fee</td><td style="padding: 8px 0; font-weight: bold; font-size: 14px;">${price}</td></tr>'
+        price_row = (
+            '<tr style="border-bottom:1px solid #eee;">'
+            '<td style="padding:10px 16px;color:#666;font-size:14px;">Permit Fee</td>'
+            f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">${price}</td></tr>'
+        )
+    payment_note = " and complete payment" if price and price != "0" and price != "0.00" else ""
 
-    body_html = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
-        <div style="background: #1a2744; padding: 24px 32px; text-align: center;">
-            <h1 style="color: #c9a84c; margin: 0; font-size: 22px; letter-spacing: 1px;">QUARRY</h1>
-            <p style="color: #f5f0e8; margin: 4px 0 0; font-size: 12px;">{school} Parking Services</p>
-        </div>
-
-        <div style="padding: 32px;">
-            <h2 style="color: #1a2744; margin: 0 0 8px; font-size: 20px;">Congratulations, {first_name}!</h2>
-            <p style="color: #333; font-size: 15px; line-height: 1.6; margin: 0 0 20px;">
-                You've been selected for a <strong>{permit_type_label}</strong> parking permit.
-            </p>
-
-            <table style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 8px; margin: 20px 0;">
-                <tr><td colspan="2" style="padding: 12px 16px 4px; font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1px;">Permit Details</td></tr>
-                <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px 16px; color: #666; font-size: 14px;">Permit Type</td><td style="padding: 8px 16px; font-weight: bold; font-size: 14px;">{permit_type_label}</td></tr>
-                {lot_line.replace('padding: 8px 0', 'padding: 8px 16px') if lot_line else ''}
-                {price_line.replace('padding: 8px 0', 'padding: 8px 16px') if price_line else ''}
-                <tr><td style="padding: 8px 16px; color: #666; font-size: 14px;">Accept By</td><td style="padding: 8px 16px; font-weight: bold; color: #dc2626; font-size: 14px;">{deadline}</td></tr>
-            </table>
-
-            <p style="color: #333; font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
-                Log in to the student parking portal to accept your offer{' and complete payment' if price and price != '0' and price != '0.00' else ''}. 
-                If you do not respond by <strong>{deadline}</strong>, your spot will be released to the next student on the waitlist.
-            </p>
-
-            <div style="text-align: center; margin: 28px 0;">
-                <a href="{portal_url}"
-                   style="display: inline-block; padding: 16px 40px; background: #16a34a;
-                          color: white; text-decoration: none; border-radius: 8px;
-                          font-weight: bold; font-size: 16px;">
-                    Accept &amp; Pay Now
-                </a>
-            </div>
-
-            <p style="font-size: 13px; color: #666; text-align: center;">
-                Don't want this permit? You can decline from the portal and your spot will go to the next student.</p>
-        </div>
-
-        <div style="background: #f5f0e8; padding: 20px 32px; text-align: center;">
-            <p style="font-size: 12px; color: #888; margin: 0;">{school} Parking Services &middot; Powered by Quarry</p>
-        </div>
-    </div>
-    """
+    inner = (
+        f'<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Congratulations, {first_name}!</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 20px;">'
+        f'You\'ve been selected for a <strong>{permit_type_label}</strong> parking permit.</p>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+        'text-transform:uppercase;letter-spacing:1px;">Permit Details</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Permit Type</td>'
+        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{permit_type_label}</td></tr>'
+        f'{lot_row}{price_row}'
+        '<tr><td style="padding:10px 16px;color:#666;font-size:14px;">Accept By</td>'
+        f'<td style="padding:10px 16px;font-weight:600;color:#dc2626;font-size:14px;">{deadline}</td></tr>'
+        '</table>'
+        f'<p style="color:#333;font-size:14px;line-height:1.6;margin:0 0 24px;">'
+        f'Log in to the student parking portal to accept your offer{payment_note}. '
+        f'If you do not respond by <strong>{deadline}</strong>, your spot will be released '
+        'to the next student on the waitlist.</p>'
+        '<div style="text-align:center;margin:28px 0;">'
+        f'<a href="{portal_url}" style="display:inline-block;padding:16px 40px;background:#16a34a;'
+        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;">'
+        'Accept &amp; Pay Now</a></div>'
+        '<p style="font-size:13px;color:#666;text-align:center;">'
+        'Don\'t want this permit? You can decline from the portal and your spot '
+        'will go to the next student.</p>'
+    )
+    body_html = email_shell(school, inner)
 
     body_text = (
         f"CONGRATULATIONS, {first_name.upper()}!\n\n"
@@ -318,53 +346,37 @@ async def send_renewal_email(
     school = school_name or settings.school_name or "Campus"
     subject = f"Parking Permit Renewal — Action Required by June 30"
 
-    body_html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a2744;">Parking Permit Renewal</h2>
-        <p>Hello {name},</p>
-        <p>Your <strong>{permit_type}</strong> parking permit
-        (lots: {lot_assignment}) expires on <strong>June 30</strong>.</p>
-        <p>All faculty/staff parking permits expire annually on June 30 and must
-        be renewed for the upcoming year. Please let us know if you'd like to
-        keep your permit by clicking one of the buttons below.</p>
-
-        <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 28px 0;">
-            <tr>
-                <td style="padding-right: 12px;">
-                    <a href="{renew_url}"
-                       style="display: inline-block; padding: 14px 28px; background: #16a34a;
-                              color: white; text-decoration: none; border-radius: 8px;
-                              font-weight: bold; font-size: 15px;">
-                        Yes, Renew My Permit
-                    </a>
-                </td>
-                <td>
-                    <a href="{decline_url}"
-                       style="display: inline-block; padding: 14px 28px; background: #dc2626;
-                              color: white; text-decoration: none; border-radius: 8px;
-                              font-weight: bold; font-size: 15px;">
-                        No, I Don't Need It
-                    </a>
-                </td>
-            </tr>
-        </table>
-
-        <p style="font-size: 13px; color: #666;">
-        No payment is required. Clicking "Yes" will automatically renew your permit
-        through June 30 of next year with the same lot assignment.</p>
-
-        <p style="font-size: 13px; color: #666;">
-        If you need to update your license plate, click "Yes" first, then contact
-        Parking Services to update your plate information.</p>
-
-        <p style="font-size: 13px; color: #666; margin-top: 16px;">
-        If you do not respond by June 30, your permit will expire and your spot
-        will be released.</p>
-
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
-        <p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p>
-    </div>
-    """
+    inner = (
+        f'<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Permit Renewal</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Hello {name},</p>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Your <strong>{permit_type}</strong> '
+        f'parking permit (lots: {lot_assignment}) expires on <strong>June 30</strong>.</p>'
+        '<p style="color:#333;font-size:14px;line-height:1.6;">All faculty/staff parking permits '
+        'expire annually on June 30 and must be renewed for the upcoming year. Please let us '
+        'know if you\'d like to keep your permit by clicking one of the buttons below.</p>'
+        '<table role="presentation" cellspacing="0" cellpadding="0" '
+        'style="margin:28px auto;text-align:center;">'
+        '<tr>'
+        '<td style="padding-right:12px;">'
+        f'<a href="{renew_url}" style="display:inline-block;padding:16px 32px;background:#16a34a;'
+        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">'
+        'Yes, Renew My Permit</a></td>'
+        '<td>'
+        f'<a href="{decline_url}" style="display:inline-block;padding:16px 32px;background:#dc2626;'
+        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">'
+        'No, I Don\'t Need It</a></td>'
+        '</tr></table>'
+        '<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin:20px 0;">'
+        '<p style="font-size:13px;color:#666;margin:0 0 8px;">No payment is required. '
+        'Clicking &ldquo;Yes&rdquo; will automatically renew your permit through June 30 of '
+        'next year with the same lot assignment.</p>'
+        '<p style="font-size:13px;color:#666;margin:0 0 8px;">If you need to update your '
+        'license plate, click &ldquo;Yes&rdquo; first, then contact Parking Services.</p>'
+        '<p style="font-size:13px;color:#666;margin:0;">If you do not respond by June 30, '
+        'your permit will expire and your spot will be released.</p>'
+        '</div>'
+    )
+    body_html = email_shell(school, inner)
 
     body_text = (
         f"PARKING PERMIT RENEWAL — ACTION REQUIRED\n\n"

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.lottery import get_strategy, assign_lots, distribute_capacity
-from app.services.email import send_email, send_lottery_selection_email
+from app.services.email import send_email, send_lottery_selection_email, email_shell
 
 logger = logging.getLogger(__name__)
 
@@ -293,32 +293,29 @@ async def _notify_waitlisted(waitlisted, permit_type):
             position = idx + 1
             first_name = name.split()[0] if name else "Student"
 
-            body_html = f"""
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: #1a2744; padding: 24px 32px; text-align: center;">
-                    <h1 style="color: #c9a84c; margin: 0; font-size: 22px; letter-spacing: 1px;">QUARRY</h1>
-                    <p style="color: #f5f0e8; margin: 4px 0 0; font-size: 12px;">{school} Parking Services</p>
-                </div>
-                <div style="padding: 32px;">
-                    <h2 style="color: #1a2744; margin: 0 0 8px; font-size: 20px;">Waitlisted — {pt_label}</h2>
-                    <p style="color: #333; font-size: 15px; line-height: 1.6;">
-                        Dear {first_name}, thank you for applying for the <strong>{pt_label}</strong> parking permit.
-                    </p>
-                    <p style="color: #333; font-size: 15px; line-height: 1.6;">
-                        You were not selected in the initial lottery draw, but you have been placed on
-                        the waitlist at <strong>position #{position}</strong> out of {len(waitlisted)}.
-                    </p>
-                    <p style="color: #333; font-size: 14px; line-height: 1.6;">
-                        If a selected student declines or does not pay by the deadline, you will be
-                        notified by email with an offer to claim the spot. You do not need to take
-                        any action at this time.
-                    </p>
-                </div>
-                <div style="background: #f5f0e8; padding: 20px 32px; text-align: center;">
-                    <p style="font-size: 12px; color: #888; margin: 0;">{school} Parking Services &middot; Powered by Quarry</p>
-                </div>
-            </div>
-            """
+            inner = (
+                f'<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Waitlisted &mdash; {pt_label}</h2>'
+                f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name}, '
+                f'thank you for applying for the <strong>{pt_label}</strong> parking permit.</p>'
+                '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+                '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+                'text-transform:uppercase;letter-spacing:1px;">Waitlist Status</td></tr>'
+                '<tr style="border-bottom:1px solid #eee;">'
+                '<td style="padding:10px 16px;color:#666;font-size:14px;">Your Position</td>'
+                f'<td style="padding:10px 16px;font-weight:600;font-size:16px;color:#1a2744;">#{position}</td></tr>'
+                '<tr>'
+                '<td style="padding:10px 16px;color:#666;font-size:14px;">Total Waitlisted</td>'
+                f'<td style="padding:10px 16px;font-size:14px;">{len(waitlisted)}</td></tr>'
+                '</table>'
+                '<p style="color:#333;font-size:14px;line-height:1.6;">You were not selected in '
+                'the initial lottery draw, but you have been placed on the waitlist. If a selected '
+                'student declines or does not pay by the deadline, you will be notified by email '
+                'with an offer to claim the spot.</p>'
+                '<div style="background:#f8f9fa;border-radius:8px;padding:14px 20px;margin:20px 0;text-align:center;">'
+                '<p style="font-size:14px;color:#666;margin:0;">No action is required at this time.</p>'
+                '</div>'
+            )
+            body_html = email_shell(school, inner)
             body_text = (
                 f"WAITLISTED — {pt_label}\n\n"
                 f"Dear {first_name},\n\n"
