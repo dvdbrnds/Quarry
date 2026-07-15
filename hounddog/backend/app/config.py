@@ -130,7 +130,7 @@ class Settings(BaseSettings):
     sis_subscriber_sync_url: str = ""
     sis_subscriber_sync_key: str = ""
 
-    model_config = {"env_prefix": "QUARRY_", "env_file": ".env"}
+    model_config = {"env_prefix": "", "env_file": ".env"}
 
 
 settings = Settings()

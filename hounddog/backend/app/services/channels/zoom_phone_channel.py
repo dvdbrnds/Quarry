@@ -5,10 +5,10 @@ broadcast to a configured paging group. The paging message is TTS derived
 from the alert subject and body.
 
 Config:
-    QUARRY_ZOOM_ACCOUNT_ID
-    QUARRY_ZOOM_CLIENT_ID
-    QUARRY_ZOOM_CLIENT_SECRET
-    QUARRY_ZOOM_PAGING_GROUP_ID
+    ZOOM_ACCOUNT_ID
+    ZOOM_CLIENT_ID
+    ZOOM_CLIENT_SECRET
+    ZOOM_PAGING_GROUP_ID
 """
 
 import base64

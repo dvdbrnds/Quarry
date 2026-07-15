@@ -8,10 +8,10 @@ The specific control names are unique to Moravian's Q-SYS deployment and will
 be provided by Craig Underwood (AV). The defaults below are placeholders.
 
 Config:
-    QUARRY_QSYS_CORE_HOST
-    QUARRY_QSYS_CORE_PORT (default 1710)
-    QUARRY_QSYS_CORE_USERNAME
-    QUARRY_QSYS_CORE_PASSWORD
+    QSYS_CORE_HOST
+    QSYS_CORE_PORT (default 1710)
+    QSYS_CORE_USERNAME
+    QSYS_CORE_PASSWORD
 """
 
 import asyncio

@@ -131,23 +131,23 @@ Go to your Quarry application in Coolify → **Environment Variables** tab.
 
 ### Required (app will not start without these)
 
-- [ ] `QUARRY_DATABASE_URL`
+- [ ] `DATABASE_URL`
   - Take the Internal URL from Step 2 and change `postgresql://` to `postgresql+asyncpg://`
   - Example: `postgresql+asyncpg://quarry:<password>@<container-name>:5432/quarry`
-- [ ] `QUARRY_SECRET_KEY`
+- [ ] `SECRET_KEY`
   - Generate with: `openssl rand -hex 32`
   - Paste the output
-- [ ] `QUARRY_DEBUG`
+- [ ] `DEBUG`
   - Set to `false`
-- [ ] `QUARRY_CORS_ORIGINS`
+- [ ] `CORS_ORIGINS`
   - Set to `["https://quarry.moravian.edu","https://parking.moravian.edu"]`
 
 ### Student-facing vanity URL (optional)
 
-- [ ] `QUARRY_STUDENT_URL`
+- [ ] `STUDENT_URL`
   - Set to `https://parking.moravian.edu`
   - All student-facing links (payment, permits, alerts, lottery emails) will use this domain
-  - If omitted, falls back to `QUARRY_PUBLIC_URL`
+  - If omitted, falls back to `PUBLIC_URL`
 
 ### Okta SSO (add later — do NOT create these vars until Okta is ready)
 
@@ -155,14 +155,14 @@ Go to your Quarry application in Coolify → **Environment Variables** tab.
 > dashboard is open with full admin access. When you're ready, add these four
 > vars in Coolify and redeploy — auth turns on automatically.
 
-- [ ] `QUARRY_OKTA_DOMAIN`
+- [ ] `OKTA_DOMAIN`
   - Your Okta domain, e.g.: `moravian.okta.com`
   - No `https://`, no trailing slash
-- [ ] `QUARRY_OKTA_CLIENT_ID`
+- [ ] `OKTA_CLIENT_ID`
   - The Client ID from Step 4C
-- [ ] `QUARRY_OKTA_CLIENT_SECRET`
+- [ ] `OKTA_CLIENT_SECRET`
   - The Client Secret from Step 4C
-- [ ] `QUARRY_OKTA_AUDIENCE`
+- [ ] `OKTA_AUDIENCE`
   - Usually the same as the Client ID
   - Or use a custom audience if configured in Okta's Authorization Server
 
@@ -227,9 +227,9 @@ Go to your Quarry application in Coolify → **Environment Variables** tab.
 
 | Symptom | Fix |
 |---|---|
-| Healthcheck fails / `Connection refused` on port 8000 | `QUARRY_DATABASE_URL` is wrong or PostgreSQL hasn't started. Check the Internal URL on the database resource page. Make sure you used `postgresql+asyncpg://` not `postgresql://`. |
+| Healthcheck fails / `Connection refused` on port 8000 | `DATABASE_URL` is wrong or PostgreSQL hasn't started. Check the Internal URL on the database resource page. Make sure you used `postgresql+asyncpg://` not `postgresql://`. |
 | `Application startup failed` in container logs | Same as above — database connection issue. The app retries 10 times (30s total) then exits. |
-| `Token verification failed` | `QUARRY_OKTA_DOMAIN` or `QUARRY_OKTA_CLIENT_ID` is wrong. Or the groups claim wasn't added in Step 4F. |
+| `Token verification failed` | `OKTA_DOMAIN` or `OKTA_CLIENT_ID` is wrong. Or the groups claim wasn't added in Step 4F. |
 | Okta returns `400 Bad Request` after redirect | The Sign-in redirect URI in Okta doesn't match your actual domain. Go to Applications → Quarry → General and fix the URI. |
 | Finance pages return `403 Forbidden` | Your user isn't in the `quarry_admin` or `quarry_finance` Okta group. Check Directory → Groups in Okta. |
 | `/pay` page asks for login | Should never happen — `/pay` bypasses auth entirely. Verify the URL is exactly `/pay`, not `/payments` or `/finance`. |

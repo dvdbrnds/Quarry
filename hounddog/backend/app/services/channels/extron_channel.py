@@ -5,7 +5,7 @@ On emergency: changes every panel display to the alert message (red background,
 large text) and blinks the room occupancy LED red.
 On clear: sends an all_clear flag to restore normal panel display.
 
-Config: QUARRY_EXTRON_ROOM_AGENT_URL
+Config: EXTRON_ROOM_AGENT_URL
 """
 
 import logging

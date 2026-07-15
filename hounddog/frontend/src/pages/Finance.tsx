@@ -315,7 +315,7 @@ export default function Finance() {
       ) : stripeError ? (
         <Alert type="error" message="Stripe API Error" description={stripeError} className="mb-6" showIcon />
       ) : (
-        <Alert type="warning" message="Stripe not configured" description="Set QUARRY_STRIPE_SECRET_KEY to see live Stripe data." className="mb-6" showIcon />
+        <Alert type="warning" message="Stripe not configured" description="Set STRIPE_SECRET_KEY to see live Stripe data." className="mb-6" showIcon />
       )}
 
       <Tabs defaultActiveKey="stripe" items={[

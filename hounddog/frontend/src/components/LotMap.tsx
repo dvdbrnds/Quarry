@@ -534,7 +534,7 @@ export default function LotMap(props: LotMapProps) {
         <div className="text-center p-6">
           <p className="text-ink-mute text-sm mb-2">Google Maps API key not configured.</p>
           <p className="text-xs text-ink-mute">
-            Set <code className="bg-gray-200 px-1 rounded">QUARRY_GOOGLE_MAPS_API_KEY</code> to enable the map.
+            Set <code className="bg-gray-200 px-1 rounded">GOOGLE_MAPS_API_KEY</code> to enable the map.
           </p>
         </div>
       </div>

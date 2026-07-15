@@ -35,11 +35,11 @@ const CHANNEL_DESCRIPTIONS: Record<string, string> = {
 };
 
 const CHANNEL_ENV_HINTS: Record<string, string> = {
-  sms: "QUARRY_TWILIO_ACCOUNT_SID, QUARRY_TWILIO_AUTH_TOKEN, QUARRY_TWILIO_FROM_NUMBER",
-  email: "QUARRY_SMTP_HOST, QUARRY_SMTP_FROM_ADDRESS", voice: "Same as SMS (Twilio)",
-  signage: "Always on", banner: "Always on", teams: "QUARRY_TEAMS_WEBHOOK_URL",
-  extron: "QUARRY_EXTRON_ROOM_AGENT_URL", pa: "QUARRY_QSYS_CORE_HOST",
-  zoom_phone: "QUARRY_ZOOM_ACCOUNT_ID, QUARRY_ZOOM_CLIENT_ID, ...",
+  sms: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER",
+  email: "SMTP_HOST, SMTP_FROM_ADDRESS", voice: "Same as SMS (Twilio)",
+  signage: "Always on", banner: "Always on", teams: "TEAMS_WEBHOOK_URL",
+  extron: "EXTRON_ROOM_AGENT_URL", pa: "QSYS_CORE_HOST",
+  zoom_phone: "ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ...",
 };
 
 const GROUP_TYPE_LABELS: Record<string, string> = {
@@ -1558,7 +1558,7 @@ function WeatherSection() {
           </div>
         </div>
         <p className="text-xs text-ink-mute mt-3">
-          Configure via environment variables: QUARRY_NWS_ALERTS_ENABLED, QUARRY_NWS_ZONE_ID, QUARRY_NWS_POLL_INTERVAL_SECONDS
+          Configure via environment variables: NWS_ALERTS_ENABLED, NWS_ZONE_ID, NWS_POLL_INTERVAL_SECONDS
         </p>
       </Card>
 
@@ -1653,7 +1653,7 @@ function SisSyncSection() {
           </div>
         </div>
         <p className="text-xs text-ink-mute mt-4">
-          Configure via environment variables: QUARRY_SIS_SUBSCRIBER_SYNC_ENABLED, QUARRY_SIS_SUBSCRIBER_SYNC_URL, QUARRY_SIS_SUBSCRIBER_SYNC_KEY
+          Configure via environment variables: SIS_SUBSCRIBER_SYNC_ENABLED, SIS_SUBSCRIBER_SYNC_URL, SIS_SUBSCRIBER_SYNC_KEY
         </p>
       </Card>
 

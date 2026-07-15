@@ -243,7 +243,7 @@ class AlertTemplateRead(BaseModel):
 | `GET` | `/{alert_id}/responses/detail` | — | `list[AlertResponseRead]` | Admin | Individual responses |
 | `GET` | `/{alert_id}/non-responders` | — | `list[SubscriberRead]` | Admin | Subscribers who haven't replied |
 
-**Webhook Registration:** The Twilio inbound webhook URL (`https://quarry.moravian.edu/api/alerts/webhooks/twilio/inbound`) must be configured in the Twilio console for the `QUARRY_TWILIO_FROM_NUMBER` phone number.
+**Webhook Registration:** The Twilio inbound webhook URL (`https://quarry.moravian.edu/api/alerts/webhooks/twilio/inbound`) must be configured in the Twilio console for the `TWILIO_FROM_NUMBER` phone number.
 
 **Extend `AlertSendRequest`:**
 
@@ -692,7 +692,7 @@ Estimates assume a single developer familiar with the Quarry codebase.
 ### Must Resolve Before Phase 1
 
 1. **Twilio Phone Number Configuration**
-   - The current `QUARRY_TWILIO_FROM_NUMBER` must support receiving inbound SMS. Verify with Twilio that the number type (local, toll-free, short code) supports two-way messaging.
+   - The current `TWILIO_FROM_NUMBER` must support receiving inbound SMS. Verify with Twilio that the number type (local, toll-free, short code) supports two-way messaging.
    - Short codes have higher throughput but cost more and require a separate approval process.
    - **Action:** Check Twilio console for the current number's inbound SMS capability.
 

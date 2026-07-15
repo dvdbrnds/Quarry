@@ -149,7 +149,7 @@ async def _create_conduct_referral(
     else:
         logger.warning(
             "Conduct referral triggered but no Maxient integration configured. "
-            "Set QUARRY_MAXIENT_INTAKE_EMAIL or QUARRY_MAXIENT_API_URL."
+            "Set MAXIENT_INTAKE_EMAIL or MAXIENT_API_URL."
         )
 
 

@@ -5,11 +5,11 @@ Sends content-available pushes to all registered BirdDog devices when permit
 data changes, prompting them to sync immediately.
 
 Requires a .p8 APNs auth key from Apple Developer portal. Configure via env:
-  QUARRY_APNS_KEY_PATH  - path to the .p8 key file
-  QUARRY_APNS_KEY_ID    - 10-character Key ID from Apple
-  QUARRY_APNS_TEAM_ID   - Apple Developer Team ID
-  QUARRY_APNS_BUNDLE_ID - app bundle identifier (default: edu.moravian.birddog)
-  QUARRY_APNS_USE_SANDBOX - True for development, False for production
+  APNS_KEY_PATH  - path to the .p8 key file
+  APNS_KEY_ID    - 10-character Key ID from Apple
+  APNS_TEAM_ID   - Apple Developer Team ID
+  APNS_BUNDLE_ID - app bundle identifier (default: edu.moravian.birddog)
+  APNS_USE_SANDBOX - True for development, False for production
 """
 
 import json

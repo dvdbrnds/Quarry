@@ -1211,7 +1211,7 @@ async def stripe_backfill_payments(
 async def stripe_debug(user: OktaUser = Depends(require_admin())):
     """Diagnostic: show what Stripe sees with the configured key."""
     if not settings.stripe_secret_key:
-        return {"error": "QUARRY_STRIPE_SECRET_KEY is empty", "key_prefix": ""}
+        return {"error": "STRIPE_SECRET_KEY is empty", "key_prefix": ""}
 
     import stripe
     stripe.api_key = settings.stripe_secret_key
@@ -1405,7 +1405,7 @@ async def stripe_transactions(
     import traceback
 
     if not settings.stripe_secret_key:
-        raise HTTPException(503, "Stripe not configured — QUARRY_STRIPE_SECRET_KEY is empty")
+        raise HTTPException(503, "Stripe not configured — STRIPE_SECRET_KEY is empty")
 
     import stripe
     stripe.api_key = settings.stripe_secret_key

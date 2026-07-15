@@ -49,17 +49,17 @@ async def lifespan(app: FastAPI):
     # Fail fast if secret_key was not overridden from the default
     if not settings.secret_key:
         raise RuntimeError(
-            "QUARRY_SECRET_KEY is not set. "
+            "SECRET_KEY is not set. "
             "Set it to a strong random value before starting the server."
         )
     if len(settings.secret_key) < 32:
         raise RuntimeError(
-            "QUARRY_SECRET_KEY is too short. Use at least 32 characters of random hex."
+            "SECRET_KEY is too short. Use at least 32 characters of random hex."
         )
 
     if not settings.okta_domain:
         raise RuntimeError(
-            "QUARRY_OKTA_DOMAIN is not set. "
+            "OKTA_DOMAIN is not set. "
             "Set it to your Okta domain (e.g., moravian.okta.com) before starting the server."
         )
 
