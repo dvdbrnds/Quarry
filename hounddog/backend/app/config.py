@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     student_url: str = ""
     school_name: str = ""
 
+    # Branding
+    brand_name: str = "Quarry"
+    brand_primary_color: str = "#1a2744"
+    brand_accent_color: str = "#c9a84c"
+    brand_logo_path: str = ""
+    brand_favicon_path: str = ""
+
     @property
     def student_facing_url(self) -> str:
         return self.student_url or self.public_url

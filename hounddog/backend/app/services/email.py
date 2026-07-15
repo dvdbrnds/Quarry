@@ -10,24 +10,38 @@ from ..config import settings
 
 logger = logging.getLogger("quarry.email")
 
-_HEADER_BG = "#1a2744"
-_GOLD = "#c9a84c"
 _FOOTER_BG = "#f5f0e8"
 
 
 def email_shell(school: str, inner_html: str, footer_extra: str = "") -> str:
-    """Wrap inner content in the branded Quarry email shell."""
+    """Wrap inner content in the branded email shell using configured branding."""
+    primary = settings.brand_primary_color or "#1a2744"
+    accent = settings.brand_accent_color or "#c9a84c"
+    brand_name = settings.brand_name or "Quarry"
+
+    if settings.brand_logo_path:
+        logo_url = f"{settings.public_url}/uploads/{settings.brand_logo_path}"
+        logo_html = (
+            f'<img src="{logo_url}" alt="{brand_name}" '
+            'style="max-height:48px;max-width:280px;margin:0 auto;" />'
+        )
+    else:
+        logo_html = (
+            f'<h1 style="color:{accent};margin:0;font-size:22px;'
+            f'letter-spacing:1px;font-weight:700;">{brand_name.upper()}</h1>'
+        )
+
     return (
         '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;'
         'max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;">'
-        f'<div style="background:{_HEADER_BG};padding:28px 32px;text-align:center;">'
-        f'<h1 style="color:{_GOLD};margin:0;font-size:22px;letter-spacing:1px;font-weight:700;">QUARRY</h1>'
+        f'<div style="background:{primary};padding:28px 32px;text-align:center;">'
+        f'{logo_html}'
         f'<p style="color:#f5f0e8;margin:6px 0 0;font-size:12px;letter-spacing:0.5px;">{school} Parking Services</p>'
         '</div>'
         f'<div style="padding:32px 32px 24px;">{inner_html}</div>'
         f'<div style="background:{_FOOTER_BG};padding:20px 32px;text-align:center;">'
         f'{footer_extra}'
-        f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services &middot; Powered by Quarry</p>'
+        f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services &middot; Powered by {brand_name}</p>'
         '</div>'
         '</div>'
     )
@@ -81,6 +95,10 @@ async def send_email(
         return False
 
 
+def _primary() -> str:
+    return settings.brand_primary_color or "#1a2744"
+
+
 async def send_lot_closure_notification(
     lot_name: str,
     reason: str,
@@ -101,7 +119,7 @@ async def send_lot_closure_notification(
         )
 
     inner = (
-        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Lot Closure</h2>'
+        f'<h2 style="color:{_primary()};margin:0 0 8px;font-size:20px;">Parking Lot Closure</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;">This is to inform you that '
         f'<strong>{lot_name}</strong> at {school} has been closed effective '
         f'<strong>{closes_at}</strong>.</p>'
@@ -157,7 +175,7 @@ async def send_lot_reopen_notification(
     subject = f"Parking Lot Reopened: {lot_name}"
 
     inner = (
-        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Lot Reopened</h2>'
+        f'<h2 style="color:{_primary()};margin:0 0 8px;font-size:20px;">Parking Lot Reopened</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;"><strong>{lot_name}</strong> '
         f'at {school} has been reopened and is available for parking.</p>'
         '<div style="text-align:center;margin:24px 0;">'
@@ -202,7 +220,7 @@ async def send_citation_email(
         )
 
     inner = (
-        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Citation Notice</h2>'
+        f'<h2 style="color:{_primary()};margin:0 0 8px;font-size:20px;">Parking Citation Notice</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;">A parking citation has been '
         f'issued for vehicle <strong style="font-family:monospace;">{plate}</strong>.</p>'
         '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
@@ -229,7 +247,7 @@ async def send_citation_email(
         f'<td style="padding:10px 16px;font-weight:700;color:#dc2626;font-size:16px;">${fine_amount}</td></tr>'
         '</table>'
         '<div style="text-align:center;margin:28px 0;">'
-        f'<a href="{payment_url}" style="display:inline-block;padding:16px 40px;background:#1a2744;'
+        f'<a href="{payment_url}" style="display:inline-block;padding:16px 40px;background:{_primary()};'
         'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;">'
         'Pay Citation Online</a></div>'
         '<p style="font-size:13px;color:#666;text-align:center;">If you believe this citation '
@@ -287,7 +305,7 @@ async def send_lottery_selection_email(
     payment_note = " and complete payment" if price and price != "0" and price != "0.00" else ""
 
     inner = (
-        f'<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Congratulations, {first_name}!</h2>'
+        f'<h2 style="color:{_primary()};margin:0 0 8px;font-size:20px;">Congratulations, {first_name}!</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 20px;">'
         f'You\'ve been selected for a <strong>{permit_type_label}</strong> parking permit.</p>'
         '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
@@ -347,7 +365,7 @@ async def send_renewal_email(
     subject = f"Parking Permit Renewal — Action Required by June 30"
 
     inner = (
-        f'<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Parking Permit Renewal</h2>'
+        f'<h2 style="color:{_primary()};margin:0 0 8px;font-size:20px;">Parking Permit Renewal</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;">Hello {name},</p>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;">Your <strong>{permit_type}</strong> '
         f'parking permit (lots: {lot_assignment}) expires on <strong>June 30</strong>.</p>'

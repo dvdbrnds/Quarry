@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Result, Spin, Button } from "antd";
+import { useBranding } from "../useBranding";
 
 interface VerifyResult { payment_status: string; payment_type?: string; ticket_id?: string; ticket_plate?: string; }
 
 export default function PaySuccess() {
+  const brand = useBranding();
   const [sessionId, setSessionId] = useState("");
   const [verifying, setVerifying] = useState(true);
   const [result, setResult] = useState<VerifyResult | null>(null);
@@ -38,7 +40,7 @@ export default function PaySuccess() {
             ]}
           />
         )}
-        <div className="text-center text-xs text-ink-mute mt-8">&copy; Quarry Parking Systems</div>
+        <div className="text-center text-xs text-ink-mute mt-8">&copy; {brand.brandName} Parking</div>
       </div>
     </div>
   );

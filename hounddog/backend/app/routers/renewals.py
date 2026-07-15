@@ -31,22 +31,25 @@ def _next_june_30(from_date: date | None = None) -> date:
 
 
 def _build_response_html(title: str, heading: str, message: str, success: bool = True) -> str:
-    color = "#16a34a" if success else "#1a2744"
+    primary = settings.brand_primary_color or "#1a2744"
+    accent = settings.brand_accent_color or "#c9a84c"
+    brand = settings.brand_name or "Quarry"
+    color = "#16a34a" if success else primary
     icon = "&#10003;" if success else "&#10005;"
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <style>
 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f8f9fa; }}
-.nav {{ background: #1a2744; color: #f5f0e8; padding: 16px 24px; }}
-.nav h1 {{ margin: 0; font-size: 18px; color: #c9a84c; }}
+.nav {{ background: {primary}; color: #f5f0e8; padding: 16px 24px; }}
+.nav h1 {{ margin: 0; font-size: 18px; color: {accent}; }}
 .container {{ max-width: 500px; margin: 60px auto; padding: 0 24px; text-align: center; }}
 .icon {{ width: 64px; height: 64px; border-radius: 50%; background: {color}; color: white;
          font-size: 32px; line-height: 64px; margin: 0 auto 24px; }}
-h2 {{ color: #1a2744; margin-bottom: 12px; }}
+h2 {{ color: {primary}; margin-bottom: 12px; }}
 p {{ color: #555; line-height: 1.6; }}
 </style></head><body>
-<div class="nav"><h1>Quarry Parking</h1></div>
+<div class="nav"><h1>{brand} Parking</h1></div>
 <div class="container">
 <div class="icon">{icon}</div>
 <h2>{heading}</h2>

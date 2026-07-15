@@ -3,6 +3,7 @@ import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space,
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
+import { useBranding } from "../useBranding";
 
 interface LotDetail {
   name: string;
@@ -43,6 +44,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
 };
 
 export default function LotteryApply() {
+  const brand = useBranding();
   const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
 
@@ -176,12 +178,12 @@ function LotteryPage({ user }: { user: AuthUser }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-[#1a2744] text-[#f5f0e8] px-6 py-4 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-[#f5f0e8] px-6 py-4 shadow-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
+            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
             <div>
-              <h1 className="text-lg font-bold text-[#c9a84c]">Quarry</h1>
+              <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>
               <span className="text-xs text-[#f5f0e8]/60">Parking Permit Lottery</span>
             </div>
           </div>
@@ -328,7 +330,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
               )}
 
               <div className="text-center text-xs text-gray-400 pt-4 border-t">
-                Moravian University Parking Services — Quarry
+                {brand.schoolName || "Campus"} Parking Services — {brand.brandName}
               </div>
             </div>
 

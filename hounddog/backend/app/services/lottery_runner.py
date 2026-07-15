@@ -294,7 +294,7 @@ async def _notify_waitlisted(waitlisted, permit_type):
             first_name = name.split()[0] if name else "Student"
 
             inner = (
-                f'<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Waitlisted &mdash; {pt_label}</h2>'
+                f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Waitlisted &mdash; {pt_label}</h2>'
                 f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name}, '
                 f'thank you for applying for the <strong>{pt_label}</strong> parking permit.</p>'
                 '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
@@ -302,7 +302,7 @@ async def _notify_waitlisted(waitlisted, permit_type):
                 'text-transform:uppercase;letter-spacing:1px;">Waitlist Status</td></tr>'
                 '<tr style="border-bottom:1px solid #eee;">'
                 '<td style="padding:10px 16px;color:#666;font-size:14px;">Your Position</td>'
-                f'<td style="padding:10px 16px;font-weight:600;font-size:16px;color:#1a2744;">#{position}</td></tr>'
+                f'<td style="padding:10px 16px;font-weight:600;font-size:16px;color:{settings.brand_primary_color};">#{position}</td></tr>'
                 '<tr>'
                 '<td style="padding:10px 16px;color:#666;font-size:14px;">Total Waitlisted</td>'
                 f'<td style="padding:10px 16px;font-size:14px;">{len(waitlisted)}</td></tr>'

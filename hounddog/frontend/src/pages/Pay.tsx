@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App } from "antd";
+import { useBranding } from "../useBranding";
 
 interface TicketResult {
   id: string; plate: string; lot: string; violation_type: string;
@@ -17,6 +18,7 @@ interface AvailablePermitsResponse { permit_types: AvailablePermit[]; ticket_fin
 
 export default function Pay() {
   const { message } = App.useApp();
+  const brand = useBranding();
   const [lookup, setLookup] = useState("");
   const [tickets, setTickets] = useState<TicketResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -132,7 +134,7 @@ export default function Pay() {
           </Card>
         ))}
 
-        <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; Quarry Parking Systems</div>
+        <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.brandName} Parking</div>
       </div>
 
       <DisputeModal ticket={disputeTicket} onClose={() => setDisputeTicket(null)}

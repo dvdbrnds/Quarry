@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Card, Input, Button, Switch, Tag, Result, Spin, Alert, App } from "antd";
+import { useBranding } from "../useBranding";
 
 interface Preferences { first_name: string; phone: string | null; sms_opt_in: boolean; email_always_on: boolean; }
 
 export default function NotificationPreferences() {
   const { message } = App.useApp();
+  const brand = useBranding();
   const { token } = useParams<{ token: string }>();
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [phone, setPhone] = useState("");
@@ -69,7 +71,7 @@ export default function NotificationPreferences() {
           <Alert type="warning" message="Emergency notifications will always be sent regardless of preferences." />
           <Button type="primary" block onClick={handleSave} loading={saving}>Save Preferences</Button>
         </div>
-        <p className="text-center text-xs text-ink-mute mt-6">Parking Services — Quarry</p>
+        <p className="text-center text-xs text-ink-mute mt-6">Parking Services — {brand.brandName}</p>
       </Card>
     </div>
   );

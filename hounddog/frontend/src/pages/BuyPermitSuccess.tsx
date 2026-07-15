@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Result, Spin, Button } from "antd";
 import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
+import { useBranding } from "../useBranding";
 
 export default function BuyPermitSuccess() {
+  const brand = useBranding();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [permitType, setPermitType] = useState("");
 
@@ -27,10 +29,10 @@ export default function BuyPermitSuccess() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-navy text-bone px-6 py-4 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-4 shadow-md">
         <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <img src="/quarry-logo.png" alt="Quarry" className="h-8 w-auto" />
-          <h1 className="text-lg font-bold tracking-wide text-brass">Quarry</h1>
+          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
+          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">{brand.brandName}</h1>
           <span className="text-sm text-bone/70 ml-2">Parking Permits</span>
         </div>
       </nav>

@@ -13,6 +13,7 @@ from .routers import (
     audit,
     auth,
     backup,
+    branding,
     devices,
     enforcement_settings,
     lots,
@@ -681,6 +682,8 @@ app.include_router(alerts.public_router, prefix="/api/alerts", tags=["alerts-pub
 app.include_router(signage.admin_router, prefix="/api/signage", tags=["signage"])
 app.include_router(signage.public_router, prefix="/api/signage", tags=["signage-public"])
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
+app.include_router(branding.admin_router, prefix="/api/branding", tags=["branding"])
+app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

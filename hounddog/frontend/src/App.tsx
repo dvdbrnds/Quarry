@@ -24,6 +24,7 @@ import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
 import type { AuthUser } from "./auth";
 import { UserContext } from "./UserContext";
+import { useBranding } from "./useBranding";
 import { useState, useEffect } from "react";
 
 function RootRedirect() {
@@ -71,13 +72,14 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
 }
 
 function AdminShell({ user }: { user: AuthUser }) {
+  const brand = useBranding();
   return (
     <div className="min-h-screen">
-      <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
-          <h1 className="text-lg font-bold tracking-wide text-brass">
-            Quarry
+          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
+          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
+            {brand.brandName}
           </h1>
         </div>
         <NavItem to="/dashboard">Dashboard</NavItem>
@@ -123,13 +125,14 @@ function AdminShell({ user }: { user: AuthUser }) {
 }
 
 function StudentShell({ user }: { user: AuthUser }) {
+  const brand = useBranding();
   return (
     <div className="min-h-screen">
-      <nav className="bg-navy text-bone px-6 py-3 flex items-center gap-6 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          <img src="/quarry-logo-light.png" alt="Quarry" className="h-8 w-auto" />
-          <h1 className="text-lg font-bold tracking-wide text-brass">
-            Quarry
+          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
+          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
+            {brand.brandName}
           </h1>
         </div>
         <NavItem to="/student/permits">My Permits</NavItem>

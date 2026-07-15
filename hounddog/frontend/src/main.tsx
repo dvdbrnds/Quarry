@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ConfigProvider, App as AntApp } from "antd";
 import App from "./App";
+import { BrandingProvider } from "./useBranding";
 import "./index.css";
 
 const theme = {
@@ -47,7 +48,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ConfigProvider theme={theme}>
       <AntApp>
         <BrowserRouter>
-          <App />
+          <BrandingProvider>
+            <App />
+          </BrandingProvider>
         </BrowserRouter>
       </AntApp>
     </ConfigProvider>

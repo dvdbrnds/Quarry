@@ -26,7 +26,7 @@ class EmailChannel(AlertChannel):
         for sub in email_recipients:
             unsub_url = f"{settings.student_facing_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
             inner = (
-                f'<h2 style="color:#1a2744;margin:0 0 12px;font-size:20px;">{alert.subject}</h2>'
+                f'<h2 style="color:{settings.brand_primary_color};margin:0 0 12px;font-size:20px;">{alert.subject}</h2>'
                 f'<div style="color:#333;font-size:15px;line-height:1.7;white-space:pre-wrap;">'
                 f'{alert.body_text}</div>'
             )

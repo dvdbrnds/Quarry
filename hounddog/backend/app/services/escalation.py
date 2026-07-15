@@ -169,7 +169,7 @@ async def _send_maxient_email_referral(
     subject = f"Parking Conduct Referral \u2014 {student_name or student_id} ({ticket_count} violations)"
     ticket_list = "".join(f'<li style="font-size:14px;padding:2px 0;">{tid}</li>' for tid in ticket_ids)
     inner = (
-        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Automatic Conduct Referral</h2>'
+        f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Automatic Conduct Referral</h2>'
         '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
         '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
         'text-transform:uppercase;letter-spacing:1px;">Student Details</td></tr>'
@@ -196,7 +196,7 @@ async def _send_maxient_email_referral(
         'parking violations.</p>'
         '<div style="text-align:center;margin:24px 0;">'
         f'<a href="{settings.public_url}/admin/tickets?student={student_id}" '
-        'style="display:inline-block;padding:12px 32px;background:#1a2744;color:#ffffff;'
+        f'style="display:inline-block;padding:12px 32px;background:{settings.brand_primary_color};color:#ffffff;'
         'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
         'View Details</a></div>'
     )
@@ -268,14 +268,14 @@ async def _notify_student_of_hold(
     school = settings.school_name or "Campus"
     subject = "Registration Hold \u2014 Unpaid Parking Violations"
     inner = (
-        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Registration Hold Notice</h2>'
+        f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Registration Hold Notice</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {student_name or "Student"},</p>'
         '<p style="color:#333;font-size:15px;line-height:1.6;">A hold has been placed on your '
         f'university account due to <strong>{ticket_count} unpaid parking violations</strong>. '
         'You will be unable to register for classes until all outstanding parking fines are paid.</p>'
         '<div style="text-align:center;margin:28px 0;">'
         f'<a href="{settings.student_facing_url}/pay" style="display:inline-block;padding:16px 40px;'
-        'background:#1a2744;color:#ffffff;text-decoration:none;border-radius:8px;'
+        f'background:{settings.brand_primary_color};color:#ffffff;text-decoration:none;border-radius:8px;'
         'font-weight:700;font-size:16px;">Pay Citations Now</a></div>'
         '<p style="color:#666;font-size:13px;text-align:center;">If you believe this is in error, '
         'please contact the Parking Office.</p>'
@@ -315,7 +315,7 @@ async def _notify_admin_of_hold(
             'please place the hold manually in Banner/Workday</div>'
         )
     inner = (
-        '<h2 style="color:#1a2744;margin:0 0 8px;font-size:20px;">Registration Hold Triggered</h2>'
+        f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Registration Hold Triggered</h2>'
         '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
         '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
         'text-transform:uppercase;letter-spacing:1px;">Student Details</td></tr>'
@@ -335,7 +335,7 @@ async def _notify_admin_of_hold(
         f'{status_badge}'
         '<div style="text-align:center;margin:24px 0;">'
         f'<a href="{settings.public_url}/admin/tickets?student={student_id}" '
-        'style="display:inline-block;padding:12px 32px;background:#1a2744;color:#ffffff;'
+        f'style="display:inline-block;padding:12px 32px;background:{settings.brand_primary_color};color:#ffffff;'
         'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
         'View Details</a></div>'
     )
