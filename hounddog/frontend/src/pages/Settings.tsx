@@ -7,6 +7,7 @@ import ActivityLog from "./ActivityLog";
 import EnforcementSettings from "./EnforcementSettings";
 import Messaging from "./Messaging";
 import DataManagement from "./DataManagement";
+import BrandingSettings from "./BrandingSettings";
 
 const TABS = [
   { key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> },
@@ -14,6 +15,7 @@ const TABS = [
   { key: "permit-types", label: "Permit Types", children: <PermitTypes /> },
   { key: "devices", label: "Devices", children: <Devices /> },
   { key: "messaging", label: "Messaging", children: <Messaging /> },
+  { key: "branding", label: "Branding", children: <BrandingSettings /> },
   { key: "activity", label: "Activity Log", children: <ActivityLog /> },
   { key: "data", label: "Data Management", children: <DataManagement /> },
 ];

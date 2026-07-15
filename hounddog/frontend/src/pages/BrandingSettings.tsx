@@ -1,0 +1,184 @@
+import { useCallback, useEffect, useState, useRef } from "react";
+import { Card, Button, Input, Upload, App, Spin, ColorPicker } from "antd";
+import { UploadOutlined } from "@ant-design/icons";
+import { authHeaders } from "../auth";
+import { useBranding } from "../useBranding";
+
+interface BrandingData {
+  brand_name: string;
+  primary_color: string;
+  accent_color: string;
+  logo_url: string | null;
+  favicon_url: string;
+  school_name: string;
+}
+
+export default function BrandingSettings() {
+  const { message } = App.useApp();
+  const brand = useBranding();
+  const [data, setData] = useState<BrandingData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState<"logo" | "favicon" | null>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+  const faviconRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/branding");
+      if (res.ok) setData(await res.json());
+    } catch { /* fallback is fine */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleUpload(type: "logo" | "favicon", file: File) {
+    setUploading(type);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/branding/${type}`, {
+        method: "POST",
+        headers: Object.fromEntries(
+          Object.entries(await authHeaders()).filter(([k]) => k !== "Content-Type")
+        ),
+        body: form,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      message.success(`${type === "logo" ? "Logo" : "Favicon"} uploaded`);
+      load();
+    } catch { message.error("Upload failed"); }
+    finally { setUploading(null); }
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><Spin size="large" /></div>;
+  if (!data) return <p className="text-ink-mute">Unable to load branding config.</p>;
+
+  return (
+    <div className="space-y-6">
+      <Card title="Logo & Favicon">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-2">Logo</label>
+            <p className="text-xs text-ink-mute mb-3">
+              Displayed in nav bars and email headers. Recommended: PNG or SVG, max height 48px.
+            </p>
+            <div className="flex items-center gap-4 mb-3">
+              {data.logo_url ? (
+                <div className="border rounded-lg p-3 bg-gray-50">
+                  <img src={data.logo_url} alt="Current logo" className="h-12 w-auto" />
+                </div>
+              ) : (
+                <div className="border rounded-lg p-3 bg-gray-50 text-sm text-ink-mute">
+                  No logo uploaded — using text: <strong>{data.brand_name}</strong>
+                </div>
+              )}
+            </div>
+            <input
+              ref={logoRef}
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleUpload("logo", file);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              icon={<UploadOutlined />}
+              loading={uploading === "logo"}
+              onClick={() => logoRef.current?.click()}
+            >
+              Upload Logo
+            </Button>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-ink mb-2">Favicon</label>
+            <p className="text-xs text-ink-mute mb-3">
+              Browser tab icon. Recommended: 32x32 or 64x64 PNG.
+            </p>
+            <div className="flex items-center gap-4 mb-3">
+              <div className="border rounded-lg p-3 bg-gray-50">
+                <img src={data.favicon_url} alt="Current favicon" className="h-8 w-auto" />
+              </div>
+            </div>
+            <input
+              ref={faviconRef}
+              type="file"
+              accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/jpeg"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleUpload("favicon", file);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              icon={<UploadOutlined />}
+              loading={uploading === "favicon"}
+              onClick={() => faviconRef.current?.click()}
+            >
+              Upload Favicon
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Brand Identity">
+        <p className="text-xs text-ink-mute mb-4">
+          These values are set via environment variables. Change them in Coolify and redeploy.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Product Name</label>
+            <Input value={data.brand_name} disabled />
+            <p className="text-xs text-ink-mute mt-1">Env: <code>BRAND_NAME</code></p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Primary Color</label>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded border"
+                style={{ background: data.primary_color }}
+              />
+              <Input value={data.primary_color} disabled className="flex-1" />
+            </div>
+            <p className="text-xs text-ink-mute mt-1">Env: <code>BRAND_PRIMARY_COLOR</code></p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Accent Color</label>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded border"
+                style={{ background: data.accent_color }}
+              />
+              <Input value={data.accent_color} disabled className="flex-1" />
+            </div>
+            <p className="text-xs text-ink-mute mt-1">Env: <code>BRAND_ACCENT_COLOR</code></p>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Preview">
+        <p className="text-xs text-ink-mute mb-4">How the nav bar appears to students:</p>
+        <div
+          style={{ background: data.primary_color }}
+          className="rounded-lg px-6 py-4 flex items-center gap-3 shadow"
+        >
+          {data.logo_url && (
+            <img src={data.logo_url} alt={data.brand_name} className="h-8 w-auto" />
+          )}
+          <span
+            style={{ color: data.accent_color }}
+            className="text-lg font-bold tracking-wide"
+          >
+            {data.brand_name}
+          </span>
+          <span className="text-sm text-white/60 ml-2">Parking Services</span>
+        </div>
+      </Card>
+    </div>
+  );
+}
