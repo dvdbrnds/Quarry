@@ -63,12 +63,6 @@ async def lifespan(app: FastAPI):
             "Set it to your Okta domain (e.g., moravian.okta.com) before starting the server."
         )
 
-    if settings.stripe_secret_key and not settings.stripe_webhook_secret:
-        raise RuntimeError(
-            "QUARRY_STRIPE_WEBHOOK_SECRET is not set but QUARRY_STRIPE_SECRET_KEY is. "
-            "Set the webhook secret from your Stripe dashboard."
-        )
-
     for attempt in range(1, 11):
         try:
             async with engine.begin() as conn:

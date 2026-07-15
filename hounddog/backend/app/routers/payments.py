@@ -548,78 +548,8 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
 
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    import stripe
-    stripe.api_key = settings.stripe_secret_key
-
-    payload = await request.body()
-    sig = request.headers.get("stripe-signature", "")
-
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig, settings.stripe_webhook_secret
-        )
-    except (ValueError, stripe.SignatureVerificationError):
-        raise HTTPException(400, "Invalid webhook signature")
-
-    event_type = event["type"]
-    obj = event["data"]["object"].to_dict()
-
-    if event_type == "checkout.session.completed":
-        metadata = obj.get("metadata") or {}
-        payment_type = metadata.get("type", "")
-
-        handled = False
-        if payment_type == "ticket_payment":
-            handled = await _handle_ticket_payment(obj, metadata, db)
-        elif payment_type == "permit_purchase":
-            handled = await _handle_permit_purchase(obj, metadata, db)
-        elif payment_type == "lottery_permit":
-            handled = await _handle_lottery_permit(obj, metadata, db)
-        elif payment_type == "standalone_permit_purchase":
-            handled = await _handle_standalone_permit_purchase(obj, metadata, db)
-
-        if not handled:
-            await _handle_generic_payment(obj, metadata, db)
-
-    elif event_type in ("payment_intent.succeeded", "charge.succeeded"):
-        await _handle_raw_stripe_event(obj, event_type, db)
-
-    elif event_type == "charge.refunded":
-        payment_intent_id = obj.get("payment_intent")
-        if payment_intent_id:
-            result = await db.execute(
-                select(Payment).where(Payment.stripe_payment_id == payment_intent_id)
-            )
-            payment = result.scalar_one_or_none()
-            if payment:
-                payment.description = f"[REFUNDED] {payment.description or ''}"
-                if payment.ticket_id:
-                    ticket = await db.get(Ticket, payment.ticket_id)
-                    if ticket and ticket.status == "paid":
-                        ticket.status = "pending_payment"
-                await db.flush()
-                logger.info("Processed refund for payment %s", payment.id)
-
-    elif event_type == "checkout.session.expired":
-        metadata = obj.get("metadata") or {}
-        ticket_id = metadata.get("ticket_id")
-        if ticket_id:
-            ticket = await db.get(Ticket, uuid.UUID(ticket_id))
-            if ticket and ticket.status == "pending_payment":
-                ticket.status = "issued"
-                await db.flush()
-                logger.info("Expired checkout for ticket %s, reset to issued", ticket_id)
-
-    elif event_type == "charge.dispute.created":
-        charge_id = obj.get("charge")
-        logger.warning(
-            "Stripe dispute created for charge %s, amount %s, reason: %s",
-            charge_id,
-            obj.get("amount"),
-            obj.get("reason"),
-        )
-
+async def stripe_webhook(request: Request):
+    """Webhook endpoint is disabled. Returns 200 so Stripe stops retrying."""
     return {"status": "ok"}
 
 
