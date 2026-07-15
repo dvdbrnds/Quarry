@@ -103,6 +103,30 @@ async def update_permit_type(
     return ptype
 
 
+class BatchLotteryToggle(BaseModel):
+    ids: list[uuid.UUID]
+    requires_lottery: bool
+
+
+@router.post("/batch-lottery-toggle")
+async def batch_lottery_toggle(
+    data: BatchLotteryToggle,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    updated = 0
+    for pt_id in data.ids:
+        pt = await db.get(PermitType, pt_id)
+        if not pt or not pt.is_active:
+            continue
+        pt.requires_lottery = data.requires_lottery
+        if data.requires_lottery and not pt.lottery_strategy:
+            pt.lottery_strategy = "seniority_timestamp"
+        updated += 1
+    await db.flush()
+    return {"updated": updated}
+
+
 @router.delete("/{ptype_id}", status_code=204)
 async def deactivate_permit_type(
     ptype_id: uuid.UUID,

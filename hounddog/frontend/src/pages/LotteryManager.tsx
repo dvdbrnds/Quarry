@@ -138,9 +138,10 @@ export default function LotteryManager() {
 }
 
 function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => void; lotLookup: Record<string, LotInfo> }) {
-  const { message } = App.useApp();
+  const { modal, message } = App.useApp();
   const now = new Date();
   const [toggling, setToggling] = useState<string | null>(null);
+  const [batchToggling, setBatchToggling] = useState(false);
   const lotteryTypes = types.filter(t => t.requires_lottery);
   const otherTypes = types.filter(t => !t.requires_lottery);
   const studentUrl = `${window.location.origin}/parking`;
@@ -160,6 +161,42 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
       await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
       message.success("Lottery enabled"); onReload();
     } finally { setToggling(null); }
+  }
+
+  async function batchToggle(ids: string[], enable: boolean) {
+    setBatchToggling(true);
+    try {
+      const res = await fetch("/api/permit-types/batch-lottery-toggle", {
+        method: "POST", headers: await authHeaders(),
+        body: JSON.stringify({ ids, requires_lottery: enable }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+      const result = await res.json();
+      message.success(`Lottery ${enable ? "enabled" : "disabled"} for ${result.updated} permit type(s)`);
+      onReload();
+    } catch (e: any) { message.error(e.message); } finally { setBatchToggling(false); }
+  }
+
+  function handleEnableAll() {
+    const ids = otherTypes.map(t => t.id);
+    if (ids.length === 0) return;
+    modal.confirm({
+      title: `Enable lottery on ${ids.length} permit type(s)?`,
+      content: "All non-lottery permit types will require a lottery for students to get a permit.",
+      okText: "Enable All",
+      onOk: () => batchToggle(ids, true),
+    });
+  }
+
+  function handleDisableAll() {
+    const ids = lotteryTypes.map(t => t.id);
+    if (ids.length === 0) return;
+    modal.confirm({
+      title: `Disable lottery on ${ids.length} permit type(s)?`,
+      content: "Existing applications will be preserved. Students will be able to purchase permits directly.",
+      okText: "Disable All", okButtonProps: { danger: true },
+      onOk: () => batchToggle(ids, false),
+    });
   }
 
   const otherColumns: ColumnsType<PermitTypeRow> = [
@@ -184,9 +221,24 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-navy">Lottery Management</h2>
-        <p className="text-sm text-ink-mute mt-1">Manage lotteries, run simulations, and monitor live draws.</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-navy">Lottery Management</h2>
+          <p className="text-sm text-ink-mute mt-1">Manage lotteries, run simulations, and monitor live draws.</p>
+        </div>
+        <Space>
+          {otherTypes.length > 0 && (
+            <Button onClick={handleEnableAll} loading={batchToggling}
+              style={{ borderColor: "#9333ea", color: "#7e22ce" }}>
+              Enable All Lotteries
+            </Button>
+          )}
+          {lotteryTypes.length > 0 && (
+            <Button danger onClick={handleDisableAll} loading={batchToggling}>
+              Disable All Lotteries
+            </Button>
+          )}
+        </Space>
       </div>
       {lotteryTypes.length > 0 && (
         <Card size="small" className="mb-6">
