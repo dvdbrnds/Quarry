@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App } from "antd";
 import { useBranding } from "../useBranding";
+import PublicPageNav from "../components/PublicPageNav";
 
 interface TicketResult {
   id: string; plate: string; lot: string; violation_type: string;
@@ -95,10 +96,11 @@ export default function Pay() {
   }
 
   return (
-    <div className="min-h-screen bg-bone-light flex items-start justify-center pt-16 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gray-50">
+      <PublicPageNav subtitle="Pay a Ticket" />
+      <div className="max-w-md mx-auto px-4 pt-10">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-navy">Pay a Parking Ticket</h1>
+          <h1 className="text-3xl font-bold" style={{ color: brand.primaryColor }}>Pay a Parking Ticket</h1>
           <p className="text-ink-mute mt-2">Enter your license plate number to look up and pay outstanding fines.</p>
         </div>
 
@@ -129,13 +131,13 @@ export default function Pay() {
                 <div className="text-sm text-ink-mute capitalize">{t.violation_type.replace(/_/g, " ")} &middot; {t.lot || "N/A"}</div>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-navy">${Number(t.fine_amount).toFixed(2)}</div>
+                <div className="text-2xl font-bold" style={{ color: brand.primaryColor }}>${Number(t.fine_amount).toFixed(2)}</div>
                 <div className="text-xs text-ink-mute">{new Date(t.issued_at).toLocaleDateString()}</div>
               </div>
             </div>
             <Space direction="vertical" className="w-full">
               <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
-              {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Commuter Permit</Button>}
+              {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: brand.accentColor, color: brand.accentColor }}>Buy a Commuter Permit</Button>}
               <Button type="primary" block size="large" loading={paying === t.id} onClick={() => handlePay(t.id)}>
                 {paying === t.id ? "Redirecting..." : "Pay Now"}
               </Button>
@@ -145,14 +147,14 @@ export default function Pay() {
         ))}
 
         <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.schoolName || "Campus"} Parking Services</div>
+
+        <DisputeModal ticket={disputeTicket} onClose={() => setDisputeTicket(null)}
+          onSuccess={msg => { setDisputeTicket(null); setSuccess(msg); setTickets([]); }} />
+
+        {permitTicket && availablePermits && (
+          <PermitModal permits={availablePermits} onClose={() => { setPermitTicket(null); setAvailablePermits(null); }} onSelect={handleBuyPermit} />
+        )}
       </div>
-
-      <DisputeModal ticket={disputeTicket} onClose={() => setDisputeTicket(null)}
-        onSuccess={msg => { setDisputeTicket(null); setSuccess(msg); setTickets([]); }} />
-
-      {permitTicket && availablePermits && (
-        <PermitModal permits={availablePermits} onClose={() => { setPermitTicket(null); setAvailablePermits(null); }} onSelect={handleBuyPermit} />
-      )}
     </div>
   );
 }
@@ -216,7 +218,7 @@ function PermitModal({ permits, onClose, onSelect }: {
                   <div className="text-xs text-ink-mute">{pt.remaining} remaining</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-navy">${Number(pt.price).toFixed(0)}</div>
+                  <div className="text-lg font-bold text-brand-primary">${Number(pt.price).toFixed(0)}</div>
                   <Button type="primary" size="small" className="mt-1" onClick={() => onSelect(pt.id)}>Select</Button>
                 </div>
               </div>

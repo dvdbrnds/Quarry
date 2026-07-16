@@ -178,18 +178,18 @@ function LotteryPage({ user }: { user: AuthUser }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav style={{ background: brand.primaryColor }} className="text-[#f5f0e8] px-6 py-4 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
             <div>
               <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>
-              <span className="text-xs text-[#f5f0e8]/60">Parking Permit Lottery</span>
+              <span className="text-xs text-white/50">Parking Permit Lottery</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-[#f5f0e8]/80">{user.email}</span>
-            <button onClick={() => logout()} className="text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8] transition-colors">Sign out</button>
+            <span className="text-sm text-white/70">{user.email}</span>
+            <button onClick={() => logout()} className="text-xs text-white/40 hover:text-white transition-colors">Sign out</button>
           </div>
         </div>
       </nav>
@@ -209,13 +209,13 @@ function LotteryPage({ user }: { user: AuthUser }) {
             {/* Permit cards column */}
             <div className="lg:col-span-1 space-y-8">
               <div>
-                <h2 className="text-2xl font-bold text-[#1a2744]">Parking Permit Lottery</h2>
+                <h2 className="text-2xl font-bold text-brand-primary">Parking Permit Lottery</h2>
                 <p className="text-gray-500 mt-1">Apply for a parking permit below. Hover over a permit to see its lots on the map.</p>
               </div>
 
               {applications.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Your Applications</h3>
+                  <h3 className="text-lg font-semibold text-brand-primary mb-3">Your Applications</h3>
                   <div className="space-y-3">
                     {applications.map(app => {
                       const st = STATUS_LABELS[app.status] || { text: app.status, color: "default" };
@@ -229,7 +229,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div>
-                              <div className="font-semibold text-[#1a2744]">{app.permit_type_label}</div>
+                              <div className="font-semibold text-brand-primary">{app.permit_type_label}</div>
                               <div className="text-xs text-gray-500 mt-1">
                                 Plate: <span className="font-mono font-medium">{app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
                               </div>
@@ -265,7 +265,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
 
               {available.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Open Permits</h3>
+                  <h3 className="text-lg font-semibold text-brand-primary mb-3">Open Permits</h3>
                   <div className="space-y-4">
                     {available.map(pt => {
                       const alreadyApplied = appliedTypeIds.has(pt.code);
@@ -279,7 +279,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-semibold text-[#1a2744] text-lg">{pt.label}</span>
+                                <span className="font-semibold text-brand-primary text-lg">{pt.label}</span>
                                 {pt.requires_lottery && <Tag color="purple">Lottery</Tag>}
                               </div>
                               <p className="text-sm text-gray-500 mt-1">{pt.eligible}</p>
@@ -304,14 +304,14 @@ function LotteryPage({ user }: { user: AuthUser }) {
                               {pt.min_class_year && <div className="text-xs text-gray-400 mt-1">Eligibility: Class of {pt.min_class_year} or earlier</div>}
                             </div>
                             <div className="text-right ml-6">
-                              <div className="text-2xl font-bold text-[#1a2744]">${Number(pt.price).toFixed(0)}</div>
+                              <div className="text-2xl font-bold text-brand-primary">${Number(pt.price).toFixed(0)}</div>
                               <div className="mt-3">
                                 {alreadyApplied ? (
                                   <Tag color="blue">Applied</Tag>
                                 ) : pt.remaining <= 0 ? (
                                   <Tag color="red">Full</Tag>
                                 ) : (
-                                  <Button type="primary" onClick={() => setApplying(pt)} style={{ background: "#1a2744" }}>Apply Now</Button>
+                                  <Button type="primary" onClick={() => setApplying(pt)} style={{ background: brand.primaryColor }}>Apply Now</Button>
                                 )}
                               </div>
                             </div>
@@ -356,6 +356,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
 function ApplyModal({ permit, onClose, onSuccess, onError }: {
   permit: AvailablePermit | null; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
 }) {
+  const brand = useBranding();
   const [form] = Form.useForm();
   const [lotPreferences, setLotPreferences] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -418,7 +419,7 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
         <div className="pt-2">
           <div className="flex items-center justify-between mb-4 pb-3 border-b">
             <span className="text-gray-500">{permit.eligible}</span>
-            <span className="text-lg font-bold text-[#1a2744]">${Number(permit.price).toFixed(0)}</span>
+            <span className="text-lg font-bold text-brand-primary">${Number(permit.price).toFixed(0)}</span>
           </div>
           {profileLoading ? <div className="flex justify-center py-4"><Spin size="small" /></div> : (
             <Form form={form} layout="vertical" onFinish={handleFinish}>
@@ -463,7 +464,7 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
               )}
               <div className="flex justify-end gap-3 pt-4 border-t mt-4">
                 <Button onClick={onClose}>Cancel</Button>
-                <Button type="primary" htmlType="submit" loading={submitting} style={{ background: "#1a2744" }}>Submit Application</Button>
+                <Button type="primary" htmlType="submit" loading={submitting} style={{ background: brand.primaryColor }}>Submit Application</Button>
               </div>
             </Form>
           )}

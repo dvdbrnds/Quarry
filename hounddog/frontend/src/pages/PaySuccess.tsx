@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Result, Spin, Button } from "antd";
 import { useBranding } from "../useBranding";
+import PublicPageNav from "../components/PublicPageNav";
 
 interface VerifyResult { payment_status: string; payment_type?: string; ticket_id?: string; ticket_plate?: string; }
 
@@ -24,8 +25,9 @@ export default function PaySuccess() {
   const isPaid = result?.payment_status === "paid";
 
   return (
-    <div className="min-h-screen bg-bone-light flex items-start justify-center pt-16 px-4">
-      <div className="w-full max-w-md text-center">
+    <div className="min-h-screen bg-gray-50">
+      <PublicPageNav subtitle="Payment" />
+      <div className="max-w-md mx-auto px-4 pt-10 text-center">
         {verifying ? <Spin size="large" /> : (
           <Result
             status={isPaid ? "success" : "warning"}

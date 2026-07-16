@@ -58,7 +58,7 @@ export default function StaffPermits() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Card className="max-w-md text-center">
-          <h2 className="text-xl font-bold text-[#1a2744] mb-2">Access Restricted</h2>
+          <h2 className="text-xl font-bold text-brand-primary mb-2">Access Restricted</h2>
           <p className="text-gray-500 mb-4">This page is for faculty and staff only. If you are a student, visit the <a href="/parking" className="text-blue-600 underline">student parking portal</a> instead.</p>
           <Button onClick={() => logout()}>Sign Out</Button>
         </Card>
@@ -119,18 +119,18 @@ function StaffPage({ user }: { user: AuthUser }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav style={{ background: brand.primaryColor }} className="text-[#f5f0e8] px-6 py-4 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
             <div>
               <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>
-              <span className="text-xs text-[#f5f0e8]/60">Employee Vehicle Registration</span>
+              <span className="text-xs text-white/50">Employee Vehicle Registration</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-[#f5f0e8]/80">{user.email}</span>
-            <button onClick={() => logout()} className="text-xs text-[#f5f0e8]/50 hover:text-[#f5f0e8] transition-colors">Sign out</button>
+            <span className="text-sm text-white/70">{user.email}</span>
+            <button onClick={() => logout()} className="text-xs text-white/40 hover:text-white transition-colors">Sign out</button>
           </div>
         </div>
       </nav>
@@ -141,15 +141,15 @@ function StaffPage({ user }: { user: AuthUser }) {
         ) : (
           <div className="space-y-8">
             <div>
-              <h2 className="text-2xl font-bold text-[#1a2744]">Vehicle Registration</h2>
+              <h2 className="text-2xl font-bold text-brand-primary">Vehicle Registration</h2>
               <p className="text-gray-500 mt-1">Register your vehicles for campus parking. There is no cost for faculty and staff permits.</p>
             </div>
 
             {permitType && (
-              <Card className="border-l-4 border-l-[#c9a84c]">
+              <Card className="border-l-4 border-l-brand-accent">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="font-semibold text-[#1a2744] text-lg">{permitType.label}</div>
+                    <div className="font-semibold text-brand-primary text-lg">{permitType.label}</div>
                     <p className="text-sm text-gray-500 mt-1">{permitType.eligible}</p>
                     <div className="text-sm text-gray-500 mt-2">
                       <span>Lots: </span>
@@ -165,7 +165,7 @@ function StaffPage({ user }: { user: AuthUser }) {
                     <Button
                       type="primary"
                       className="mt-3"
-                      style={{ background: "#1a2744" }}
+                      style={{ background: brand.primaryColor }}
                       onClick={() => setEnrolling(true)}
                     >
                       Register Vehicle
@@ -177,14 +177,14 @@ function StaffPage({ user }: { user: AuthUser }) {
 
             {activeVehicles.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-[#1a2744] mb-3">Your Registered Vehicles</h3>
+                <h3 className="text-lg font-semibold text-brand-primary mb-3">Your Registered Vehicles</h3>
                 <div className="space-y-3">
                   {activeVehicles.map(v => (
                     <Card key={v.id} className="hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="flex items-center gap-3">
-                            <span className="font-mono text-lg font-bold text-[#1a2744]">{v.plate}</span>
+                            <span className="font-mono text-lg font-bold text-brand-primary">{v.plate}</span>
                             <Tag color="green">Active</Tag>
                           </div>
                           <div className="text-sm text-gray-500 mt-1">
@@ -249,6 +249,7 @@ function StaffPage({ user }: { user: AuthUser }) {
 function EnrollModal({ open, onClose, onSuccess, onError }: {
   open: boolean; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
 }) {
+  const brand = useBranding();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -310,7 +311,7 @@ function EnrollModal({ open, onClose, onSuccess, onError }: {
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t mt-4">
             <Button onClick={onClose}>Cancel</Button>
-            <Button type="primary" htmlType="submit" loading={submitting} style={{ background: "#1a2744" }}>Register Vehicle</Button>
+            <Button type="primary" htmlType="submit" loading={submitting} style={{ background: brand.primaryColor }}>Register Vehicle</Button>
           </div>
         </Form>
       )}

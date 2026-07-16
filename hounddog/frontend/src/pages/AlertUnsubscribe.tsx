@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Result, Spin, Card } from "antd";
+import { useBranding } from "../useBranding";
 
 export default function AlertUnsubscribe() {
+  const brand = useBranding();
   const { token } = useParams<{ token: string }>();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [msg, setMsg] = useState("");
@@ -18,7 +20,7 @@ export default function AlertUnsubscribe() {
   }, [token]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-navy to-navy-700 flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: `linear-gradient(to bottom, ${brand.primaryColor}, ${brand.primaryColor}dd)` }}>
       <Card className="max-w-md w-full text-center">
         {status === "loading" && <Spin size="large" />}
         {status === "success" && <Result status="success" title="Unsubscribed" subTitle={msg} />}

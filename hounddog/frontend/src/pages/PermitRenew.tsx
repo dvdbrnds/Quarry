@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button, Card, Checkbox, Input, Result, Spin, Descriptions, Alert, App } from "antd";
 import { useBranding } from "../useBranding";
+import PublicPageNav from "../components/PublicPageNav";
 
 interface RenewalInfo {
   permit_holder_name: string; email: string; plates: string[];
@@ -47,20 +48,14 @@ export default function PermitRenew() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-4 shadow-md">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
-          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">{brand.brandName}</h1>
-          <span className="text-sm text-bone/70 ml-2">Permit Renewal</span>
-        </div>
-      </nav>
+      <PublicPageNav subtitle="Permit Renewal" />
       <main className="max-w-lg mx-auto px-6 py-12">
         {loading && <div className="flex justify-center py-20"><Spin size="large" /></div>}
         {error && !success && <Result status="error" title="Renewal Unavailable" subTitle={error} />}
         {success && <Result status="success" title="Permit Renewed" subTitle={success} />}
         {info && !success && !error && (
           <Card>
-            <h2 className="text-xl font-bold text-navy mb-1">Renew Your Parking Permit</h2>
+            <h2 className="text-xl font-bold text-brand-primary mb-1">Renew Your Parking Permit</h2>
             <p className="text-sm text-ink-mute mb-6">Confirm the details below. No payment required.</p>
             <Descriptions column={1} size="small" className="mb-6">
               <Descriptions.Item label="Name">{info.permit_holder_name}</Descriptions.Item>

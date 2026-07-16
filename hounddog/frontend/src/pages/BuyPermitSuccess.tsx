@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Result, Spin, Button } from "antd";
-import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useBranding } from "../useBranding";
+import PublicPageNav from "../components/PublicPageNav";
 
 export default function BuyPermitSuccess() {
   const brand = useBranding();
@@ -29,13 +29,7 @@ export default function BuyPermitSuccess() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-4 shadow-md">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
-          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">{brand.brandName}</h1>
-          <span className="text-sm text-bone/70 ml-2">Parking Permits</span>
-        </div>
-      </nav>
+      <PublicPageNav subtitle="Parking Permits" />
       <main className="max-w-lg mx-auto px-6 py-16 text-center">
         {status === "loading" && <Spin size="large" />}
         {status === "success" && (

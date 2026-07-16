@@ -4,6 +4,10 @@ export default {
   theme: {
     extend: {
       colors: {
+        brand: {
+          primary: "var(--brand-primary, #0A1628)",
+          accent: "var(--brand-accent, #C5A55A)",
+        },
         navy: {
           DEFAULT: "#0A1628",
           700: "#162440",

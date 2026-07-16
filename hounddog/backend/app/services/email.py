@@ -10,7 +10,7 @@ from ..config import settings
 
 logger = logging.getLogger("quarry.email")
 
-_FOOTER_BG = "#f5f0e8"
+_FOOTER_BG = "#f5f5f5"
 
 
 def email_shell(school: str, inner_html: str, footer_extra: str = "") -> str:

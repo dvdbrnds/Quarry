@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { Button, Card, Input, Form, Checkbox, Result, Alert, App } from "antd";
+import { useBranding } from "../useBranding";
 
 const CATEGORIES = [
   { id: "emergency", label: "Emergency Alerts", description: "Critical safety and security notifications" },
@@ -12,6 +13,7 @@ const CATEGORIES = [
 
 export default function AlertSubscribe() {
   const { message } = App.useApp();
+  const brand = useBranding();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -36,7 +38,7 @@ export default function AlertSubscribe() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-navy to-navy-700 flex items-center justify-center px-4">
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: `linear-gradient(to bottom, ${brand.primaryColor}, ${brand.primaryColor}dd)` }}>
         <Card className="max-w-md w-full text-center">
           <Result status="success" title="You're Subscribed" subTitle="You will receive alerts at the contact information you provided. Every message includes an unsubscribe link." />
         </Card>
@@ -45,10 +47,10 @@ export default function AlertSubscribe() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-navy to-navy-700 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen flex items-center justify-center px-4 py-12" style={{ background: `linear-gradient(to bottom, ${brand.primaryColor}, ${brand.primaryColor}dd)` }}>
       <Card className="max-w-lg w-full">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-navy">Campus Alerts</h1>
+          <h1 className="text-2xl font-bold text-brand-primary">Campus Alerts</h1>
           <p className="text-ink-mute text-sm mt-1">Subscribe to receive emergency and campus notifications via email and SMS.</p>
         </div>
         <Form form={form} layout="vertical" onFinish={handleFinish}
@@ -69,7 +71,7 @@ export default function AlertSubscribe() {
               ))}
             </Checkbox.Group>
           </Form.Item>
-          <Button type="primary" htmlType="submit" block size="large" loading={submitting} style={{ background: "#0A1628" }}>Subscribe to Alerts</Button>
+          <Button type="primary" htmlType="submit" block size="large" loading={submitting} style={{ background: brand.primaryColor }}>Subscribe to Alerts</Button>
           <p className="text-xs text-ink-mute text-center mt-3">You can unsubscribe at any time using the link in any alert message.</p>
         </Form>
       </Card>

@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ConfigProvider } from "antd";
 
 export interface Branding {
   brandName: string;
@@ -40,6 +41,12 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--brand-primary", branding.primaryColor);
+    root.style.setProperty("--brand-accent", branding.accentColor);
+  }, [branding.primaryColor, branding.accentColor]);
+
+  useEffect(() => {
     const link: HTMLLinkElement =
       document.querySelector('link[rel="icon"]') || document.createElement("link");
     link.rel = "icon";
@@ -48,7 +55,50 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     if (!link.parentNode) document.head.appendChild(link);
   }, [branding.faviconUrl]);
 
-  return <BrandingContext.Provider value={branding}>{children}</BrandingContext.Provider>;
+  const theme = useMemo(() => ({
+    token: {
+      colorPrimary: branding.accentColor,
+      colorError: "#EF4444",
+      colorSuccess: "#22C55E",
+      colorWarning: "#F59E0B",
+      colorInfo: branding.primaryColor,
+      colorBgBase: "#FFFFFF",
+      colorTextBase: "#1A1A1A",
+      borderRadius: 8,
+      fontFamily: "inherit",
+    },
+    components: {
+      Button: {
+        colorPrimary: branding.accentColor,
+        colorPrimaryHover: branding.accentColor,
+        colorPrimaryActive: branding.accentColor,
+        algorithm: true as const,
+      },
+      Table: {
+        headerBg: branding.primaryColor,
+        headerColor: "#F5F0E8",
+        headerSortActiveBg: branding.primaryColor,
+        headerSortHoverBg: branding.primaryColor,
+        rowHoverBg: "rgba(245,240,232,0.5)",
+      },
+      Menu: {
+        darkItemBg: branding.primaryColor,
+      },
+      Tabs: {
+        inkBarColor: branding.accentColor,
+        itemActiveColor: branding.primaryColor,
+        itemSelectedColor: branding.primaryColor,
+      },
+    },
+  }), [branding.primaryColor, branding.accentColor]);
+
+  return (
+    <BrandingContext.Provider value={branding}>
+      <ConfigProvider theme={theme}>
+        {children}
+      </ConfigProvider>
+    </BrandingContext.Provider>
+  );
 }
 
 export function useBranding() {

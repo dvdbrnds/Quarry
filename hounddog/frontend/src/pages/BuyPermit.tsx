@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Modal, Form, Input, InputNumber, Alert, Spin, Empty, App } from "antd";
 import { useBranding } from "../useBranding";
+import PublicPageNav from "../components/PublicPageNav";
 
 interface AvailablePermit {
   id: string; code: string; label: string; price: string;
@@ -31,17 +32,11 @@ export default function BuyPermit() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-4 shadow-md">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
-          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">{brand.brandName}</h1>
-          <span className="text-sm text-bone/70 ml-2">Parking Permits</span>
-        </div>
-      </nav>
+      <PublicPageNav subtitle="Parking Permits" />
 
       <main className="max-w-4xl mx-auto px-6 py-10">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-navy">Purchase a Parking Permit</h2>
+          <h2 className="text-2xl font-bold text-brand-primary">Purchase a Parking Permit</h2>
           <p className="text-sm text-ink-mute mt-1">Select a permit type below. Payment processed securely via Stripe.</p>
         </div>
 
@@ -56,8 +51,8 @@ export default function BuyPermit() {
             {permits.map(pt => (
               <Card key={pt.id} hoverable className="flex flex-col">
                 <div className="flex items-start justify-between">
-                  <div className="font-semibold text-navy text-lg">{pt.label}</div>
-                  <div className="text-xl font-bold text-navy">${Number(pt.price).toFixed(0)}</div>
+                  <div className="font-semibold text-brand-primary text-lg">{pt.label}</div>
+                  <div className="text-xl font-bold text-brand-primary">${Number(pt.price).toFixed(0)}</div>
                 </div>
                 <div className="text-sm text-ink-mute mt-2">Lots: {pt.lot_assignments.join(", ")}</div>
                 <div className="text-sm text-ink-mute mt-1">Valid for {pt.valid_days} days</div>
