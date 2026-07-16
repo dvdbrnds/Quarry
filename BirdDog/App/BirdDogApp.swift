@@ -1,6 +1,11 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import os.log
+
+private let bootLog = OSSignposter(subsystem: "com.birddog", category: "Boot")
+private let bootClock = ContinuousClock()
+private var processStart: ContinuousClock.Instant = .now
 
 @main
 struct BirdDogApp: App {
@@ -8,6 +13,11 @@ struct BirdDogApp: App {
     @StateObject private var appSettings = AppSettings.shared
     @StateObject private var officerAuth = OfficerAuthService.shared
     @State private var onboardingComplete = false
+
+    init() {
+        processStart = .now
+        print("[BOOT] App struct init at \(processStart)")
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -21,6 +31,10 @@ struct BirdDogApp: App {
             } else {
                 ContentView()
                     .task { await backgroundInit() }
+                    .onAppear {
+                        let elapsed = bootClock.now - processStart
+                        print("[BOOT] ✅ ContentView VISIBLE after \(elapsed)")
+                    }
             }
         }
     }
@@ -29,19 +43,29 @@ struct BirdDogApp: App {
 extension BirdDogApp {
     @MainActor
     private func backgroundInit() async {
+        print("[BOOT] backgroundInit started at \(bootClock.now - processStart)")
+
         let container = await Task.detached(priority: .userInitiated) {
-            PlateDatabase.createContainer()
+            let t = ContinuousClock().now
+            let c = PlateDatabase.createContainer()
+            print("[BOOT]   createContainer took \(ContinuousClock().now - t)")
+            return c
         }.value
 
+        print("[BOOT] container ready at \(bootClock.now - processStart)")
         PlateDatabase.warmUp(container: container)
+        print("[BOOT] warmUp done at \(bootClock.now - processStart)")
 
         GeofenceService.shared.configure(container: container)
+        print("[BOOT] geofence configured at \(bootClock.now - processStart)")
         GeofenceService.shared.requestPermissionAndStart()
 
         HoundDogSyncService.shared.startIfConfigured()
+        print("[BOOT] sync started at \(bootClock.now - processStart)")
 
         Task {
             PlateDatabase.shared.seedIfNeeded()
+            print("[BOOT] seedIfNeeded done at \(bootClock.now - processStart)")
             PlateDatabase.shared.pruneExpiredPermits()
             if PrinterService.shared.hasSavedPrinter {
                 PrinterService.shared.reconnectSaved()
@@ -55,6 +79,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        print("[BOOT] didFinishLaunching at \(bootClock.now - processStart)")
         UIApplication.shared.registerForRemoteNotifications()
         return true
     }

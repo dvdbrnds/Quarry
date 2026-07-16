@@ -34,7 +34,9 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
     private override init() {
         super.init()
+        let t = ContinuousClock.now
         restoreSession()
+        print("[BOOT] OfficerAuthService.restoreSession took \(ContinuousClock.now - t)")
     }
 
     // MARK: - Login
