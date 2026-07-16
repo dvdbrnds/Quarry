@@ -185,8 +185,9 @@ async def send_test_renewal_email(
 ):
     """Send a sample renewal email to a given address for testing purposes."""
     base_url = settings.student_facing_url.rstrip("/")
-    sample_renew = f"{base_url}/employee-parking"
-    sample_decline = f"{base_url}/employee-parking"
+    dummy_token = "test-preview-token"
+    sample_renew = f"{base_url}/api/renewals/{dummy_token}/quick-renew"
+    sample_decline = f"{base_url}/api/renewals/{dummy_token}/decline"
 
     success = await send_renewal_email(
         recipient_email=data.email,
@@ -256,9 +257,9 @@ async def send_renewal_to_permit(
     )
 
 
-@router.get("/{token}/quick-renew")
+@router.get("/{token}/quick-renew", response_class=HTMLResponse)
 async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
-    """Redirect to the employee portal with the renewal token."""
+    """One-click renewal from email button. Renews the permit and shows confirmation."""
     renewal = (await db.execute(
         select(RenewalToken).where(RenewalToken.token == token)
     )).scalar()
@@ -286,8 +287,46 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
             "This renewal link has expired. Please contact Parking Services for assistance.", False
         ), status_code=400)
 
-    base = settings.student_facing_url.rstrip("/")
-    return RedirectResponse(f"{base}/employee-parking?renew={token}")
+    permit = await db.get(Permit, renewal.permit_id)
+    if not permit:
+        return HTMLResponse(_build_response_html(
+            "Not Found", "Permit Not Found",
+            "The associated permit could not be found. Please contact Parking Services.", False
+        ), status_code=404)
+
+    new_end = _next_june_30()
+
+    new_permit = Permit(
+        permit_number=await next_permit_number(db),
+        name=permit.name,
+        email=permit.email,
+        phone=permit.phone,
+        student_id=permit.student_id,
+        plates=list(permit.plates),
+        lot_assignment=permit.lot_assignment,
+        permit_type=permit.permit_type,
+        beacon_id=permit.beacon_id,
+        start_date=date.today(),
+        end_date=new_end,
+        status="active",
+    )
+    db.add(new_permit)
+
+    if permit.status == "active":
+        permit.status = "renewed"
+    renewal.used_at = datetime.now(timezone.utc)
+    renewal.response = "renewed"
+
+    await db.flush()
+    await db.commit()
+
+    end_str = new_end.strftime("%B %d, %Y")
+    return HTMLResponse(_build_response_html(
+        "Permit Renewed", "Thank You!",
+        f"Your parking permit has been renewed through <strong>{end_str}</strong>. "
+        f"Your lot assignment ({permit.lot_assignment}) remains the same. "
+        f"No payment is required."
+    ))
 
 
 @router.get("/{token}/decline", response_class=HTMLResponse)
@@ -327,16 +366,22 @@ async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
             "This renewal link has expired. Your permit will expire on June 30 as scheduled.", False
         ), status_code=400)
 
+    permit = await db.get(Permit, renewal.permit_id)
+
     renewal.used_at = datetime.now(timezone.utc)
     renewal.response = "declined"
+
+    if permit and not permit.deleted_at:
+        permit.status = "expired"
+        permit.deleted_at = datetime.now(timezone.utc)
 
     await db.flush()
     await db.commit()
 
     return HTMLResponse(_build_response_html(
         "Permit Declined", "Thank You",
-        "We've recorded that you do not wish to renew your parking permit. "
-        "Your current permit will expire on June 30. If you change your mind before then, "
+        "We've recorded that you no longer need your parking permit. "
+        "Your permit has been deactivated. If you change your mind, "
         "please contact Parking Services."
     ))
 

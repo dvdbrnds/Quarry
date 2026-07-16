@@ -458,7 +458,7 @@ async def send_renewal_email(
         '<td>'
         f'<a href="{portal}" style="display:inline-block;padding:16px 32px;background:{_primary()};'
         'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">'
-        'Add New Vehicle</a></td>'
+        'Add/Manage Vehicles</a></td>'
         '</tr></table>'
         '<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin:20px 0;">'
         '<p style="font-size:13px;color:#666;margin:0 0 8px;">No payment is required. '
@@ -482,7 +482,7 @@ async def send_renewal_email(
         f"To DECLINE (you no longer need a permit), visit: {decline_url}\n\n"
         f"No payment is required for renewal.\n"
         f"If you do not respond by June 30, your permit will expire.\n\n"
-        f"To register an additional vehicle, visit: {portal}\n\n"
+        f"To add or manage vehicles, visit: {portal}\n\n"
         f"{school} Parking Services"
     )
 
