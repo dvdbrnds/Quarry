@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import CoreImage.CIFilterBuiltins
 import CoreLocation
 
@@ -11,7 +12,7 @@ struct MovingViolationView: View {
     @State private var driverLicense = ""
     @State private var vehicleDescription = ""
     @State private var locationText = ""
-    @State private var selectedViolation = "stop_sign"
+    @State private var selectedViolation = ""
     @State private var officerNotes = ""
     @State private var isSubmitting = false
     @State private var submittedResult: HoundDogSyncService.TicketUploadResponse?
@@ -62,6 +63,9 @@ struct MovingViolationView: View {
 
             Section("Violation") {
                 Picker("Type", selection: $selectedViolation) {
+                    if !movingViolations.contains(where: { $0.0 == selectedViolation }) {
+                        Text("— Select —").tag("")
+                    }
                     ForEach(movingViolations, id: \.0) { code, label in
                         Text(label).tag(code)
                     }
@@ -149,7 +153,7 @@ struct MovingViolationView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Issue") { submitViolation() }
-                    .disabled(plate.isEmpty || driverName.isEmpty || isSubmitting)
+                    .disabled(plate.isEmpty || driverName.isEmpty || selectedViolation.isEmpty || isSubmitting)
                     .bold()
             }
         }
@@ -157,7 +161,7 @@ struct MovingViolationView: View {
             ensureValidViolationSelection()
             capturePhoto()
         }
-        .onChange(of: violationTypeStore.types.count) { _, _ in
+        .onReceive(violationTypeStore.objectWillChange.first()) { _ in
             ensureValidViolationSelection()
         }
     }

@@ -52,11 +52,15 @@ struct ContentView: View {
             viewModel.stopScanning()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            if viewModel.cameraPermission == .authorized {
+            if viewModel.cameraPermission == .authorized && !viewModel.isScanningPaused {
                 viewModel.startScanning()
             }
         }
-        .onReceive(tick) { now = $0 }
+        .onReceive(tick) { t in
+            if !showTicketIssuance && !showMovingViolation {
+                now = t
+            }
+        }
     }
 
     private var scannerView: some View {
@@ -172,12 +176,12 @@ struct ContentView: View {
             MovingViolationView(cameraService: viewModel.cameraService)
         }
         .onChange(of: showTicketIssuance) { _, isOpen in
-            if isOpen { viewModel.stopScanning() }
-            else if viewModel.cameraPermission == .authorized { viewModel.startScanning() }
+            if isOpen { viewModel.pauseScanning() }
+            else { viewModel.resumeScanning() }
         }
         .onChange(of: showMovingViolation) { _, isOpen in
-            if isOpen { viewModel.stopScanning() }
-            else if viewModel.cameraPermission == .authorized { viewModel.startScanning() }
+            if isOpen { viewModel.pauseScanning() }
+            else { viewModel.resumeScanning() }
         }
     }
 

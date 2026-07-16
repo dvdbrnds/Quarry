@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import CoreImage.CIFilterBuiltins
 import CoreLocation
 
@@ -9,7 +10,7 @@ struct TicketIssuanceView: View {
 
     @State private var plate = ""
     @State private var selectedLot = ""
-    @State private var selectedViolation = "no_permit"
+    @State private var selectedViolation = ""
     @State private var vehicleDescription = ""
     @State private var officerNotes = ""
     @State private var isSubmitting = false
@@ -100,6 +101,9 @@ struct TicketIssuanceView: View {
 
             Section("Violation") {
                 Picker("Type", selection: $selectedViolation) {
+                    if !violationTypes.contains(where: { $0.0 == selectedViolation }) {
+                        Text("— Select —").tag("")
+                    }
                     ForEach(violationTypes, id: \.0) { code, label in
                         Text(label).tag(code)
                     }
@@ -198,7 +202,7 @@ struct TicketIssuanceView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Issue") { submitTicket() }
-                    .disabled(plate.isEmpty || selectedLot.isEmpty || isSubmitting)
+                    .disabled(plate.isEmpty || selectedLot.isEmpty || selectedViolation.isEmpty || isSubmitting)
                     .bold()
             }
         }
@@ -238,7 +242,7 @@ struct TicketIssuanceView: View {
             }
             capturePhoto()
         }
-        .onChange(of: violationTypeStore.types.count) { _, _ in
+        .onReceive(violationTypeStore.objectWillChange.first()) { _ in
             ensureValidViolationSelection()
         }
     }

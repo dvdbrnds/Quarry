@@ -14,14 +14,6 @@ struct BirdDogApp: App {
         GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
         HoundDogSyncService.shared.startIfConfigured()
-        Task.detached(priority: .utility) { @MainActor in
-            PlateDatabase.shared.pruneExpiredPermits()
-        }
-        Task { @MainActor in
-            if PrinterService.shared.hasSavedPrinter {
-                PrinterService.shared.reconnectSaved()
-            }
-        }
     }
 
     var body: some Scene {
@@ -35,9 +27,20 @@ struct BirdDogApp: App {
                 OfficerLoginView()
             } else {
                 ContentView()
+                    .task { await deferredBootWork() }
             }
         }
         .modelContainer(PlateDatabase.shared.container)
+    }
+}
+
+extension BirdDogApp {
+    @MainActor
+    private func deferredBootWork() async {
+        PlateDatabase.shared.pruneExpiredPermits()
+        if PrinterService.shared.hasSavedPrinter {
+            PrinterService.shared.reconnectSaved()
+        }
     }
 }
 

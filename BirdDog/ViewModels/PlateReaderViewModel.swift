@@ -13,6 +13,7 @@ final class PlateReaderViewModel: ObservableObject {
     @Published var currentPlates: [RecognizedPlate] = []
     @Published var scanLog: [ScannedPlate] = []
     @Published var isScanning = false
+    @Published private(set) var isScanningPaused = false
     @Published var cameraPermission: AVAuthorizationStatus = .notDetermined
     @Published var latestAuthStatus: PlateStatus = .unchecked
     @Published var audioAlertsEnabled = true
@@ -148,7 +149,20 @@ final class PlateReaderViewModel: ObservableObject {
     func stopScanning() {
         cameraService.stop()
         isScanning = false
+        isScanningPaused = false
         finalizeSession()
+    }
+
+    func pauseScanning() {
+        guard isScanning, !isScanningPaused else { return }
+        cameraService.stop()
+        isScanningPaused = true
+    }
+
+    func resumeScanning() {
+        guard isScanningPaused else { return }
+        isScanningPaused = false
+        cameraService.start()
     }
 
     private func finalizeSession() {
