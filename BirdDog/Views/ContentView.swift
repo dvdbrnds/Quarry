@@ -49,10 +49,13 @@ struct ContentView: View {
         }
         .onAppear { viewModel.checkPermissionAndStart() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            viewModel.stopScanning()
+            viewModel.pauseScanning()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            if viewModel.cameraPermission == .authorized && !viewModel.isScanningPaused {
+            if viewModel.cameraPermission == .authorized
+                && !viewModel.isScanningPaused
+                && !showTicketIssuance
+                && !showMovingViolation {
                 viewModel.startScanning()
             }
         }

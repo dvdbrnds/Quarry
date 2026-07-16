@@ -141,11 +141,14 @@ final class CameraService: NSObject, ObservableObject {
         return saveBufferAsJPEG(imageBuffer)
     }
 
+    private var oneShotCapture = false
+
     /// Briefly resumes the camera to grab a fresh frame, then stops again.
-    /// Use this when the session is paused but you need a new photo.
+    /// Suppresses OCR delegate calls during the capture window.
     func captureOneShotPhoto() async -> String? {
         let wasRunning = isRunning
         if !wasRunning {
+            oneShotCapture = true
             await withCheckedContinuation { cont in
                 sessionQueue.async { [weak self] in
                     guard let self else { cont.resume(); return }
@@ -167,6 +170,7 @@ final class CameraService: NSObject, ObservableObject {
                     guard let self, self.isRunning else { cont.resume(); return }
                     self.session.stopRunning()
                     self.isRunning = false
+                    self.oneShotCapture = false
                     cont.resume()
                 }
             }
@@ -1066,6 +1070,10 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
                        from connection: AVCaptureConnection) {
         latestSampleBuffer = sampleBuffer
         lastFrameTime = Date()
+
+        // One-shot mode: only capture the buffer, skip all OCR processing.
+        guard !oneShotCapture else { return }
+
         frameCount += 1
 
         // Track FPS via rolling 1-second window
