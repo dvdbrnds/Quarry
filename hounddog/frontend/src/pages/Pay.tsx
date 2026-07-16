@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App } from "antd";
 import { useBranding } from "../useBranding";
@@ -18,6 +18,9 @@ interface AvailablePermit {
 
 interface AvailablePermitsResponse { permit_types: AvailablePermit[]; ticket_fine_after_purchase: string; }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+
 export default function Pay() {
   const { message } = App.useApp();
   const brand = useBranding();
@@ -31,24 +34,48 @@ export default function Pay() {
   const [permitTicket, setPermitTicket] = useState<TicketResult | null>(null);
   const [availablePermits, setAvailablePermits] = useState<AvailablePermitsResponse | null>(null);
   const [success, setSuccess] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const retryAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const id = pathTicketId || new URLSearchParams(window.location.search).get("ticket");
     if (id) loadTicketById(id);
+    return () => { retryAbort.current?.abort(); };
   }, [pathTicketId]);
 
-  async function loadTicketById(id: string) {
+  async function loadTicketById(id: string, attempt = 0) {
     setLoading(true); setError(""); setTickets([]);
+    if (attempt === 0) setRetrying(false);
     try {
       const res = await fetch(`/api/payments/lookup/${encodeURIComponent(id)}`);
-      if (res.status === 404) { setError("Ticket not found."); return; }
+      if (res.status === 404) {
+        if (attempt < MAX_RETRIES) {
+          setRetrying(true);
+          setError("Ticket is being processed. Checking again shortly\u2026");
+          const abort = new AbortController();
+          retryAbort.current = abort;
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(resolve, RETRY_DELAY_MS);
+            abort.signal.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("Aborted")); });
+          });
+          return loadTicketById(id, attempt + 1);
+        }
+        setRetrying(false);
+        setError("Ticket not found. It may still be syncing \u2014 please try again in a minute, or search by plate number below.");
+        return;
+      }
+      setRetrying(false);
       if (!res.ok) throw new Error("Lookup failed");
       const ticket: TicketResult = await res.json();
       if (ticket.status === "paid") setError("This ticket has already been paid.");
       else if (ticket.status === "voided") setError("This ticket has been voided. No payment required.");
       else if (ticket.status === "resolved_permit") setError("Resolved through permit purchase.");
       else setTickets([ticket]);
-    } catch { setError("Unable to load ticket. Try searching by plate."); } finally { setLoading(false); }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setRetrying(false);
+      setError("Unable to load ticket. Try searching by plate.");
+    } finally { setLoading(false); }
   }
 
   async function handleSearch() {
@@ -110,7 +137,8 @@ export default function Pay() {
           <Button type="primary" size="large" onClick={handleSearch} loading={loading}>Search</Button>
         </Space.Compact>
 
-        {error && <Alert type="error" message={error} className="mb-4" showIcon />}
+        {error && <Alert type={retrying ? "info" : "error"} message={error} className="mb-4" showIcon
+          icon={retrying ? <Spin size="small" /> : undefined} />}
         {success && <Alert type="success" message={success} className="mb-4" showIcon />}
 
         {tickets.length > 0 && (

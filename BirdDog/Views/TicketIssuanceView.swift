@@ -319,41 +319,26 @@ struct TicketIssuanceView: View {
             permitNumber: permit?.permitNumber
         )
 
-        try? db.savePendingTicket(ticket)
-
-        let fineAmount = ViolationTypeStore.shared.fineAmount(forCode: selectedViolation)
-        let offenseNumber = db.offenseCount(forPlate: normalizedPlate)
-        let baseURL = AppSettings.shared.paymentBaseURL
-        let paymentUrl = baseURL.isEmpty ? "" : "\(baseURL)/pay?ticket=\(ticket.ticketId)"
-
-        ticket.fineAmount = fineAmount
-        ticket.offenseNumber = offenseNumber
-        ticket.paymentUrl = paymentUrl
-        try? db.saveContext()
-
-        let localResult = HoundDogSyncService.TicketUploadResponse(
-            ticketId: ticket.ticketId,
-            paymentUrl: paymentUrl,
-            fineAmount: fineAmount,
-            offenseNumber: offenseNumber,
-            notificationSent: false,
-            notificationEmail: nil
-        )
-
-        submittedResult = localResult
-        onTicketIssued?(normalizedPlate)
-        isSubmitting = false
-
         Task {
             do {
                 let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
+                try? db.savePendingTicket(ticket)
                 db.markTicketUploaded(ticket)
                 ticket.paymentUrl = serverResult.paymentUrl
                 ticket.fineAmount = serverResult.fineAmount
                 ticket.offenseNumber = serverResult.offenseNumber
                 try? db.saveContext()
+
+                await MainActor.run {
+                    submittedResult = serverResult
+                    onTicketIssued?(normalizedPlate)
+                    isSubmitting = false
+                }
             } catch {
-                // Stays in pending queue — retryPendingTickets() picks it up next sync.
+                await MainActor.run {
+                    errorMessage = "Could not reach the server. Check your connection and try again."
+                    isSubmitting = false
+                }
             }
         }
     }
