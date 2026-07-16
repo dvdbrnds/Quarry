@@ -10,7 +10,9 @@ from ..config import settings
 admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
 public_router = APIRouter()
 
-_UPLOAD_BASE = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "branding")
+_BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_UPLOAD_DIR = os.path.join(_BACKEND_ROOT, "uploads")
+_UPLOAD_BASE = os.path.join(_UPLOAD_DIR, "branding")
 _STATE_FILE = os.path.join(_UPLOAD_BASE, "branding.json")
 _ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
 _MAX_SIZE = 5 * 1024 * 1024
@@ -34,9 +36,10 @@ def _resolve_upload_url(rel_path: str | None) -> str | None:
     """Return a URL only if the file actually exists on disk."""
     if not rel_path:
         return None
-    abs_path = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", rel_path)
+    abs_path = os.path.join(_UPLOAD_DIR, rel_path)
     if os.path.isfile(abs_path):
-        return f"/uploads/{rel_path}"
+        ts = int(os.path.getmtime(abs_path))
+        return f"/uploads/{rel_path}?v={ts}"
     return None
 
 

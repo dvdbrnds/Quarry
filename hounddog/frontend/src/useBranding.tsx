@@ -13,7 +13,7 @@ const DEFAULTS: Branding = {
   brandName: "Quarry",
   primaryColor: "#1a2744",
   accentColor: "#c9a84c",
-  logoUrl: "/quarry-logo-light.png",
+  logoUrl: null,
   faviconUrl: "/favicon.png",
   schoolName: "",
 };
@@ -31,7 +31,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           brandName: data.brand_name || DEFAULTS.brandName,
           primaryColor: data.primary_color || DEFAULTS.primaryColor,
           accentColor: data.accent_color || DEFAULTS.accentColor,
-          logoUrl: data.logo_url || DEFAULTS.logoUrl,
+          logoUrl: data.logo_url ?? null,
           faviconUrl: data.favicon_url || DEFAULTS.faviconUrl,
           schoolName: data.school_name || DEFAULTS.schoolName,
         });

@@ -204,7 +204,12 @@ export default function BrandingSettings() {
           className="rounded-lg px-6 py-4 flex items-center gap-3 shadow"
         >
           {data.logo_url && (
-            <img src={data.logo_url} alt={data.brand_name} className="h-8 w-auto" />
+            <img
+              src={data.logo_url}
+              alt={data.brand_name}
+              className="h-8 w-auto"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
           )}
           <span
             style={{ color: data.accent_color }}
