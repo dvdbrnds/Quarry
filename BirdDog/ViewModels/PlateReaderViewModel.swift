@@ -86,7 +86,6 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     init() {
-        let t = ContinuousClock.now
         cameraService.delegate = self
         cameraService.highBandwidthMode = AppSettings.shared.highBandwidthMode
         engineObserver = NotificationCenter.default.addObserver(
@@ -96,7 +95,6 @@ final class PlateReaderViewModel: ObservableObject {
                 self?.updateCloudService()
             }
         }
-        print("[BOOT] PlateReaderViewModel.init sync part took \(ContinuousClock.now - t)")
         Task { @MainActor [weak self] in
             self?.configureAudioSession()
             self?.hapticMedium.prepare()
@@ -105,7 +103,6 @@ final class PlateReaderViewModel: ObservableObject {
             self?.updateCloudService()
             self?.loadPersistedScanLog()
             self?.reloadHistory()
-            print("[BOOT] PlateReaderViewModel deferred init done")
         }
     }
 
@@ -120,13 +117,11 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     func checkPermissionAndStart() {
-        print("[BOOT] checkPermissionAndStart called")
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         cameraPermission = status
 
         switch status {
         case .authorized:
-            print("[BOOT] camera authorized, calling startScanning")
             startScanning()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
