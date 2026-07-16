@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import CoreImage.CIFilterBuiltins
 import CoreLocation
 
@@ -23,13 +22,15 @@ struct MovingViolationView: View {
     @State private var capturedPhotoImage: UIImage?
     @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
-    @ObservedObject private var officerAuth = OfficerAuthService.shared
-    @ObservedObject private var violationTypeStore = ViolationTypeStore.shared
 
     var cameraService: CameraService?
 
-    private var movingViolations: [(String, String)] {
-        violationTypeStore.types
+    @State private var movingViolations: [(String, String)] = []
+    @State private var officerName = ""
+    @State private var officerEmail = ""
+
+    private func loadViolationTypes() {
+        movingViolations = ViolationTypeStore.shared.types
             .filter { $0.category == "moving" }
             .map { ($0.code, $0.label) }
     }
@@ -158,27 +159,31 @@ struct MovingViolationView: View {
             }
         }
         .onAppear {
+            officerName = OfficerAuthService.shared.officerName
+            officerEmail = OfficerAuthService.shared.officerEmail
+            loadViolationTypes()
             ensureValidViolationSelection()
             capturePhoto()
-        }
-        .onReceive(violationTypeStore.objectWillChange.first()) { _ in
-            ensureValidViolationSelection()
         }
     }
 
     private func ensureValidViolationSelection() {
         let codes = Set(movingViolations.map(\.0))
         if codes.contains(selectedViolation) { return }
-        selectedViolation = violationTypeStore.resolveCode(
+        selectedViolation = ViolationTypeStore.shared.resolveCode(
             preferred: ["stop_sign", "speeding"],
             category: "moving"
         )
     }
 
-    private var evidenceTimestampString: String {
+    private static let timestampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return f.string(from: captureTimestamp)
+        return f
+    }()
+
+    private var evidenceTimestampString: String {
+        Self.timestampFormatter.string(from: captureTimestamp)
     }
 
     private func capturePhoto() {
@@ -213,11 +218,11 @@ struct MovingViolationView: View {
                 }
             }
 
-            if !officerAuth.officerName.isEmpty {
+            if !officerName.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "person.badge.shield.checkmark.fill")
                         .foregroundStyle(.blue)
-                    Text("Issued by \(officerAuth.officerName)")
+                    Text("Issued by \(officerName)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -319,8 +324,8 @@ struct MovingViolationView: View {
             officerNotes: officerNotes.isEmpty ? nil : officerNotes,
             driverName: driverName.isEmpty ? nil : driverName,
             driverLicense: driverLicense.isEmpty ? nil : driverLicense,
-            officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
-            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail
+            officerName: officerName.isEmpty ? nil : officerName,
+            officerEmail: officerEmail.isEmpty ? nil : officerEmail
         )
 
         Task {
@@ -358,8 +363,8 @@ struct MovingViolationView: View {
             driverLicense: driverLicense.isEmpty ? nil : driverLicense,
             locationText: locationText.isEmpty ? nil : locationText,
             ticketCategory: "moving",
-            officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
-            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail
+            officerName: officerName.isEmpty ? nil : officerName,
+            officerEmail: officerEmail.isEmpty ? nil : officerEmail
         )
 
         Task {

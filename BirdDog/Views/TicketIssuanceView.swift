@@ -1,11 +1,9 @@
 import SwiftUI
-import Combine
 import CoreImage.CIFilterBuiltins
 import CoreLocation
 
 struct TicketIssuanceView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var geofence = GeofenceService.shared
     @StateObject private var locationManager = TicketLocationManager()
 
     @State private var plate = ""
@@ -22,22 +20,29 @@ struct TicketIssuanceView: View {
     @State private var capturedPhotoImage: UIImage?
     @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
-    @ObservedObject private var officerAuth = OfficerAuthService.shared
-    @ObservedObject private var violationTypeStore = ViolationTypeStore.shared
+
+    /// Snapshot of lots at form open — no live GPS observation.
+    @State private var lots: [GeofenceService.MonitoredLot] = []
+    @State private var officerName = ""
+    @State private var officerEmail = ""
 
     var cameraService: CameraService?
     var prefilledPlate: String?
     var prefilledEntry: ScannedPlate?
     var onTicketIssued: ((String) -> Void)?
 
-    private var violationTypes: [(String, String)] {
-        violationTypeStore.types(in: "parking").map { ($0.code, $0.label) }
+    @State private var violationTypes: [(String, String)] = []
+
+    private func loadViolationTypes() {
+        let store = ViolationTypeStore.shared
+        violationTypes = store.types(in: "parking").map { ($0.code, $0.label) }
     }
 
     private func ensureValidViolationSelection(preferred: [String] = []) {
         let codes = Set(violationTypes.map(\.0))
         if codes.contains(selectedViolation) { return }
-        selectedViolation = violationTypeStore.resolveCode(
+        let store = ViolationTypeStore.shared
+        selectedViolation = store.resolveCode(
             preferred: preferred.isEmpty ? ["no_permit_displayed", "no_permit", "unauthorized_permit"] : preferred,
             category: "parking"
         )
@@ -110,7 +115,7 @@ struct TicketIssuanceView: View {
                 }
                 Picker("Lot", selection: $selectedLot) {
                     Text("— Select —").tag("")
-                    ForEach(geofence.lots, id: \.id) { lot in
+                    ForEach(lots, id: \.id) { lot in
                         Text(lot.name).tag(lot.name)
                     }
                 }
@@ -207,6 +212,12 @@ struct TicketIssuanceView: View {
             }
         }
         .onAppear {
+            let geo = GeofenceService.shared
+            lots = geo.lots
+            officerName = OfficerAuthService.shared.officerName
+            officerEmail = OfficerAuthService.shared.officerEmail
+            loadViolationTypes()
+
             if let entry = prefilledEntry {
                 plate = entry.text
                 if let permit = entry.authStatus.permit {
@@ -237,13 +248,10 @@ struct TicketIssuanceView: View {
             } else {
                 ensureValidViolationSelection()
             }
-            if selectedLot.isEmpty, let current = geofence.currentLotName {
+            if selectedLot.isEmpty, let current = geo.currentLotName {
                 selectedLot = current
             }
             capturePhoto()
-        }
-        .onReceive(violationTypeStore.objectWillChange.first()) { _ in
-            ensureValidViolationSelection()
         }
     }
 
@@ -296,11 +304,11 @@ struct TicketIssuanceView: View {
                 }
             }
 
-            if !officerAuth.officerName.isEmpty {
+            if !officerName.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "person.badge.shield.checkmark.fill")
                         .foregroundStyle(.blue)
-                    Text("Issued by \(officerAuth.officerName)")
+                    Text("Issued by \(officerName)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -428,8 +436,8 @@ struct TicketIssuanceView: View {
             locationLng: locationManager.longitude,
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
             officerNotes: officerNotes.isEmpty ? nil : officerNotes,
-            officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
-            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail,
+            officerName: officerName.isEmpty ? nil : officerName,
+            officerEmail: officerEmail.isEmpty ? nil : officerEmail,
             ownerName: permit?.ownerName,
             permitNumber: permit?.permitNumber
         )
@@ -496,8 +504,8 @@ struct TicketIssuanceView: View {
             driverLicense: nil,
             locationText: nil,
             ticketCategory: "parking",
-            officerName: officerAuth.officerName.isEmpty ? nil : officerAuth.officerName,
-            officerEmail: officerAuth.officerEmail.isEmpty ? nil : officerAuth.officerEmail
+            officerName: officerName.isEmpty ? nil : officerName,
+            officerEmail: officerEmail.isEmpty ? nil : officerEmail
         )
 
         Task {
@@ -533,11 +541,12 @@ final class TicketLocationManager: NSObject, ObservableObject, CLLocationManager
     private let manager = CLLocationManager()
     @Published var latitude: Double?
     @Published var longitude: Double?
+    private var settled = false
 
     override init() {
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         manager.requestWhenInUseAuthorization()
         manager.startUpdatingLocation()
     }
@@ -545,8 +554,13 @@ final class TicketLocationManager: NSObject, ObservableObject, CLLocationManager
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
         Task { @MainActor in
+            guard !self.settled else { return }
             self.latitude = loc.coordinate.latitude
             self.longitude = loc.coordinate.longitude
+            if loc.horizontalAccuracy >= 0, loc.horizontalAccuracy < 30 {
+                self.settled = true
+                self.manager.stopUpdatingLocation()
+            }
         }
     }
 }
