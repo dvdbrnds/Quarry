@@ -4,7 +4,6 @@ import CoreLocation
 
 struct TicketIssuanceView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var locationManager = TicketLocationManager()
 
     @State private var plate = ""
     @State private var selectedLot = ""
@@ -14,29 +13,25 @@ struct TicketIssuanceView: View {
     @State private var isSubmitting = false
     @State private var submittedResult: HoundDogSyncService.TicketUploadResponse?
     @State private var errorMessage: String?
-    @State private var isPrinting = false
-    @State private var printError: String?
     @State private var capturedPhotoPath: String?
     @State private var capturedPhotoImage: UIImage?
     @State private var captureTimestamp = Date()
-    @ObservedObject private var printerService = PrinterService.shared
 
     @State private var lots: [ParkingLot] = []
     @State private var officerName = ""
     @State private var officerEmail = ""
+    @State private var ticketLat: Double?
+    @State private var ticketLng: Double?
+    @State private var violationTypes: [(String, String)] = []
 
     var cameraService: CameraService?
     var prefilledPlate: String?
     var prefilledEntry: ScannedPlate?
     var onTicketIssued: ((String) -> Void)?
 
-    private var violationTypes: [(String, String)] {
-        ViolationTypeStore.shared.types(in: "parking").map { ($0.code, $0.label) }
-    }
-
     private func ensureValidViolationSelection(preferred: [String] = []) {
         let codes = Set(violationTypes.map(\.0))
-        if codes.contains(selectedViolation) { return }
+        if !selectedViolation.isEmpty, codes.contains(selectedViolation) { return }
         selectedViolation = ViolationTypeStore.shared.resolveCode(
             preferred: preferred.isEmpty ? ["no_permit_displayed", "no_permit", "unauthorized_permit"] : preferred,
             category: "parking"
@@ -46,7 +41,17 @@ struct TicketIssuanceView: View {
     var body: some View {
         NavigationStack {
             if let result = submittedResult {
-                ticketConfirmation(result)
+                TicketConfirmationView(
+                    result: result,
+                    plate: plate,
+                    selectedViolation: selectedViolation,
+                    selectedLot: selectedLot,
+                    vehicleDescription: vehicleDescription,
+                    officerNotes: officerNotes,
+                    officerName: officerName,
+                    officerEmail: officerEmail,
+                    violationLabel: violationLabel(for: selectedViolation)
+                )
             } else {
                 ticketForm
             }
@@ -156,7 +161,7 @@ struct TicketIssuanceView: View {
                     }
                 }
 
-                if let lat = locationManager.latitude, let lng = locationManager.longitude {
+                if let lat = ticketLat, let lng = ticketLng {
                     HStack {
                         Image(systemName: "location.fill")
                             .font(.caption)
@@ -211,6 +216,11 @@ struct TicketIssuanceView: View {
             lots = geo.lots
             officerName = OfficerAuthService.shared.officerName
             officerEmail = OfficerAuthService.shared.officerEmail
+            violationTypes = ViolationTypeStore.shared.types(in: "parking").map { ($0.code, $0.label) }
+            if let loc = geo.currentLocation {
+                ticketLat = loc.coordinate.latitude
+                ticketLng = loc.coordinate.longitude
+            }
 
             if let entry = prefilledEntry {
                 plate = entry.text
@@ -281,7 +291,99 @@ struct TicketIssuanceView: View {
         }
     }
 
-    private func ticketConfirmation(_ result: HoundDogSyncService.TicketUploadResponse) -> some View {
+    // Confirmation screen is extracted to TicketConfirmationView to isolate
+    // PrinterService observation from the form and avoid re-render lag.
+
+    private func submitTicket() {
+        isSubmitting = true
+        errorMessage = nil
+
+        let normalizedPlate = plate.uppercased().trimmingCharacters(in: .whitespaces)
+        let permit = prefilledEntry?.authStatus.permit
+        let db = PlateDatabase.shared
+
+        let ticket = PendingTicket(
+            plate: normalizedPlate,
+            lot: selectedLot,
+            violationType: selectedViolation,
+            confidence: 1.0,
+            photoPath: capturedPhotoPath,
+            ticketCategory: "parking",
+            locationLat: ticketLat,
+            locationLng: ticketLng,
+            vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
+            officerNotes: officerNotes.isEmpty ? nil : officerNotes,
+            officerName: officerName.isEmpty ? nil : officerName,
+            officerEmail: officerEmail.isEmpty ? nil : officerEmail,
+            ownerName: permit?.ownerName,
+            permitNumber: permit?.permitNumber
+        )
+
+        try? db.savePendingTicket(ticket)
+
+        let fineAmount = ViolationTypeStore.shared.fineAmount(forCode: selectedViolation)
+        let offenseNumber = db.offenseCount(forPlate: normalizedPlate)
+        let baseURL = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let paymentUrl = baseURL.isEmpty ? "" : "\(baseURL)/pay/\(ticket.ticketId)"
+
+        ticket.fineAmount = fineAmount
+        ticket.offenseNumber = offenseNumber
+        ticket.paymentUrl = paymentUrl
+        try? db.saveContext()
+
+        let localResult = HoundDogSyncService.TicketUploadResponse(
+            ticketId: ticket.ticketId,
+            paymentUrl: paymentUrl,
+            fineAmount: fineAmount,
+            offenseNumber: offenseNumber,
+            notificationSent: false,
+            notificationEmail: nil
+        )
+
+        submittedResult = localResult
+        onTicketIssued?(normalizedPlate)
+        isSubmitting = false
+
+        Task {
+            do {
+                let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
+                db.markTicketUploaded(ticket)
+                ticket.paymentUrl = serverResult.paymentUrl
+                ticket.fineAmount = serverResult.fineAmount
+                ticket.offenseNumber = serverResult.offenseNumber
+                try? db.saveContext()
+            } catch {
+                // Stays in pending queue — retryPendingTickets() picks it up next sync.
+            }
+        }
+    }
+
+    private func violationLabel(for code: String) -> String {
+        violationTypes.first(where: { $0.0 == code })?.1 ?? code
+    }
+
+}
+
+// MARK: - Ticket Confirmation (isolated from form to prevent printer observation re-renders)
+
+struct TicketConfirmationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var printerService = PrinterService.shared
+
+    let result: HoundDogSyncService.TicketUploadResponse
+    let plate: String
+    let selectedViolation: String
+    let selectedLot: String
+    let vehicleDescription: String
+    let officerNotes: String
+    let officerName: String
+    let officerEmail: String
+    let violationLabel: String
+
+    @State private var isPrinting = false
+    @State private var printError: String?
+
+    var body: some View {
         VStack(spacing: 24) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 64))
@@ -312,7 +414,6 @@ struct TicketIssuanceView: View {
                 }
             }
 
-            // Notification status
             if result.notificationSent, let email = result.notificationEmail {
                 VStack(spacing: 6) {
                     HStack(spacing: 8) {
@@ -371,7 +472,7 @@ struct TicketIssuanceView: View {
                 }
             }
 
-            printButton(for: result)
+            printButton
 
             if printerService.connectionState == .connecting {
                 HStack(spacing: 8) {
@@ -411,83 +512,15 @@ struct TicketIssuanceView: View {
         }
         .onAppear {
             if !result.notificationSent && printerService.autoPrintEnabled {
-                printTicket(result)
+                printTicket()
             } else if !printerService.isConnected && printerService.hasSavedPrinter {
                 printerService.reconnectSaved()
             }
         }
     }
 
-    private func submitTicket() {
-        isSubmitting = true
-        errorMessage = nil
-
-        let normalizedPlate = plate.uppercased().trimmingCharacters(in: .whitespaces)
-        let permit = prefilledEntry?.authStatus.permit
-        let db = PlateDatabase.shared
-
-        let ticket = PendingTicket(
-            plate: normalizedPlate,
-            lot: selectedLot,
-            violationType: selectedViolation,
-            confidence: 1.0,
-            photoPath: capturedPhotoPath,
-            ticketCategory: "parking",
-            locationLat: locationManager.latitude,
-            locationLng: locationManager.longitude,
-            vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
-            officerNotes: officerNotes.isEmpty ? nil : officerNotes,
-            officerName: officerName.isEmpty ? nil : officerName,
-            officerEmail: officerEmail.isEmpty ? nil : officerEmail,
-            ownerName: permit?.ownerName,
-            permitNumber: permit?.permitNumber
-        )
-
-        try? db.savePendingTicket(ticket)
-
-        let fineAmount = ViolationTypeStore.shared.fineAmount(forCode: selectedViolation)
-        let offenseNumber = db.offenseCount(forPlate: normalizedPlate)
-        let baseURL = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let paymentUrl = baseURL.isEmpty ? "" : "\(baseURL)/pay/\(ticket.ticketId)"
-
-        ticket.fineAmount = fineAmount
-        ticket.offenseNumber = offenseNumber
-        ticket.paymentUrl = paymentUrl
-        try? db.saveContext()
-
-        let localResult = HoundDogSyncService.TicketUploadResponse(
-            ticketId: ticket.ticketId,
-            paymentUrl: paymentUrl,
-            fineAmount: fineAmount,
-            offenseNumber: offenseNumber,
-            notificationSent: false,
-            notificationEmail: nil
-        )
-
-        submittedResult = localResult
-        onTicketIssued?(normalizedPlate)
-        isSubmitting = false
-
-        Task {
-            do {
-                let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
-                db.markTicketUploaded(ticket)
-                ticket.paymentUrl = serverResult.paymentUrl
-                ticket.fineAmount = serverResult.fineAmount
-                ticket.offenseNumber = serverResult.offenseNumber
-                try? db.saveContext()
-            } catch {
-                // Stays in pending queue — retryPendingTickets() picks it up next sync.
-            }
-        }
-    }
-
-    private func violationLabel(for code: String) -> String {
-        violationTypes.first(where: { $0.0 == code })?.1 ?? code
-    }
-
     @ViewBuilder
-    private func printButton(for result: HoundDogSyncService.TicketUploadResponse) -> some View {
+    private var printButton: some View {
         let label = HStack {
             Image(systemName: result.notificationSent ? "printer" : "printer.fill")
             Text(isPrinting
@@ -497,17 +530,17 @@ struct TicketIssuanceView: View {
         .frame(maxWidth: .infinity)
 
         if result.notificationSent {
-            Button { printTicket(result) } label: { label }
+            Button { printTicket() } label: { label }
                 .buttonStyle(.bordered)
                 .disabled(isPrinting || printerService.connectionState == .connecting)
         } else {
-            Button { printTicket(result) } label: { label }
+            Button { printTicket() } label: { label }
                 .buttonStyle(.borderedProminent)
                 .disabled(isPrinting || printerService.connectionState == .connecting)
         }
     }
 
-    private func printTicket(_ result: HoundDogSyncService.TicketUploadResponse) {
+    private func printTicket() {
         isPrinting = true
         printError = nil
 
@@ -515,7 +548,7 @@ struct TicketIssuanceView: View {
             ticketId: result.ticketId,
             plate: plate,
             violationType: selectedViolation,
-            violationLabel: violationLabel(for: selectedViolation),
+            violationLabel: violationLabel,
             lot: selectedLot,
             fineAmount: result.fineAmount,
             offenseNumber: result.offenseNumber,
@@ -556,34 +589,5 @@ struct TicketIssuanceView: View {
         let scaledImage = outputImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         guard let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) else { return nil }
         return UIImage(cgImage: cgImage)
-    }
-}
-
-@MainActor
-final class TicketLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    @Published var latitude: Double?
-    @Published var longitude: Double?
-    private var settled = false
-
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        manager.requestWhenInUseAuthorization()
-        manager.startUpdatingLocation()
-    }
-
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.last else { return }
-        Task { @MainActor in
-            guard !self.settled else { return }
-            self.latitude = loc.coordinate.latitude
-            self.longitude = loc.coordinate.longitude
-            if loc.horizontalAccuracy >= 0, loc.horizontalAccuracy < 30 {
-                self.settled = true
-                self.manager.stopUpdatingLocation()
-            }
-        }
     }
 }
