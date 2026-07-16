@@ -30,6 +30,7 @@ targets:
     dependencies:
       - package: StarXpand-SDK-iOS
         product: StarIO10
+      - sdk: ExternalAccessory.framework
     entitlements:
       path: BirdDog/App/BirdDog.entitlements
     settings:

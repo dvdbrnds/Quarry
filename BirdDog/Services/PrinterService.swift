@@ -1,9 +1,13 @@
 import Foundation
+import ExternalAccessory
 import StarIO10
 
 @MainActor
 final class PrinterService: ObservableObject {
     static let shared = PrinterService()
+
+    /// SM-S230i and other Star portable i-series printers use classic Bluetooth (MFi).
+    private static let starEAProtocol = "jp.star-m.starpro"
 
     @Published private(set) var connectionState: ConnectionState = .disconnected
     @Published private(set) var printerName: String = ""
@@ -33,7 +37,16 @@ final class PrinterService: ObservableObject {
             model.isEmpty ? id : "\(model) (\(id))"
         }
 
-        var interfaceLabel: String { "Bluetooth LE" }
+        var interfaceLabel: String {
+            switch interfaceType {
+            case .bluetooth: return "Bluetooth"
+            case .bluetoothLE: return "Bluetooth LE"
+            case .lan: return "LAN"
+            case .usb: return "USB"
+            case .unknown: return "Unknown"
+            @unknown default: return "Unknown"
+            }
+        }
     }
 
     private static let savedIdentifierKey = "PrinterService.identifier"
@@ -53,25 +66,28 @@ final class PrinterService: ObservableObject {
         stopDiscovery()
         discoveredPrinters = []
         isSearching = true
+        lastError = nil
+
+        // SM-S230i is classic Bluetooth (paired in iOS Settings). Also scan BLE
+        // for other Star portables that don't use MFi.
+        seedPairedBluetoothPrinters()
 
         do {
             let manager = try StarDeviceDiscoveryManagerFactory.create(
-                interfaceTypes: [.bluetoothLE]
+                interfaceTypes: [.bluetooth, .bluetoothLE]
             )
+            // Classic BT is fast; BLE needs longer. Match Star sample guidance.
             manager.discoveryTime = 10_000
             self.discoveryManager = manager
 
             let wrapper = DiscoveryDelegate { [weak self] found in
                 Task { @MainActor in
                     guard let self else { return }
-                    let dp = DiscoveredPrinter(
+                    self.addDiscovered(
                         id: found.connectionSettings.identifier,
                         interfaceType: found.connectionSettings.interfaceType,
                         model: found.information?.model.rawValue.description ?? ""
                     )
-                    if !self.discoveredPrinters.contains(where: { $0.id == dp.id }) {
-                        self.discoveredPrinters.append(dp)
-                    }
                 }
             } onFinished: { [weak self] in
                 Task { @MainActor in
@@ -85,6 +101,26 @@ final class PrinterService: ObservableObject {
         } catch {
             isSearching = false
             lastError = "Discovery failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Surfaces printers already paired/connected in iOS Settings (classic BT / MFi).
+    private func seedPairedBluetoothPrinters() {
+        let accessories = EAAccessoryManager.shared().connectedAccessories
+        for accessory in accessories {
+            guard accessory.protocolStrings.contains(Self.starEAProtocol) else { continue }
+            addDiscovered(
+                id: accessory.name,
+                interfaceType: .bluetooth,
+                model: accessory.modelNumber.isEmpty ? accessory.name : accessory.modelNumber
+            )
+        }
+    }
+
+    private func addDiscovered(id: String, interfaceType: InterfaceType, model: String) {
+        let dp = DiscoveredPrinter(id: id, interfaceType: interfaceType, model: model)
+        if !discoveredPrinters.contains(where: { $0.id == dp.id && $0.interfaceType == dp.interfaceType }) {
+            discoveredPrinters.append(dp)
         }
     }
 

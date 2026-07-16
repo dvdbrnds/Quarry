@@ -158,7 +158,7 @@ struct AdminSettingsView: View {
         } header: {
             Text("Printer")
         } footer: {
-            Text("Connect a Star Micronics thermal printer via Bluetooth LE to print tickets in the field.")
+            Text("Pair the SM-S230i in iOS Settings → Bluetooth, then connect it here to print tickets in the field.")
         }
     }
 

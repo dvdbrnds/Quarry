@@ -82,7 +82,7 @@ struct PrinterSettingsView: View {
         } header: {
             Text("Thermal Printer")
         } footer: {
-            Text("Connect a Star Micronics thermal printer via Bluetooth LE to print tickets in the field.")
+            Text("Pair the SM-S230i in iOS Settings → Bluetooth first, then search here. Classic Bluetooth (MFi) printers appear after pairing.")
         }
     }
 
@@ -168,14 +168,14 @@ struct PrinterSettingsView: View {
             }
 
             if printerService.discoveredPrinters.isEmpty && !printerService.isSearching {
-                Text("No printers found. Make sure your printer is powered on and within range.")
+                Text("No printers found. For SM-S230i: power on the printer, pair it in iPhone Settings → Bluetooth (PIN 1234), confirm it shows Connected, then search again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } header: {
             Text("Available Printers")
         } footer: {
-            Text("Tap a printer to connect. The selection is saved for future sessions.")
+            Text("Tap a printer to connect. The selection is saved for future sessions. SM-S230i uses classic Bluetooth — it must be paired in iOS Settings before Bird Dog can see it.")
         }
     }
 
