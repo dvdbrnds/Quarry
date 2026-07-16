@@ -44,7 +44,6 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
 };
 
 export default function LotteryApply() {
-  const brand = useBranding();
   const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
 
@@ -109,6 +108,7 @@ function LotTags({ details }: { details: LotDetail[] }) {
 }
 
 function LotteryPage({ user }: { user: AuthUser }) {
+  const brand = useBranding();
   const { modal, message } = App.useApp();
   const [available, setAvailable] = useState<AvailablePermit[]>([]);
   const [applications, setApplications] = useState<MyApplication[]>([]);
