@@ -183,6 +183,7 @@ export default function App() {
       <Routes>
         <Route path="/pay" element={<Pay />} />
         <Route path="/pay/success" element={<PaySuccess />} />
+        <Route path="/pay/:ticketId" element={<Pay />} />
       </Routes>
     );
   }

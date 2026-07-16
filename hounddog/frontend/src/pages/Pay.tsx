@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App } from "antd";
 import { useBranding } from "../useBranding";
 
@@ -19,6 +20,7 @@ interface AvailablePermitsResponse { permit_types: AvailablePermit[]; ticket_fin
 export default function Pay() {
   const { message } = App.useApp();
   const brand = useBranding();
+  const { ticketId: pathTicketId } = useParams<{ ticketId: string }>();
   const [lookup, setLookup] = useState("");
   const [tickets, setTickets] = useState<TicketResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,10 +32,9 @@ export default function Pay() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ticketId = params.get("ticket");
-    if (ticketId) loadTicketById(ticketId);
-  }, []);
+    const id = pathTicketId || new URLSearchParams(window.location.search).get("ticket");
+    if (id) loadTicketById(id);
+  }, [pathTicketId]);
 
   async function loadTicketById(id: string) {
     setLoading(true); setError(""); setTickets([]);
