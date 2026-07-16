@@ -13,7 +13,6 @@ struct BirdDogApp: App {
         let container = PlateDatabase.shared.container
         GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
-        HoundDogSyncService.shared.startIfConfigured()
     }
 
     var body: some Scene {
@@ -37,6 +36,7 @@ struct BirdDogApp: App {
 extension BirdDogApp {
     @MainActor
     private func deferredBootWork() async {
+        HoundDogSyncService.shared.startIfConfigured()
         PlateDatabase.shared.pruneExpiredPermits()
         if PrinterService.shared.hasSavedPrinter {
             PrinterService.shared.reconnectSaved()

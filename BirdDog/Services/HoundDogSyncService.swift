@@ -51,13 +51,15 @@ final class HoundDogSyncService: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.lastLotSyncKey) }
     }
 
+    private var started = false
+
     private init() {
         self.isEnabled = UserDefaults.standard.bool(forKey: Self.isEnabledKey)
 
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.isConnected = path.status == .satisfied
-                if self?.isEnabled == true && path.status == .satisfied {
+                if self?.started == true && self?.isEnabled == true && path.status == .satisfied {
                     await self?.syncNow()
                 }
             }
@@ -67,6 +69,7 @@ final class HoundDogSyncService: ObservableObject {
 
     func start() {
         guard isEnabled else { return }
+        started = true
         syncTimer?.invalidate()
         syncTimer = Timer.scheduledTimer(withTimeInterval: Self.syncIntervalSeconds, repeats: true) { [weak self] _ in
             Task { @MainActor in

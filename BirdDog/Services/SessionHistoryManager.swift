@@ -26,7 +26,9 @@ final class SessionHistoryManager {
     private let retentionDays: Int = 30
 
     private init() {
-        pruneExpired()
+        Task.detached(priority: .utility) { [weak self] in
+            self?.pruneExpired()
+        }
     }
 
     func save(_ session: ScanSession) {

@@ -92,8 +92,6 @@ final class PlateReaderViewModel: ObservableObject {
         hapticHeavy.prepare()
         hapticLight.prepare()
         configureAudioSession()
-        loadPersistedScanLog()
-        reloadHistory()
         updateCloudService()
         engineObserver = NotificationCenter.default.addObserver(
             forName: .ocrEngineChanged, object: nil, queue: .main
@@ -101,6 +99,10 @@ final class PlateReaderViewModel: ObservableObject {
             Task { @MainActor in
                 self?.updateCloudService()
             }
+        }
+        Task { @MainActor [weak self] in
+            self?.loadPersistedScanLog()
+            self?.reloadHistory()
         }
     }
 
