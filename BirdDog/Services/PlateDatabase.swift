@@ -3,7 +3,20 @@ import SwiftData
 
 @MainActor
 final class PlateDatabase {
-    static let shared = PlateDatabase()
+    private static var _shared: PlateDatabase?
+
+    static var shared: PlateDatabase {
+        if let existing = _shared { return existing }
+        let db = PlateDatabase(container: createContainer())
+        _shared = db
+        return db
+    }
+
+    /// Pre-warm the shared instance with a container built on a background thread.
+    static func warmUp(container: ModelContainer) {
+        guard _shared == nil else { return }
+        _shared = PlateDatabase(container: container)
+    }
 
     let container: ModelContainer
 
@@ -13,22 +26,26 @@ final class PlateDatabase {
 
     private static let seedVersionKey = "PlateDatabase.seedVersion"
 
-    private init() {
+    nonisolated static func createContainer() -> ModelContainer {
         do {
             let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
             let config = ModelConfiguration(schema: schema)
-            container = try ModelContainer(for: schema, configurations: [config])
+            return try ModelContainer(for: schema, configurations: [config])
         } catch {
             print("Database init failed, deleting corrupt store and retrying: \(error)")
-            Self.deleteStoreFiles()
+            deleteStoreFiles()
             do {
                 let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
                 let config = ModelConfiguration(schema: schema)
-                container = try ModelContainer(for: schema, configurations: [config])
-        } catch {
-            fatalError("Failed to create permit database after store reset: \(error)")
+                return try ModelContainer(for: schema, configurations: [config])
+            } catch {
+                fatalError("Failed to create permit database after store reset: \(error)")
+            }
         }
-        }
+    }
+
+    private init(container: ModelContainer) {
+        self.container = container
         seedIfNeeded()
     }
 
@@ -51,7 +68,7 @@ final class PlateDatabase {
         print("Pruned \(expired.count) permits expired before \(cutoff)")
     }
 
-    private static func deleteStoreFiles() {
+    nonisolated private static func deleteStoreFiles() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         guard let dir = appSupport else { return }
         let extensions = ["store", "store-shm", "store-wal"]

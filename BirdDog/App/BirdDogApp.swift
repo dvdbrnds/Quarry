@@ -8,16 +8,14 @@ struct BirdDogApp: App {
     @StateObject private var appSettings = AppSettings.shared
     @StateObject private var officerAuth = OfficerAuthService.shared
     @State private var onboardingComplete = false
-
-    init() {
-        let container = PlateDatabase.shared.container
-        GeofenceService.shared.configure(container: container)
-        GeofenceService.shared.requestPermissionAndStart()
-    }
+    @State private var bootReady = false
 
     var body: some Scene {
         WindowGroup {
-            if !(appSettings.isServerConfigured || onboardingComplete) {
+            if !bootReady {
+                BootSplashView()
+                    .task { await boot() }
+            } else if !(appSettings.isServerConfigured || onboardingComplete) {
                 OnboardingView {
                     onboardingComplete = true
                     HoundDogSyncService.shared.startIfConfigured()
@@ -29,11 +27,36 @@ struct BirdDogApp: App {
                     .task { await deferredBootWork() }
             }
         }
-        .modelContainer(PlateDatabase.shared.container)
+    }
+}
+
+struct BootSplashView: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.02, green: 0.04, blue: 0.10)
+                .ignoresSafeArea()
+            ProgressView()
+                .tint(.white)
+                .scaleEffect(1.5)
+        }
+        .preferredColorScheme(.dark)
     }
 }
 
 extension BirdDogApp {
+    @MainActor
+    private func boot() async {
+        let container = await Task.detached(priority: .userInitiated) {
+            PlateDatabase.createContainer()
+        }.value
+
+        PlateDatabase.warmUp(container: container)
+
+        GeofenceService.shared.configure(container: container)
+        GeofenceService.shared.requestPermissionAndStart()
+        bootReady = true
+    }
+
     @MainActor
     private func deferredBootWork() async {
         HoundDogSyncService.shared.startIfConfigured()
@@ -57,9 +80,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        // Info.plist declares all orientations (Apple requirement) but the
-        // enforcement UI is portrait-only. Allow upside-down for the vehicle
-        // mount where the iPad is inverted.
         return [.portrait, .portraitUpsideDown]
     }
 

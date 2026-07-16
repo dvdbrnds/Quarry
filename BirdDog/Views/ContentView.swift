@@ -39,6 +39,7 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationDestination(isPresented: $showDatabase) {
                 DatabaseManagementView()
+                    .modelContainer(PlateDatabase.shared.container)
             }
             .navigationDestination(isPresented: $showLotManagement) {
                 LotManagementView()
