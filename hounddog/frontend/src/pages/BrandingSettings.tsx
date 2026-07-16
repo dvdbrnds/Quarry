@@ -149,7 +149,7 @@ export default function BrandingSettings() {
             </p>
             <div className="flex items-center gap-4 mb-3">
               {data.logo_url ? (
-                <div className="border rounded-lg p-3 bg-gray-50">
+                <div className="rounded-lg p-4" style={{ background: data.primary_color }}>
                   <img
                     src={data.logo_url}
                     alt="Current logo"
