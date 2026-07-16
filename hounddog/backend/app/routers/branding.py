@@ -38,7 +38,7 @@ def _etag(data: bytes) -> str:
 @public_router.get("")
 async def get_branding(db: AsyncSession = Depends(get_db)):
     bs = await _get_or_create(db)
-    logo_url = "/api/branding/logo" if bs.logo_data else None
+    logo_url = "/api/branding/logo" if bs.logo_data else "/quarry-logo-light.png"
     favicon_url = "/api/branding/favicon" if bs.favicon_data else "/favicon.png"
     return {
         "brand_name": bs.brand_name if bs.brand_name is not None else settings.brand_name,
