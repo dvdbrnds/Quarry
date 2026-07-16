@@ -56,14 +56,16 @@ function RootRedirect() {
 }
 
 function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
+  const brand = useBranding();
   return (
     <NavLink
       to={to}
+      style={({ isActive }) =>
+        isActive ? { background: brand.accentColor, color: brand.primaryColor } : {}
+      }
       className={({ isActive }) =>
         `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-          isActive
-            ? "bg-brass text-navy-deep"
-            : "text-bone hover:bg-navy-700"
+          isActive ? "" : "text-bone hover:bg-white/10"
         }`
       }
     >
@@ -96,7 +98,10 @@ function AdminShell({ user }: { user: AuthUser }) {
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-bone/70">{user.email}</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-brass/20 text-brass font-medium uppercase tracking-wide">
+          <span
+            style={{ background: `${brand.accentColor}33`, color: brand.accentColor }}
+            className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide"
+          >
             {user.role}
           </span>
           <button
