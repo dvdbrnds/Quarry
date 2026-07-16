@@ -93,6 +93,21 @@ async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = De
     return {"ok": True}
 
 
+@admin_router.post("/reset")
+async def reset_branding(db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    bs.brand_name = "Quarry"
+    bs.primary_color = "#1a2744"
+    bs.accent_color = "#c9a84c"
+    bs.logo_data = None
+    bs.logo_mime = None
+    bs.favicon_data = None
+    bs.favicon_mime = None
+    await db.flush()
+    invalidate_branding_cache()
+    return {"ok": True}
+
+
 @admin_router.post("/logo")
 async def upload_logo(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     if file.content_type not in _ALLOWED_TYPES:

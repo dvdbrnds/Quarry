@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Card, Button, Input, Upload, App, Spin, ColorPicker } from "antd";
-import { UploadOutlined } from "@ant-design/icons";
+import { Card, Button, Input, Upload, App, Spin, ColorPicker, Popconfirm } from "antd";
+import { UploadOutlined, UndoOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 import { useBranding } from "../useBranding";
 
@@ -67,6 +67,22 @@ export default function BrandingSettings() {
       load();
     } catch { message.error("Upload failed"); }
     finally { setUploading(null); }
+  }
+
+  const [resetting, setResetting] = useState(false);
+
+  async function resetToDefaults() {
+    setResetting(true);
+    try {
+      const res = await fetch("/api/branding/reset", {
+        method: "POST",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) throw new Error("Reset failed");
+      message.success("Branding reset to Quarry defaults — reloading…");
+      setTimeout(() => window.location.reload(), 400);
+    } catch { message.error("Failed to reset branding"); }
+    finally { setResetting(false); }
   }
 
   if (loading) return <div className="flex justify-center py-12"><Spin size="large" /></div>;
@@ -195,8 +211,19 @@ export default function BrandingSettings() {
             </div>
           </div>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-3">
           <Button type="primary" onClick={saveBrandIdentity}>Save Branding</Button>
+          <Popconfirm
+            title="Reset to Quarry defaults?"
+            description="This will reset colors, name, logo, and favicon to the original Quarry theme."
+            onConfirm={resetToDefaults}
+            okText="Reset"
+            okButtonProps={{ danger: true }}
+          >
+            <Button icon={<UndoOutlined />} loading={resetting} danger>
+              Reset to Defaults
+            </Button>
+          </Popconfirm>
         </div>
       </Card>
 
