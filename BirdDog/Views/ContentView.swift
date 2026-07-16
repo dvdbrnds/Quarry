@@ -57,15 +57,20 @@ struct ContentView: View {
             viewModel.pauseScanning()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            let anyScreenOpen = showTicketIssuance || showMovingViolation
+                || showDatabase || showLotManagement || showAdminSettings
+                || showSessionHistory
             if viewModel.cameraPermission == .authorized
                 && !viewModel.isScanningPaused
-                && !showTicketIssuance
-                && !showMovingViolation {
+                && !anyScreenOpen {
                 viewModel.startScanning()
             }
         }
         .onReceive(tick) { t in
-            if !showTicketIssuance && !showMovingViolation {
+            let anyScreenOpen = showTicketIssuance || showMovingViolation
+                || showDatabase || showLotManagement || showAdminSettings
+                || showSessionHistory
+            if !anyScreenOpen {
                 now = t
             }
         }
@@ -185,12 +190,22 @@ struct ContentView: View {
             MovingViolationView(cameraService: viewModel.cameraService)
         }
         .onChange(of: showTicketIssuance) { _, isOpen in
-            if isOpen { viewModel.pauseScanning() }
-            else { viewModel.resumeScanning() }
+            if !isOpen { viewModel.resumeScanning() }
         }
         .onChange(of: showMovingViolation) { _, isOpen in
-            if isOpen { viewModel.pauseScanning() }
-            else { viewModel.resumeScanning() }
+            if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: showDatabase) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: showLotManagement) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: showAdminSettings) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: showSessionHistory) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
         }
     }
 
@@ -347,13 +362,22 @@ struct ContentView: View {
 
             if officerAuth.isAdmin {
                 Menu {
-                    Button { showDatabase = true } label: {
+                    Button {
+                        viewModel.pauseScanning()
+                        showDatabase = true
+                    } label: {
                         Label("Database", systemImage: "server.rack")
                     }
-                    Button { showLotManagement = true } label: {
+                    Button {
+                        viewModel.pauseScanning()
+                        showLotManagement = true
+                    } label: {
                         Label("Lots", systemImage: "map")
                     }
-                    Button { showAdminSettings = true } label: {
+                    Button {
+                        viewModel.pauseScanning()
+                        showAdminSettings = true
+                    } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
                 } label: {
@@ -363,7 +387,10 @@ struct ContentView: View {
             }
 
             Menu {
-                Button { showSessionHistory = true } label: {
+                Button {
+                    viewModel.pauseScanning()
+                    showSessionHistory = true
+                } label: {
                     Label("Session History", systemImage: "archivebox")
                 }
                 Button(role: .destructive) {
