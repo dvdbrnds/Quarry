@@ -88,11 +88,6 @@ final class PlateReaderViewModel: ObservableObject {
     init() {
         cameraService.delegate = self
         cameraService.highBandwidthMode = AppSettings.shared.highBandwidthMode
-        hapticMedium.prepare()
-        hapticHeavy.prepare()
-        hapticLight.prepare()
-        configureAudioSession()
-        updateCloudService()
         engineObserver = NotificationCenter.default.addObserver(
             forName: .ocrEngineChanged, object: nil, queue: .main
         ) { [weak self] _ in
@@ -101,6 +96,11 @@ final class PlateReaderViewModel: ObservableObject {
             }
         }
         Task { @MainActor [weak self] in
+            self?.configureAudioSession()
+            self?.hapticMedium.prepare()
+            self?.hapticHeavy.prepare()
+            self?.hapticLight.prepare()
+            self?.updateCloudService()
             self?.loadPersistedScanLog()
             self?.reloadHistory()
         }

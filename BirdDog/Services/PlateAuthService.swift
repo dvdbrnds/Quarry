@@ -19,22 +19,20 @@ protocol PlateCheckable: Sendable {
 
 @MainActor
 final class PlateAuthService: PlateCheckable {
-    private let database: PlateDatabase
+    private var database: PlateDatabase { PlateDatabase.shared }
 
     private var wildcardZones: Set<String> {
         AppSettings.shared.wildcardZoneSet
     }
 
-    init() {
-        self.database = PlateDatabase.shared
-    }
+    init() {}
 
     func check(plate: String, currentLot: String? = nil) -> PlateStatus {
         checkDetailed(plate: plate, currentLot: currentLot).status
     }
 
     func checkDetailed(plate: String, currentLot: String? = nil) -> AuthResult {
-        guard !database.isEmpty else {
+        guard PlateDatabase.isReady, !database.isEmpty else {
             return AuthResult(status: .unchecked, matchMethod: .none, matchedPlate: plate)
         }
 

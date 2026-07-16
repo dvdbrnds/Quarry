@@ -8,14 +8,10 @@ struct BirdDogApp: App {
     @StateObject private var appSettings = AppSettings.shared
     @StateObject private var officerAuth = OfficerAuthService.shared
     @State private var onboardingComplete = false
-    @State private var bootReady = false
 
     var body: some Scene {
         WindowGroup {
-            if !bootReady {
-                BootSplashView()
-                    .task { await boot() }
-            } else if !(appSettings.isServerConfigured || onboardingComplete) {
+            if !(appSettings.isServerConfigured || onboardingComplete) {
                 OnboardingView {
                     onboardingComplete = true
                     HoundDogSyncService.shared.startIfConfigured()
@@ -24,41 +20,23 @@ struct BirdDogApp: App {
                 OfficerLoginView()
             } else {
                 ContentView()
-                    .task { await deferredBootWork() }
+                    .task { await backgroundInit() }
             }
         }
     }
 }
 
-struct BootSplashView: View {
-    var body: some View {
-        ZStack {
-            Color(red: 0.02, green: 0.04, blue: 0.10)
-                .ignoresSafeArea()
-            ProgressView()
-                .tint(.white)
-                .scaleEffect(1.5)
-        }
-        .preferredColorScheme(.dark)
-    }
-}
-
 extension BirdDogApp {
     @MainActor
-    private func boot() async {
+    private func backgroundInit() async {
         let container = await Task.detached(priority: .userInitiated) {
             PlateDatabase.createContainer()
         }.value
 
         PlateDatabase.warmUp(container: container)
-
         GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
-        bootReady = true
-    }
 
-    @MainActor
-    private func deferredBootWork() async {
         HoundDogSyncService.shared.startIfConfigured()
         PlateDatabase.shared.pruneExpiredPermits()
         if PrinterService.shared.hasSavedPrinter {

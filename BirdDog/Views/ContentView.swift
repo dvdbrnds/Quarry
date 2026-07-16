@@ -38,8 +38,12 @@ struct ContentView: View {
             }
             .preferredColorScheme(.dark)
             .navigationDestination(isPresented: $showDatabase) {
-                DatabaseManagementView()
-                    .modelContainer(PlateDatabase.shared.container)
+                if PlateDatabase.isReady {
+                    DatabaseManagementView()
+                        .modelContainer(PlateDatabase.shared.container)
+                } else {
+                    ProgressView("Loading database…")
+                }
             }
             .navigationDestination(isPresented: $showLotManagement) {
                 LotManagementView()
@@ -191,7 +195,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var dbStatusBanner: some View {
-        if PlateDatabase.shared.isEmpty {
+        if PlateDatabase.isReady && PlateDatabase.shared.isEmpty {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)

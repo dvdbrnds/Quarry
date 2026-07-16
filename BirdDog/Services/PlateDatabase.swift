@@ -5,6 +5,8 @@ import SwiftData
 final class PlateDatabase {
     private static var _shared: PlateDatabase?
 
+    static var isReady: Bool { _shared != nil }
+
     static var shared: PlateDatabase {
         if let existing = _shared { return existing }
         let db = PlateDatabase(container: createContainer())
