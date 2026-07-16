@@ -33,7 +33,7 @@ export default function AuthCallback() {
           <p className="text-ink-mute mb-6">{error}</p>
           <a
             href="/"
-            className="px-6 py-2 bg-navy text-bone rounded-lg hover:bg-navy-700 transition-colors"
+            className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:opacity-90 transition-colors"
           >
             Try Again
           </a>
@@ -45,7 +45,7 @@ export default function AuthCallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bone-light">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-navy mx-auto mb-4" />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary mx-auto mb-4" />
         <p className="text-ink-mute">Signing in...</p>
       </div>
     </div>

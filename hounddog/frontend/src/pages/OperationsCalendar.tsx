@@ -232,9 +232,9 @@ export default function OperationsCalendar() {
             const daySeason = getSeasonForDay(dayNum);
             const sc = daySeason ? seasonColorMap.get(daySeason.id) : null;
             return (
-              <div key={dayNum} className={`min-h-[100px] border-b border-r border-gray-100 p-1.5 ${sc ? `${sc.bg} border-l-2 ${sc.border}` : ""} ${isToday ? "!bg-brass/10" : ""}`}>
+              <div key={dayNum} className={`min-h-[100px] border-b border-r border-gray-100 p-1.5 ${sc ? `${sc.bg} border-l-2 ${sc.border}` : ""} ${isToday ? "!bg-brand-primary/10" : ""}`}>
                 <div className="flex items-center gap-1">
-                  <span className={`text-xs font-medium ${isToday ? "text-brass font-bold" : "text-ink-mute"}`}>{dayNum}</span>
+                  <span className={`text-xs font-medium ${isToday ? "text-brand-primary font-bold" : "text-ink-mute"}`}>{dayNum}</span>
                   {daySeason && <span className="text-[8px] text-ink-mute/60 truncate leading-none">{daySeason.code}</span>}
                 </div>
                 <div className="space-y-0.5 mt-0.5">

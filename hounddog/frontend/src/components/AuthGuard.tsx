@@ -41,7 +41,7 @@ export default function AuthGuard({ children }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bone-light">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-navy mx-auto mb-4" />
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary mx-auto mb-4" />
           <p className="text-ink-mute">Loading...</p>
         </div>
       </div>
@@ -56,7 +56,7 @@ export default function AuthGuard({ children }: Props) {
           <p className="text-ink-mute mb-6">Unable to verify your identity.</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-6 py-2 bg-navy text-bone rounded-lg hover:bg-navy-700 transition-colors"
+            className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:opacity-90 transition-colors"
           >
             Retry
           </button>

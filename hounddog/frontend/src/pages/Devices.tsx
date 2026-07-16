@@ -61,7 +61,7 @@ export default function Devices() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-navy">Devices</h2>
+        <h2 className="text-2xl font-bold text-brand-primary">Devices</h2>
         <Button type="primary" onClick={() => setShowAddForm(true)}>+ Add Device</Button>
       </div>
 
@@ -78,13 +78,13 @@ export default function Devices() {
       )}
 
       {pairingDevice && (
-        <Card className="mb-6 !border-2 !border-brass">
+        <Card className="mb-6 !border-2 !border-brand-primary">
           <div className="flex items-start gap-8">
             <div className="bg-white p-4 rounded-lg border border-gray-100">
               <QRCodeSVG value={JSON.stringify(pairingDevice.pairing_payload)} size={200} level="M" />
             </div>
             <div className="flex-1">
-              <h3 className="text-xl font-bold text-navy mb-2">Scan to Pair: {pairingDevice.name}</h3>
+              <h3 className="text-xl font-bold text-brand-primary mb-2">Scan to Pair: {pairingDevice.name}</h3>
               <p className="text-gray-600 mb-4">
                 Open BirdDog on the iPad and scan this QR code to connect it to this server.
               </p>

@@ -144,8 +144,8 @@ export default function DataManagement() {
 
   return (
     <div>
-      <div className="flex items-start gap-3 rounded-lg border border-brass/30 bg-bone-light px-5 py-4 mb-6">
-        <DatabaseOutlined className="text-brass text-lg mt-0.5" />
+      <div className="flex items-start gap-3 rounded-lg border border-brand-primary/30 bg-gray-50 px-5 py-4 mb-6">
+        <DatabaseOutlined className="text-brand-primary text-lg mt-0.5" />
         <div>
           <div className="font-semibold text-ink mb-1">Database Backup & Restore</div>
           <div className="text-ink-mute text-sm">

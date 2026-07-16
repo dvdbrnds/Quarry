@@ -200,7 +200,7 @@ export default function Dashboard() {
       <div className="space-y-6">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-navy">
+            <h2 className="text-2xl font-bold text-brand-primary">
               {getGreeting()}, {name}
             </h2>
             <p className="text-sm text-ink-mute mt-0.5">
@@ -236,7 +236,7 @@ export default function Dashboard() {
               <Statistic
                 title={`Issued ${PERIOD_LABELS[period].toLowerCase()}`}
                 value={data.issued_count.total}
-                valueStyle={{ color: "#0A1628", fontWeight: 700 }}
+                valueStyle={{ color: "var(--brand-primary)", fontWeight: 700 }}
               />
               <div className="text-xs text-ink-mute mt-1">
                 vs {data.issued_count.daily_avg} avg daily
@@ -249,7 +249,7 @@ export default function Dashboard() {
                 value={Number(data.revenue.collected)}
                 prefix="$"
                 precision={0}
-                valueStyle={{ color: "#0A1628", fontWeight: 700 }}
+                valueStyle={{ color: "var(--brand-primary)", fontWeight: 700 }}
               />
               <div className="text-xs text-ink-mute mt-1">
                 {data.revenue.pending_count} pending (${Number(data.revenue.pending_amount).toFixed(0)})
@@ -290,7 +290,7 @@ export default function Dashboard() {
                         className={`px-5 py-3 border-l-4 ${borderColor} flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-colors`}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm font-medium text-navy">{item.ticket_number || `#${item.id.slice(0, 8)}`}</span>
+                            <span className="font-mono text-sm font-medium text-brand-primary">{item.ticket_number || `#${item.id.slice(0, 8)}`}</span>
                             <span className="text-xs text-ink-mute">{item.plate}</span>
                           </div>
                           {item.appeal_note ? (
@@ -345,7 +345,7 @@ export default function Dashboard() {
                 const isToday = d.date === todayStr;
                 return (
                   <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-xs font-medium text-navy">{d.count}</span>
+                    <span className="text-xs font-medium text-brand-primary">{d.count}</span>
                     <div
                       className={`w-full rounded-t ${isToday ? "bg-blue-600" : "bg-blue-300"}`}
                       style={{ height: `${Math.max(pct, 4)}%`, minHeight: 4, transition: "height 0.3s ease" }}

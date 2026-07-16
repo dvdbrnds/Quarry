@@ -132,7 +132,7 @@ export default function Tickets() {
       dataIndex: "ticket_number",
       key: "ticket_number",
       width: 120,
-      render: (num: string | null) => <span className="font-mono text-navy font-medium">{num || "—"}</span>,
+      render: (num: string | null) => <span className="font-mono text-brand-primary font-medium">{num || "—"}</span>,
     },
     {
       title: "Plate",
@@ -317,7 +317,7 @@ export default function Tickets() {
                   <div className="mt-2 pt-2 border-t border-yellow-200 text-xs text-ink-mute space-y-0.5">
                     {selected.dispute_name && <div>Name: <span className="text-ink">{selected.dispute_name}</span></div>}
                     {selected.dispute_email && (
-                      <div>Email: <a href={`mailto:${selected.dispute_email}`} className="text-brass hover:underline">{selected.dispute_email}</a></div>
+                      <div>Email: <a href={`mailto:${selected.dispute_email}`} className="text-brand-primary hover:underline">{selected.dispute_email}</a></div>
                     )}
                     {selected.dispute_phone && <div>Phone: <span className="text-ink">{selected.dispute_phone}</span></div>}
                   </div>

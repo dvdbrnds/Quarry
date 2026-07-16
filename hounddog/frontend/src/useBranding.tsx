@@ -57,7 +57,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   const theme = useMemo(() => ({
     token: {
-      colorPrimary: branding.accentColor,
+      colorPrimary: branding.primaryColor,
       colorError: "#EF4444",
       colorSuccess: "#22C55E",
       colorWarning: "#F59E0B",
@@ -69,23 +69,21 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     },
     components: {
       Button: {
-        colorPrimary: branding.accentColor,
-        colorPrimaryHover: branding.accentColor,
-        colorPrimaryActive: branding.accentColor,
+        colorPrimary: branding.primaryColor,
         algorithm: true as const,
       },
       Table: {
         headerBg: branding.primaryColor,
-        headerColor: "#F5F0E8",
+        headerColor: "#FFFFFF",
         headerSortActiveBg: branding.primaryColor,
         headerSortHoverBg: branding.primaryColor,
-        rowHoverBg: "rgba(245,240,232,0.5)",
+        rowHoverBg: "rgba(0,0,0,0.03)",
       },
       Menu: {
         darkItemBg: branding.primaryColor,
       },
       Tabs: {
-        inkBarColor: branding.accentColor,
+        inkBarColor: branding.primaryColor,
         itemActiveColor: branding.primaryColor,
         itemSelectedColor: branding.primaryColor,
       },

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, Lot, ParkingSpot } from "../api";
 
 const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
-const BRASS = "#C5A55A";
+const HIGHLIGHT = getComputedStyle(document.documentElement).getPropertyValue("--brand-primary").trim() || "#0A1628";
 
 function spotScale(zoom: number, selected: boolean): { iconScale: number; fontSize: string } {
   const base = selected ? 14 : 11;
@@ -109,7 +109,7 @@ function MapContent({
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor: isSelected ? BRASS : fill,
+        strokeColor: isSelected ? HIGHLIGHT : fill,
         strokeOpacity: 1,
         strokeWeight: isSelected ? 3 : 2,
         fillColor: fill,
@@ -214,7 +214,7 @@ function MapContent({
           scale: iconScale,
           fillColor: color,
           fillOpacity: 1,
-          strokeColor: isSelected ? BRASS : "white",
+          strokeColor: isSelected ? HIGHLIGHT : "white",
           strokeWeight: isSelected ? 3 : 2,
         },
         title: `#${spot.number}${spot.label ? ` — ${spot.label}` : ""}${spot.sensor_id ? ` [${spot.sensor_id}]` : ""}`,
@@ -241,7 +241,7 @@ function MapContent({
           scale: iconScale,
           fillColor: SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard,
           fillOpacity: 1,
-          strokeColor: isSelected ? BRASS : "white",
+          strokeColor: isSelected ? HIGHLIGHT : "white",
           strokeWeight: isSelected ? 3 : 2,
         });
         marker.setLabel({
@@ -307,7 +307,7 @@ function MapContent({
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 10,
-          fillColor: BRASS,
+          fillColor: HIGHLIGHT,
           fillOpacity: 1,
           strokeColor: "white",
           strokeWeight: 2,
@@ -334,9 +334,9 @@ function MapContent({
 
     const poly = new google.maps.Polygon({
       paths: editingBoundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-      strokeColor: BRASS,
+      strokeColor: HIGHLIGHT,
       strokeWeight: 3,
-      fillColor: BRASS,
+      fillColor: HIGHLIGHT,
       fillOpacity: 0.25,
       editable: true,
       draggable: false,
@@ -376,7 +376,7 @@ function MapContent({
 
     const line = new google.maps.Polyline({
       path,
-      strokeColor: BRASS,
+      strokeColor: HIGHLIGHT,
       strokeWeight: 3,
       strokeOpacity: 0.8,
       map,
@@ -446,14 +446,14 @@ function MapContent({
                 <button
                   onClick={undoLastPoint}
                   disabled={!editingBoundary || editingBoundary.length === 0}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-navy hover:bg-gray-50 transition-colors disabled:opacity-30"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-brand-primary hover:bg-gray-50 transition-colors disabled:opacity-30"
                 >
                   Undo Point
                 </button>
                 <button
                   onClick={finishDrawing}
                   disabled={!editingBoundary || editingBoundary.length < 3}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-brass text-navy-deep hover:bg-brass-deep transition-colors disabled:opacity-30"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-brand-primary text-white hover:opacity-90 transition-colors disabled:opacity-30"
                 >
                   Done ({editingBoundary?.length ?? 0} pts)
                 </button>
@@ -468,7 +468,7 @@ function MapContent({
               <>
                 <button
                   onClick={startDrawing}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-navy hover:bg-gray-50 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg bg-white text-brand-primary hover:bg-gray-50 transition-colors"
                 >
                   {editingBoundary.length > 0 ? "Redraw Boundary" : "Draw Boundary"}
                 </button>
@@ -486,12 +486,12 @@ function MapContent({
         )}
       </div>
       {drawingActive && (
-        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-navy max-w-[200px]">
+        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-brand-primary max-w-[200px]">
           Click on the map to place boundary points. Place at least 3 points, then click <strong>Done</strong>.
         </div>
       )}
       {editingBoundary !== null && !drawingActive && editingBoundary.length >= 3 && (
-        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-navy max-w-[220px]">
+        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-lg px-3 py-2 text-xs text-brand-primary max-w-[220px]">
           Drag the <strong>white squares</strong> on the boundary to adjust points. Drag midpoints to add new vertices.
         </div>
       )}
@@ -521,7 +521,7 @@ function MapContent({
       <div
         ref={tooltipRef}
         style={{ display: "none" }}
-        className="absolute z-20 pointer-events-none px-2 py-1 rounded bg-navy/90 text-white text-xs font-medium whitespace-nowrap shadow"
+        className="absolute z-20 pointer-events-none px-2 py-1 rounded bg-brand-primary/90 text-white text-xs font-medium whitespace-nowrap shadow"
       />
     </>
   );

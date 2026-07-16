@@ -527,7 +527,7 @@ function RevenueChart({ data }: { data: TimeSeriesPoint[] }) {
         const pctPermits = total > 0 ? (permits / maxTotal) * 100 : 0;
         return (
           <div key={i} className="flex flex-col items-center flex-1 min-w-[28px] group relative">
-            <div className="absolute bottom-full mb-2 hidden group-hover:block bg-navy text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 pointer-events-none">
+            <div className="absolute bottom-full mb-2 hidden group-hover:block bg-brand-primary text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 pointer-events-none">
               <div>{point.date}</div>
               <div>Citations: ${citations.toFixed(2)}</div>
               <div>Permits: ${permits.toFixed(2)}</div>

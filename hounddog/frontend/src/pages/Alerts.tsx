@@ -79,7 +79,7 @@ export default function Alerts() {
         />
       )}
 
-      <h2 className="text-2xl font-bold text-navy mb-4">Alerts</h2>
+      <h2 className="text-2xl font-bold text-brand-primary mb-4">Alerts</h2>
 
       <Tabs items={[
         { key: "send", label: "Send Alert", children: <SendSection onSent={loadActive} /> },

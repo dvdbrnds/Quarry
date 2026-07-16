@@ -133,7 +133,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
         </Space>
         {requiresLottery && (
           <>
-            <h4 className="text-sm font-semibold text-navy mb-3 mt-4 pt-4 border-t">Lottery Configuration</h4>
+            <h4 className="text-sm font-semibold text-brand-primary mb-3 mt-4 pt-4 border-t">Lottery Configuration</h4>
             <div className="grid grid-cols-2 gap-x-4">
               <Form.Item name="lottery_strategy" label="Strategy">
                 <Select options={[

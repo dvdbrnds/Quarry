@@ -181,7 +181,7 @@ function ZoneForm({ initial, onSubmit, onCancel }: {
     try { await onSubmit(form); } finally { setSaving(false); }
   }
   return (
-    <form onSubmit={handleSubmit} className="mt-2 space-y-2 bg-brass/5 rounded-lg p-2">
+    <form onSubmit={handleSubmit} className="mt-2 space-y-2 bg-brand-primary/5 rounded-lg p-2">
       <Select value={form.zone_type} onChange={v => setForm({ ...form, zone_type: v })} size="small" className="w-full"
         options={ZONE_TYPE_OPTIONS} />
       <Input size="small" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} placeholder="Label" />
@@ -631,7 +631,7 @@ export default function Lots() {
           {filteredLots.map(lot => (
             <div key={lot.id}>
               <div onClick={() => handleSelectLot(lot.id)}
-                className={`p-3 border-b border-gray-100 cursor-pointer transition-colors ${lot.id === selectedLotId ? "bg-brass/10 border-l-4 border-l-brass" : "hover:bg-gray-50"}`}>
+                className={`p-3 border-b border-gray-100 cursor-pointer transition-colors ${lot.id === selectedLotId ? "bg-brand-primary/10 border-l-4 border-l-brand-primary" : "hover:bg-gray-50"}`}>
                 <div className="flex items-start gap-2 min-w-0">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1 flex-wrap">

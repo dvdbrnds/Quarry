@@ -132,7 +132,7 @@ export default function PermitDetail() {
           <div>
             <div className="flex items-baseline gap-3">
               <h2 className="text-2xl font-bold">{p.name}</h2>
-              {p.permit_number && <span className="font-mono text-sm bg-navy/10 rounded px-2 py-0.5">{p.permit_number}</span>}
+              {p.permit_number && <span className="font-mono text-sm bg-brand-primary/10 rounded px-2 py-0.5">{p.permit_number}</span>}
             </div>
             <Descriptions size="small" className="mt-2" column={{ xs: 1, sm: 2, md: 3 }}>
               <Descriptions.Item label="Student ID">{p.student_id || "N/A"}</Descriptions.Item>

@@ -225,7 +225,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-navy">Lottery Management</h2>
+          <h2 className="text-2xl font-bold text-brand-primary">Lottery Management</h2>
           <p className="text-sm text-ink-mute mt-1">Manage lotteries, run simulations, and monitor live draws.</p>
         </div>
         <Space>
@@ -247,7 +247,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs font-medium text-ink-mute uppercase tracking-wide mb-1">Student Application URL</div>
-              <code className="text-sm font-mono text-navy bg-gray-50 px-2 py-1 rounded">{studentUrl}</code>
+              <code className="text-sm font-mono text-brand-primary bg-gray-50 px-2 py-1 rounded">{studentUrl}</code>
             </div>
             <Button size="small" onClick={() => { navigator.clipboard.writeText(studentUrl); message.success("URL copied to clipboard"); }}>Copy URL</Button>
           </div>
@@ -261,7 +261,7 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
             return (
               <Card key={pt.id} hoverable className="cursor-pointer" onClick={() => onSelect(pt)}>
                 <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-navy">{pt.label}</h3>
+                  <h3 className="font-semibold text-brand-primary">{pt.label}</h3>
                   <Tag color={status.color}>{status.label}</Tag>
                 </div>
                 <div className="text-xs text-ink-mute space-y-1 mb-4">
@@ -620,7 +620,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
       <div className="flex items-center justify-between mb-5">
         <Space>
           <Button type="text" onClick={onBack}>&larr; Back</Button>
-          <h2 className="text-2xl font-bold text-navy">{permitType.label}</h2>
+          <h2 className="text-2xl font-bold text-brand-primary">{permitType.label}</h2>
         </Space>
         <Space size="small">
           <Button size="small" onClick={onSimulate} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Simulate</Button>
@@ -739,7 +739,7 @@ function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onB
       <div className="flex items-center justify-between mb-6">
         <Space>
           <Button type="text" onClick={onBack}>&larr; Back</Button>
-          <div><h2 className="text-2xl font-bold text-navy">Simulation: {permitType.label}</h2><p className="text-xs text-ink-mute">Dry run — no data is saved</p></div>
+          <div><h2 className="text-2xl font-bold text-brand-primary">Simulation: {permitType.label}</h2><p className="text-xs text-ink-mute">Dry run — no data is saved</p></div>
         </Space>
         <Tag color="purple">Simulation Mode</Tag>
       </div>
@@ -763,7 +763,7 @@ function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onB
                   ...simColumns,
                   { title: "Outcome", key: "outcome", render: (_, r: any) => <Tag color={r._type === "selected" ? "green" : "blue"}>{r._type}</Tag> },
                 ]}
-                onRow={(_, i) => ({ onClick: () => i !== undefined && setPreviewIdx(i), className: i === previewIdx ? "bg-brass/10" : "cursor-pointer" })}
+                onRow={(_, i) => ({ onClick: () => i !== undefined && setPreviewIdx(i), className: i === previewIdx ? "bg-brand-primary/10" : "cursor-pointer" })}
               />
             </Card>
           </div>
@@ -824,7 +824,7 @@ function LiveDashboard({ permitType, onBack }: { permitType: PermitTypeRow; onBa
       <div className="flex items-center justify-between mb-6">
         <Space>
           <Button type="text" onClick={onBack}>&larr; Back</Button>
-          <div><h2 className="text-2xl font-bold text-navy">Live: {permitType.label}</h2>
+          <div><h2 className="text-2xl font-bold text-brand-primary">Live: {permitType.label}</h2>
             <p className="text-xs text-ink-mute">Last updated: {lastUpdate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })}</p>
           </div>
         </Space>
@@ -866,7 +866,7 @@ function LiveDashboard({ permitType, onBack }: { permitType: PermitTypeRow; onBa
             </div>
           </Card>
           <Card title="Capacity Fill" extra={`${permitType.max_capacity - permitType.remaining} / ${permitType.max_capacity}`}>
-            <Progress percent={Math.round(((permitType.max_capacity - permitType.remaining) / permitType.max_capacity) * 100)} strokeColor="#0A1628" />
+            <Progress percent={Math.round(((permitType.max_capacity - permitType.remaining) / permitType.max_capacity) * 100)} strokeColor="var(--brand-primary)" />
           </Card>
         </div>
 

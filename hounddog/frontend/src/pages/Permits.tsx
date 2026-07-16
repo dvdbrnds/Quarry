@@ -388,7 +388,7 @@ export default function Permits() {
                   <div className="grid grid-cols-5 gap-3 mb-4">
                     {statCards.map(sc => (
                       <Card key={sc.label} size="small" hoverable
-                        className={filterStatus === sc.filter ? "!border-brass !shadow-md" : ""}
+                        className={filterStatus === sc.filter ? "!border-brand-primary !shadow-md" : ""}
                         onClick={() => { setFilterStatus(sc.filter); setPage(1); }}>
                         <Statistic title={sc.label} value={sc.value}
                           valueStyle={sc.color ? { color: sc.color, fontWeight: 700 } : { fontWeight: 700 }} />
@@ -479,7 +479,7 @@ export default function Permits() {
                 )}
 
                 {selected.size > 0 && (
-                  <div className="flex items-center gap-3 mb-3 bg-navy/5 rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-3 mb-3 bg-brand-primary/5 rounded-lg px-4 py-2">
                     <span className="text-sm font-medium">{selected.size} selected</span>
                     <Select value={bulkAction || undefined} onChange={v => setBulkAction(v || "")}
                       placeholder="— Action —" style={{ width: 140 }}

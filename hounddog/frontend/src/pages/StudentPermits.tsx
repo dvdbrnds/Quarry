@@ -89,13 +89,13 @@ export default function StudentPermits() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-navy">Parking Permits</h2>
+        <h2 className="text-2xl font-bold text-brand-primary">Parking Permits</h2>
         <p className="text-sm text-ink-mute mt-1">Apply for a parking permit. Lottery-based permits will be drawn after the application window closes.</p>
       </div>
 
       {applications.length > 0 && (
         <div>
-          <h3 className="text-lg font-semibold text-navy mb-3">My applications</h3>
+          <h3 className="text-lg font-semibold text-brand-primary mb-3">My applications</h3>
           <div className="space-y-3">
             {applications.map(app => {
               const st = STATUS_LABELS[app.status] || { text: app.status, color: "default" };
@@ -104,7 +104,7 @@ export default function StudentPermits() {
                 <Card key={app.id} className={isExpiredOrDeclined ? "opacity-50" : ""}>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="font-medium text-navy">{app.permit_type_label}</div>
+                      <div className="font-medium text-brand-primary">{app.permit_type_label}</div>
                       <div className="text-xs text-ink-mute mt-0.5">
                         Plate: <span className="font-mono">{app.plate}</span> &middot; Class of {app.class_year} &middot; Lots: {app.lot_assignments.join(", ")}
                         {app.assigned_lot && <span className="ml-1 text-green-700 font-medium">&middot; Assigned: {app.assigned_lot}</span>}
@@ -132,15 +132,15 @@ export default function StudentPermits() {
 
       {available.length > 0 && (
         <div>
-          <h3 className="text-lg font-semibold text-navy mb-3">Available permits</h3>
+          <h3 className="text-lg font-semibold text-brand-primary mb-3">Available permits</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {available.map(pt => {
               const alreadyApplied = appliedTypeIds.has(pt.code);
               return (
                 <Card key={pt.id} className="flex flex-col">
                   <div className="flex items-start justify-between">
-                    <div className="font-medium text-navy">{pt.label}</div>
-                    <div className="text-lg font-bold text-navy">${Number(pt.price).toFixed(0)}</div>
+                    <div className="font-medium text-brand-primary">{pt.label}</div>
+                    <div className="text-lg font-bold text-brand-primary">${Number(pt.price).toFixed(0)}</div>
                   </div>
                   <div className="text-xs text-ink-mute mt-1">{pt.eligible}</div>
                   <div className="text-xs text-ink-mute mt-1">Lots: {pt.lot_assignments.join(", ")} &middot; Valid {pt.valid_days} days</div>
