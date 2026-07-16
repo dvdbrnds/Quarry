@@ -11,17 +11,19 @@ export default function PublicPageNav({ subtitle }: { subtitle: string }) {
         {brand.logoUrl && (
           <img
             src={brand.logoUrl}
-            alt={brand.brandName}
+            alt={brand.brandName || "Logo"}
             className="h-8 w-auto"
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
           />
         )}
-        <h1
-          style={{ color: brand.accentColor }}
-          className="text-lg font-bold tracking-wide"
-        >
-          {brand.brandName}
-        </h1>
+        {brand.brandName && (
+          <h1
+            style={{ color: brand.accentColor }}
+            className="text-lg font-bold tracking-wide"
+          >
+            {brand.brandName}
+          </h1>
+        )}
         <span className="text-sm text-white/60 ml-1">{subtitle}</span>
       </div>
     </nav>

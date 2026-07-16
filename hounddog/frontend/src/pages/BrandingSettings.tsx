@@ -45,8 +45,8 @@ export default function BrandingSettings() {
         }),
       });
       if (!res.ok) throw new Error("Save failed");
-      message.success("Branding saved");
-      brand.brandName !== data.brand_name && window.location.reload();
+      message.success("Branding saved — reloading…");
+      setTimeout(() => window.location.reload(), 400);
     } catch { message.error("Failed to save branding"); }
   }
 
@@ -93,7 +93,7 @@ export default function BrandingSettings() {
                 </div>
               ) : (
                 <div className="border rounded-lg p-3 bg-gray-50 text-sm text-ink-mute">
-                  No logo uploaded — using text: <strong>{data.brand_name}</strong>
+                  No logo uploaded{data.brand_name ? <> — using text: <strong>{data.brand_name}</strong></> : ""}
                 </div>
               )}
             </div>
@@ -161,7 +161,10 @@ export default function BrandingSettings() {
             <Input
               value={data.brand_name}
               onChange={(e) => setData({ ...data, brand_name: e.target.value })}
+              placeholder="Leave blank to use logo only"
+              allowClear
             />
+            <p className="text-xs text-ink-mute mt-1">Optional if you have a logo uploaded.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Primary Color</label>
@@ -206,17 +209,19 @@ export default function BrandingSettings() {
           {data.logo_url && (
             <img
               src={data.logo_url}
-              alt={data.brand_name}
+              alt={data.brand_name || "Logo"}
               className="h-8 w-auto"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
           )}
-          <span
-            style={{ color: data.accent_color }}
-            className="text-lg font-bold tracking-wide"
-          >
-            {data.brand_name}
-          </span>
+          {data.brand_name && (
+            <span
+              style={{ color: data.accent_color }}
+              className="text-lg font-bold tracking-wide"
+            >
+              {data.brand_name}
+            </span>
+          )}
           <span className="text-sm text-white/60 ml-2">Parking Services</span>
         </div>
       </Card>

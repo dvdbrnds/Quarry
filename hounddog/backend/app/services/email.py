@@ -29,7 +29,7 @@ async def _load_branding() -> dict:
             bs = result.scalar()
             if bs:
                 _cached_branding = {
-                    "brand_name": bs.brand_name or settings.brand_name,
+                    "brand_name": bs.brand_name if bs.brand_name is not None else settings.brand_name,
                     "primary_color": bs.primary_color or settings.brand_primary_color,
                     "accent_color": bs.accent_color or settings.brand_accent_color,
                     "has_logo": bs.logo_data is not None and len(bs.logo_data) > 0,
@@ -52,24 +52,29 @@ def invalidate_branding_cache():
 
 def email_shell(
     school: str, inner_html: str, footer_extra: str = "",
-    *, primary: str = "", accent: str = "", brand_name: str = "", has_logo: bool = False,
+    *, primary: str = "", accent: str = "", brand_name: str | None = None, has_logo: bool = False,
 ) -> str:
     """Wrap inner content in the branded email shell."""
     primary = primary or settings.brand_primary_color or "#1a2744"
     accent = accent or settings.brand_accent_color or "#c9a84c"
-    brand_name = brand_name or settings.brand_name or "Quarry"
+    if brand_name is None:
+        brand_name = settings.brand_name or ""
 
     if has_logo:
         logo_url = f"{settings.public_url}/api/branding/logo"
         logo_html = (
-            f'<img src="{logo_url}" alt="{brand_name}" '
+            f'<img src="{logo_url}" alt="{brand_name or school}" '
             'style="max-height:48px;max-width:280px;margin:0 auto;" />'
         )
-    else:
+    elif brand_name:
         logo_html = (
             f'<h1 style="color:{accent};margin:0;font-size:22px;'
             f'letter-spacing:1px;font-weight:700;">{brand_name.upper()}</h1>'
         )
+    else:
+        logo_html = ""
+
+    footer_brand = f" &middot; Powered by {brand_name}" if brand_name else ""
 
     return (
         '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;'
@@ -81,7 +86,7 @@ def email_shell(
         f'<div style="padding:32px 32px 24px;">{inner_html}</div>'
         f'<div style="background:{_FOOTER_BG};padding:20px 32px;text-align:center;">'
         f'{footer_extra}'
-        f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services &middot; Powered by {brand_name}</p>'
+        f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services{footer_brand}</p>'
         '</div>'
         '</div>'
     )

@@ -41,7 +41,7 @@ async def get_branding(db: AsyncSession = Depends(get_db)):
     logo_url = "/api/branding/logo" if bs.logo_data else None
     favicon_url = "/api/branding/favicon" if bs.favicon_data else "/favicon.png"
     return {
-        "brand_name": bs.brand_name or settings.brand_name,
+        "brand_name": bs.brand_name if bs.brand_name is not None else settings.brand_name,
         "primary_color": bs.primary_color or settings.brand_primary_color,
         "accent_color": bs.accent_color or settings.brand_accent_color,
         "logo_url": logo_url,

@@ -78,10 +78,12 @@ function AdminShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
-          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
-            {brand.brandName}
-          </h1>
+          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
+          {brand.brandName && (
+            <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
+              {brand.brandName}
+            </h1>
+          )}
         </div>
         <NavItem to="/dashboard">Dashboard</NavItem>
         <NavItem to="/permits">Permits</NavItem>
@@ -131,10 +133,12 @@ function StudentShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
-          <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
-            {brand.brandName}
-          </h1>
+          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
+          {brand.brandName && (
+            <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
+              {brand.brandName}
+            </h1>
+          )}
         </div>
         <NavItem to="/student/permits">My Permits</NavItem>
 
