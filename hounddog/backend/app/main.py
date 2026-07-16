@@ -25,6 +25,7 @@ from .routers import (
     renewals,
     resident_plates,
     signage,
+    staff_permits,
     student_permits,
     sync,
     tickets,
@@ -675,6 +676,7 @@ app.include_router(audit.diagnostic_router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])
 app.include_router(notification_preferences.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(staff_permits.router, prefix="/api/staff/permits", tags=["staff-permits"])
 app.include_router(student_permits.router, prefix="/api/student/permits", tags=["student-permits"])
 app.include_router(renewals.router, prefix="/api/renewals", tags=["renewals"])
 app.include_router(alerts.admin_router, prefix="/api/alerts", tags=["alerts"])
