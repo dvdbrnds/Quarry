@@ -10,6 +10,10 @@ settings:
   TARGETED_DEVICE_FAMILY: "1,2"
   INFOPLIST_FILE: BirdDog/App/Info.plist
   GENERATE_INFOPLIST_FILE: false
+  configs:
+    Debug:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      GCC_OPTIMIZATION_LEVEL: s
 packages:
   StarXpand-SDK-iOS:
     url: https://github.com/star-micronics/StarXpand-SDK-iOS

@@ -48,7 +48,6 @@ final class PlateDatabase {
 
     private init(container: ModelContainer) {
         self.container = container
-        seedIfNeeded()
     }
 
     private static let retentionYears = 10

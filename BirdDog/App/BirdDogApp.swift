@@ -34,13 +34,18 @@ extension BirdDogApp {
         }.value
 
         PlateDatabase.warmUp(container: container)
+
         GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
 
         HoundDogSyncService.shared.startIfConfigured()
-        PlateDatabase.shared.pruneExpiredPermits()
-        if PrinterService.shared.hasSavedPrinter {
-            PrinterService.shared.reconnectSaved()
+
+        Task {
+            PlateDatabase.shared.seedIfNeeded()
+            PlateDatabase.shared.pruneExpiredPermits()
+            if PrinterService.shared.hasSavedPrinter {
+                PrinterService.shared.reconnectSaved()
+            }
         }
     }
 }
