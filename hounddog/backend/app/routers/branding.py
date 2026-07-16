@@ -1,69 +1,79 @@
-import json
-import os
+import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import require_role
 from ..config import settings
+from ..database import get_db
+from ..models.branding_settings import BrandingSettings
+from ..services.email import invalidate_branding_cache
 
 admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
 public_router = APIRouter()
 
-_BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-_UPLOAD_DIR = os.path.join(_BACKEND_ROOT, "uploads")
-_UPLOAD_BASE = os.path.join(_UPLOAD_DIR, "branding")
-_STATE_FILE = os.path.join(_UPLOAD_BASE, "branding.json")
 _ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
 _MAX_SIZE = 5 * 1024 * 1024
+_MIME_EXT = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg",
+             "image/x-icon": "ico", "image/vnd.microsoft.icon": "ico"}
 
 
-def _load_state() -> dict:
-    try:
-        with open(_STATE_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+async def _get_or_create(db: AsyncSession) -> BrandingSettings:
+    result = await db.execute(select(BrandingSettings).where(BrandingSettings.id == 1))
+    row = result.scalar()
+    if not row:
+        row = BrandingSettings(id=1)
+        db.add(row)
+        await db.flush()
+        await db.refresh(row)
+    return row
 
 
-def _save_state(state: dict):
-    os.makedirs(_UPLOAD_BASE, exist_ok=True)
-    with open(_STATE_FILE, "w") as f:
-        json.dump(state, f)
-
-
-def _resolve_upload_url(rel_path: str | None) -> str | None:
-    """Return a URL only if the file actually exists on disk."""
-    if not rel_path:
-        return None
-    abs_path = os.path.join(_UPLOAD_DIR, rel_path)
-    if os.path.isfile(abs_path):
-        ts = int(os.path.getmtime(abs_path))
-        return f"/uploads/{rel_path}?v={ts}"
-    return None
-
-
-def _logo_path() -> str:
-    return _load_state().get("logo_path", "") or settings.brand_logo_path
-
-
-def _favicon_path() -> str:
-    return _load_state().get("favicon_path", "") or settings.brand_favicon_path
+def _etag(data: bytes) -> str:
+    return hashlib.md5(data).hexdigest()
 
 
 @public_router.get("")
-async def get_branding():
-    state = _load_state()
-    logo_url = _resolve_upload_url(_logo_path())
-    favicon_url = _resolve_upload_url(_favicon_path()) or "/favicon.png"
+async def get_branding(db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    logo_url = "/api/branding/logo" if bs.logo_data else None
+    favicon_url = "/api/branding/favicon" if bs.favicon_data else "/favicon.png"
     return {
-        "brand_name": state.get("brand_name") or settings.brand_name,
-        "primary_color": state.get("primary_color") or settings.brand_primary_color,
-        "accent_color": state.get("accent_color") or settings.brand_accent_color,
+        "brand_name": bs.brand_name or settings.brand_name,
+        "primary_color": bs.primary_color or settings.brand_primary_color,
+        "accent_color": bs.accent_color or settings.brand_accent_color,
         "logo_url": logo_url,
         "favicon_url": favicon_url,
         "school_name": settings.school_name,
     }
+
+
+@public_router.get("/logo")
+async def serve_logo(db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    if not bs.logo_data:
+        raise HTTPException(404, "No logo uploaded")
+    etag = _etag(bs.logo_data)
+    return Response(
+        content=bs.logo_data,
+        media_type=bs.logo_mime or "image/png",
+        headers={"ETag": etag, "Cache-Control": "public, max-age=3600"},
+    )
+
+
+@public_router.get("/favicon")
+async def serve_favicon(db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    if not bs.favicon_data:
+        raise HTTPException(404, "No favicon uploaded")
+    etag = _etag(bs.favicon_data)
+    return Response(
+        content=bs.favicon_data,
+        media_type=bs.favicon_mime or "image/png",
+        headers={"ETag": etag, "Cache-Control": "public, max-age=3600"},
+    )
 
 
 class BrandIdentityUpdate(BaseModel):
@@ -73,47 +83,41 @@ class BrandIdentityUpdate(BaseModel):
 
 
 @admin_router.put("")
-async def update_brand_identity(body: BrandIdentityUpdate):
-    settings.brand_name = body.brand_name
-    settings.brand_primary_color = body.primary_color
-    settings.brand_accent_color = body.accent_color
-    state = _load_state()
-    state["brand_name"] = body.brand_name
-    state["primary_color"] = body.primary_color
-    state["accent_color"] = body.accent_color
-    _save_state(state)
+async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    bs.brand_name = body.brand_name
+    bs.primary_color = body.primary_color
+    bs.accent_color = body.accent_color
+    await db.flush()
+    invalidate_branding_cache()
     return {"ok": True}
 
 
-async def _save_upload(file: UploadFile, filename: str) -> str:
+@admin_router.post("/logo")
+async def upload_logo(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     if file.content_type not in _ALLOWED_TYPES:
         raise HTTPException(400, f"Invalid file type. Allowed: {', '.join(_ALLOWED_TYPES)}")
     contents = await file.read()
     if len(contents) > _MAX_SIZE:
         raise HTTPException(413, "File too large. Maximum size is 5MB.")
-    os.makedirs(_UPLOAD_BASE, exist_ok=True)
-    ext = os.path.splitext(file.filename or filename)[1] or ".png"
-    dest = os.path.join(_UPLOAD_BASE, f"{filename}{ext}")
-    with open(dest, "wb") as f:
-        f.write(contents)
-    return f"branding/{filename}{ext}"
-
-
-@admin_router.post("/logo")
-async def upload_logo(file: UploadFile = File(...)):
-    rel_path = await _save_upload(file, "logo")
-    settings.brand_logo_path = rel_path
-    state = _load_state()
-    state["logo_path"] = rel_path
-    _save_state(state)
-    return {"logo_url": f"/uploads/{rel_path}"}
+    bs = await _get_or_create(db)
+    bs.logo_data = contents
+    bs.logo_mime = file.content_type
+    await db.flush()
+    invalidate_branding_cache()
+    return {"logo_url": "/api/branding/logo"}
 
 
 @admin_router.post("/favicon")
-async def upload_favicon(file: UploadFile = File(...)):
-    rel_path = await _save_upload(file, "favicon")
-    settings.brand_favicon_path = rel_path
-    state = _load_state()
-    state["favicon_path"] = rel_path
-    _save_state(state)
-    return {"favicon_url": f"/uploads/{rel_path}"}
+async def upload_favicon(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    if file.content_type not in _ALLOWED_TYPES:
+        raise HTTPException(400, f"Invalid file type. Allowed: {', '.join(_ALLOWED_TYPES)}")
+    contents = await file.read()
+    if len(contents) > _MAX_SIZE:
+        raise HTTPException(413, "File too large. Maximum size is 5MB.")
+    bs = await _get_or_create(db)
+    bs.favicon_data = contents
+    bs.favicon_mime = file.content_type
+    await db.flush()
+    invalidate_branding_cache()
+    return {"favicon_url": "/api/branding/favicon"}

@@ -325,6 +325,17 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMPTZ DEFAULT now(),
                 updated_at TIMESTAMPTZ DEFAULT now()
             )""",
+            """CREATE TABLE IF NOT EXISTS branding_settings (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                brand_name VARCHAR(256) DEFAULT 'Quarry',
+                primary_color VARCHAR(32) DEFAULT '#1a2744',
+                accent_color VARCHAR(32) DEFAULT '#c9a84c',
+                logo_data BYTEA,
+                logo_mime VARCHAR(64),
+                favicon_data BYTEA,
+                favicon_mime VARCHAR(64),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))

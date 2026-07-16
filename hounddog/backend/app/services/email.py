@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import aiosmtplib
+from sqlalchemy import select
 
 from ..config import settings
 
@@ -12,15 +13,54 @@ logger = logging.getLogger("quarry.email")
 
 _FOOTER_BG = "#f5f5f5"
 
+_cached_branding: dict | None = None
 
-def email_shell(school: str, inner_html: str, footer_extra: str = "") -> str:
-    """Wrap inner content in the branded email shell using configured branding."""
-    primary = settings.brand_primary_color or "#1a2744"
-    accent = settings.brand_accent_color or "#c9a84c"
-    brand_name = settings.brand_name or "Quarry"
 
-    if settings.brand_logo_path:
-        logo_url = f"{settings.public_url}/uploads/{settings.brand_logo_path}"
+async def _load_branding() -> dict:
+    """Read branding from the database, with a module-level cache."""
+    global _cached_branding
+    if _cached_branding is not None:
+        return _cached_branding
+    try:
+        from ..database import async_session
+        from ..models.branding_settings import BrandingSettings
+        async with async_session() as session:
+            result = await session.execute(select(BrandingSettings).where(BrandingSettings.id == 1))
+            bs = result.scalar()
+            if bs:
+                _cached_branding = {
+                    "brand_name": bs.brand_name or settings.brand_name,
+                    "primary_color": bs.primary_color or settings.brand_primary_color,
+                    "accent_color": bs.accent_color or settings.brand_accent_color,
+                    "has_logo": bs.logo_data is not None and len(bs.logo_data) > 0,
+                }
+                return _cached_branding
+    except Exception:
+        pass
+    return {
+        "brand_name": settings.brand_name,
+        "primary_color": settings.brand_primary_color,
+        "accent_color": settings.brand_accent_color,
+        "has_logo": False,
+    }
+
+
+def invalidate_branding_cache():
+    global _cached_branding
+    _cached_branding = None
+
+
+def email_shell(
+    school: str, inner_html: str, footer_extra: str = "",
+    *, primary: str = "", accent: str = "", brand_name: str = "", has_logo: bool = False,
+) -> str:
+    """Wrap inner content in the branded email shell."""
+    primary = primary or settings.brand_primary_color or "#1a2744"
+    accent = accent or settings.brand_accent_color or "#c9a84c"
+    brand_name = brand_name or settings.brand_name or "Quarry"
+
+    if has_logo:
+        logo_url = f"{settings.public_url}/api/branding/logo"
         logo_html = (
             f'<img src="{logo_url}" alt="{brand_name}" '
             'style="max-height:48px;max-width:280px;margin:0 auto;" />'
@@ -44,6 +84,16 @@ def email_shell(school: str, inner_html: str, footer_extra: str = "") -> str:
         f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services &middot; Powered by {brand_name}</p>'
         '</div>'
         '</div>'
+    )
+
+
+async def branded_email_shell(school: str, inner_html: str, footer_extra: str = "") -> str:
+    """Async wrapper: loads branding from DB then builds the email shell."""
+    b = await _load_branding()
+    return email_shell(
+        school, inner_html, footer_extra,
+        primary=b["primary_color"], accent=b["accent_color"],
+        brand_name=b["brand_name"], has_logo=b["has_logo"],
     )
 
 
@@ -96,6 +146,8 @@ async def send_email(
 
 
 def _primary() -> str:
+    if _cached_branding:
+        return _cached_branding["primary_color"]
     return settings.brand_primary_color or "#1a2744"
 
 
@@ -137,7 +189,7 @@ async def send_lot_closure_notification(
         '<p style="color:#333;font-size:14px;line-height:1.6;">Please make alternative parking '
         'arrangements. Vehicles remaining in the closed lot may be subject to towing.</p>'
     )
-    body_html = email_shell(school, inner)
+    body_html = await branded_email_shell(school, inner)
 
     body_text = (
         f"PARKING LOT CLOSURE NOTICE\n\n"
@@ -183,7 +235,7 @@ async def send_lot_reopen_notification(
         'border-radius:8px;font-weight:600;font-size:15px;">Lot Open</span>'
         '</div>'
     )
-    body_html = email_shell(school, inner)
+    body_html = await branded_email_shell(school, inner)
 
     body_text = (
         f"PARKING LOT REOPENED\n\n"
@@ -253,7 +305,7 @@ async def send_citation_email(
         '<p style="font-size:13px;color:#666;text-align:center;">If you believe this citation '
         'was issued in error, you may file an appeal through the payment portal above.</p>'
     )
-    body_html = email_shell(school, inner)
+    body_html = await branded_email_shell(school, inner)
 
     body_text = (
         f"PARKING CITATION NOTICE\n\n"
@@ -330,7 +382,7 @@ async def send_lottery_selection_email(
         'Don\'t want this permit? You can decline from the portal and your spot '
         'will go to the next student.</p>'
     )
-    body_html = email_shell(school, inner)
+    body_html = await branded_email_shell(school, inner)
 
     body_text = (
         f"CONGRATULATIONS, {first_name.upper()}!\n\n"
@@ -394,7 +446,7 @@ async def send_renewal_email(
         'your permit will expire and your spot will be released.</p>'
         '</div>'
     )
-    body_html = email_shell(school, inner)
+    body_html = await branded_email_shell(school, inner)
 
     body_text = (
         f"PARKING PERMIT RENEWAL — ACTION REQUIRED\n\n"

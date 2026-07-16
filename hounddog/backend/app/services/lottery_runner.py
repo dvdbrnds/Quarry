@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.lottery import get_strategy, assign_lots, distribute_capacity
-from app.services.email import send_email, send_lottery_selection_email, email_shell
+from app.services.email import send_email, send_lottery_selection_email, branded_email_shell
 
 logger = logging.getLogger(__name__)
 
@@ -315,7 +315,7 @@ async def _notify_waitlisted(waitlisted, permit_type):
                 '<p style="font-size:14px;color:#666;margin:0;">No action is required at this time.</p>'
                 '</div>'
             )
-            body_html = email_shell(school, inner)
+            body_html = await branded_email_shell(school, inner)
             body_text = (
                 f"WAITLISTED — {pt_label}\n\n"
                 f"Dear {first_name},\n\n"

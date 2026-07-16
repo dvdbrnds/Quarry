@@ -1,7 +1,7 @@
 import logging
 
 from . import AlertChannel, ChannelResult
-from ..email import send_email, email_shell
+from ..email import send_email, branded_email_shell
 from ...config import settings
 
 logger = logging.getLogger("quarry.channels.email")
@@ -35,7 +35,7 @@ class EmailChannel(AlertChannel):
                 f'<a href="{unsub_url}" style="color:#aaa;text-decoration:underline;">'
                 f'Unsubscribe from alerts</a></p>'
             )
-            html = email_shell(school, inner, footer_extra=footer_extra)
+            html = await branded_email_shell(school, inner, footer_extra=footer_extra)
             text_body = f"{alert.body_text}\n\nUnsubscribe: {unsub_url}"
             success = await send_email([sub.email], alert.subject, html, text_body)
             if success:

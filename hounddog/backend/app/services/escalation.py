@@ -161,9 +161,7 @@ async def _send_maxient_email_referral(
     ticket_count: int,
     ticket_ids: list[str],
 ):
-    from app.services.email import send_email
-
-    from app.services.email import email_shell
+    from app.services.email import send_email, branded_email_shell
 
     school = settings.school_name or "Campus"
     subject = f"Parking Conduct Referral \u2014 {student_name or student_id} ({ticket_count} violations)"
@@ -200,7 +198,7 @@ async def _send_maxient_email_referral(
         'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
         'View Details</a></div>'
     )
-    body = email_shell(school, inner)
+    body = await branded_email_shell(school, inner)
 
     try:
         await send_email(
@@ -263,7 +261,7 @@ async def _notify_student_of_hold(
     if not student_email:
         return
 
-    from app.services.email import send_email, email_shell
+    from app.services.email import send_email, branded_email_shell
 
     school = settings.school_name or "Campus"
     subject = "Registration Hold \u2014 Unpaid Parking Violations"
@@ -280,7 +278,7 @@ async def _notify_student_of_hold(
         '<p style="color:#666;font-size:13px;text-align:center;">If you believe this is in error, '
         'please contact the Parking Office.</p>'
     )
-    body = email_shell(school, inner)
+    body = await branded_email_shell(school, inner)
 
     try:
         await send_email(to=[student_email], subject=subject, body_html=body)
@@ -295,7 +293,7 @@ async def _notify_admin_of_hold(
     plate: str,
     ticket_count: int,
 ):
-    from app.services.email import send_email, email_shell
+    from app.services.email import send_email, branded_email_shell
 
     admin_email = settings.smtp_from_address
     if not admin_email:
@@ -339,7 +337,7 @@ async def _notify_admin_of_hold(
         'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
         'View Details</a></div>'
     )
-    body = email_shell(school, inner)
+    body = await branded_email_shell(school, inner)
 
     try:
         await send_email(to=[admin_email], subject=subject, body_html=body)
