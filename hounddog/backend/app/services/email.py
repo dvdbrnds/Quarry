@@ -122,7 +122,18 @@ async def send_email(
         logger.warning("No from address configured -- email not sent")
         return False
 
-    from_display = f"{settings.smtp_from_name} <{from_addr}>"
+    branding = await _load_branding()
+    brand_name = branding.get("brand_name") or ""
+    school = settings.school_name or ""
+    if brand_name and school:
+        display_name = f"{school} {brand_name}"
+    elif school:
+        display_name = f"{school} Parking"
+    elif brand_name:
+        display_name = brand_name
+    else:
+        display_name = settings.smtp_from_name
+    from_display = f"{display_name} <{from_addr}>"
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -423,10 +434,12 @@ async def send_renewal_email(
     portal = portal_url or (settings.student_facing_url.rstrip("/") + "/employee-parking")
     subject = f"Parking Permit Renewal — Action Required by June 30"
 
+    type_label = permit_type.replace("_", " ").title()
+
     inner = (
         f'<h2 style="color:{_primary()};margin:0 0 8px;font-size:20px;">Parking Permit Renewal</h2>'
         f'<p style="color:#333;font-size:15px;line-height:1.6;">Hello {name},</p>'
-        f'<p style="color:#333;font-size:15px;line-height:1.6;">Your <strong>{permit_type}</strong> '
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Your <strong>{type_label}</strong> '
         f'parking permit (lots: {lot_assignment}) expires on <strong>June 30</strong>.</p>'
         '<p style="color:#333;font-size:14px;line-height:1.6;">All faculty/staff parking permits '
         'expire annually on June 30 and must be renewed for the upcoming year. Please let us '
@@ -438,10 +451,14 @@ async def send_renewal_email(
         f'<a href="{renew_url}" style="display:inline-block;padding:16px 32px;background:#16a34a;'
         'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">'
         'Yes, Renew My Permit</a></td>'
-        '<td>'
+        '<td style="padding-right:12px;">'
         f'<a href="{decline_url}" style="display:inline-block;padding:16px 32px;background:#dc2626;'
         'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">'
         'No, I Don\'t Need It</a></td>'
+        '<td>'
+        f'<a href="{portal}" style="display:inline-block;padding:16px 32px;background:{_primary()};'
+        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">'
+        'Add New Vehicle</a></td>'
         '</tr></table>'
         '<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin:20px 0;">'
         '<p style="font-size:13px;color:#666;margin:0 0 8px;">No payment is required. '
@@ -452,13 +469,6 @@ async def send_renewal_email(
         '<p style="font-size:13px;color:#666;margin:0;">If you do not respond by June 30, '
         'your permit will expire and your spot will be released.</p>'
         '</div>'
-        '<table role="presentation" cellspacing="0" cellpadding="0" '
-        'style="margin:16px auto;text-align:center;">'
-        '<tr><td>'
-        f'<a href="{portal}" style="display:inline-block;padding:12px 28px;background:{_primary()};'
-        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
-        'Register an Additional Vehicle</a>'
-        '</td></tr></table>'
     )
     body_html = await branded_email_shell(school, inner)
 
