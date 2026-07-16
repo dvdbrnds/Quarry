@@ -1,8 +1,26 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Card, Button, Input, Upload, App, Spin, ColorPicker, Popconfirm } from "antd";
-import { UploadOutlined, UndoOutlined } from "@ant-design/icons";
+import { Card, Button, Input, Upload, App, Spin, ColorPicker, Popconfirm, Space, Modal } from "antd";
+import { UploadOutlined, UndoOutlined, SaveOutlined, DeleteOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 import { useBranding } from "../useBranding";
+
+interface BrandPreset {
+  name: string;
+  brand_name: string;
+  primary_color: string;
+  accent_color: string;
+}
+
+const PRESETS_KEY = "quarry_brand_presets";
+
+function loadPresets(): BrandPreset[] {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) || "[]"); }
+  catch { return []; }
+}
+
+function savePresets(presets: BrandPreset[]) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
 
 interface BrandingData {
   brand_name: string;
@@ -70,6 +88,38 @@ export default function BrandingSettings() {
   }
 
   const [resetting, setResetting] = useState(false);
+  const [presets, setPresets] = useState<BrandPreset[]>(loadPresets);
+  const [presetName, setPresetName] = useState("");
+  const [showSavePreset, setShowSavePreset] = useState(false);
+
+  function handleSavePreset() {
+    if (!data || !presetName.trim()) return;
+    const preset: BrandPreset = {
+      name: presetName.trim(),
+      brand_name: data.brand_name,
+      primary_color: data.primary_color,
+      accent_color: data.accent_color,
+    };
+    const updated = [...presets.filter(p => p.name !== preset.name), preset];
+    savePresets(updated);
+    setPresets(updated);
+    setPresetName("");
+    setShowSavePreset(false);
+    message.success(`Preset "${preset.name}" saved`);
+  }
+
+  function handleLoadPreset(preset: BrandPreset) {
+    if (!data) return;
+    setData({ ...data, brand_name: preset.brand_name, primary_color: preset.primary_color, accent_color: preset.accent_color });
+    message.info(`Loaded "${preset.name}" — click Save Branding to apply`);
+  }
+
+  function handleDeletePreset(name: string) {
+    const updated = presets.filter(p => p.name !== name);
+    savePresets(updated);
+    setPresets(updated);
+    message.success(`Preset "${name}" deleted`);
+  }
 
   async function resetToDefaults() {
     setResetting(true);
@@ -213,6 +263,7 @@ export default function BrandingSettings() {
         </div>
         <div className="mt-4 flex items-center gap-3">
           <Button type="primary" onClick={saveBrandIdentity}>Save Branding</Button>
+          <Button icon={<SaveOutlined />} onClick={() => setShowSavePreset(true)}>Save as Preset</Button>
           <Popconfirm
             title="Reset to Quarry defaults?"
             description="This will reset colors, name, logo, and favicon to the original Quarry theme."
@@ -225,6 +276,53 @@ export default function BrandingSettings() {
             </Button>
           </Popconfirm>
         </div>
+
+        {presets.length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <label className="block text-sm font-medium text-ink mb-2">Saved Presets</label>
+            <div className="flex flex-wrap gap-2">
+              {presets.map(p => (
+                <div key={p.name} className="flex items-center gap-1 border rounded-lg px-3 py-1.5 bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div className="w-4 h-4 rounded-full border shrink-0" style={{ background: p.primary_color }} />
+                  <div className="w-4 h-4 rounded-full border shrink-0 -ml-1" style={{ background: p.accent_color }} />
+                  <button
+                    onClick={() => handleLoadPreset(p)}
+                    className="text-sm font-medium text-ink ml-1 hover:underline"
+                  >
+                    {p.name}
+                  </button>
+                  <button
+                    onClick={() => handleDeletePreset(p.name)}
+                    className="text-gray-400 hover:text-red-500 ml-1 transition-colors"
+                    title="Delete preset"
+                  >
+                    <DeleteOutlined className="text-xs" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Modal
+          open={showSavePreset}
+          title="Save Brand Preset"
+          onCancel={() => { setShowSavePreset(false); setPresetName(""); }}
+          onOk={handleSavePreset}
+          okText="Save"
+          okButtonProps={{ disabled: !presetName.trim() }}
+        >
+          <p className="text-sm text-ink-mute mb-3">
+            Save the current name and colors as a preset you can quickly switch to later.
+          </p>
+          <Input
+            placeholder="e.g. Moravian Blue, Holiday Theme"
+            value={presetName}
+            onChange={e => setPresetName(e.target.value)}
+            onPressEnter={handleSavePreset}
+            autoFocus
+          />
+        </Modal>
       </Card>
 
       <Card title="Preview">
