@@ -371,6 +371,7 @@ final class HoundDogSyncService: ObservableObject {
             "camera_name": ticket.cameraName,
             "timestamp": Self.isoFormatter.string(from: ticket.issuedAt),
             "ticket_category": ticket.ticketCategory,
+            "client_ticket_id": ticket.ticketId,
         ]
 
         if let photoPath = ticket.photoPath,

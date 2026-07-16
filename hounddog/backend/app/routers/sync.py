@@ -501,7 +501,7 @@ async def _upload_ticket_impl(
             permit_number = permit.permit_number or permit.student_id
 
     from ..services.ticket_numbering import next_ticket_number
-    new_ticket = Ticket(
+    ticket_kwargs: dict = dict(
         ticket_number=await next_ticket_number(db),
         plate=ticket.plate.upper(),
         permit_id=permit_id,
@@ -527,6 +527,9 @@ async def _upload_ticket_impl(
         driver_name=ticket.driver_name,
         driver_license=ticket.driver_license,
     )
+    if ticket.client_ticket_id:
+        ticket_kwargs["id"] = ticket.client_ticket_id
+    new_ticket = Ticket(**ticket_kwargs)
     db.add(new_ticket)
     await db.flush()
     await db.refresh(new_ticket)
