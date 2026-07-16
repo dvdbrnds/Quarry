@@ -315,8 +315,11 @@ struct MovingViolationView: View {
         isSubmitting = true
         errorMessage = nil
 
+        let normalizedPlate = plate.uppercased().trimmingCharacters(in: .whitespaces)
+        let db = PlateDatabase.shared
+
         let ticket = PendingTicket(
-            plate: plate.uppercased().trimmingCharacters(in: .whitespaces),
+            plate: normalizedPlate,
             lot: "",
             violationType: selectedViolation,
             confidence: 1.0,
@@ -333,14 +336,41 @@ struct MovingViolationView: View {
             officerEmail: officerEmail.isEmpty ? nil : officerEmail
         )
 
+        try? db.savePendingTicket(ticket)
+
+        let fineAmount = ViolationTypeStore.shared.fineAmount(forCode: selectedViolation)
+        let offenseNumber = db.offenseCount(forPlate: normalizedPlate)
+        let baseURL = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let paymentUrl = baseURL.isEmpty ? "" : "\(baseURL)/pay/\(ticket.ticketId)"
+
+        ticket.fineAmount = fineAmount
+        ticket.offenseNumber = offenseNumber
+        ticket.paymentUrl = paymentUrl
+        try? db.saveContext()
+
+        let localResult = HoundDogSyncService.TicketUploadResponse(
+            ticketId: ticket.ticketId,
+            paymentUrl: paymentUrl,
+            fineAmount: fineAmount,
+            offenseNumber: offenseNumber,
+            notificationSent: false,
+            notificationEmail: nil
+        )
+
+        submittedResult = localResult
+        isSubmitting = false
+
         Task {
             do {
-                let result = try await HoundDogSyncService.shared.uploadTicket(ticket)
-                submittedResult = result
+                let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
+                db.markTicketUploaded(ticket)
+                ticket.paymentUrl = serverResult.paymentUrl
+                ticket.fineAmount = serverResult.fineAmount
+                ticket.offenseNumber = serverResult.offenseNumber
+                try? db.saveContext()
             } catch {
-                errorMessage = error.localizedDescription
+                // Stays in pending queue — retryPendingTickets() picks it up next sync.
             }
-            isSubmitting = false
         }
     }
 

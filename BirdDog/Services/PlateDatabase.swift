@@ -359,6 +359,10 @@ final class PlateDatabase {
 
     // MARK: - Pending Ticket Queue
 
+    func saveContext() throws {
+        try context.save()
+    }
+
     func savePendingTicket(_ ticket: PendingTicket) throws {
         context.insert(ticket)
         try context.save()
@@ -379,6 +383,15 @@ final class PlateDatabase {
     func deletePendingTicket(_ ticket: PendingTicket) {
         context.delete(ticket)
         try? context.save()
+    }
+
+    /// Number of tickets already issued for a given plate (uploaded + pending).
+    func offenseCount(forPlate plate: String) -> Int {
+        let normalized = plate.uppercased().replacingOccurrences(of: " ", with: "")
+        let descriptor = FetchDescriptor<PendingTicket>(
+            predicate: #Predicate<PendingTicket> { $0.plate == normalized }
+        )
+        return (try? context.fetchCount(descriptor)) ?? 0
     }
 
     func allRecords(matching search: String = "") -> [PermitRecord] {

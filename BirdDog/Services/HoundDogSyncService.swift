@@ -316,13 +316,18 @@ final class HoundDogSyncService: ObservableObject {
     // MARK: - Pending Ticket Retry
 
     private func retryPendingTickets() async {
-        let pending = PlateDatabase.shared.pendingTickets()
+        let db = PlateDatabase.shared
+        let pending = db.pendingTickets()
         guard !pending.isEmpty else { return }
         print("[HoundDog] Retrying \(pending.count) pending ticket(s)...")
         for ticket in pending {
             do {
-                _ = try await uploadTicket(ticket)
-                PlateDatabase.shared.markTicketUploaded(ticket)
+                let result = try await uploadTicket(ticket)
+                db.markTicketUploaded(ticket)
+                ticket.paymentUrl = result.paymentUrl
+                ticket.fineAmount = result.fineAmount
+                ticket.offenseNumber = result.offenseNumber
+                try? db.saveContext()
             } catch {
                 print("[HoundDog] Retry failed for ticket \(ticket.ticketId): \(error.localizedDescription)")
             }

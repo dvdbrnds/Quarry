@@ -79,6 +79,10 @@ final class ViolationTypeStore: ObservableObject {
         types.first(where: { $0.code == code })?.label ?? code
     }
 
+    func fineAmount(forCode code: String) -> String {
+        types.first(where: { $0.code == code })?.fineFirst ?? "35.00"
+    }
+
     // MARK: - Persistence (UserDefaults, simple JSON)
 
     private struct StoredEntry: Codable {

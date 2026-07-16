@@ -422,9 +422,12 @@ struct TicketIssuanceView: View {
         isSubmitting = true
         errorMessage = nil
 
+        let normalizedPlate = plate.uppercased().trimmingCharacters(in: .whitespaces)
         let permit = prefilledEntry?.authStatus.permit
+        let db = PlateDatabase.shared
+
         let ticket = PendingTicket(
-            plate: plate.uppercased().trimmingCharacters(in: .whitespaces),
+            plate: normalizedPlate,
             lot: selectedLot,
             violationType: selectedViolation,
             confidence: 1.0,
@@ -440,20 +443,42 @@ struct TicketIssuanceView: View {
             permitNumber: permit?.permitNumber
         )
 
-        // Persist the ticket immediately so it survives an upload failure.
-        try? PlateDatabase.shared.savePendingTicket(ticket)
+        try? db.savePendingTicket(ticket)
+
+        let fineAmount = ViolationTypeStore.shared.fineAmount(forCode: selectedViolation)
+        let offenseNumber = db.offenseCount(forPlate: normalizedPlate)
+        let baseURL = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let paymentUrl = baseURL.isEmpty ? "" : "\(baseURL)/pay/\(ticket.ticketId)"
+
+        ticket.fineAmount = fineAmount
+        ticket.offenseNumber = offenseNumber
+        ticket.paymentUrl = paymentUrl
+        try? db.saveContext()
+
+        let localResult = HoundDogSyncService.TicketUploadResponse(
+            ticketId: ticket.ticketId,
+            paymentUrl: paymentUrl,
+            fineAmount: fineAmount,
+            offenseNumber: offenseNumber,
+            notificationSent: false,
+            notificationEmail: nil
+        )
+
+        submittedResult = localResult
+        onTicketIssued?(normalizedPlate)
+        isSubmitting = false
 
         Task {
             do {
-                let result = try await HoundDogSyncService.shared.uploadTicket(ticket)
-                PlateDatabase.shared.markTicketUploaded(ticket)
-                submittedResult = result
-                onTicketIssued?(plate.uppercased().trimmingCharacters(in: .whitespaces))
+                let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
+                db.markTicketUploaded(ticket)
+                ticket.paymentUrl = serverResult.paymentUrl
+                ticket.fineAmount = serverResult.fineAmount
+                ticket.offenseNumber = serverResult.offenseNumber
+                try? db.saveContext()
             } catch {
-                // Ticket stays in the queue with uploaded = false for later retry.
-                errorMessage = "\(error.localizedDescription)\nTicket saved — will retry when back online."
+                // Stays in pending queue — retryPendingTickets() picks it up next sync.
             }
-            isSubmitting = false
         }
     }
 
