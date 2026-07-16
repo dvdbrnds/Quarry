@@ -54,6 +54,18 @@ export default function StaffPermits() {
     );
   }
 
+  if (user.role !== "admin" && user.role !== "staff") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="max-w-md text-center">
+          <h2 className="text-xl font-bold text-[#1a2744] mb-2">Access Restricted</h2>
+          <p className="text-gray-500 mb-4">This page is for faculty and staff only. If you are a student, visit the <a href="/parking" className="text-blue-600 underline">student parking portal</a> instead.</p>
+          <Button onClick={() => logout()}>Sign Out</Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <App>
       <StaffPage user={user} />

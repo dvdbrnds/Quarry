@@ -8,14 +8,16 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user
+from ..auth.okta import OktaUser, get_current_user, require_role
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
 from ..services.permit_numbering import next_permit_number
 
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+_require_staff = require_role("admin", "staff")
+
+router = APIRouter(dependencies=[Depends(_require_staff)])
 
 
 STAFF_PERMIT_CODE = "faculty_staff"
