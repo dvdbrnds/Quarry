@@ -29,12 +29,12 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         setBranding({
-          brandName: data.brand_name || DEFAULTS.brandName,
+          brandName: data.brand_name ?? DEFAULTS.brandName,
           primaryColor: data.primary_color || DEFAULTS.primaryColor,
           accentColor: data.accent_color || DEFAULTS.accentColor,
           logoUrl: data.logo_url ?? null,
           faviconUrl: data.favicon_url || DEFAULTS.faviconUrl,
-          schoolName: data.school_name || DEFAULTS.schoolName,
+          schoolName: data.school_name ?? DEFAULTS.schoolName,
         });
       })
       .catch(() => {});
