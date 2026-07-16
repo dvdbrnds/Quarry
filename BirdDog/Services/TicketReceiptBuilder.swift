@@ -3,6 +3,11 @@ import StarIO10
 
 struct TicketReceiptBuilder {
 
+    /// SM-S230i print width (mm). Wider settings clip or distort on this model.
+    private static let paperWidthMm = 48.0
+    /// Approx. columns for Font A on 48mm paper.
+    private static let charsPerLine = 32
+
     struct TicketData {
         let ticketId: String
         let plate: String
@@ -32,37 +37,39 @@ struct TicketReceiptBuilder {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MM/dd/yyyy  h:mm a"
         let dateStr = dateFormatter.string(from: ticket.issuedAt)
+        let title = ticket.ticketCategory == "moving" ? " CITATION " : " PARKING TICKET "
+        let school = schoolName.isEmpty ? "Campus Police" : schoolName
 
-        let separator = "--------------------------------\n"
+        let printerBuilder = makeBasePrinterBuilder()
 
-        let printerBuilder = StarXpandCommand.PrinterBuilder()
-            .styleInternationalCharacter(.usa)
-            .styleCharacterSpace(0)
-
-        // Header
+        // High-contrast inverted header
         _ = printerBuilder
             .styleAlignment(.center)
             .add(
                 StarXpandCommand.PrinterBuilder()
+                    .styleInvert(true)
                     .styleBold(true)
                     .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
-                    .actionPrintText(ticket.ticketCategory == "moving" ? "CITATION\n" : "PARKING TICKET\n")
+                    .actionPrintText("\(title)\n")
             )
-            .actionPrintText("\n")
+            .actionFeed(1)
             .add(
                 StarXpandCommand.PrinterBuilder()
                     .styleBold(true)
-                    .actionPrintText("\(schoolName.isEmpty ? "Campus Police" : schoolName)\n")
+                    .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 2))
+                    .actionPrintText("\(school)\n")
             )
             .actionPrintText("Campus Police Department\n")
-            .actionPrintText(separator)
 
-        // Ticket info
+        appendRuledLine(to: printerBuilder)
+
+        // Ticket meta
         _ = printerBuilder
             .styleAlignment(.left)
             .actionPrintText("Ticket #: \(String(ticket.ticketId.prefix(8)).uppercased())\n")
             .actionPrintText("Date:     \(dateStr)\n")
-            .actionPrintText(separator)
+
+        appendRuledLine(to: printerBuilder)
 
         // Vehicle
         _ = printerBuilder
@@ -71,29 +78,30 @@ struct TicketReceiptBuilder {
                     .styleBold(true)
                     .actionPrintText("VEHICLE\n")
             )
-        _ = printerBuilder.actionPrintText("Plate:    ")
+            .actionPrintText("Plate:\n")
             .add(
                 StarXpandCommand.PrinterBuilder()
-                    .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 1))
+                    .styleAlignment(.center)
                     .styleBold(true)
-                    .actionPrintText("\(ticket.plate)\n")
+                    .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                    .actionPrintText("\(ticket.plate.uppercased())\n")
             )
+            .styleAlignment(.left)
 
         if let desc = ticket.vehicleDescription, !desc.isEmpty {
-            _ = printerBuilder.actionPrintText("Vehicle:  \(desc)\n")
+            appendWrapped(to: printerBuilder, label: "Vehicle:  ", text: desc)
         }
 
-        // Driver info (moving violations)
         if ticket.ticketCategory == "moving" {
             if let name = ticket.driverName, !name.isEmpty {
-                _ = printerBuilder.actionPrintText("Driver:   \(name)\n")
+                appendWrapped(to: printerBuilder, label: "Driver:   ", text: name)
             }
             if let lic = ticket.driverLicense, !lic.isEmpty {
                 _ = printerBuilder.actionPrintText("License:  \(lic)\n")
             }
         }
 
-        _ = printerBuilder.actionPrintText(separator)
+        appendRuledLine(to: printerBuilder)
 
         // Violation
         _ = printerBuilder
@@ -102,96 +110,96 @@ struct TicketReceiptBuilder {
                     .styleBold(true)
                     .actionPrintText("VIOLATION\n")
             )
-            .actionPrintText("Type:     \(ticket.violationLabel)\n")
+        appendWrapped(to: printerBuilder, label: "Type:     ", text: ticket.violationLabel)
 
         if !ticket.lot.isEmpty {
-            _ = printerBuilder.actionPrintText("Location: \(ticket.lot)\n")
+            appendWrapped(to: printerBuilder, label: "Location: ", text: ticket.lot)
         }
-
         if let locText = ticket.locationText, !locText.isEmpty {
-            _ = printerBuilder.actionPrintText("Area:     \(locText)\n")
+            appendWrapped(to: printerBuilder, label: "Area:     ", text: locText)
         }
-
         if ticket.offenseNumber > 1 {
             _ = printerBuilder.actionPrintText("Offense:  #\(ticket.offenseNumber)\n")
         }
 
-        _ = printerBuilder.actionPrintText(separator)
+        appendRuledLine(to: printerBuilder)
 
-        // Fine
+        // Fine — high contrast
         _ = printerBuilder
             .styleAlignment(.center)
+            .actionFeed(1)
             .add(
                 StarXpandCommand.PrinterBuilder()
+                    .styleInvert(true)
                     .styleBold(true)
                     .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
-                    .actionPrintText("FINE: $\(ticket.fineAmount)\n")
+                    .actionPrintText(" FINE: $\(ticket.fineAmount) \n")
             )
-            .actionPrintText("\n")
+            .actionFeed(2)
 
-        // Payment QR
+        // Payment QR — larger cells + stronger ECC for outdoor scanning
         if !ticket.paymentUrl.isEmpty {
             _ = printerBuilder
-                .actionPrintText("Scan to pay online:\n")
-                .actionPrintQRCode(
-                    StarXpandCommand.Printer.QRCodeParameter(content: ticket.paymentUrl)
-                        .setLevel(.m)
-                        .setCellSize(6)
-                )
-                .actionPrintText("\n")
+                .styleAlignment(.center)
                 .add(
                     StarXpandCommand.PrinterBuilder()
-                        .styleUnderLine(true)
-                        .actionPrintText("\(ticket.paymentUrl)\n")
+                        .styleBold(true)
+                        .actionPrintText("Scan to pay online\n")
                 )
-                .actionPrintText("\n")
+                .actionFeed(1)
+                .actionPrintQRCode(
+                    StarXpandCommand.Printer.QRCodeParameter(content: ticket.paymentUrl)
+                        .setModel(.model2)
+                        .setLevel(.q)
+                        .setCellSize(7)
+                )
+                .actionFeed(1)
+                .actionPrintText("Pay online or at Campus Police\n")
         }
 
-        // Officer signature
+        // Officer
         if let name = ticket.officerName, !name.isEmpty {
+            appendRuledLine(to: printerBuilder)
             _ = printerBuilder
                 .styleAlignment(.left)
-                .actionPrintText(separator)
                 .add(
                     StarXpandCommand.PrinterBuilder()
                         .styleBold(true)
                         .actionPrintText("ISSUING OFFICER\n")
                 )
-                .actionPrintText("Name:     \(name)\n")
+            appendWrapped(to: printerBuilder, label: "Name:     ", text: name)
             if let email = ticket.officerEmail, !email.isEmpty {
-                _ = printerBuilder.actionPrintText("ID:       \(email)\n")
+                appendWrapped(to: printerBuilder, label: "ID:       ", text: email)
             }
         }
 
         // Footer
         _ = printerBuilder
             .styleAlignment(.center)
-            .actionPrintText("\n")
+            .actionFeed(2)
 
         if ticket.ticketCategory == "moving" {
-            _ = printerBuilder
-                .actionPrintText("All violations must be paid or\n")
-                .actionPrintText("appealed within 10 days of\n")
-                .actionPrintText("the date issued.\n")
-                .actionPrintText("\n")
-                .actionPrintText("Fines not paid or appealed within\n")
-                .actionPrintText("10 days will result in a Traffic\n")
-                .actionPrintText("Citation via the Local Magistrate.\n")
+            for line in wrapLines(
+                "All violations must be paid or appealed within 10 days of the date issued. Fines not paid or appealed within 10 days will result in a Traffic Citation via the Local Magistrate."
+            ) {
+                _ = printerBuilder.actionPrintText("\(line)\n")
+            }
         } else {
-            _ = printerBuilder
-                .actionPrintText("This ticket is issued under the\n")
-                .actionPrintText("campus parking regulations.\n")
-                .actionPrintText("Appeals must be filed within\n")
-                .actionPrintText("10 business days.\n")
+            for line in wrapLines(
+                "Issued under campus parking regulations. Appeals must be filed within 10 business days."
+            ) {
+                _ = printerBuilder.actionPrintText("\(line)\n")
+            }
         }
 
         _ = printerBuilder
-            .actionPrintText("\n")
-            .actionPrintText(separator)
+            .actionFeed(3)
             .actionCut(.partial)
 
         _ = builder.addDocument(
             StarXpandCommand.DocumentBuilder()
+                .settingPrintableArea(paperWidthMm)
+                .settingTopMargin(2.0)
                 .addPrinter(printerBuilder)
         )
 
@@ -202,37 +210,129 @@ struct TicketReceiptBuilder {
 
     static func buildTestCommands(schoolName: String) -> String {
         let builder = StarXpandCommand.StarXpandCommandBuilder()
-
-        let printerBuilder = StarXpandCommand.PrinterBuilder()
-            .styleInternationalCharacter(.usa)
-            .styleCharacterSpace(0)
+        let school = schoolName.isEmpty ? "Bird Dog" : schoolName
+        let printerBuilder = makeBasePrinterBuilder()
             .styleAlignment(.center)
             .add(
                 StarXpandCommand.PrinterBuilder()
+                    .styleInvert(true)
                     .styleBold(true)
                     .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
-                    .actionPrintText("PRINTER TEST\n")
+                    .actionPrintText(" PRINTER TEST \n")
             )
-            .actionPrintText("\n")
-            .actionPrintText("\(schoolName.isEmpty ? "Bird Dog" : schoolName)\n")
+            .actionFeed(1)
+            .add(
+                StarXpandCommand.PrinterBuilder()
+                    .styleBold(true)
+                    .actionPrintText("\(school)\n")
+            )
             .actionPrintText("Campus Parking Enforcement\n")
-            .actionPrintText("--------------------------------\n")
-            .actionPrintText("Printer is working correctly.\n")
+
+        appendRuledLine(to: printerBuilder)
+
+        _ = printerBuilder
+            .actionPrintText("High-quality print check\n")
             .actionPrintText("\(Date().formatted())\n")
-            .actionPrintText("--------------------------------\n")
+            .actionFeed(1)
             .actionPrintQRCode(
                 StarXpandCommand.Printer.QRCodeParameter(content: "https://quarry.moravian.edu")
-                    .setLevel(.m)
-                    .setCellSize(6)
+                    .setModel(.model2)
+                    .setLevel(.q)
+                    .setCellSize(7)
             )
-            .actionPrintText("\n")
+            .actionFeed(2)
+            .actionPrintText("If this looks sharp, ticket\n")
+            .actionPrintText("prints will match.\n")
+            .actionFeed(3)
             .actionCut(.partial)
 
         _ = builder.addDocument(
             StarXpandCommand.DocumentBuilder()
+                .settingPrintableArea(paperWidthMm)
+                .settingTopMargin(2.0)
                 .addPrinter(printerBuilder)
         )
 
         return builder.getCommands()
+    }
+
+    // MARK: - Shared layout helpers
+
+    private static func makeBasePrinterBuilder() -> StarXpandCommand.PrinterBuilder {
+        StarXpandCommand.PrinterBuilder()
+            .styleInternationalCharacter(.usa)
+            .styleFont(.a)
+            .styleCharacterSpace(0)
+            .styleLineSpace(1.0)
+            .styleBaseMagnification(
+                StarXpandCommand.Printer.BaseMagnificationParameter()
+                    .setText(.standard)
+            )
+    }
+
+    private static func appendRuledLine(to printerBuilder: StarXpandCommand.PrinterBuilder) {
+        _ = printerBuilder
+            .actionFeed(1)
+            .actionPrintRuledLine(
+                StarXpandCommand.Printer.RuledLineParameter(width: paperWidthMm)
+                    .setThickness(0.3)
+            )
+            .actionFeed(1)
+    }
+
+    private static func appendWrapped(
+        to printerBuilder: StarXpandCommand.PrinterBuilder,
+        label: String,
+        text: String
+    ) {
+        let lines = wrapLines(text, firstLinePrefix: label, continuationPrefix: String(repeating: " ", count: label.count))
+        for line in lines {
+            _ = printerBuilder.actionPrintText("\(line)\n")
+        }
+    }
+
+    private static func wrapLines(
+        _ text: String,
+        firstLinePrefix: String = "",
+        continuationPrefix: String = "",
+        width: Int = charsPerLine
+    ) -> [String] {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else {
+            let trimmed = firstLinePrefix.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? [] : [trimmed]
+        }
+
+        var lines: [String] = []
+        var current = firstLinePrefix
+
+        for word in words {
+            let joiner = (current == firstLinePrefix || current == continuationPrefix || current.isEmpty) ? "" : " "
+            let candidate = current + joiner + word
+
+            if candidate.count <= width {
+                current = candidate
+                continue
+            }
+
+            if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.append(current)
+            }
+
+            // Place word on a new line; hard-break if still too long.
+            var remainder = word
+            let usable = max(1, width - continuationPrefix.count)
+            while remainder.count > usable {
+                let idx = remainder.index(remainder.startIndex, offsetBy: usable)
+                lines.append(continuationPrefix + String(remainder[..<idx]))
+                remainder = String(remainder[idx...])
+            }
+            current = continuationPrefix + remainder
+        }
+
+        if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.append(current)
+        }
+        return lines
     }
 }
