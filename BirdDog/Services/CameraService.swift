@@ -142,39 +142,44 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     private var oneShotCapture = false
+    /// Set from main thread to immediately suppress all frame processing.
+    /// Checked at the top of captureOutput before any work happens.
+    var outputSuppressed = false
 
-    /// Briefly resumes the camera to grab a fresh frame, then stops again.
-    /// Suppresses OCR delegate calls during the capture window.
+    /// Grab a photo from the camera. Uses the latest buffered frame if available,
+    /// otherwise briefly restarts the camera to capture one fresh frame.
     func captureOneShotPhoto() async -> String? {
-        let wasRunning = isRunning
-        if !wasRunning {
-            oneShotCapture = true
-            await withCheckedContinuation { cont in
-                sessionQueue.async { [weak self] in
-                    guard let self else { cont.resume(); return }
-                    if !self.isRunning {
-                        self.session.startRunning()
-                        self.isRunning = true
-                    }
-                    cont.resume()
-                }
-            }
-            try? await Task.sleep(nanoseconds: 400_000_000)
+        if latestSampleBuffer != nil {
+            return captureViolationPhoto()
         }
+
+        let savedSuppressed = outputSuppressed
+        oneShotCapture = true
+        outputSuppressed = false
+        await withCheckedContinuation { cont in
+            sessionQueue.async { [weak self] in
+                guard let self else { cont.resume(); return }
+                if !self.isRunning {
+                    self.session.startRunning()
+                    self.isRunning = true
+                }
+                cont.resume()
+            }
+        }
+        try? await Task.sleep(nanoseconds: 400_000_000)
 
         let path = captureViolationPhoto()
 
-        if !wasRunning {
-            await withCheckedContinuation { cont in
-                sessionQueue.async { [weak self] in
-                    guard let self, self.isRunning else { cont.resume(); return }
-                    self.session.stopRunning()
-                    self.isRunning = false
-                    self.oneShotCapture = false
-                    cont.resume()
-                }
+        await withCheckedContinuation { cont in
+            sessionQueue.async { [weak self] in
+                guard let self, self.isRunning else { cont.resume(); return }
+                self.session.stopRunning()
+                self.isRunning = false
+                self.oneShotCapture = false
+                cont.resume()
             }
         }
+        outputSuppressed = savedSuppressed
         return path
     }
 
@@ -1068,6 +1073,8 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        guard !outputSuppressed else { return }
+
         latestSampleBuffer = sampleBuffer
         lastFrameTime = Date()
 

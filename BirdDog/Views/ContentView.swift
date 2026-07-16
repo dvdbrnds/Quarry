@@ -120,6 +120,7 @@ struct ContentView: View {
                         expiredCount: viewModel.expiredCount,
                         unknownCount: viewModel.unknownCount,
                         onIssueTapped: officerAuth.isStaff ? { entry in
+                            viewModel.pauseScanning()
                             ticketPrefilledEntry = entry
                             ticketPrefilledPlate = entry.text
                             showTicketIssuance = true
@@ -324,13 +325,17 @@ struct ContentView: View {
             if officerAuth.isStaff {
                 Menu {
                     Button {
+                        viewModel.pauseScanning()
                         ticketPrefilledPlate = nil
                         ticketPrefilledEntry = nil
                         showTicketIssuance = true
                     } label: {
                         Label("Parking Ticket", systemImage: "doc.text")
                     }
-                    Button { showMovingViolation = true } label: {
+                    Button {
+                        viewModel.pauseScanning()
+                        showMovingViolation = true
+                    } label: {
                         Label("Moving Citation", systemImage: "car.side")
                     }
                 } label: {

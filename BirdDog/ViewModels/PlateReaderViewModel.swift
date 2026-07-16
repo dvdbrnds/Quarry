@@ -157,6 +157,7 @@ final class PlateReaderViewModel: ObservableObject {
 
     func pauseScanning() {
         guard isScanning, !isScanningPaused else { return }
+        cameraService.outputSuppressed = true
         cameraService.stop()
         isScanningPaused = true
     }
@@ -164,6 +165,7 @@ final class PlateReaderViewModel: ObservableObject {
     func resumeScanning() {
         guard isScanningPaused else { return }
         isScanningPaused = false
+        cameraService.outputSuppressed = false
         cameraService.start()
     }
 
