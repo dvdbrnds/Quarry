@@ -4,7 +4,7 @@ const Store = require("electron-store");
 
 const store = new Store({
   defaults: {
-    serverUrl: "https://quarry.moravian.edu",
+    serverUrl: "https://parking.moravian.edu",
     showOnStartup: true,
     soundEnabled: true,
   },

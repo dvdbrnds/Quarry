@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://quarry:quarry@localhost:5432/quarry"
-    cors_origins: list[str] = ["https://parking.moravian.edu", "https://quarry.moravian.edu"]
+    cors_origins: list[str] = ["https://parking.moravian.edu"]
     api_key_header: str = "Authorization"
     secret_key: str = ""
     debug: bool = False

@@ -243,7 +243,7 @@ class AlertTemplateRead(BaseModel):
 | `GET` | `/{alert_id}/responses/detail` | — | `list[AlertResponseRead]` | Admin | Individual responses |
 | `GET` | `/{alert_id}/non-responders` | — | `list[SubscriberRead]` | Admin | Subscribers who haven't replied |
 
-**Webhook Registration:** The Twilio inbound webhook URL (`https://quarry.moravian.edu/api/alerts/webhooks/twilio/inbound`) must be configured in the Twilio console for the `TWILIO_FROM_NUMBER` phone number.
+**Webhook Registration:** The Twilio inbound webhook URL (`https://parking.moravian.edu/api/alerts/webhooks/twilio/inbound`) must be configured in the Twilio console for the `TWILIO_FROM_NUMBER` phone number.
 
 **Extend `AlertSendRequest`:**
 
@@ -697,7 +697,7 @@ Estimates assume a single developer familiar with the Quarry codebase.
    - **Action:** Check Twilio console for the current number's inbound SMS capability.
 
 2. **Twilio Webhook URL Accessibility**
-   - The inbound SMS webhook (`/api/alerts/webhooks/twilio/inbound`) must be publicly reachable from Twilio's servers. Quarry at `quarry.moravian.edu` is public, but confirm Coolify/reverse proxy configuration passes POST requests to this path.
+   - The inbound SMS webhook (`/api/alerts/webhooks/twilio/inbound`) must be publicly reachable from Twilio's servers. Quarry at `parking.moravian.edu` is public, but confirm Coolify/reverse proxy configuration passes POST requests to this path.
    - **Action:** Test with a curl from outside campus network.
 
 3. **Twilio Request Signature Validation**

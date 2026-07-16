@@ -235,7 +235,7 @@ struct TicketReceiptBuilder {
             .actionPrintText("\(Date().formatted())\n")
             .actionFeed(1)
             .actionPrintQRCode(
-                StarXpandCommand.Printer.QRCodeParameter(content: "https://quarry.moravian.edu")
+                StarXpandCommand.Printer.QRCodeParameter(content: "https://parking.moravian.edu")
                     .setModel(.model2)
                     .setLevel(.q)
                     .setCellSize(7)

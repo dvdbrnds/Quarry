@@ -76,7 +76,7 @@
 
   <div class="form-group">
     <label>Server URL</label>
-    <input type="text" id="serverUrl" placeholder="https://quarry.moravian.edu">
+    <input type="text" id="serverUrl" placeholder="https://parking.moravian.edu">
   </div>
 
   <div class="checkbox-group">
@@ -97,7 +97,7 @@
     const Store = require("electron-store");
     const store = new Store();
 
-    document.getElementById("serverUrl").value = store.get("serverUrl", "https://quarry.moravian.edu");
+    document.getElementById("serverUrl").value = store.get("serverUrl", "https://parking.moravian.edu");
     document.getElementById("soundEnabled").checked = store.get("soundEnabled", true);
     document.getElementById("showOnStartup").checked = store.get("showOnStartup", true);
 

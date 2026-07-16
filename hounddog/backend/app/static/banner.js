@@ -2,13 +2,13 @@
  * Quarry Alert Banner — Embeddable JS Snippet
  *
  * Drop this into any website:
- *   <script src="https://quarry.moravian.edu/alerts/banner.js"></script>
+ *   <script src="https://parking.moravian.edu/alerts/banner.js"></script>
  *
  * Polls GET /api/alerts/active every 30 seconds. When an active alert exists,
  * injects a fixed banner at the top of the page. Removes it when cleared.
  *
  * Optional attributes on the <script> tag:
- *   data-quarry-url="https://quarry.moravian.edu"  (override base URL)
+ *   data-quarry-url="https://parking.moravian.edu"  (override base URL)
  *   data-quarry-poll="30000"                        (poll interval in ms)
  *   data-quarry-position="top"                      (top or bottom)
  */

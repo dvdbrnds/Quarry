@@ -5,7 +5,7 @@
  * at the top of the page when an alert is active. Zero dependencies.
  *
  * Usage:
- *   <script src="https://quarry.moravian.edu/alerts/banner.js"></script>
+ *   <script src="https://parking.moravian.edu/alerts/banner.js"></script>
  *
  * The script reads its own src attribute to determine the Quarry base URL.
  */

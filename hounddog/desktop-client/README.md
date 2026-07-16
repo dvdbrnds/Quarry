@@ -38,7 +38,7 @@ The Windows build produces an NSIS installer suitable for SCCM deployment:
 ## Configuration
 
 Settings are stored in electron-store (persistent across restarts):
-- **Server URL**: The Quarry server base URL (default: `https://quarry.moravian.edu`)
+- **Server URL**: The Quarry server base URL (default: `https://parking.moravian.edu`)
 - **Sound**: Enable/disable notification sounds
 - **Startup**: Auto-start with system
 
