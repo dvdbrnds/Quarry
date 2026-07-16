@@ -174,6 +174,37 @@ class SendSingleResult(BaseModel):
     token: str | None = None
 
 
+class TestEmailRequest(BaseModel):
+    email: str
+
+
+@router.post("/send-test", response_model=SendSingleResult)
+async def send_test_renewal_email(
+    data: TestEmailRequest,
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Send a sample renewal email to a given address for testing purposes."""
+    base_url = settings.student_facing_url.rstrip("/")
+    sample_renew = f"{base_url}/employee-parking"
+    sample_decline = f"{base_url}/employee-parking"
+
+    success = await send_renewal_email(
+        recipient_email=data.email,
+        name="Test Employee",
+        permit_type="faculty_staff",
+        lot_assignment="Lot A, Lot B",
+        end_date="2026-06-30",
+        renew_url=sample_renew,
+        decline_url=sample_decline,
+    )
+
+    return SendSingleResult(
+        status="sent" if success else "failed",
+        message=f"Test renewal email sent to {data.email}" if success
+        else f"SMTP send failed for {data.email}",
+    )
+
+
 @router.post("/send/{permit_id}", response_model=SendSingleResult)
 async def send_renewal_to_permit(
     permit_id: uuid_mod.UUID,
