@@ -21,8 +21,7 @@ struct TicketIssuanceView: View {
     @State private var captureTimestamp = Date()
     @ObservedObject private var printerService = PrinterService.shared
 
-    /// Snapshot of lots at form open — no live GPS observation.
-    @State private var lots: [GeofenceService.MonitoredLot] = []
+    @State private var lots: [ParkingLot] = []
     @State private var officerName = ""
     @State private var officerEmail = ""
 
@@ -207,7 +206,7 @@ struct TicketIssuanceView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Issue") { submitTicket() }
-                    .disabled(plate.isEmpty || selectedLot.isEmpty || selectedViolation.isEmpty || isSubmitting)
+                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolation.isEmpty || isSubmitting)
                     .bold()
             }
         }
@@ -248,8 +247,12 @@ struct TicketIssuanceView: View {
             } else {
                 ensureValidViolationSelection()
             }
-            if selectedLot.isEmpty, let current = geo.currentLotName {
-                selectedLot = current
+            if selectedLot.isEmpty {
+                if let current = geo.currentLotName {
+                    selectedLot = current
+                } else if lots.count == 1 {
+                    selectedLot = lots[0].name
+                }
             }
             capturePhoto()
         }
