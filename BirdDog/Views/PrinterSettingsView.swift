@@ -19,7 +19,7 @@ struct PrinterSettingsView: View {
         .navigationTitle("Printer")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            if printerService.connectionState == .disconnected && printerService.hasSavedPrinter {
+            if printerService.hasSavedPrinter && !printerService.isConnected {
                 printerService.reconnectSaved()
             }
         }
@@ -66,13 +66,13 @@ struct PrinterSettingsView: View {
                 }
             }
 
-            if let error = printerService.lastError {
+            if let error = printerService.lastError, !printerService.isConnected {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
             }
 
-            if printerService.connectionState == .disconnected && printerService.hasSavedPrinter {
+            if printerService.hasSavedPrinter && !printerService.isConnected {
                 Button {
                     printerService.reconnectSaved()
                 } label: {
@@ -175,7 +175,7 @@ struct PrinterSettingsView: View {
         } header: {
             Text("Available Printers")
         } footer: {
-            Text("Tap a printer to connect. The selection is saved for future sessions. SM-S230i uses classic Bluetooth — it must be paired in iOS Settings before Bird Dog can see it.")
+            Text("Tap SM-S230 (PRNT Star) to connect — ignore the numbered duplicate if both appear. Connection is verified then released between jobs so the port stays free.")
         }
     }
 

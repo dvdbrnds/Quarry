@@ -34,7 +34,10 @@ final class PrinterService: ObservableObject {
         let model: String
 
         var displayName: String {
-            model.isEmpty ? id : "\(model) (\(id))"
+            if !model.isEmpty, model != id {
+                return "\(model) (\(id))"
+            }
+            return id
         }
 
         var interfaceLabel: String {
@@ -51,13 +54,21 @@ final class PrinterService: ObservableObject {
 
     private static let savedIdentifierKey = "PrinterService.identifier"
     private static let savedInterfaceKey = "PrinterService.interfaceType"
+    private static let savedNameKey = "PrinterService.displayName"
     private static let autoPrintKey = "PrinterService.autoPrint"
 
-    private var printer: StarPrinter?
+    /// Saved connection only — do not hold an open StarPrinter session between jobs.
+    private var savedSettings: StarConnectionSettings?
     private var discoveryManager: StarDeviceDiscoveryManager?
+    private var _discoveryDelegate: DiscoveryDelegate?
 
     private init() {
         self.autoPrintEnabled = UserDefaults.standard.bool(forKey: Self.autoPrintKey)
+        if let settings = loadSavedSettings() {
+            self.savedSettings = settings
+            self.printerName = UserDefaults.standard.string(forKey: Self.savedNameKey) ?? settings.identifier
+            self.connectionState = .disconnected
+        }
     }
 
     // MARK: - Discovery
@@ -76,17 +87,18 @@ final class PrinterService: ObservableObject {
             let manager = try StarDeviceDiscoveryManagerFactory.create(
                 interfaceTypes: [.bluetooth, .bluetoothLE]
             )
-            // Classic BT is fast; BLE needs longer. Match Star sample guidance.
             manager.discoveryTime = 10_000
             self.discoveryManager = manager
 
             let wrapper = DiscoveryDelegate { [weak self] found in
                 Task { @MainActor in
                     guard let self else { return }
+                    let identifier = found.connectionSettings.identifier
+                    let modelName = Self.modelLabel(from: found.information?.model)
                     self.addDiscovered(
-                        id: found.connectionSettings.identifier,
+                        id: identifier,
                         interfaceType: found.connectionSettings.interfaceType,
-                        model: found.information?.model.rawValue.description ?? ""
+                        model: modelName
                     )
                 }
             } onFinished: { [weak self] in
@@ -124,13 +136,21 @@ final class PrinterService: ObservableObject {
         }
     }
 
+    private static func modelLabel(from model: StarPrinterModel?) -> String {
+        guard let model else { return "" }
+        let raw = String(describing: model)
+        // Avoid dumping opaque enum junk like "17" into the UI.
+        if raw.allSatisfy(\.isNumber) { return "" }
+        return raw
+            .replacingOccurrences(of: "StarPrinterModel.", with: "")
+            .replacingOccurrences(of: "_", with: "-")
+    }
+
     func stopDiscovery() {
         discoveryManager?.stopDiscovery()
         discoveryManager = nil
         isSearching = false
     }
-
-    private var _discoveryDelegate: DiscoveryDelegate?
 
     // MARK: - Connect / Disconnect
 
@@ -144,10 +164,11 @@ final class PrinterService: ObservableObject {
         }
     }
 
+    /// Verifies the printer can be opened, then closes it. Settings are saved for
+    /// per-job open/print/close — holding the port open causes "Already Opened."
     @discardableResult
     func connectAndWait(to discovered: DiscoveredPrinter) async throws -> Bool {
-        await disconnect()
-
+        stopDiscovery()
         connectionState = .connecting
         lastError = nil
 
@@ -155,32 +176,34 @@ final class PrinterService: ObservableObject {
             interfaceType: discovered.interfaceType,
             identifier: discovered.id
         )
-        let p = StarPrinter(settings)
+        let printer = StarPrinter(settings)
 
         do {
-            try await p.open()
-            self.printer = p
-            self.printerName = discovered.displayName.isEmpty ? discovered.id : discovered.displayName
-            self.connectionState = .connected
+            try await printer.open()
+            await printer.close()
+
+            savedSettings = settings
+            printerName = discovered.displayName.isEmpty ? discovered.id : discovered.displayName
+            connectionState = .connected
 
             UserDefaults.standard.set(discovered.id, forKey: Self.savedIdentifierKey)
             UserDefaults.standard.set(discovered.interfaceType.rawValue, forKey: Self.savedInterfaceKey)
+            UserDefaults.standard.set(printerName, forKey: Self.savedNameKey)
             return true
         } catch {
+            await printer.close()
             connectionState = .error
-            lastError = error.localizedDescription
-            await p.close()
+            lastError = friendlyMessage(for: error)
             throw error
         }
     }
 
     func disconnect() async {
-        if let p = printer {
-            await p.close()
-        }
-        printer = nil
+        stopDiscovery()
+        savedSettings = nil
         connectionState = .disconnected
         printerName = ""
+        lastError = nil
     }
 
     func reconnectSaved() {
@@ -191,23 +214,15 @@ final class PrinterService: ObservableObject {
 
     @discardableResult
     func reconnectSavedAndWait() async throws -> Bool {
-        guard let identifier = UserDefaults.standard.string(forKey: Self.savedIdentifierKey),
-              let rawInterface = UserDefaults.standard.object(forKey: Self.savedInterfaceKey) as? Int,
-              let interfaceType = InterfaceType(rawValue: rawInterface) else {
+        guard let discovered = savedDiscoveredPrinter() else {
             throw PrintError.notConfigured
         }
-
-        let discovered = DiscoveredPrinter(
-            id: identifier,
-            interfaceType: interfaceType,
-            model: ""
-        )
         return try await connectAndWait(to: discovered)
     }
 
-    /// Ensures a printer is ready before printing. Reconnects a saved printer if needed.
+    /// Ensures saved settings exist. Does not hold an open session.
     func ensureConnected() async throws {
-        if isConnected, printer != nil { return }
+        if savedSettings != nil, connectionState == .connected { return }
         if hasSavedPrinter {
             try await reconnectSavedAndWait()
             return
@@ -218,29 +233,66 @@ final class PrinterService: ObservableObject {
     // MARK: - Print
 
     func printCommands(_ commands: String) async throws {
-        try await ensureConnected()
+        stopDiscovery()
 
-        guard let p = printer else {
-            throw PrintError.notConnected
+        if savedSettings == nil {
+            try await ensureConnected()
         }
+
+        guard let settings = savedSettings ?? loadSavedSettings() else {
+            throw PrintError.notConfigured
+        }
+        savedSettings = settings
 
         isPrinting = true
         lastError = nil
 
+        let printer = StarPrinter(settings)
+
         do {
-            try await p.open()
-            try await p.print(command: commands)
-            await p.close()
+            try await openWithRetry(printer)
+            try await printer.print(command: commands)
+            await printer.close()
+            connectionState = .connected
             isPrinting = false
         } catch {
+            await printer.close()
             isPrinting = false
-            lastError = error.localizedDescription
-
-            if connectionState == .connected {
-                connectionState = .error
-            }
+            lastError = friendlyMessage(for: error)
+            connectionState = .error
             throw error
         }
+    }
+
+    /// Open once; on in-use / already-open, close and retry a single time.
+    private func openWithRetry(_ printer: StarPrinter) async throws {
+        do {
+            try await printer.open()
+        } catch {
+            if isBusyOrAlreadyOpen(error) {
+                await printer.close()
+                try await Task.sleep(nanoseconds: 400_000_000)
+                try await printer.open()
+            } else {
+                throw error
+            }
+        }
+    }
+
+    private func isBusyOrAlreadyOpen(_ error: Error) -> Bool {
+        if case StarIO10Error.inUse = error { return true }
+        if case StarIO10Error.invalidOperation = error { return true }
+        let message = error.localizedDescription.lowercased()
+        return message.contains("already open")
+            || message.contains("in use")
+            || message.contains("another process")
+    }
+
+    private func friendlyMessage(for error: Error) -> String {
+        if isBusyOrAlreadyOpen(error) {
+            return "Printer is busy. Close other Star apps, wait a second, and try again."
+        }
+        return error.localizedDescription
     }
 
     var isConnected: Bool {
@@ -255,6 +307,26 @@ final class PrinterService: ObservableObject {
         await disconnect()
         UserDefaults.standard.removeObject(forKey: Self.savedIdentifierKey)
         UserDefaults.standard.removeObject(forKey: Self.savedInterfaceKey)
+        UserDefaults.standard.removeObject(forKey: Self.savedNameKey)
+    }
+
+    private func loadSavedSettings() -> StarConnectionSettings? {
+        guard let identifier = UserDefaults.standard.string(forKey: Self.savedIdentifierKey),
+              let rawInterface = UserDefaults.standard.object(forKey: Self.savedInterfaceKey) as? Int,
+              let interfaceType = InterfaceType(rawValue: rawInterface) else {
+            return nil
+        }
+        return StarConnectionSettings(interfaceType: interfaceType, identifier: identifier)
+    }
+
+    private func savedDiscoveredPrinter() -> DiscoveredPrinter? {
+        guard let settings = loadSavedSettings() else { return nil }
+        let name = UserDefaults.standard.string(forKey: Self.savedNameKey) ?? settings.identifier
+        return DiscoveredPrinter(
+            id: settings.identifier,
+            interfaceType: settings.interfaceType,
+            model: name
+        )
     }
 
     // MARK: - Errors
