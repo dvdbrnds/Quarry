@@ -111,6 +111,16 @@ export default function Pay() {
         {error && <Alert type="error" message={error} className="mb-4" showIcon />}
         {success && <Alert type="success" message={success} className="mb-4" showIcon />}
 
+        {tickets.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            className="mb-4"
+            message="Dispute Before You Pay"
+            description="If you believe a ticket was issued in error, you must dispute it BEFORE paying. Once payment is submitted, the fine is final. There are no refunds."
+          />
+        )}
+
         {tickets.map(t => (
           <Card key={t.id} className="mb-4">
             <div className="flex justify-between items-start mb-3">
@@ -124,18 +134,17 @@ export default function Pay() {
               </div>
             </div>
             <Space direction="vertical" className="w-full">
+              <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
+              {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Commuter Permit</Button>}
               <Button type="primary" block size="large" loading={paying === t.id} onClick={() => handlePay(t.id)}>
                 {paying === t.id ? "Redirecting..." : "Pay Now"}
               </Button>
-              <Space className="w-full">
-                <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
-                {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: "#C5A55A", color: "#9B7E35" }}>Buy a Commuter Permit</Button>}
-              </Space>
+              <p className="text-xs text-center text-red-600 font-medium">By paying, you accept the fine. No refunds will be issued.</p>
             </Space>
           </Card>
         ))}
 
-        <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.brandName} Parking</div>
+        <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.schoolName || "Campus"} Parking Services</div>
       </div>
 
       <DisputeModal ticket={disputeTicket} onClose={() => setDisputeTicket(null)}
