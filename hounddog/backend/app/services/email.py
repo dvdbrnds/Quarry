@@ -417,8 +417,10 @@ async def send_renewal_email(
     renew_url: str,
     decline_url: str,
     school_name: str | None = None,
+    portal_url: str | None = None,
 ) -> bool:
     school = school_name or settings.school_name or "Campus"
+    portal = portal_url or (settings.student_facing_url.rstrip("/") + "/employee-parking")
     subject = f"Parking Permit Renewal — Action Required by June 30"
 
     inner = (
@@ -446,10 +448,17 @@ async def send_renewal_email(
         'Clicking &ldquo;Yes&rdquo; will automatically renew your permit through June 30 of '
         'next year with the same lot assignment.</p>'
         '<p style="font-size:13px;color:#666;margin:0 0 8px;">If you need to update your '
-        'license plate, click &ldquo;Yes&rdquo; first, then contact Parking Services.</p>'
+        'license plate, you can change it during the renewal process.</p>'
         '<p style="font-size:13px;color:#666;margin:0;">If you do not respond by June 30, '
         'your permit will expire and your spot will be released.</p>'
         '</div>'
+        '<table role="presentation" cellspacing="0" cellpadding="0" '
+        'style="margin:16px auto;text-align:center;">'
+        '<tr><td>'
+        f'<a href="{portal}" style="display:inline-block;padding:12px 28px;background:{_primary()};'
+        'color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
+        'Register an Additional Vehicle</a>'
+        '</td></tr></table>'
     )
     body_html = await branded_email_shell(school, inner)
 
@@ -463,6 +472,7 @@ async def send_renewal_email(
         f"To DECLINE (you no longer need a permit), visit: {decline_url}\n\n"
         f"No payment is required for renewal.\n"
         f"If you do not respond by June 30, your permit will expire.\n\n"
+        f"To register an additional vehicle, visit: {portal}\n\n"
         f"{school} Parking Services"
     )
 

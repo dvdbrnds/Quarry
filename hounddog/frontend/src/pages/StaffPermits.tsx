@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App } from "antd";
+import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbox, Descriptions } from "antd";
+import { CheckCircleOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 
@@ -12,6 +13,12 @@ interface RegisteredVehicle {
   id: string; permit_number: string | null; name: string; email: string | null;
   plate: string; lot_assignment: string; status: string;
   start_date: string; end_date: string | null;
+  permit_type: string; permit_type_label: string;
+}
+
+interface RenewalInfo {
+  permit_holder_name: string; email: string; plates: string[];
+  lot_assignment: string; permit_type: string; end_date: string | null; expired: boolean;
 }
 
 export default function StaffPermits() {
@@ -23,7 +30,7 @@ export default function StaffPermits() {
       try {
         await initAuth();
         const authed = await isAuthenticated();
-        if (!authed) { sessionStorage.setItem("quarry_return_path", "/employee-parking"); await login(); return; }
+        if (!authed) { sessionStorage.setItem("quarry_return_path", window.location.pathname + window.location.search); await login(); return; }
         const u = await fetchCurrentUser();
         setUser(u);
         setAuthState(u ? "ready" : "error");
@@ -81,6 +88,15 @@ function StaffPage({ user }: { user: AuthUser }) {
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
 
+  const renewToken = new URLSearchParams(window.location.search).get("renew");
+  const [renewalInfo, setRenewalInfo] = useState<RenewalInfo | null>(null);
+  const [renewalError, setRenewalError] = useState("");
+  const [renewalLoading, setRenewalLoading] = useState(!!renewToken);
+  const [renewalSubmitting, setRenewalSubmitting] = useState(false);
+  const [renewalSuccess, setRenewalSuccess] = useState("");
+  const [changePlate, setChangePlate] = useState(false);
+  const [newPlate, setNewPlate] = useState("");
+
   const load = useCallback(async () => {
     try {
       const headers = await authHeaders();
@@ -98,6 +114,35 @@ function StaffPage({ user }: { user: AuthUser }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!renewToken) return;
+    setRenewalLoading(true);
+    fetch(`/api/renewals/${renewToken}`)
+      .then(async (res) => {
+        if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Invalid renewal link"); }
+        setRenewalInfo(await res.json());
+      })
+      .catch((e) => setRenewalError(e.message))
+      .finally(() => setRenewalLoading(false));
+  }, [renewToken]);
+
+  async function handleConfirmRenewal() {
+    if (!renewToken) return;
+    setRenewalSubmitting(true); setRenewalError("");
+    try {
+      const res = await fetch(`/api/renewals/${renewToken}/confirm`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plate: changePlate && newPlate ? newPlate.toUpperCase().trim() : null }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Renewal failed"); }
+      const data = await res.json();
+      setRenewalSuccess(data.message);
+      setRenewalInfo(null);
+      load();
+    } catch (e: any) { setRenewalError(e.message); }
+    finally { setRenewalSubmitting(false); }
+  }
 
   function handleRemove(v: RegisteredVehicle) {
     modal.confirm({
@@ -117,15 +162,17 @@ function StaffPage({ user }: { user: AuthUser }) {
   const activeVehicles = vehicles.filter(v => v.status === "active");
   const pastVehicles = vehicles.filter(v => v.status !== "active");
 
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
+            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
             <div>
-              <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>
-              <span className="text-xs text-white/50">Employee Vehicle Registration</span>
+              {brand.brandName && <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>}
+              <span className="text-xs text-white/50">Employee Parking Portal</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -136,48 +183,105 @@ function StaffPage({ user }: { user: AuthUser }) {
       </nav>
 
       <main className="max-w-3xl mx-auto px-6 py-10">
-        {loading ? (
+        {loading || renewalLoading ? (
           <div className="flex justify-center py-20"><Spin size="large" /></div>
         ) : (
           <div className="space-y-8">
-            <div>
-              <h2 className="text-2xl font-bold text-brand-primary">Vehicle Registration</h2>
-              <p className="text-gray-500 mt-1">Register your vehicles for campus parking. There is no cost for faculty and staff permits.</p>
+            {/* Renewal card (from email link) */}
+            {renewalSuccess && (
+              <Alert
+                type="success"
+                showIcon
+                icon={<CheckCircleOutlined />}
+                message="Permit Renewed"
+                description={renewalSuccess}
+                className="!mb-2"
+              />
+            )}
+
+            {renewalError && !renewalInfo && !renewalSuccess && (
+              <Alert type="error" showIcon message="Renewal Unavailable" description={renewalError} className="!mb-2" />
+            )}
+
+            {renewalInfo && !renewalSuccess && (
+              <Card className="border-l-4 border-l-green-500 shadow-md">
+                <h3 className="text-xl font-bold text-brand-primary mb-1">Renew Your Parking Permit</h3>
+                <p className="text-sm text-gray-500 mb-4">Confirm the details below to renew. No payment required.</p>
+                {renewalError && <Alert type="error" message={renewalError} className="!mb-4" />}
+                <Descriptions column={1} size="small" className="mb-4">
+                  <Descriptions.Item label="Name">{renewalInfo.permit_holder_name}</Descriptions.Item>
+                  <Descriptions.Item label="Email">{renewalInfo.email}</Descriptions.Item>
+                  <Descriptions.Item label="Type"><span className="capitalize">{renewalInfo.permit_type.replace(/_/g, " ")}</span></Descriptions.Item>
+                  <Descriptions.Item label="Lots">{renewalInfo.lot_assignment}</Descriptions.Item>
+                  <Descriptions.Item label="Current Plate(s)"><span className="font-mono">{renewalInfo.plates.join(", ")}</span></Descriptions.Item>
+                  {renewalInfo.end_date && (
+                    <Descriptions.Item label="Expires">
+                      <span className={renewalInfo.expired ? "text-red-600 font-medium" : ""}>
+                        {fmtDate(renewalInfo.end_date)}{renewalInfo.expired && " (expired)"}
+                      </span>
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
+                <div className="border-t pt-4 mb-4">
+                  <Checkbox checked={changePlate} onChange={e => setChangePlate(e.target.checked)}>
+                    I need to update my license plate
+                  </Checkbox>
+                  {changePlate && (
+                    <Input
+                      value={newPlate}
+                      onChange={e => setNewPlate(e.target.value.toUpperCase())}
+                      placeholder="ABC1234"
+                      className="mt-3 font-mono max-w-xs"
+                    />
+                  )}
+                </div>
+                <Button
+                  type="primary"
+                  size="large"
+                  block
+                  onClick={handleConfirmRenewal}
+                  loading={renewalSubmitting}
+                  disabled={changePlate && !newPlate}
+                >
+                  Confirm Renewal
+                </Button>
+                <p className="text-xs text-gray-400 text-center mt-2">No payment is required for faculty/staff renewals.</p>
+              </Card>
+            )}
+
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-brand-primary">My Parking Permits</h2>
+                <p className="text-gray-500 mt-1">View your permits and register new vehicles.</p>
+              </div>
+              {permitType && (
+                <Button type="primary" onClick={() => setEnrolling(true)}>
+                  + Register New Vehicle
+                </Button>
+              )}
             </div>
 
+            {/* Enrollment info card */}
             {permitType && (
-              <Card className="border-l-4 border-l-brand-accent">
-                <div className="flex items-start justify-between">
+              <Card size="small" className="border-l-4 border-l-brand-primary">
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-brand-primary text-lg">{permitType.label}</div>
-                    <p className="text-sm text-gray-500 mt-1">{permitType.eligible}</p>
-                    <div className="text-sm text-gray-500 mt-2">
-                      <span>Lots: </span>
-                      <span className="inline-flex flex-wrap gap-1">
-                        {permitType.lot_assignments.map(lot => (
-                          <Tag key={lot} color="blue" className="!text-xs">Lot {lot}</Tag>
-                        ))}
-                      </span>
-                    </div>
+                    <span className="font-medium text-brand-primary">{permitType.label}</span>
+                    <span className="text-sm text-gray-500 ml-3">{permitType.eligible}</span>
+                    <span className="text-sm text-gray-400 ml-3">
+                      Lots: {permitType.lot_assignments.join(", ")}
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-green-700">Free</div>
-                    <Button
-                      type="primary"
-                      className="mt-3"
-                      style={{ background: brand.primaryColor }}
-                      onClick={() => setEnrolling(true)}
-                    >
-                      Register Vehicle
-                    </Button>
-                  </div>
+                  <Tag color="green" className="!text-xs !m-0">Free</Tag>
                 </div>
               </Card>
             )}
 
+            {/* Active permits */}
             {activeVehicles.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-brand-primary mb-3">Your Registered Vehicles</h3>
+                <h3 className="text-lg font-semibold text-brand-primary mb-3">Active Permits</h3>
                 <div className="space-y-3">
                   {activeVehicles.map(v => (
                     <Card key={v.id} className="hover:shadow-md transition-shadow">
@@ -186,6 +290,9 @@ function StaffPage({ user }: { user: AuthUser }) {
                           <div className="flex items-center gap-3">
                             <span className="font-mono text-lg font-bold text-brand-primary">{v.plate}</span>
                             <Tag color="green">Active</Tag>
+                            {v.permit_type_label && (
+                              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{v.permit_type_label}</span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500 mt-1">
                             {v.name}
@@ -193,10 +300,12 @@ function StaffPage({ user }: { user: AuthUser }) {
                           </div>
                           <div className="text-xs text-gray-400 mt-1">
                             Lots: {v.lot_assignment}
-                            {v.end_date && <span className="ml-2">· Expires {new Date(v.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>}
+                            {v.end_date && <span className="ml-2">· Expires {fmtDate(v.end_date)}</span>}
                           </div>
                         </div>
-                        <Button size="small" danger onClick={() => handleRemove(v)}>Remove</Button>
+                        {v.permit_type === "faculty_staff" && (
+                          <Button size="small" danger onClick={() => handleRemove(v)}>Remove</Button>
+                        )}
                       </div>
                     </Card>
                   ))}
@@ -204,17 +313,24 @@ function StaffPage({ user }: { user: AuthUser }) {
               </div>
             )}
 
+            {/* Past / expired / renewed permits */}
             {pastVehicles.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-400 mb-3">Past Registrations</h3>
+                <h3 className="text-lg font-semibold text-gray-400 mb-3">Past Permits</h3>
                 <div className="space-y-2">
                   {pastVehicles.map(v => (
-                    <Card key={v.id} className="opacity-50">
+                    <Card key={v.id} className="opacity-60">
                       <div className="flex items-center justify-between">
-                        <div>
+                        <div className="flex items-center gap-3">
                           <span className="font-mono font-medium text-gray-500">{v.plate}</span>
-                          <Tag className="ml-2" color="default">{v.status}</Tag>
-                          <span className="text-xs text-gray-400 ml-2">{v.name}</span>
+                          <Tag color="default">{v.status}</Tag>
+                          {v.permit_type_label && (
+                            <span className="text-xs text-gray-400">{v.permit_type_label}</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {v.start_date && fmtDate(v.start_date)}
+                          {v.end_date && <> — {fmtDate(v.end_date)}</>}
                         </div>
                       </div>
                     </Card>
@@ -223,14 +339,20 @@ function StaffPage({ user }: { user: AuthUser }) {
               </div>
             )}
 
-            {activeVehicles.length === 0 && !permitType && (
+            {activeVehicles.length === 0 && pastVehicles.length === 0 && !permitType && (
               <Card className="text-center py-12">
-                <Empty description={<span className="text-gray-500">No employee permit types are currently available. Contact Parking Services for assistance.</span>} />
+                <Empty description={<span className="text-gray-500">No permits found. Contact Parking Services for assistance.</span>} />
+              </Card>
+            )}
+
+            {activeVehicles.length === 0 && pastVehicles.length === 0 && permitType && (
+              <Card className="text-center py-12">
+                <Empty description={<span className="text-gray-500">You don't have any registered vehicles yet. Click "Register New Vehicle" above to get started.</span>} />
               </Card>
             )}
 
             <div className="text-center text-xs text-gray-400 pt-4 border-t">
-              {brand.schoolName || "Campus"} Parking Services — {brand.brandName}
+              {brand.schoolName || "Campus"} Parking Services{brand.brandName ? ` — ${brand.brandName}` : ""}
             </div>
           </div>
         )}

@@ -39,6 +39,8 @@ class VehicleRead(BaseModel):
     status: str
     start_date: str
     end_date: str | None
+    permit_type: str = ""
+    permit_type_label: str = ""
 
 
 class AvailableStaffPermit(BaseModel):
@@ -136,6 +138,8 @@ async def enroll_vehicle(
         status=permit.status,
         start_date=permit.start_date.isoformat(),
         end_date=permit.end_date.isoformat() if permit.end_date else None,
+        permit_type=permit.permit_type or "",
+        permit_type_label=pt.label,
     )
 
 
@@ -144,15 +148,24 @@ async def my_vehicles(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    """List the current user's registered staff/faculty vehicles."""
+    """List all of the current user's permits (including legacy/imported)."""
+    from sqlalchemy import or_
+
     result = await db.execute(
         select(Permit).where(
-            Permit.student_id == user.sub,
-            Permit.permit_type == STAFF_PERMIT_CODE,
+            or_(Permit.student_id == user.sub, Permit.email == user.email),
             Permit.deleted_at.is_(None),
         ).order_by(Permit.created_at.desc())
     )
     permits = result.scalars().all()
+
+    pt_codes = {p.permit_type for p in permits if p.permit_type}
+    label_map: dict[str, str] = {}
+    if pt_codes:
+        pt_result = await db.execute(
+            select(PermitType.code, PermitType.label).where(PermitType.code.in_(pt_codes))
+        )
+        label_map = {row.code: row.label for row in pt_result}
 
     return [
         VehicleRead(
@@ -165,6 +178,8 @@ async def my_vehicles(
             status=p.status,
             start_date=p.start_date.isoformat(),
             end_date=p.end_date.isoformat() if p.end_date else None,
+            permit_type=p.permit_type or "",
+            permit_type_label=label_map.get(p.permit_type or "", p.permit_type or ""),
         )
         for p in permits
     ]

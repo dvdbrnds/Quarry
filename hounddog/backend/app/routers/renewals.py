@@ -5,7 +5,7 @@ import uuid as uuid_mod
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,9 +225,9 @@ async def send_renewal_to_permit(
     )
 
 
-@router.get("/{token}/quick-renew", response_class=HTMLResponse)
+@router.get("/{token}/quick-renew")
 async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
-    """One-click renewal from email button. Renews the permit and shows confirmation."""
+    """Redirect to the employee portal with the renewal token."""
     renewal = (await db.execute(
         select(RenewalToken).where(RenewalToken.token == token)
     )).scalar()
@@ -255,46 +255,8 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
             "This renewal link has expired. Please contact Parking Services for assistance.", False
         ), status_code=400)
 
-    permit = await db.get(Permit, renewal.permit_id)
-    if not permit:
-        return HTMLResponse(_build_response_html(
-            "Not Found", "Permit Not Found",
-            "The associated permit could not be found. Please contact Parking Services.", False
-        ), status_code=404)
-
-    new_end = _next_june_30()
-
-    new_permit = Permit(
-        permit_number=await next_permit_number(db),
-        name=permit.name,
-        email=permit.email,
-        phone=permit.phone,
-        student_id=permit.student_id,
-        plates=list(permit.plates),
-        lot_assignment=permit.lot_assignment,
-        permit_type=permit.permit_type,
-        beacon_id=permit.beacon_id,
-        start_date=date.today(),
-        end_date=new_end,
-        status="active",
-    )
-    db.add(new_permit)
-
-    if permit.status == "active":
-        permit.status = "renewed"
-    renewal.used_at = datetime.now(timezone.utc)
-    renewal.response = "renewed"
-
-    await db.flush()
-    await db.commit()
-
-    end_str = new_end.strftime("%B %d, %Y")
-    return HTMLResponse(_build_response_html(
-        "Permit Renewed", "Permit Renewed Successfully!",
-        f"Your {permit.permit_type.replace('_', ' ')} parking permit has been renewed "
-        f"through <strong>{end_str}</strong>. Your lot assignment ({permit.lot_assignment}) "
-        f"remains the same. No payment is required."
-    ))
+    base = settings.student_facing_url.rstrip("/")
+    return RedirectResponse(f"{base}/employee-parking?renew={token}")
 
 
 @router.get("/{token}/decline", response_class=HTMLResponse)
