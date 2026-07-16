@@ -58,6 +58,7 @@ class SyncCalendarResponse(BaseModel):
 class SyncSettingsResponse(BaseModel):
     settings: EnforcementSettingsRead
     server_timestamp: datetime
+    student_facing_url: str = ""
 
 
 class PushTokenRegister(BaseModel):

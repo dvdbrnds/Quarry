@@ -350,6 +350,7 @@ async def sync_settings(
     return SyncSettingsResponse(
         settings=es,
         server_timestamp=datetime.now(timezone.utc),
+        student_facing_url=settings.student_facing_url,
     )
 
 

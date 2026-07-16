@@ -251,6 +251,9 @@ final class HoundDogSyncService: ObservableObject {
 
         let syncResponse = try Self.jsonDecoder.decode(SettingsSyncResponse.self, from: data)
         EnforcementSettingsStore.shared.update(from: syncResponse.settings)
+        if let url = syncResponse.studentFacingUrl, !url.isEmpty {
+            AppSettings.shared.studentFacingURL = url
+        }
     }
 
     // MARK: - Lots
@@ -595,9 +598,11 @@ struct SyncEnforcementSettings: Decodable {
 struct SettingsSyncResponse: Decodable {
     let settings: SyncEnforcementSettings
     let serverTimestamp: Date
+    let studentFacingUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case settings
         case serverTimestamp = "server_timestamp"
+        case studentFacingUrl = "student_facing_url"
     }
 }

@@ -241,7 +241,7 @@ struct MovingViolationView: View {
 
         let fineAmount = ViolationTypeStore.shared.fineAmount(forCode: selectedViolation)
         let offenseNumber = db.offenseCount(forPlate: normalizedPlate)
-        let baseURL = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let baseURL = AppSettings.shared.paymentBaseURL
         let paymentUrl = baseURL.isEmpty ? "" : "\(baseURL)/pay?ticket=\(ticket.ticketId)"
 
         ticket.fineAmount = fineAmount

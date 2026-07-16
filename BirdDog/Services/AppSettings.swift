@@ -16,6 +16,7 @@ final class AppSettings: ObservableObject {
     private static let oktaRedirectURIKey = "AppSettings.oktaRedirectURI"
     private static let wildcardZonesKey = "AppSettings.wildcardZones"
     private static let highBandwidthModeKey = "AppSettings.highBandwidthMode"
+    private static let studentFacingURLKey = "AppSettings.studentFacingURL"
     private static let defaultPasscode = "1234"
     private static let defaultRedirectURI = "edu.moravian.birddog://callback"
     /// Default wildcard zone labels — permits with these lot-zone strings are valid in any lot.
@@ -70,6 +71,18 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(highBandwidthMode, forKey: Self.highBandwidthModeKey) }
     }
 
+    /// Student-facing base URL for payment links (synced from server).
+    /// Falls back to houndDogURL when empty.
+    @Published var studentFacingURL: String {
+        didSet { UserDefaults.standard.set(studentFacingURL, forKey: Self.studentFacingURLKey) }
+    }
+
+    /// The base URL to use for payment QR codes and deep links.
+    var paymentBaseURL: String {
+        let url = studentFacingURL.isEmpty ? houndDogURL : studentFacingURL
+        return url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
     /// Parsed set of normalised wildcard zone labels.
     var wildcardZoneSet: Set<String> {
         Set(wildcardZones.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).uppercased() })
@@ -95,6 +108,7 @@ final class AppSettings: ObservableObject {
         self.oktaRedirectURI = UserDefaults.standard.string(forKey: Self.oktaRedirectURIKey) ?? Self.defaultRedirectURI
         self.wildcardZones = UserDefaults.standard.string(forKey: Self.wildcardZonesKey) ?? Self.defaultWildcardZones
         self.highBandwidthMode = UserDefaults.standard.bool(forKey: Self.highBandwidthModeKey)
+        self.studentFacingURL = UserDefaults.standard.string(forKey: Self.studentFacingURLKey) ?? ""
     }
 
     func attemptUnlock(with code: String) -> Bool {

@@ -3,16 +3,16 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://quarry:quarry@localhost:5432/quarry"
-    cors_origins: list[str] = ["https://quarry.moravian.edu"]
+    cors_origins: list[str] = ["https://parking.moravian.edu", "https://quarry.moravian.edu"]
     api_key_header: str = "Authorization"
     secret_key: str = ""
     debug: bool = False
 
     # Instance identity (used in QR pairing payload)
-    public_url: str = "https://quarry.moravian.edu"
+    public_url: str = "https://parking.moravian.edu"
     # Student-facing vanity URL (e.g. https://parking.moravian.edu).
     # Falls back to public_url when empty.
-    student_url: str = ""
+    student_url: str = "https://parking.moravian.edu"
     school_name: str = ""
 
     # Branding
