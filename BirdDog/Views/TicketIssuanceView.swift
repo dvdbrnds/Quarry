@@ -340,38 +340,29 @@ struct TicketIssuanceView: View {
                 }
             }
 
-            if printerService.isConnected {
-                if result.notificationSent {
-                    Button {
-                        printTicket(result)
-                    } label: {
-                        HStack {
-                            Image(systemName: "printer")
-                            Text(isPrinting ? "Printing…" : "Print Copy (Optional)")
-                        }
-                        .font(.subheadline)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.secondary)
-                    .disabled(isPrinting)
-                } else {
-                    Button {
-                        printTicket(result)
-                    } label: {
-                        HStack {
-                            Image(systemName: "printer.fill")
-                            Text(isPrinting ? "Printing…" : "Print Ticket")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isPrinting)
+            printButton(for: result)
+
+            if printerService.connectionState == .connecting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Connecting to printer…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+            } else if !printerService.isConnected {
+                Text(printerService.hasSavedPrinter
+                     ? "Printer not connected — tap Print to reconnect."
+                     : "No printer paired. Pair one in Settings → Printer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
             if let printError {
                 Text(printError)
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
             }
 
             Button("Done") { dismiss() }
@@ -388,9 +379,10 @@ struct TicketIssuanceView: View {
             }
         }
         .onAppear {
-            // Only auto-print when no email notification was delivered
-            if !result.notificationSent && printerService.autoPrintEnabled && printerService.isConnected {
+            if !result.notificationSent && printerService.autoPrintEnabled {
                 printTicket(result)
+            } else if !printerService.isConnected && printerService.hasSavedPrinter {
+                printerService.reconnectSaved()
             }
         }
     }
@@ -436,6 +428,27 @@ struct TicketIssuanceView: View {
 
     private func violationLabel(for code: String) -> String {
         violationTypes.first(where: { $0.0 == code })?.1 ?? code
+    }
+
+    @ViewBuilder
+    private func printButton(for result: HoundDogSyncService.TicketUploadResponse) -> some View {
+        let label = HStack {
+            Image(systemName: result.notificationSent ? "printer" : "printer.fill")
+            Text(isPrinting
+                 ? "Printing…"
+                 : (result.notificationSent ? "Print Copy" : "Print Ticket"))
+        }
+        .frame(maxWidth: .infinity)
+
+        if result.notificationSent {
+            Button { printTicket(result) } label: { label }
+                .buttonStyle(.bordered)
+                .disabled(isPrinting || printerService.connectionState == .connecting)
+        } else {
+            Button { printTicket(result) } label: { label }
+                .buttonStyle(.borderedProminent)
+                .disabled(isPrinting || printerService.connectionState == .connecting)
+        }
     }
 
     private func printTicket(_ result: HoundDogSyncService.TicketUploadResponse) {

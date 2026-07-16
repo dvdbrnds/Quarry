@@ -228,27 +228,43 @@ struct MovingViolationView: View {
                 }
             }
 
-            if printerService.isConnected {
-                Button {
-                    printTicket(result)
-                } label: {
-                    HStack {
-                        Image(systemName: "printer.fill")
-                        Text(isPrinting ? "Printing…" : "Print Citation")
-                    }
+            Button {
+                printTicket(result)
+            } label: {
+                HStack {
+                    Image(systemName: "printer.fill")
+                    Text(isPrinting ? "Printing…" : "Print Citation")
                 }
-                .buttonStyle(.bordered)
-                .disabled(isPrinting)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isPrinting || printerService.connectionState == .connecting)
+
+            if printerService.connectionState == .connecting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Connecting to printer…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !printerService.isConnected {
+                Text(printerService.hasSavedPrinter
+                     ? "Printer not connected — tap Print to reconnect."
+                     : "No printer paired. Pair one in Settings → Printer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
             if let printError {
                 Text(printError)
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
             }
 
             Button("Done") { dismiss() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .padding(.top)
         }
         .padding()
@@ -260,8 +276,10 @@ struct MovingViolationView: View {
             }
         }
         .onAppear {
-            if printerService.autoPrintEnabled && printerService.isConnected {
+            if printerService.autoPrintEnabled {
                 printTicket(result)
+            } else if !printerService.isConnected && printerService.hasSavedPrinter {
+                printerService.reconnectSaved()
             }
         }
     }

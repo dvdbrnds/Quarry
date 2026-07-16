@@ -17,6 +17,11 @@ struct BirdDogApp: App {
         Task.detached(priority: .utility) { @MainActor in
             PlateDatabase.shared.pruneExpiredPermits()
         }
+        Task { @MainActor in
+            if PrinterService.shared.hasSavedPrinter {
+                PrinterService.shared.reconnectSaved()
+            }
+        }
     }
 
     var body: some Scene {

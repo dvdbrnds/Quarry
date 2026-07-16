@@ -100,30 +100,41 @@ final class PrinterService: ObservableObject {
 
     func connect(to discovered: DiscoveredPrinter) {
         Task {
-            await disconnect()
-
-            connectionState = .connecting
-            lastError = nil
-
-            let settings = StarConnectionSettings(
-                interfaceType: discovered.interfaceType,
-                identifier: discovered.id
-            )
-            let p = StarPrinter(settings)
-
             do {
-                try await p.open()
-                self.printer = p
-                self.printerName = discovered.displayName
-                self.connectionState = .connected
-
-                UserDefaults.standard.set(discovered.id, forKey: Self.savedIdentifierKey)
-                UserDefaults.standard.set(discovered.interfaceType.rawValue, forKey: Self.savedInterfaceKey)
+                try await connectAndWait(to: discovered)
             } catch {
-                connectionState = .error
-                lastError = error.localizedDescription
-                await p.close()
+                // lastError / connectionState already set by connectAndWait
             }
+        }
+    }
+
+    @discardableResult
+    func connectAndWait(to discovered: DiscoveredPrinter) async throws -> Bool {
+        await disconnect()
+
+        connectionState = .connecting
+        lastError = nil
+
+        let settings = StarConnectionSettings(
+            interfaceType: discovered.interfaceType,
+            identifier: discovered.id
+        )
+        let p = StarPrinter(settings)
+
+        do {
+            try await p.open()
+            self.printer = p
+            self.printerName = discovered.displayName.isEmpty ? discovered.id : discovered.displayName
+            self.connectionState = .connected
+
+            UserDefaults.standard.set(discovered.id, forKey: Self.savedIdentifierKey)
+            UserDefaults.standard.set(discovered.interfaceType.rawValue, forKey: Self.savedInterfaceKey)
+            return true
+        } catch {
+            connectionState = .error
+            lastError = error.localizedDescription
+            await p.close()
+            throw error
         }
     }
 
@@ -137,10 +148,17 @@ final class PrinterService: ObservableObject {
     }
 
     func reconnectSaved() {
+        Task {
+            try? await reconnectSavedAndWait()
+        }
+    }
+
+    @discardableResult
+    func reconnectSavedAndWait() async throws -> Bool {
         guard let identifier = UserDefaults.standard.string(forKey: Self.savedIdentifierKey),
               let rawInterface = UserDefaults.standard.object(forKey: Self.savedInterfaceKey) as? Int,
               let interfaceType = InterfaceType(rawValue: rawInterface) else {
-            return
+            throw PrintError.notConfigured
         }
 
         let discovered = DiscoveredPrinter(
@@ -148,12 +166,24 @@ final class PrinterService: ObservableObject {
             interfaceType: interfaceType,
             model: ""
         )
-        connect(to: discovered)
+        return try await connectAndWait(to: discovered)
+    }
+
+    /// Ensures a printer is ready before printing. Reconnects a saved printer if needed.
+    func ensureConnected() async throws {
+        if isConnected, printer != nil { return }
+        if hasSavedPrinter {
+            try await reconnectSavedAndWait()
+            return
+        }
+        throw PrintError.notConfigured
     }
 
     // MARK: - Print
 
     func printCommands(_ commands: String) async throws {
+        try await ensureConnected()
+
         guard let p = printer else {
             throw PrintError.notConnected
         }
@@ -195,10 +225,12 @@ final class PrinterService: ObservableObject {
 
     enum PrintError: LocalizedError {
         case notConnected
+        case notConfigured
 
         var errorDescription: String? {
             switch self {
             case .notConnected: return "No printer connected"
+            case .notConfigured: return "No printer paired. Open Settings → Printer to connect a Star Micronics printer."
             }
         }
     }
