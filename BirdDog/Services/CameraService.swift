@@ -41,7 +41,7 @@ struct FrameMetrics: Sendable {
     }
 }
 
-final class CameraService: NSObject, ObservableObject {
+final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     let session = AVCaptureSession()
     weak var delegate: CameraServiceDelegate?
