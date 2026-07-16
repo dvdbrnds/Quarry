@@ -138,7 +138,43 @@ final class CameraService: NSObject, ObservableObject {
     func captureViolationPhoto() -> String? {
         guard let buffer = latestSampleBuffer,
               let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
+        return saveBufferAsJPEG(imageBuffer)
+    }
 
+    /// Briefly resumes the camera to grab a fresh frame, then stops again.
+    /// Use this when the session is paused but you need a new photo.
+    func captureOneShotPhoto() async -> String? {
+        let wasRunning = isRunning
+        if !wasRunning {
+            await withCheckedContinuation { cont in
+                sessionQueue.async { [weak self] in
+                    guard let self else { cont.resume(); return }
+                    if !self.isRunning {
+                        self.session.startRunning()
+                        self.isRunning = true
+                    }
+                    cont.resume()
+                }
+            }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+
+        let path = captureViolationPhoto()
+
+        if !wasRunning {
+            await withCheckedContinuation { cont in
+                sessionQueue.async { [weak self] in
+                    guard let self, self.isRunning else { cont.resume(); return }
+                    self.session.stopRunning()
+                    self.isRunning = false
+                    cont.resume()
+                }
+            }
+        }
+        return path
+    }
+
+    private func saveBufferAsJPEG(_ imageBuffer: CVPixelBuffer) -> String? {
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         let context = CIContext()
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }

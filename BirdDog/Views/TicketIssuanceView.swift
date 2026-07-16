@@ -275,7 +275,7 @@ struct TicketIssuanceView: View {
         isCapturingPhoto = true
         let timestamp = Date()
         Task.detached(priority: .userInitiated) {
-            let path = camera.captureViolationPhoto()
+            let path = await camera.captureOneShotPhoto()
             let image: UIImage? = if let path { UIImage(contentsOfFile: path) } else { nil }
             await MainActor.run {
                 captureTimestamp = timestamp
