@@ -61,6 +61,20 @@ final class ViolationTypeStore: ObservableObject {
         saveCached(mapped)
     }
 
+    func types(in category: String) -> [ViolationType] {
+        types.filter { $0.category == category }
+    }
+
+    /// Picks the first preferred code that exists for the category, else the first type in that category.
+    func resolveCode(preferred: [String], category: String) -> String {
+        let available = types(in: category)
+        let codes = Set(available.map(\.code))
+        if let match = preferred.first(where: { codes.contains($0) }) {
+            return match
+        }
+        return available.first?.code ?? preferred.first ?? ""
+    }
+
     func label(for code: String) -> String {
         types.first(where: { $0.code == code })?.label ?? code
     }

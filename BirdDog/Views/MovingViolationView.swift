@@ -110,7 +110,7 @@ struct MovingViolationView: View {
                     }
                 } else {
                     HStack {
-                        Image(systemName: "camera.slash")
+                        Image(systemName: "camera")
                             .foregroundStyle(.secondary)
                         Text("No photo captured")
                             .font(.caption)
@@ -154,8 +154,21 @@ struct MovingViolationView: View {
             }
         }
         .onAppear {
+            ensureValidViolationSelection()
             capturePhoto()
         }
+        .onChange(of: violationTypeStore.types.count) { _, _ in
+            ensureValidViolationSelection()
+        }
+    }
+
+    private func ensureValidViolationSelection() {
+        let codes = Set(movingViolations.map(\.0))
+        if codes.contains(selectedViolation) { return }
+        selectedViolation = violationTypeStore.resolveCode(
+            preferred: ["stop_sign", "speeding"],
+            category: "moving"
+        )
     }
 
     private var evidenceTimestampString: String {

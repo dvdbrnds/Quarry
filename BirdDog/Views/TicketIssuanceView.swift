@@ -30,7 +30,16 @@ struct TicketIssuanceView: View {
     var onTicketIssued: ((String) -> Void)?
 
     private var violationTypes: [(String, String)] {
-        violationTypeStore.types.map { ($0.code, $0.label) }
+        violationTypeStore.types(in: "parking").map { ($0.code, $0.label) }
+    }
+
+    private func ensureValidViolationSelection(preferred: [String] = []) {
+        let codes = Set(violationTypes.map(\.0))
+        if codes.contains(selectedViolation) { return }
+        selectedViolation = violationTypeStore.resolveCode(
+            preferred: preferred.isEmpty ? ["no_permit_displayed", "no_permit", "unauthorized_permit"] : preferred,
+            category: "parking"
+        )
     }
 
     var body: some View {
@@ -130,7 +139,7 @@ struct TicketIssuanceView: View {
                     }
                 } else {
                     HStack {
-                        Image(systemName: "camera.slash")
+                        Image(systemName: "camera")
                             .foregroundStyle(.secondary)
                         Text("No photo captured")
                             .font(.caption)
@@ -204,21 +213,33 @@ struct TicketIssuanceView: View {
                 }
                 switch entry.authStatus {
                 case .unknown:
-                    selectedViolation = "no_permit"
+                    ensureValidViolationSelection(preferred: [
+                        "no_permit", "no_permit_displayed", "unauthorized_permit", "first_year_unauthorized"
+                    ])
                 case .wrongLot:
-                    selectedViolation = "wrong_lot"
+                    ensureValidViolationSelection(preferred: [
+                        "wrong_lot", "unauthorized_premium", "unauthorized_permit", "prohibited_parking"
+                    ])
                 case .expired:
-                    selectedViolation = "expired_permit"
+                    ensureValidViolationSelection(preferred: [
+                        "expired_permit", "unauthorized_permit", "no_permit_displayed"
+                    ])
                 default:
-                    break
+                    ensureValidViolationSelection()
                 }
             } else if let pre = prefilledPlate {
                 plate = pre
+                ensureValidViolationSelection()
+            } else {
+                ensureValidViolationSelection()
             }
             if selectedLot.isEmpty, let current = geofence.currentLotName {
                 selectedLot = current
             }
             capturePhoto()
+        }
+        .onChange(of: violationTypeStore.types.count) { _, _ in
+            ensureValidViolationSelection()
         }
     }
 
