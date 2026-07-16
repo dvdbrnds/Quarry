@@ -32,6 +32,24 @@ export default function BrandingSettings() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function saveBrandIdentity() {
+    if (!data) return;
+    try {
+      const res = await fetch("/api/branding", {
+        method: "PUT",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name: data.brand_name,
+          primary_color: data.primary_color,
+          accent_color: data.accent_color,
+        }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      message.success("Branding saved");
+      brand.brandName !== data.brand_name && window.location.reload();
+    } catch { message.error("Failed to save branding"); }
+  }
+
   async function handleUpload(type: "logo" | "favicon", file: File) {
     setUploading(type);
     try {
@@ -66,7 +84,12 @@ export default function BrandingSettings() {
             <div className="flex items-center gap-4 mb-3">
               {data.logo_url ? (
                 <div className="border rounded-lg p-3 bg-gray-50">
-                  <img src={data.logo_url} alt="Current logo" className="h-12 w-auto" />
+                  <img
+                    src={data.logo_url}
+                    alt="Current logo"
+                    className="h-12 w-auto"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
                 </div>
               ) : (
                 <div className="border rounded-lg p-3 bg-gray-50 text-sm text-ink-mute">
@@ -101,7 +124,12 @@ export default function BrandingSettings() {
             </p>
             <div className="flex items-center gap-4 mb-3">
               <div className="border rounded-lg p-3 bg-gray-50">
-                <img src={data.favicon_url} alt="Current favicon" className="h-8 w-auto" />
+                <img
+                  src={data.favicon_url}
+                  alt="Current favicon"
+                  className="h-8 w-auto"
+                  onError={(e) => { (e.target as HTMLImageElement).src = "/favicon.png"; }}
+                />
               </div>
             </div>
             <input
@@ -127,37 +155,45 @@ export default function BrandingSettings() {
       </Card>
 
       <Card title="Brand Identity">
-        <p className="text-xs text-ink-mute mb-4">
-          These values are set via environment variables. Change them in Coolify and redeploy.
-        </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product Name</label>
-            <Input value={data.brand_name} disabled />
-            <p className="text-xs text-ink-mute mt-1">Env: <code>BRAND_NAME</code></p>
+            <Input
+              value={data.brand_name}
+              onChange={(e) => setData({ ...data, brand_name: e.target.value })}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Primary Color</label>
             <div className="flex items-center gap-2">
               <div
-                className="w-8 h-8 rounded border"
+                className="w-8 h-8 rounded border shrink-0"
                 style={{ background: data.primary_color }}
               />
-              <Input value={data.primary_color} disabled className="flex-1" />
+              <Input
+                value={data.primary_color}
+                onChange={(e) => setData({ ...data, primary_color: e.target.value })}
+                className="flex-1"
+              />
             </div>
-            <p className="text-xs text-ink-mute mt-1">Env: <code>BRAND_PRIMARY_COLOR</code></p>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Accent Color</label>
             <div className="flex items-center gap-2">
               <div
-                className="w-8 h-8 rounded border"
+                className="w-8 h-8 rounded border shrink-0"
                 style={{ background: data.accent_color }}
               />
-              <Input value={data.accent_color} disabled className="flex-1" />
+              <Input
+                value={data.accent_color}
+                onChange={(e) => setData({ ...data, accent_color: e.target.value })}
+                className="flex-1"
+              />
             </div>
-            <p className="text-xs text-ink-mute mt-1">Env: <code>BRAND_ACCENT_COLOR</code></p>
           </div>
+        </div>
+        <div className="mt-4">
+          <Button type="primary" onClick={saveBrandIdentity}>Save Branding</Button>
         </div>
       </Card>
 
