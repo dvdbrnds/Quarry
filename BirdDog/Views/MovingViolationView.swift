@@ -25,12 +25,11 @@ struct MovingViolationView: View {
 
     var cameraService: CameraService?
 
-    @State private var movingViolations: [(String, String)] = []
     @State private var officerName = ""
     @State private var officerEmail = ""
 
-    private func loadViolationTypes() {
-        movingViolations = ViolationTypeStore.shared.types
+    private var movingViolations: [(String, String)] {
+        ViolationTypeStore.shared.types
             .filter { $0.category == "moving" }
             .map { ($0.code, $0.label) }
     }
@@ -64,9 +63,7 @@ struct MovingViolationView: View {
 
             Section("Violation") {
                 Picker("Type", selection: $selectedViolation) {
-                    if !movingViolations.contains(where: { $0.0 == selectedViolation }) {
-                        Text("— Select —").tag("")
-                    }
+                    Text("— Select —").tag("")
                     ForEach(movingViolations, id: \.0) { code, label in
                         Text(label).tag(code)
                     }
@@ -161,7 +158,6 @@ struct MovingViolationView: View {
         .onAppear {
             officerName = OfficerAuthService.shared.officerName
             officerEmail = OfficerAuthService.shared.officerEmail
-            loadViolationTypes()
             ensureValidViolationSelection()
             capturePhoto()
         }

@@ -30,18 +30,14 @@ struct TicketIssuanceView: View {
     var prefilledEntry: ScannedPlate?
     var onTicketIssued: ((String) -> Void)?
 
-    @State private var violationTypes: [(String, String)] = []
-
-    private func loadViolationTypes() {
-        let store = ViolationTypeStore.shared
-        violationTypes = store.types(in: "parking").map { ($0.code, $0.label) }
+    private var violationTypes: [(String, String)] {
+        ViolationTypeStore.shared.types(in: "parking").map { ($0.code, $0.label) }
     }
 
     private func ensureValidViolationSelection(preferred: [String] = []) {
         let codes = Set(violationTypes.map(\.0))
         if codes.contains(selectedViolation) { return }
-        let store = ViolationTypeStore.shared
-        selectedViolation = store.resolveCode(
+        selectedViolation = ViolationTypeStore.shared.resolveCode(
             preferred: preferred.isEmpty ? ["no_permit_displayed", "no_permit", "unauthorized_permit"] : preferred,
             category: "parking"
         )
@@ -105,17 +101,17 @@ struct TicketIssuanceView: View {
 
             Section("Violation") {
                 Picker("Type", selection: $selectedViolation) {
-                    if !violationTypes.contains(where: { $0.0 == selectedViolation }) {
-                        Text("— Select —").tag("")
-                    }
+                    Text("— Select —").tag("")
                     ForEach(violationTypes, id: \.0) { code, label in
                         Text(label).tag(code)
                     }
                 }
-                Picker("Lot", selection: $selectedLot) {
-                    Text("— Select —").tag("")
-                    ForEach(lots, id: \.id) { lot in
-                        Text(lot.name).tag(lot.name)
+                if !lots.isEmpty {
+                    Picker("Lot", selection: $selectedLot) {
+                        Text("— Select —").tag("")
+                        ForEach(lots, id: \.id) { lot in
+                            Text(lot.name).tag(lot.name)
+                        }
                     }
                 }
             }
@@ -215,7 +211,6 @@ struct TicketIssuanceView: View {
             lots = geo.lots
             officerName = OfficerAuthService.shared.officerName
             officerEmail = OfficerAuthService.shared.officerEmail
-            loadViolationTypes()
 
             if let entry = prefilledEntry {
                 plate = entry.text
