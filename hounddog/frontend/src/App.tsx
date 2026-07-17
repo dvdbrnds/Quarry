@@ -97,6 +97,15 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/settings">Settings</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
+          <a
+            href="/employee-parking"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs px-3 py-1 rounded-md font-medium transition-colors"
+            style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
+          >
+            My Permit
+          </a>
           <span className="text-xs text-bone/70">{user.email}</span>
           <span
             style={{ background: `${brand.accentColor}33`, color: brand.accentColor }}
