@@ -1,10 +1,13 @@
 """Okta OIDC token verification for the dashboard."""
 
+import logging
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
 import httpx
 
 from ..config import settings
+
+log = logging.getLogger(__name__)
 
 _jwks_cache: dict | None = None
 
@@ -32,8 +35,9 @@ async def _fetch_userinfo(access_token: str) -> dict:
             )
             if resp.status_code == 200:
                 return resp.json()
-    except Exception:
-        pass
+            log.warning("Okta userinfo returned status %s", resp.status_code)
+    except Exception as exc:
+        log.warning("Failed to fetch Okta userinfo: %s", exc)
     return {}
 
 
@@ -125,11 +129,20 @@ async def verify_token_string(token: str) -> OktaUser:
         class_year_raw = payload.get(settings.okta_class_year_claim)
         class_year = int(class_year_raw) if class_year_raw else None
 
+        _need_userinfo = (
+            not groups
+            or not given_name
+            or (settings.admin_okta_groups not in groups
+                and settings.staff_okta_groups not in groups)
+        )
+
         userinfo: dict = {}
-        if not groups or not given_name:
+        if _need_userinfo:
             userinfo = await _fetch_userinfo(token)
-            if not groups:
-                groups = userinfo.get(settings.okta_claim, [])
+            ui_groups = userinfo.get(settings.okta_claim, [])
+            if ui_groups:
+                merged = set(groups) | set(ui_groups)
+                groups = list(merged)
             if not given_name:
                 given_name = userinfo.get("given_name", "")
                 family_name = userinfo.get("family_name", family_name)
@@ -188,11 +201,20 @@ async def get_current_user(request: Request) -> OktaUser:
         class_year_raw = payload.get(settings.okta_class_year_claim)
         class_year = int(class_year_raw) if class_year_raw else None
 
+        _need_userinfo = (
+            not groups
+            or not given_name
+            or (settings.admin_okta_groups not in groups
+                and settings.staff_okta_groups not in groups)
+        )
+
         userinfo: dict = {}
-        if not groups or not given_name:
+        if _need_userinfo:
             userinfo = await _fetch_userinfo(token)
-            if not groups:
-                groups = userinfo.get(settings.okta_claim, [])
+            ui_groups = userinfo.get(settings.okta_claim, [])
+            if ui_groups:
+                merged = set(groups) | set(ui_groups)
+                groups = list(merged)
             if not given_name:
                 given_name = userinfo.get("given_name", "")
                 family_name = userinfo.get("family_name", family_name)
@@ -200,6 +222,8 @@ async def get_current_user(request: Request) -> OktaUser:
             if class_year is None:
                 cy = userinfo.get(settings.okta_class_year_claim)
                 class_year = int(cy) if cy else None
+
+        log.debug("Auth resolved: email=%s groups=%s", email, groups)
 
         user = OktaUser(
             sub=payload.get("sub", ""),
@@ -221,6 +245,10 @@ async def get_current_user(request: Request) -> OktaUser:
 def require_role(*roles: str):
     async def dependency(user: OktaUser = Depends(get_current_user)):
         if not user.has_role(*roles):
+            log.warning(
+                "Access denied for %s (role=%s, groups=%s) — requires %s",
+                user.email, user.role, user.groups, roles,
+            )
             raise HTTPException(403, f"Requires one of: {', '.join(roles)}")
         return user
     return dependency

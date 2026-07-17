@@ -62,10 +62,17 @@ export default function BrandingSettings() {
           accent_color: data.accent_color,
         }),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        if (res.status === 403) {
+          message.error("Permission denied — your session may have expired. Try logging out and back in.");
+        } else {
+          message.error("Failed to save branding");
+        }
+        return;
+      }
       message.success("Branding saved — reloading…");
       setTimeout(() => window.location.reload(), 400);
-    } catch { message.error("Failed to save branding"); }
+    } catch { message.error("Failed to save branding — network error"); }
   }
 
   async function handleUpload(type: "logo" | "favicon", file: File) {
