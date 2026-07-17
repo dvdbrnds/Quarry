@@ -83,6 +83,7 @@ class BrandIdentityUpdate(BaseModel):
 
 
 @admin_router.put("")
+@admin_router.post("/identity")
 async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = Depends(get_db)):
     bs = await _get_or_create(db)
     bs.brand_name = body.brand_name

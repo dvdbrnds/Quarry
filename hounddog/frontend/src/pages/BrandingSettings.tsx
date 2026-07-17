@@ -53,8 +53,8 @@ export default function BrandingSettings() {
   async function saveBrandIdentity() {
     if (!data) return;
     try {
-      const res = await fetch("/api/branding", {
-        method: "PUT",
+      const res = await fetch("/api/branding/identity", {
+        method: "POST",
         headers: { ...(await authHeaders()), "Content-Type": "application/json" },
         body: JSON.stringify({
           brand_name: data.brand_name,
@@ -63,10 +63,11 @@ export default function BrandingSettings() {
         }),
       });
       if (!res.ok) {
+        const detail = await res.text().catch(() => "");
         if (res.status === 403) {
-          message.error("Permission denied — your session may have expired. Try logging out and back in.");
+          message.error("Permission denied — try logging out and back in.");
         } else {
-          message.error("Failed to save branding");
+          message.error(`Failed to save branding: ${res.status} ${detail}`);
         }
         return;
       }
