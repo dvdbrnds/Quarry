@@ -21,7 +21,7 @@ from ..schemas.messaging import (
     SendMessageRequest,
     SendMessageResult,
 )
-from ..services.email import send_email
+from ..services.email import send_email, branded_email_shell
 from ..services.sms import send_bulk_sms_async
 
 router = APIRouter(dependencies=[Depends(require_role("admin", "staff"))])
@@ -191,7 +191,15 @@ async def send_message(data: SendMessageRequest, db: AsyncSession = Depends(get_
         email_recipients.extend(data.extra_emails)
         email_recipients = list(set(email_recipients))
         if email_recipients and email_subject:
-            success = await send_email(email_recipients, email_subject, email_body)
+            school = settings.school_name or "Campus"
+            wrapped_html = await branded_email_shell(
+                school,
+                f'<h2 style="color:{settings.brand_primary_color};margin:0 0 12px;'
+                f'font-size:20px;">{email_subject}</h2>'
+                f'<div style="color:#333;font-size:15px;line-height:1.7;'
+                f'white-space:pre-wrap;">{email_body}</div>',
+            )
+            success = await send_email(email_recipients, email_subject, wrapped_html, email_body)
             emails_sent = len(email_recipients) if success else 0
 
     if data.send_sms and sms_body:

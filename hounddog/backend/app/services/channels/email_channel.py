@@ -1,7 +1,8 @@
 import logging
 
 from . import AlertChannel, ChannelResult
-from ..email import send_email, branded_email_shell
+from ..email import send_email, _load_branding
+from ..email_templates import render_alert_email
 from ...config import settings
 
 logger = logging.getLogger("quarry.channels.email")
@@ -19,24 +20,19 @@ class EmailChannel(AlertChannel):
         if not email_recipients or not alert.subject:
             return ChannelResult(channel=self.name)
 
+        b = await _load_branding()
         school = settings.school_name or "Campus"
         sent = 0
         failed = 0
 
         for sub in email_recipients:
             unsub_url = f"{settings.student_facing_url}/alerts/unsubscribe/{sub.unsubscribe_token}"
-            inner = (
-                f'<h2 style="color:{settings.brand_primary_color};margin:0 0 12px;font-size:20px;">{alert.subject}</h2>'
-                f'<div style="color:#333;font-size:15px;line-height:1.7;white-space:pre-wrap;">'
-                f'{alert.body_text}</div>'
+            html, text_body = render_alert_email(
+                alert.category, alert.subject, alert.body_text,
+                unsubscribe_url=unsub_url, school_name=school,
+                primary=b["primary_color"], accent=b["accent_color"],
+                brand_name=b["brand_name"], has_logo=b["has_logo"],
             )
-            footer_extra = (
-                f'<p style="font-size:11px;color:#aaa;margin:0 0 8px;">'
-                f'<a href="{unsub_url}" style="color:#aaa;text-decoration:underline;">'
-                f'Unsubscribe from alerts</a></p>'
-            )
-            html = await branded_email_shell(school, inner, footer_extra=footer_extra)
-            text_body = f"{alert.body_text}\n\nUnsubscribe: {unsub_url}"
             success = await send_email([sub.email], alert.subject, html, text_body)
             if success:
                 sent += 1

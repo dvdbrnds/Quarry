@@ -161,50 +161,28 @@ async def _send_maxient_email_referral(
     ticket_count: int,
     ticket_ids: list[str],
 ):
-    from app.services.email import send_email, branded_email_shell
+    from app.services.email import send_email, _load_branding
+    from app.services.email_templates import render_conduct_referral_email
 
+    b = await _load_branding()
     school = settings.school_name or "Campus"
     subject = f"Parking Conduct Referral \u2014 {student_name or student_id} ({ticket_count} violations)"
-    ticket_list = "".join(f'<li style="font-size:14px;padding:2px 0;">{tid}</li>' for tid in ticket_ids)
-    inner = (
-        f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Automatic Conduct Referral</h2>'
-        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
-        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
-        'text-transform:uppercase;letter-spacing:1px;">Student Details</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Student</td>'
-        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{student_name or "Unknown"} ({student_id})</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Email</td>'
-        f'<td style="padding:10px 16px;font-size:14px;">{student_email or "Unknown"}</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">License Plate</td>'
-        f'<td style="padding:10px 16px;font-family:monospace;font-weight:600;font-size:14px;">{plate}</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Unpaid Violations</td>'
-        f'<td style="padding:10px 16px;font-weight:600;color:#dc2626;font-size:14px;">{ticket_count}</td></tr>'
-        '<tr>'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Threshold</td>'
-        f'<td style="padding:10px 16px;font-size:14px;">{settings.conduct_referral_threshold}</td></tr>'
-        '</table>'
-        f'<p style="color:#333;font-size:14px;font-weight:600;margin:16px 0 4px;">Ticket IDs:</p>'
-        f'<ul style="margin:0 0 20px;padding-left:20px;color:#333;">{ticket_list}</ul>'
-        f'<p style="color:#666;font-size:13px;line-height:1.6;">This referral was generated '
-        f'automatically when the student exceeded {settings.conduct_referral_threshold} unpaid '
-        'parking violations.</p>'
-        '<div style="text-align:center;margin:24px 0;">'
-        f'<a href="{settings.public_url}/admin/tickets?student={student_id}" '
-        f'style="display:inline-block;padding:12px 32px;background:{settings.brand_primary_color};color:#ffffff;'
-        'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
-        'View Details</a></div>'
+    detail_url = f"{settings.public_url}/admin/tickets?student={student_id}"
+
+    body_html, body_text = render_conduct_referral_email(
+        student_id, student_name, student_email, plate,
+        ticket_count, ticket_ids, settings.conduct_referral_threshold, detail_url,
+        school_name=school,
+        primary=b["primary_color"], accent=b["accent_color"],
+        brand_name=b["brand_name"], has_logo=b["has_logo"],
     )
-    body = await branded_email_shell(school, inner)
 
     try:
         await send_email(
             to=[settings.maxient_intake_email],
             subject=subject,
-            body_html=body,
+            body_html=body_html,
+            body_text=body_text,
         )
     except Exception as e:
         logger.error("Failed to send Maxient referral email: %s", e)
@@ -261,27 +239,23 @@ async def _notify_student_of_hold(
     if not student_email:
         return
 
-    from app.services.email import send_email, branded_email_shell
+    from app.services.email import send_email, _load_branding
+    from app.services.email_templates import render_hold_student_email
 
+    b = await _load_branding()
     school = settings.school_name or "Campus"
     subject = "Registration Hold \u2014 Unpaid Parking Violations"
-    inner = (
-        f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Registration Hold Notice</h2>'
-        f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {student_name or "Student"},</p>'
-        '<p style="color:#333;font-size:15px;line-height:1.6;">A hold has been placed on your '
-        f'university account due to <strong>{ticket_count} unpaid parking violations</strong>. '
-        'You will be unable to register for classes until all outstanding parking fines are paid.</p>'
-        '<div style="text-align:center;margin:28px 0;">'
-        f'<a href="{settings.student_facing_url}/pay" style="display:inline-block;padding:16px 40px;'
-        f'background:{settings.brand_primary_color};color:#ffffff;text-decoration:none;border-radius:8px;'
-        'font-weight:700;font-size:16px;">Pay Citations Now</a></div>'
-        '<p style="color:#666;font-size:13px;text-align:center;">If you believe this is in error, '
-        'please contact the Parking Office.</p>'
+    pay_url = f"{settings.student_facing_url}/pay"
+
+    body_html, body_text = render_hold_student_email(
+        student_name, ticket_count, pay_url,
+        school_name=school,
+        primary=b["primary_color"], accent=b["accent_color"],
+        brand_name=b["brand_name"], has_logo=b["has_logo"],
     )
-    body = await branded_email_shell(school, inner)
 
     try:
-        await send_email(to=[student_email], subject=subject, body_html=body)
+        await send_email(to=[student_email], subject=subject, body_html=body_html, body_text=body_text)
     except Exception as e:
         logger.error("Failed to send hold notification to %s: %s", student_email, e)
 
@@ -293,54 +267,28 @@ async def _notify_admin_of_hold(
     plate: str,
     ticket_count: int,
 ):
-    from app.services.email import send_email, branded_email_shell
+    from app.services.email import send_email, _load_branding
+    from app.services.email_templates import render_hold_admin_email
 
     admin_email = settings.smtp_from_address
     if not admin_email:
         return
 
+    b = await _load_branding()
     school = settings.school_name or "Campus"
     subject = f"Registration Hold Triggered \u2014 {student_name or student_id}"
-    if settings.sis_hold_api_url:
-        status_badge = (
-            '<div style="background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;'
-            'font-size:14px;font-weight:600;margin:20px 0;">Hold placed via SIS API</div>'
-        )
-    else:
-        status_badge = (
-            '<div style="background:#fef2f2;color:#991b1b;padding:10px 16px;border-radius:8px;'
-            'font-size:14px;font-weight:600;margin:20px 0;">SIS API not configured &mdash; '
-            'please place the hold manually in Banner/Workday</div>'
-        )
-    inner = (
-        f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Registration Hold Triggered</h2>'
-        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
-        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
-        'text-transform:uppercase;letter-spacing:1px;">Student Details</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Student</td>'
-        f'<td style="padding:10px 16px;font-weight:600;font-size:14px;">{student_name or "Unknown"} ({student_id})</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Email</td>'
-        f'<td style="padding:10px 16px;font-size:14px;">{student_email or "Unknown"}</td></tr>'
-        '<tr style="border-bottom:1px solid #eee;">'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Plate</td>'
-        f'<td style="padding:10px 16px;font-family:monospace;font-weight:600;font-size:14px;">{plate}</td></tr>'
-        '<tr>'
-        '<td style="padding:10px 16px;color:#666;font-size:14px;">Unpaid Violations</td>'
-        f'<td style="padding:10px 16px;font-weight:600;color:#dc2626;font-size:14px;">{ticket_count}</td></tr>'
-        '</table>'
-        f'{status_badge}'
-        '<div style="text-align:center;margin:24px 0;">'
-        f'<a href="{settings.public_url}/admin/tickets?student={student_id}" '
-        f'style="display:inline-block;padding:12px 32px;background:{settings.brand_primary_color};color:#ffffff;'
-        'text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">'
-        'View Details</a></div>'
+    detail_url = f"{settings.public_url}/admin/tickets?student={student_id}"
+
+    body_html, body_text = render_hold_admin_email(
+        student_id, student_name, student_email, plate, ticket_count,
+        sis_configured=bool(settings.sis_hold_api_url),
+        detail_url=detail_url, school_name=school,
+        primary=b["primary_color"], accent=b["accent_color"],
+        brand_name=b["brand_name"], has_logo=b["has_logo"],
     )
-    body = await branded_email_shell(school, inner)
 
     try:
-        await send_email(to=[admin_email], subject=subject, body_html=body)
+        await send_email(to=[admin_email], subject=subject, body_html=body_html, body_text=body_text)
     except Exception as e:
         logger.error("Failed to send admin hold notification: %s", e)
 
