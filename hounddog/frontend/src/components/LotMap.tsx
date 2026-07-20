@@ -22,6 +22,7 @@ function spotScale(zoom: number, selected: boolean): { iconScale: number; fontSi
 const LOT_OPEN = "#22C55E";
 const LOT_CLOSED = "#EF4444";
 const STREET_COLOR = "#3B82F6";
+const EXTERNAL_COLOR = "#F59E0B";
 
 const SPOT_TYPE_COLORS: Record<string, string> = {
   standard: "#3B82F6",
@@ -47,6 +48,7 @@ interface LotMapProps {
 }
 
 function lotFillColor(lot: Lot): string {
+  if (lot.lot_type === "external") return EXTERNAL_COLOR;
   if (lot.lot_type === "street") return STREET_COLOR;
   return lot.is_closed ? LOT_CLOSED : LOT_OPEN;
 }

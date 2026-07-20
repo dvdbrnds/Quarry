@@ -14,6 +14,8 @@ export interface AppConfig {
   google_maps_api_key: string;
   campus_lat: number;
   campus_lng: number;
+  public_map_requires_auth: boolean;
+  school_name: string;
 }
 
 let oktaAuth: OktaAuth | null = null;

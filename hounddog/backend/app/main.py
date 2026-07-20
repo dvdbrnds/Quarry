@@ -19,6 +19,7 @@ from .routers import (
     lots,
     messaging,
     notification_preferences,
+    parking_map,
     payments,
     permit_types,
     permits,
@@ -206,6 +207,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS campus VARCHAR(64)",
             # Lot vs street type
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS lot_type VARCHAR(32) DEFAULT 'lot'",
+            # External lot fields (third-party parking)
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS external_url VARCHAR(512)",
+            "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS external_provider VARCHAR(256)",
             # Sequential ticket numbers
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(32)",
             "CREATE SEQUENCE IF NOT EXISTS quarry_ticket_number_seq START WITH 1",
@@ -700,6 +704,7 @@ app.include_router(signage.public_router, prefix="/api/signage", tags=["signage-
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(branding.admin_router, prefix="/api/branding", tags=["branding"])
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
+app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

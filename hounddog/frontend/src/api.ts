@@ -156,6 +156,8 @@ export interface Lot {
   is_closed: boolean;
   has_sheepdog: boolean;
   lot_type: string;
+  external_url: string | null;
+  external_provider: string | null;
   campus: string | null;
   notes: string | null;
   zones?: LotZone[];

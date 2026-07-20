@@ -132,6 +132,9 @@ class Settings(BaseSettings):
     nws_poll_interval_seconds: int = 120
     nws_event_mappings: str = ""
 
+    # Public Parking Map
+    public_map_requires_auth: bool = False
+
     # SIS Subscriber Sync (Colleague)
     sis_subscriber_sync_enabled: bool = False
     sis_subscriber_sync_url: str = ""

@@ -68,6 +68,8 @@ class LotBase(BaseModel):
     is_closed: bool = False
     has_sheepdog: bool = False
     lot_type: str = "lot"
+    external_url: str | None = None
+    external_provider: str | None = None
     campus: str | None = None
     notes: str | None = None
 
@@ -87,6 +89,8 @@ class LotUpdate(BaseModel):
     is_snow_lot: bool | None = None
     has_sheepdog: bool | None = None
     lot_type: str | None = None
+    external_url: str | None = None
+    external_provider: str | None = None
     campus: str | None = None
     notes: str | None = None
 

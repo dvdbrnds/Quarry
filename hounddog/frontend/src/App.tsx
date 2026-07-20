@@ -20,6 +20,7 @@ import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
 import StaffPermits from "./pages/StaffPermits";
 import LotteryApply from "./pages/LotteryApply";
+import ParkingMap from "./pages/ParkingMap";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
@@ -187,6 +188,7 @@ export default function App() {
   const isSignageRoute = location.pathname.startsWith("/signage/player");
   const isLotteryRoute = location.pathname === "/parking";
   const isEmployeeParkingRoute = location.pathname === "/employee-parking";
+  const isParkingMapRoute = location.pathname === "/parking-map";
   const isRootRoute = location.pathname === "/";
   const isAuthCallback = location.pathname === "/auth/callback";
 
@@ -262,6 +264,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/employee-parking" element={<StaffPermits />} />
+      </Routes>
+    );
+  }
+
+  if (isParkingMapRoute) {
+    return (
+      <Routes>
+        <Route path="/parking-map" element={<ParkingMap />} />
       </Routes>
     );
   }

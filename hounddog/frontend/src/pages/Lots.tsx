@@ -46,6 +46,7 @@ const CAMPUS_OPTIONS = [
 const LOT_TYPE_OPTIONS = [
   { value: "lot", label: "Parking Lot" },
   { value: "street", label: "Street Parking" },
+  { value: "external", label: "External (Third-Party)" },
 ];
 
 function LotForm({
@@ -58,6 +59,7 @@ function LotForm({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
+  const watchedLotType = Form.useWatch("lot_type", form) ?? "lot";
 
   useEffect(() => {
     if (initial) {
@@ -71,6 +73,8 @@ function LotForm({
         is_snow_lot: initial.is_snow_lot,
         has_sheepdog: initial.has_sheepdog,
         notes: initial.notes ?? "",
+        external_url: initial.external_url ?? "",
+        external_provider: initial.external_provider ?? "",
         access_schedule_json: initial.access_schedule?.length ? JSON.stringify(initial.access_schedule, null, 2) : "",
       });
     } else {
@@ -88,18 +92,21 @@ function LotForm({
       catch { setScheduleError("Invalid JSON"); setSaving(false); return; }
     }
     try {
+      const isExternal = values.lot_type === "external";
       const data = {
         name: values.name, boundary,
-        total_spaces: values.total_spaces ?? 0,
-        handicap_spaces: values.handicap_spaces ?? 0,
-        designation_code: values.designation_code,
-        designation_label: designLabel,
-        is_snow_lot: values.is_snow_lot ?? false,
-        has_sheepdog: values.has_sheepdog ?? false,
+        total_spaces: isExternal ? 0 : (values.total_spaces ?? 0),
+        handicap_spaces: isExternal ? 0 : (values.handicap_spaces ?? 0),
+        designation_code: isExternal ? "" : values.designation_code,
+        designation_label: isExternal ? "" : designLabel,
+        is_snow_lot: isExternal ? false : (values.is_snow_lot ?? false),
+        has_sheepdog: isExternal ? false : (values.has_sheepdog ?? false),
         lot_type: values.lot_type ?? "lot",
+        external_url: isExternal ? (values.external_url || null) : null,
+        external_provider: isExternal ? (values.external_provider || null) : null,
         campus: values.campus || null,
         notes: values.notes || null,
-        ...(parsedSchedule !== undefined ? { access_schedule: parsedSchedule } : {}),
+        ...(parsedSchedule !== undefined && !isExternal ? { access_schedule: parsedSchedule } : {}),
       };
       if (initial) await api.lots.update(initial.id, data);
       else await api.lots.create(data);
@@ -124,31 +131,46 @@ function LotForm({
               <Select options={CAMPUS_OPTIONS} />
             </Form.Item>
           </div>
-          <Form.Item name="designation_code" label="Designation">
-            <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
-          </Form.Item>
-          <div className="grid grid-cols-2 gap-2">
-            <Form.Item name="total_spaces" label="Total Spaces">
-              <InputNumber className="w-full" />
-            </Form.Item>
-            <Form.Item name="handicap_spaces" label="HC Spaces">
-              <InputNumber className="w-full" />
-            </Form.Item>
-          </div>
-          <Form.Item name="is_snow_lot" valuePropName="checked">
-            <Checkbox>Snow lot (prohibited 11pm-7am during snow regulations)</Checkbox>
-          </Form.Item>
-          <Form.Item name="has_sheepdog" valuePropName="checked">
-            <Checkbox>SheepDog occupancy monitoring</Checkbox>
-          </Form.Item>
+          {watchedLotType === "external" ? (
+            <>
+              <Form.Item name="external_provider" label="Provider Name" rules={[{ required: true, message: "Provider name is required" }]}>
+                <Input placeholder="e.g. City of Bethlehem" />
+              </Form.Item>
+              <Form.Item name="external_url" label="Permit Purchase URL" rules={[{ required: true, message: "URL is required for external lots" }]}>
+                <Input placeholder="https://parking.bethlehem-pa.gov/permits" />
+              </Form.Item>
+            </>
+          ) : (
+            <>
+              <Form.Item name="designation_code" label="Designation">
+                <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
+              </Form.Item>
+              <div className="grid grid-cols-2 gap-2">
+                <Form.Item name="total_spaces" label="Total Spaces">
+                  <InputNumber className="w-full" />
+                </Form.Item>
+                <Form.Item name="handicap_spaces" label="HC Spaces">
+                  <InputNumber className="w-full" />
+                </Form.Item>
+              </div>
+              <Form.Item name="is_snow_lot" valuePropName="checked">
+                <Checkbox>Snow lot (prohibited 11pm-7am during snow regulations)</Checkbox>
+              </Form.Item>
+              <Form.Item name="has_sheepdog" valuePropName="checked">
+                <Checkbox>SheepDog occupancy monitoring</Checkbox>
+              </Form.Item>
+            </>
+          )}
           <Form.Item name="notes" label="Notes">
             <Input placeholder="EV charging, flood risk, etc." />
           </Form.Item>
-          <Form.Item name="access_schedule_json" label="Access Schedule (JSON)"
-            help={scheduleError ? <span className="text-red-500">{scheduleError}</span> : "Array of season schedules"}>
-            <Input.TextArea rows={4} className="font-mono text-xs"
-              placeholder={'[\n  {"season": "fall_spring", "label": "Fall/Spring", "rules": [...]}\n]'} />
-          </Form.Item>
+          {watchedLotType !== "external" && (
+            <Form.Item name="access_schedule_json" label="Access Schedule (JSON)"
+              help={scheduleError ? <span className="text-red-500">{scheduleError}</span> : "Array of season schedules"}>
+              <Input.TextArea rows={4} className="font-mono text-xs"
+                placeholder={'[\n  {"season": "fall_spring", "label": "Fall/Spring", "rules": [...]}\n]'} />
+            </Form.Item>
+          )}
           <p className="text-xs text-ink-mute mb-3">
             {boundary.length === 0
               ? 'Click "Draw Boundary" on the map, then click to place points.'
@@ -618,7 +640,7 @@ export default function Lots() {
                 ]}
               />
             )}
-            {lots.some(l => l.lot_type === "street") && (
+            {lots.some(l => l.lot_type === "street" || l.lot_type === "external") && (
               <Segmented
                 size="small"
                 block
@@ -627,7 +649,8 @@ export default function Lots() {
                 options={[
                   { label: "All Types", value: "all" },
                   { label: "Lots", value: "lot" },
-                  { label: "Streets", value: "street" },
+                  ...(lots.some(l => l.lot_type === "street") ? [{ label: "Streets", value: "street" }] : []),
+                  ...(lots.some(l => l.lot_type === "external") ? [{ label: "External", value: "external" }] : []),
                 ]}
               />
             )}
@@ -645,21 +668,27 @@ export default function Lots() {
                     <div className="flex items-center gap-1 flex-wrap">
                       <h3 className="font-semibold text-sm truncate">{lot.name}</h3>
                       {lot.lot_type === "street" && <Tag color="default" className="!text-[10px]">Street</Tag>}
+                      {lot.lot_type === "external" && <Tag color="orange" className="!text-[10px]">External</Tag>}
                       {lot.campus && <Tag color="blue" className="!text-[10px]">{CAMPUS_OPTIONS.find(c => c.value === lot.campus)?.label ?? lot.campus}</Tag>}
                       {lot.has_sheepdog && <Tag color="gold" className="!text-[10px]">SD</Tag>}
-                      {lot.is_closed && lot.lot_type !== "street" && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
+                      {lot.is_closed && lot.lot_type !== "street" && lot.lot_type !== "external" && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
                     </div>
                     <p className="text-xs text-ink-mute mt-0.5 truncate">
-                      {lot.designation_code && <Tag className="!text-[10px]">{lot.designation_code}</Tag>}
-                      {lot.boundary.length >= 3
-                        ? lot.total_spaces > 0 ? `${lot.total_spaces} spaces` : "Boundary set"
-                        : "No boundary defined"}
-                      {lot.is_snow_lot && " · Snow"}
+                      {lot.lot_type === "external"
+                        ? lot.external_provider || "Third-party parking"
+                        : <>
+                            {lot.designation_code && <Tag className="!text-[10px]">{lot.designation_code}</Tag>}
+                            {lot.boundary.length >= 3
+                              ? lot.total_spaces > 0 ? `${lot.total_spaces} spaces` : "Boundary set"
+                              : "No boundary defined"}
+                            {lot.is_snow_lot && " · Snow"}
+                          </>
+                      }
                     </p>
                   </div>
                   {!isEditing && (
                     <div className="flex items-center gap-1 flex-shrink-0 text-xs" onClick={e => e.stopPropagation()}>
-                      {lot.lot_type !== "street" && (lot.is_closed
+                      {lot.lot_type !== "street" && lot.lot_type !== "external" && (lot.is_closed
                         ? <Button type="link" size="small" className="!px-1" onClick={() => handleReopen(lot)}>Reopen</Button>
                         : <Button type="link" size="small" className="!px-1" danger onClick={() => setClosingLot(lot)}>Close</Button>)}
                       <Button type="link" size="small" className="!px-1" onClick={() => startEdit(lot)}>Edit</Button>

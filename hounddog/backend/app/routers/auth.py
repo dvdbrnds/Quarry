@@ -23,6 +23,8 @@ async def public_config():
         "google_maps_api_key": settings.google_maps_api_key,
         "campus_lat": settings.campus_lat,
         "campus_lng": settings.campus_lng,
+        "public_map_requires_auth": settings.public_map_requires_auth,
+        "school_name": settings.school_name or settings.brand_name,
     }
 
 
