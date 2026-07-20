@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, Coordinate, Lot, LotZone, ParkingSpot } from "../api";
 import { loadConfig } from "../auth";
 import LotMap from "../components/LotMap";
@@ -471,6 +471,8 @@ export default function Lots() {
   const [batchNextNumber, setBatchNextNumber] = useState(1);
   const [spotsVisible, setSpotsVisible] = useState(true);
 
+  const lotRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
   const [selectedCampus, setSelectedCampus] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
 
@@ -504,6 +506,12 @@ export default function Lots() {
   }, [load]);
 
   useEffect(() => { loadSpots(); setSelectedSpotId(null); setPlacingSpot(false); setBatchPlacing(false); }, [loadSpots]);
+
+  useEffect(() => {
+    if (selectedLotId) {
+      lotRefs.current.get(selectedLotId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selectedLotId]);
 
   function handleSelectLot(id: string | null) {
     if (creating || editing) return;
@@ -629,7 +637,7 @@ export default function Lots() {
         <div className="flex-1 overflow-y-auto">
           {filteredLots.length === 0 && <Empty description={lots.length === 0 ? 'No parking yet. Click "+ New"' : "No matches for this filter"} className="py-12" />}
           {filteredLots.map(lot => (
-            <div key={lot.id}>
+            <div key={lot.id} ref={el => { if (el) lotRefs.current.set(lot.id, el); else lotRefs.current.delete(lot.id); }}>
               <div onClick={() => handleSelectLot(lot.id)}
                 className={`p-3 border-b border-gray-100 cursor-pointer transition-colors ${lot.id === selectedLotId ? "bg-brand-primary/10 border-l-4 border-l-brand-primary" : "hover:bg-gray-50"}`}>
                 <div className="flex items-start gap-2 min-w-0">
