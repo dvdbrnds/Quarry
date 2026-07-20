@@ -127,7 +127,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                     payment_url=payment_url,
                     officer_name=ticket.officer_name,
                     issued_at=ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if ticket.issued_at else "",
-                    ticket_id=str(ticket.id),
+                    ticket_id=ticket.ticket_number or str(ticket.id),
                 )
     except Exception as e:
         import logging
