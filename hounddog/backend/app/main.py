@@ -109,6 +109,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_note TEXT",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_decision VARCHAR(32)",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_decided_by VARCHAR(128)",
+            # Mail notice tracking
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS mailed_at TIMESTAMPTZ",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS mailed_address TEXT",
             # Lot enhancements
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS total_spaces INTEGER DEFAULT 0",
             "ALTER TABLE parking_lots ADD COLUMN IF NOT EXISTS handicap_spaces INTEGER DEFAULT 0",

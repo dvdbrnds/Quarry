@@ -98,6 +98,7 @@ class AppealDecision(BaseModel):
 
 class TicketPipeline(BaseModel):
     issued: int = 0
+    overdue: int = 0
     pending_payment: int = 0
     paid: int = 0
     appealed: int = 0

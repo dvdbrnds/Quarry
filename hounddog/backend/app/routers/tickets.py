@@ -35,7 +35,7 @@ from ..schemas.ticket import (
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
-VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit"}
+VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
 
 
 @router.get("", response_model=TicketList)
@@ -167,6 +167,7 @@ async def ticket_pipeline(db: AsyncSession = Depends(get_db)):
     total = sum(counts.values())
     return TicketPipeline(
         issued=counts.get("issued", 0),
+        overdue=counts.get("overdue", 0),
         pending_payment=counts.get("pending_payment", 0),
         paid=counts.get("paid", 0),
         appealed=counts.get("appealed", 0),
@@ -424,6 +425,84 @@ async def decide_appeal(
     await db.flush()
     await db.refresh(ticket)
     return ticket
+
+
+@router.get("/mail-notices/pending")
+async def pending_mail_notices(db: AsyncSession = Depends(get_db)):
+    """Return overdue/escalated tickets for guests/visitors that haven't been mailed.
+
+    These are tickets where:
+    - The plate is NOT associated with any active permit (guest/visitor)
+    - Status is overdue or escalated
+    - No mail notice has been sent yet (mailed_at is NULL)
+    """
+    from ..models.permit import Permit
+
+    unmailed_q = await db.execute(
+        select(Ticket).where(
+            Ticket.status.in_(["overdue", "escalated"]),
+            Ticket.mailed_at.is_(None),
+        ).order_by(Ticket.issued_at.asc())
+    )
+    unmailed = unmailed_q.scalars().all()
+
+    guest_tickets = []
+    for ticket in unmailed:
+        permit_result = await db.execute(
+            select(Permit.id).where(
+                Permit.plates.contains([ticket.plate.upper()]),
+                Permit.deleted_at.is_(None),
+            ).limit(1)
+        )
+        has_permit = permit_result.scalar() is not None
+        if not has_permit:
+            guest_tickets.append({
+                "id": str(ticket.id),
+                "ticket_number": ticket.ticket_number,
+                "plate": ticket.plate,
+                "lot": ticket.lot,
+                "zone": ticket.zone,
+                "violation_type": ticket.violation_type,
+                "fine_amount": str(ticket.fine_amount),
+                "status": ticket.status,
+                "issued_at": ticket.issued_at.isoformat() if ticket.issued_at else None,
+                "owner_name": ticket.owner_name,
+                "vehicle_description": ticket.vehicle_description,
+                "officer_name": ticket.officer_name,
+                "payment_url": f"{settings.student_facing_url}/pay/{ticket.id}",
+            })
+
+    return {"tickets": guest_tickets, "total": len(guest_tickets)}
+
+
+@router.post("/mail-notices/mark-mailed")
+async def mark_mailed(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark tickets as having had a mail notice sent.
+
+    Body: {"ticket_ids": [...], "mailing_address": "optional address note"}
+    """
+    ticket_ids = data.get("ticket_ids", [])
+    address = data.get("mailing_address", "")
+    if not ticket_ids:
+        raise HTTPException(400, "No ticket_ids provided")
+
+    now = datetime.now(timezone.utc)
+    marked = 0
+    for tid in ticket_ids:
+        try:
+            ticket = await db.get(Ticket, uuid.UUID(tid))
+            if ticket and ticket.mailed_at is None:
+                ticket.mailed_at = now
+                ticket.mailed_address = address or None
+                marked += 1
+        except (ValueError, TypeError):
+            continue
+
+    await db.flush()
+    return {"marked": marked, "total_requested": len(ticket_ids)}
 
 
 @router.post("/{ticket_id}/photo")
