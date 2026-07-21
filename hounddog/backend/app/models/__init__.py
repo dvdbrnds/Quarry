@@ -23,6 +23,7 @@ from .permit_type import PermitType
 from .subscriber_group import SubscriberGroup, subscriber_group_members
 from .ticket import Ticket
 from .violation_type import ViolationType
+from .visitor_approval_token import VisitorApprovalToken
 
 __all__ = [
     "AcademicSeason",
@@ -51,4 +52,5 @@ __all__ = [
     "subscriber_group_members",
     "Ticket",
     "ViolationType",
+    "VisitorApprovalToken",
 ]

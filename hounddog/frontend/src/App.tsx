@@ -8,6 +8,8 @@ import PaySuccess from "./pages/PaySuccess";
 import BuyPermit from "./pages/BuyPermit";
 import BuyPermitSuccess from "./pages/BuyPermitSuccess";
 import PermitRenew from "./pages/PermitRenew";
+import VisitorPortal from "./pages/VisitorPortal";
+import VisitorApproval from "./pages/VisitorApproval";
 import NotificationPreferences from "./pages/NotificationPreferences";
 import Finance from "./pages/Finance";
 import OperationsCalendar from "./pages/OperationsCalendar";
@@ -189,6 +191,7 @@ export default function App() {
   const isLotteryRoute = location.pathname === "/parking";
   const isEmployeeParkingRoute = location.pathname === "/employee-parking";
   const isParkingMapRoute = location.pathname === "/parking-map";
+  const isVisitorRoute = location.pathname.startsWith("/visitor");
   const isRootRoute = location.pathname === "/";
   const isAuthCallback = location.pathname === "/auth/callback";
 
@@ -272,6 +275,15 @@ export default function App() {
     return (
       <Routes>
         <Route path="/parking-map" element={<ParkingMap />} />
+      </Routes>
+    );
+  }
+
+  if (isVisitorRoute) {
+    return (
+      <Routes>
+        <Route path="/visitor" element={<VisitorPortal />} />
+        <Route path="/visitor/approve/:token" element={<VisitorApproval />} />
       </Routes>
     );
   }

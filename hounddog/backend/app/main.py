@@ -31,6 +31,7 @@ from .routers import (
     sync,
     tickets,
     violation_types,
+    visitor_permits,
 )
 from .middleware.audit import AuditMiddleware
 from .websocket import manager
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
         AuditLog, LotClosure, MessageTemplate, NotificationPreference,
         AlertSubscriber, AlertLog, AlertTemplate, AlertResponse, AlertScenario,
         SubscriberGroup, subscriber_group_members, RenewalToken,
+        VisitorApprovalToken,
     )
     # Fail fast if secret_key was not overridden from the default
     if not settings.secret_key:
@@ -343,6 +345,19 @@ async def lifespan(app: FastAPI):
                 favicon_mime VARCHAR(64),
                 updated_at TIMESTAMPTZ DEFAULT now()
             )""",
+            # Visitor portal: approval tokens for long-term vendor permits
+            """CREATE TABLE IF NOT EXISTS visitor_approval_tokens (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                token VARCHAR(128) NOT NULL UNIQUE,
+                permit_id UUID NOT NULL REFERENCES permits(id) ON DELETE CASCADE,
+                sponsor_email VARCHAR(256) NOT NULL,
+                sponsor_name VARCHAR(256) DEFAULT '',
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at TIMESTAMPTZ,
+                decision VARCHAR(32),
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_visitor_approval_token ON visitor_approval_tokens(token)",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
@@ -705,6 +720,7 @@ app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(branding.admin_router, prefix="/api/branding", tags=["branding"])
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
+app.include_router(visitor_permits.router, prefix="/api/visitor/permits", tags=["visitor-permits"])
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
