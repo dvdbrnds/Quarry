@@ -1411,6 +1411,7 @@ async def stripe_transactions(
     stripe.api_key = settings.stripe_secret_key
 
     seen_ids: set[str] = set()
+    seen_pi_ids: set[str] = set()
     transactions: list[dict] = []
     overview = {
         "total_volume": Decimal("0"), "total_fees": Decimal("0"),
@@ -1442,36 +1443,45 @@ async def stripe_transactions(
         if txn.status == "failed":
             overview["failed_count"] += 1
 
-    # --- Charges ---
+    # --- Charges (canonical records — have fee, net, and full metadata) ---
     try:
         charges = stripe.Charge.list(limit=limit)
         has_more = has_more or charges.has_more
         for i, ch in enumerate(charges.data):
             try:
                 add_txn(_charge_to_txn(ch))
+                pi_id = getattr(ch, "payment_intent", None)
+                if pi_id:
+                    seen_pi_ids.add(pi_id)
             except Exception as e:
                 errors.append(f"charge[{i}] {ch.id}: {e}\n{traceback.format_exc()}")
     except Exception as e:
         errors.append(f"Charge.list failed: {e}\n{traceback.format_exc()}")
 
-    # --- PaymentIntents ---
+    # --- PaymentIntents (skip if we already have the charge) ---
     try:
         pis = stripe.PaymentIntent.list(limit=limit)
         has_more = has_more or pis.has_more
         for i, pi in enumerate(pis.data):
             try:
+                if pi.id in seen_pi_ids:
+                    continue
+                seen_pi_ids.add(pi.id)
                 add_txn(_pi_to_txn(pi))
             except Exception as e:
                 errors.append(f"pi[{i}] {pi.id}: {e}\n{traceback.format_exc()}")
     except Exception as e:
         errors.append(f"PaymentIntent.list failed: {e}\n{traceback.format_exc()}")
 
-    # --- Checkout Sessions ---
+    # --- Checkout Sessions (skip if we already have the charge/PI) ---
     try:
         sessions = stripe.checkout.Session.list(limit=limit)
         has_more = has_more or sessions.has_more
         for i, sess in enumerate(sessions.data):
             try:
+                sess_pi = getattr(sess, "payment_intent", None)
+                if sess_pi and sess_pi in seen_pi_ids:
+                    continue
                 add_txn(_session_to_txn(sess))
             except Exception as e:
                 errors.append(f"session[{i}] {sess.id}: {e}\n{traceback.format_exc()}")

@@ -224,15 +224,39 @@ export default function Finance() {
       render: d => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
     },
     {
-      title: "Source", dataIndex: "source", key: "source", width: 110,
-      render: s => { const sl = SOURCE_LABELS[s] || { label: s, color: "default" }; return <Tag color={sl.color}>{sl.label}</Tag>; },
+      title: "Type", key: "type", width: 100,
+      render: (_, t) => {
+        const ptype = t.metadata?.type || "";
+        const label = TYPE_LABELS[ptype];
+        const color = TYPE_COLORS[ptype];
+        return label ? <Tag color={color}>{label}</Tag> : <span className="text-xs text-ink-mute">{ptype || "—"}</span>;
+      },
     },
     {
       title: "Status", dataIndex: "status", key: "status", width: 100,
       render: s => <Tag color={s === "succeeded" ? "green" : s === "failed" ? "red" : s === "pending" ? "gold" : s === "canceled" ? "default" : "default"}>{s}</Tag>,
     },
-    { title: "Description", dataIndex: "description", key: "desc", ellipsis: true, render: v => v || "—" },
-    { title: "Customer", key: "customer", ellipsis: true, render: (_, t) => t.customer_name || t.customer_email || "—" },
+    {
+      title: "Description", key: "desc", ellipsis: true,
+      render: (_, t) => {
+        const ptype = t.metadata?.type || "";
+        const plate = t.metadata?.plate;
+        const permitLabel = t.metadata?.permit_type_label;
+        const ticketRef = t.metadata?.ticket_ref;
+        if (ptype === "ticket_payment") {
+          return <span>{ticketRef ? `Citation #${ticketRef}` : "Citation"}{plate ? <span className="text-ink-mute"> — {plate}</span> : ""}</span>;
+        }
+        if (ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit") {
+          return <span>{permitLabel || "Permit"}{plate ? <span className="text-ink-mute"> — {plate}</span> : ""}</span>;
+        }
+        return t.description || "—";
+      },
+    },
+    { title: "Customer", key: "customer", ellipsis: true, render: (_, t) => t.customer_name || t.customer_email || t.metadata?.student_name || t.metadata?.student_email || "—" },
+    {
+      title: "Plate", key: "plate", width: 100,
+      render: (_, t) => t.metadata?.plate ? <span className="font-mono text-xs font-semibold">{t.metadata.plate}</span> : <span className="text-ink-mute">—</span>,
+    },
     {
       title: "Amount", dataIndex: "amount", key: "amount", align: "right",
       render: v => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
@@ -365,21 +389,49 @@ export default function Finance() {
                   pagination={{ pageSize: 25, showSizeChanger: false, showTotal: t => `${t} transactions` }}
                   locale={{ emptyText: <Empty description="No Stripe transactions found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                   expandable={{
-                    expandedRowRender: t => (
-                      <Descriptions size="small" column={3}>
-                        <Descriptions.Item label="ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
-                        <Descriptions.Item label="Email">{t.customer_email || "—"}</Descriptions.Item>
-                        <Descriptions.Item label="Name">{t.customer_name || "—"}</Descriptions.Item>
-                        <Descriptions.Item label="Amount">{fmtDollars(t.amount)}</Descriptions.Item>
-                        <Descriptions.Item label="Refunded">{Number(t.amount_refunded) > 0 ? fmtDollars(t.amount_refunded) : "—"}</Descriptions.Item>
-                        <Descriptions.Item label="Mode"><Tag color={t.livemode ? "green" : "orange"}>{t.livemode ? "Live" : "Test"}</Tag></Descriptions.Item>
-                        {Object.keys(t.metadata).length > 0 && (
-                          <Descriptions.Item label="Metadata" span={3}>
-                            <div className="text-xs font-mono">{Object.entries(t.metadata).map(([k, v]) => <div key={k}><strong>{k}:</strong> {v}</div>)}</div>
-                          </Descriptions.Item>
-                        )}
-                      </Descriptions>
-                    ),
+                    expandedRowRender: t => {
+                      const m = t.metadata || {};
+                      const ptype = m.type || "";
+                      const isCitation = ptype === "ticket_payment";
+                      const isPermit = ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit";
+                      const knownKeys = new Set(["type", "ticket_id", "ticket_ref", "plate", "violation_code", "violation_category",
+                        "offense_number", "fine_amount", "lot", "zone", "issued_at", "officer_id", "payer_name",
+                        "permit_type_id", "permit_type_code", "permit_type_label", "student_name", "student_email",
+                        "email", "valid_days", "lot_assignments", "institution",
+                        "revenue_category", "department", "gl_string", "gl_fund", "gl_org", "gl_account", "gl_activity"]);
+                      const extraMeta = Object.entries(m).filter(([k]) => !knownKeys.has(k));
+                      return (
+                        <Descriptions size="small" column={3} bordered>
+                          <Descriptions.Item label="Stripe ID"><span className="font-mono text-xs">{t.id}</span></Descriptions.Item>
+                          <Descriptions.Item label="Source"><Tag color={SOURCE_LABELS[t.source]?.color || "default"}>{SOURCE_LABELS[t.source]?.label || t.source}</Tag></Descriptions.Item>
+                          <Descriptions.Item label="Mode"><Tag color={t.livemode ? "green" : "orange"}>{t.livemode ? "Live" : "Test"}</Tag></Descriptions.Item>
+                          <Descriptions.Item label="Email">{t.customer_email || m.email || m.student_email || "—"}</Descriptions.Item>
+                          <Descriptions.Item label="Name">{t.customer_name || m.student_name || m.payer_name || "—"}</Descriptions.Item>
+                          <Descriptions.Item label="Refunded">{Number(t.amount_refunded) > 0 ? fmtDollars(t.amount_refunded) : "None"}</Descriptions.Item>
+                          {isCitation && (<>
+                            <Descriptions.Item label="Citation #">{m.ticket_ref || m.ticket_id || "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Violation">{m.violation_code || "—"}{m.violation_category ? ` (${m.violation_category})` : ""}</Descriptions.Item>
+                            <Descriptions.Item label="Offense #">{m.offense_number || "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Lot">{m.lot || "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Zone">{m.zone || "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Issued">{m.issued_at ? new Date(m.issued_at).toLocaleString() : "—"}</Descriptions.Item>
+                          </>)}
+                          {isPermit && (<>
+                            <Descriptions.Item label="Permit Type">{m.permit_type_label || m.permit_type_code || "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Valid Days">{m.valid_days || "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Lots">{m.lot_assignments || "—"}</Descriptions.Item>
+                          </>)}
+                          {m.gl_string && (
+                            <Descriptions.Item label="GL String" span={3}><span className="font-mono text-xs">{m.gl_string}</span></Descriptions.Item>
+                          )}
+                          {extraMeta.length > 0 && (
+                            <Descriptions.Item label="Other Metadata" span={3}>
+                              <div className="text-xs font-mono">{extraMeta.map(([k, v]) => <div key={k}><strong>{k}:</strong> {v}</div>)}</div>
+                            </Descriptions.Item>
+                          )}
+                        </Descriptions>
+                      );
+                    },
                   }}
                 />
               </Card>
