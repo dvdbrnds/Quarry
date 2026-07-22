@@ -4,6 +4,7 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY frontend/ ./
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm run build
 
 ## Stage 2: Python backend + nginx
