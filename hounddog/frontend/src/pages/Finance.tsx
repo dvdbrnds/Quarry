@@ -69,6 +69,107 @@ const METHOD_LABELS: Record<string, string> = {
 
 const fmtDollars = (val: string | number) => `$${Number(val).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
+function exportStripeGl(transactions: StripeTransaction[]) {
+  const batchDate = dayjs().format("YYYY-MM-DD");
+  const batchName = `QUARRY-${batchDate}`;
+  const LEDGER = "Moravian Primary Ledger";
+  const SOURCE = "QUARRY";
+  const CATEGORY = "Revenue";
+
+  const rows: string[][] = [];
+  rows.push([
+    "LedgerName", "AccountingDate", "UserJeSource", "UserJeCategory",
+    "CurrencyCode", "JeBatchName", "JeHeaderName", "JeLineName",
+    "Segment1", "Segment2", "Segment3", "Segment4", "Segment5", "Segment6",
+    "AccountCombination", "EnteredDrAmount", "EnteredCrAmount",
+    "LineDescription", "Reference1", "Reference2", "Reference3",
+    "Reference4", "Reference5",
+  ]);
+
+  for (const t of transactions) {
+    if (t.status !== "succeeded") continue;
+
+    const m = t.metadata || {};
+    const acctDate = dayjs(t.created).format("YYYY-MM-DD");
+    const headerName = `${SOURCE}-${acctDate}`;
+    const refId = t.id.slice(0, 16);
+    const gross = Number(t.amount);
+    const fee = Number(t.fee);
+    const net = Number(t.net) || (gross - fee);
+
+    const glString = m.gl_string || "";
+    const glFund = m.gl_fund || "1110000";
+    const glOrg = m.gl_org || "3006";
+    const glAccount = m.gl_account || "43002";
+    const glActivity = m.gl_activity || "1068";
+    const seg5 = "0000000";
+    const seg6 = "00000";
+
+    const ptype = m.type || "";
+    const isPermit = ptype.includes("permit");
+    const description = isPermit
+      ? `Parking permit — ${m.permit_type_label || m.permit_type_code || "permit"} ${m.plate || ""}`.trim()
+      : `Citation #${m.ticket_ref || t.id.slice(0, 8).toUpperCase()} — ${m.plate || ""}`.trim();
+
+    const ticketRef = m.ticket_ref || "";
+    const lineMethod = ptype || "";
+
+    // Net cash account
+    const netCashFund = glFund;
+    const netCashOrg = "0000";
+    const netCashAcct = "10005";
+    const netCashActivity = "0000";
+    const netCashString = [netCashFund, netCashOrg, netCashAcct, netCashActivity, seg5, seg6].join("-");
+
+    // Stripe fee account
+    const feeOrg = glOrg;
+    const feeAcct = "60164";
+    const feeActivity = "0000";
+    const feeString = [glFund, feeOrg, feeAcct, feeActivity, seg5, seg6].join("-");
+
+    // Revenue account
+    const revString = glString || [glFund, glOrg, glAccount, glActivity, seg5, seg6].join("-");
+
+    // Line 1: Debit — Net cash
+    rows.push([
+      LEDGER, acctDate, SOURCE, CATEGORY, "USD", batchName, headerName,
+      `DR-CASH-${refId.slice(0, 8)}`,
+      netCashFund, netCashOrg, netCashAcct, netCashActivity, seg5, seg6,
+      netCashString, net.toFixed(2), "",
+      description, refId, ticketRef, lineMethod, t.id, "",
+    ]);
+
+    // Line 2: Debit — Stripe fee (if any)
+    if (fee > 0) {
+      rows.push([
+        LEDGER, acctDate, SOURCE, CATEGORY, "USD", batchName, headerName,
+        `DR-FEE-${refId.slice(0, 8)}`,
+        glFund, feeOrg, feeAcct, feeActivity, seg5, seg6,
+        feeString, fee.toFixed(2), "",
+        `Stripe fee - ${description}`, refId, ticketRef, lineMethod, t.id, "",
+      ]);
+    }
+
+    // Line 3: Credit — Revenue (full gross)
+    rows.push([
+      LEDGER, acctDate, SOURCE, CATEGORY, "USD", batchName, headerName,
+      `CR-REV-${refId.slice(0, 8)}`,
+      glFund, glOrg, glAccount, glActivity, seg5, seg6,
+      revString, "", gross.toFixed(2),
+      description, refId, ticketRef, lineMethod, t.id, "",
+    ]);
+  }
+
+  // Generate and download CSV
+  const csv = rows.map(r => r.map(c => `"${(c || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `quarry_gl_journal_${batchDate}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 export default function Finance() {
   const { message } = App.useApp();
   const [report, setReport] = useState<RevenueReport | null>(null);
@@ -194,11 +295,17 @@ export default function Finance() {
   }
 
   function handleGlExport() {
-    const params = new URLSearchParams();
-    if (glFrom) params.set("since", glFrom.format("YYYY-MM-DD"));
-    if (glTo) params.set("until", glTo.format("YYYY-MM-DD"));
-    const qs = params.toString() ? `?${params}` : "";
-    downloadWithAuth(`/api/payments/export/oracle-gl${qs}`, "gl-journal.csv");
+    // Export GL journal from live Stripe data currently on screen
+    if (stripe?.transactions?.length) {
+      exportStripeGl(stripe.transactions);
+    } else {
+      // Fallback to DB-based export if no Stripe data loaded
+      const params = new URLSearchParams();
+      if (glFrom) params.set("since", glFrom.format("YYYY-MM-DD"));
+      if (glTo) params.set("until", glTo.format("YYYY-MM-DD"));
+      const qs = params.toString() ? `?${params}` : "";
+      downloadWithAuth(`/api/payments/export/oracle-gl${qs}`, "gl-journal.csv");
+    }
   }
 
   const citationRevenue = report?.by_payment_type?.ticket_payment;
