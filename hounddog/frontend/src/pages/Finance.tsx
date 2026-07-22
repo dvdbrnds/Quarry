@@ -641,7 +641,6 @@ export default function Finance() {
                 </p>
                 <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
               </Card>
-              </Card>
               <Card title="Stripe Payment Backfill">
                 <p className="text-sm text-ink-mute mb-4">Pull all succeeded PaymentIntents from Stripe into the local payments table. Skips any already imported.</p>
                 <Button type="primary" loading={payBackfillRunning} onClick={async () => {
