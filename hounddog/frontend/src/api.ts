@@ -497,6 +497,28 @@ export interface LotteryVerification {
   run_by?: string;
 }
 
+export interface BackupSchedule {
+  enabled: boolean;
+  frequency: string;
+  time: string;
+  retention_days: number;
+  last_run: string | null;
+  next_run: string | null;
+}
+
+export interface BackupScheduleInput {
+  enabled: boolean;
+  frequency: string;
+  time: string;
+  retention_days: number;
+}
+
+export interface BackupHistoryEntry {
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 export const api = {
   academicCalendar: {
     list: () => request<AcademicSeason[]>("/academic-calendar"),
@@ -833,5 +855,18 @@ export const api = {
     },
     clearTickets: () =>
       request<{ deleted: number }>("/backup/clear-tickets", { method: "DELETE" }),
+    schedule: {
+      get: () => request<BackupSchedule>("/backup/schedule"),
+      set: (data: BackupScheduleInput) =>
+        request<BackupSchedule>("/backup/schedule", { method: "PUT", body: JSON.stringify(data) }),
+      disable: () =>
+        request<BackupSchedule>("/backup/schedule", { method: "DELETE" }),
+    },
+    history: {
+      list: () => request<BackupHistoryEntry[]>("/backup/history"),
+      downloadUrl: (filename: string) => `${BASE}/backup/history/${filename}`,
+      delete: (filename: string) =>
+        request<{ deleted: string }>(`/backup/history/${filename}`, { method: "DELETE" }),
+    },
   },
 };

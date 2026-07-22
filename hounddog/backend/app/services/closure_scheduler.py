@@ -356,6 +356,12 @@ async def _run_loop():
         except Exception as e:
             logger.error("Scheduler tick (scheduled alerts) failed: %s", e, exc_info=True)
 
+        try:
+            from .backup_scheduler import process_scheduled_backups
+            await process_scheduled_backups()
+        except Exception as e:
+            logger.error("Scheduler tick (scheduled backups) failed: %s", e, exc_info=True)
+
         await asyncio.sleep(60)
 
 

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Table, App, Typography } from "antd";
-import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined } from "@ant-design/icons";
-import { api } from "../api";
+import { Button, Card, Table, App, Typography, Switch, Select, TimePicker, InputNumber, Space, Tag, Popconfirm } from "antd";
+import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { api, BackupSchedule, BackupHistoryEntry } from "../api";
 import { authHeaders } from "../auth";
+
+dayjs.extend(relativeTime);
 
 const { Text, Title } = Typography;
 
@@ -14,6 +18,13 @@ export default function DataManagement() {
   const [restoring, setRestoring] = useState(false);
   const [clearing, setClearing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Scheduled backup state
+  const [schedule, setSchedule] = useState<BackupSchedule | null>(null);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [history, setHistory] = useState<BackupHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -27,7 +38,97 @@ export default function DataManagement() {
     }
   }, [message]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadSchedule = useCallback(async () => {
+    setScheduleLoading(true);
+    try {
+      const data = await api.backup.schedule.get();
+      setSchedule(data);
+    } catch {
+      // Schedule endpoint may not exist yet on older backends
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await api.backup.history.list();
+      setHistory(data);
+    } catch {
+      // Ignore
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); loadSchedule(); loadHistory(); }, [load, loadSchedule, loadHistory]);
+
+  const handleScheduleToggle = async (enabled: boolean) => {
+    if (!schedule) return;
+    setScheduleSaving(true);
+    try {
+      const updated = await api.backup.schedule.set({
+        enabled,
+        frequency: schedule.frequency || "daily",
+        time: schedule.time || "02:00",
+        retention_days: schedule.retention_days || 30,
+      });
+      setSchedule(updated);
+      message.success(enabled ? "Scheduled backups enabled" : "Scheduled backups disabled");
+    } catch (e: any) {
+      message.error(e.message || "Failed to update schedule");
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleScheduleSave = async (patch: Partial<BackupSchedule>) => {
+    if (!schedule) return;
+    setScheduleSaving(true);
+    try {
+      const updated = await api.backup.schedule.set({
+        enabled: patch.enabled ?? schedule.enabled,
+        frequency: patch.frequency ?? schedule.frequency ?? "daily",
+        time: patch.time ?? schedule.time ?? "02:00",
+        retention_days: patch.retention_days ?? schedule.retention_days ?? 30,
+      });
+      setSchedule(updated);
+      message.success("Backup schedule updated");
+    } catch (e: any) {
+      message.error(e.message || "Failed to update schedule");
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleDeleteBackup = async (filename: string) => {
+    try {
+      await api.backup.history.delete(filename);
+      message.success("Backup deleted");
+      loadHistory();
+    } catch (e: any) {
+      message.error(e.message || "Failed to delete backup");
+    }
+  };
+
+  const handleDownloadBackup = async (filename: string) => {
+    const headers = await authHeaders();
+    const url = api.backup.history.downloadUrl(filename);
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      message.error("Download failed");
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  };
 
   const totalRows = Object.values(tables).reduce((a, b) => a + b, 0);
 
@@ -221,6 +322,169 @@ export default function DataManagement() {
           >
             Clear All Tickets
           </Button>
+        </Card>
+      </div>
+
+      {/* Scheduled Backup Card */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <Card style={{ flex: 2, minWidth: 340 }} loading={scheduleLoading}>
+          <Title level={5} style={{ marginTop: 0 }}>
+            <ClockCircleOutlined style={{ marginRight: 8 }} />
+            Scheduled Backups
+          </Title>
+          <p className="text-ink-mute text-sm mb-4">
+            Automatically create backup snapshots on a recurring schedule. Backups are stored on the server and can be downloaded from the history below.
+          </p>
+          {schedule && (
+            <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium w-20">Enabled</span>
+                <Switch
+                  checked={schedule.enabled}
+                  loading={scheduleSaving}
+                  onChange={handleScheduleToggle}
+                />
+                {schedule.enabled ? (
+                  <Tag color="green">Active</Tag>
+                ) : (
+                  <Tag>Disabled</Tag>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium w-20">Frequency</span>
+                <Select
+                  value={schedule.frequency || "daily"}
+                  onChange={(v) => handleScheduleSave({ frequency: v })}
+                  style={{ width: 140 }}
+                  disabled={scheduleSaving}
+                  options={[
+                    { value: "daily", label: "Daily" },
+                    { value: "weekly", label: "Weekly" },
+                    { value: "monthly", label: "Monthly" },
+                  ]}
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium w-20">Time (UTC)</span>
+                <TimePicker
+                  value={dayjs(schedule.time || "02:00", "HH:mm")}
+                  format="HH:mm"
+                  onChange={(v) => {
+                    if (v) handleScheduleSave({ time: v.format("HH:mm") });
+                  }}
+                  disabled={scheduleSaving}
+                  minuteStep={15}
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium w-20">Keep for</span>
+                <InputNumber
+                  min={1}
+                  max={365}
+                  value={schedule.retention_days || 30}
+                  onChange={(v) => {
+                    if (v) handleScheduleSave({ retention_days: v });
+                  }}
+                  disabled={scheduleSaving}
+                  addonAfter="days"
+                  style={{ width: 140 }}
+                />
+              </div>
+
+              {schedule.last_run && (
+                <div className="text-xs text-ink-mute mt-1">
+                  Last backup: {dayjs(schedule.last_run).fromNow()} ({dayjs(schedule.last_run).format("MMM D, YYYY h:mm A")} UTC)
+                </div>
+              )}
+              {schedule.next_run && schedule.enabled && (
+                <div className="text-xs text-ink-mute">
+                  Next backup: {dayjs(schedule.next_run).fromNow()} ({dayjs(schedule.next_run).format("MMM D, YYYY h:mm A")} UTC)
+                </div>
+              )}
+            </Space>
+          )}
+        </Card>
+
+        <Card
+          style={{ flex: 3, minWidth: 400 }}
+          title={
+            <span>
+              <HistoryOutlined style={{ marginRight: 8 }} />
+              Backup History
+              {history.length > 0 && <Tag style={{ marginLeft: 8 }}>{history.length}</Tag>}
+            </span>
+          }
+          size="small"
+          extra={
+            <Button size="small" onClick={loadHistory} loading={historyLoading}>
+              Refresh
+            </Button>
+          }
+        >
+          <Table
+            dataSource={history}
+            loading={historyLoading}
+            size="small"
+            pagination={{ pageSize: 5, size: "small" }}
+            locale={{ emptyText: "No scheduled backups yet" }}
+            rowKey="filename"
+            columns={[
+              {
+                title: "File",
+                dataIndex: "filename",
+                key: "filename",
+                render: (name: string) => (
+                  <span className="font-mono text-xs">{name}</span>
+                ),
+              },
+              {
+                title: "Size",
+                dataIndex: "size_bytes",
+                key: "size",
+                width: 100,
+                render: (bytes: number) => {
+                  if (bytes < 1024) return `${bytes} B`;
+                  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+                },
+              },
+              {
+                title: "Created",
+                dataIndex: "created_at",
+                key: "created_at",
+                width: 160,
+                render: (dt: string) => (
+                  <span title={dt}>{dayjs(dt).fromNow()}</span>
+                ),
+              },
+              {
+                title: "",
+                key: "actions",
+                width: 120,
+                render: (_: any, record: BackupHistoryEntry) => (
+                  <Space size="small">
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<DownloadOutlined />}
+                      onClick={() => handleDownloadBackup(record.filename)}
+                    />
+                    <Popconfirm
+                      title="Delete this backup?"
+                      onConfirm={() => handleDeleteBackup(record.filename)}
+                      okText="Delete"
+                      okType="danger"
+                    >
+                      <Button size="small" type="link" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
+                ),
+              },
+            ]}
+          />
         </Card>
       </div>
 

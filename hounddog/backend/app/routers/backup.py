@@ -3,18 +3,22 @@ Database backup & restore API.
 
 Export dumps every user-data table (skipping alembic_version) as JSON.
 Restore wipes existing data and re-inserts from the uploaded file.
+Scheduled backups store snapshots to disk on a cron-like interval.
 Both endpoints require admin role.
 """
 
 import io
 import json
 import logging
+import os
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from pydantic import BaseModel
 from sqlalchemy import text, inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +30,10 @@ logger = logging.getLogger("quarry.backup")
 router = APIRouter(dependencies=[Depends(require_admin())])
 
 SKIP_TABLES = {"alembic_version"}
+
+BACKUP_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "backups"
+SCHEDULE_FILE = BACKUP_DIR / "_schedule.json"
+MAX_RETENTION = 90  # days
 
 
 def _serialise(value):
@@ -171,3 +179,100 @@ async def clear_tickets(
     count = count_row.scalar() or 0
     await db.execute(text('TRUNCATE TABLE "tickets" CASCADE'))
     return {"deleted": count}
+
+
+# ---------------------------------------------------------------------------
+# Scheduled backup configuration & history
+# ---------------------------------------------------------------------------
+
+class BackupSchedule(BaseModel):
+    enabled: bool = False
+    frequency: str = "daily"  # daily | weekly | monthly
+    time: str = "02:00"       # HH:MM in UTC
+    retention_days: int = 30  # auto-delete after N days
+    last_run: str | None = None
+    next_run: str | None = None
+
+
+def _read_schedule() -> dict:
+    """Read the schedule JSON from disk, returning defaults if absent."""
+    if SCHEDULE_FILE.exists():
+        try:
+            return json.loads(SCHEDULE_FILE.read_text())
+        except Exception:
+            pass
+    return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
+
+
+def _write_schedule(data: dict):
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
+
+
+@router.get("/schedule")
+async def get_schedule():
+    """Return the current scheduled backup configuration."""
+    return _read_schedule()
+
+
+@router.put("/schedule")
+async def set_schedule(body: BackupSchedule):
+    """Create or update the scheduled backup configuration."""
+    data = body.model_dump()
+    existing = _read_schedule()
+    data["last_run"] = existing.get("last_run")
+    data["next_run"] = existing.get("next_run")
+    _write_schedule(data)
+    return data
+
+
+@router.delete("/schedule")
+async def disable_schedule():
+    """Disable scheduled backups."""
+    data = _read_schedule()
+    data["enabled"] = False
+    _write_schedule(data)
+    return data
+
+
+@router.get("/history")
+async def list_backup_history():
+    """List all stored backup files with metadata."""
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    files = sorted(BACKUP_DIR.glob("quarry_backup_*.json"), reverse=True)
+    history = []
+    for f in files:
+        stat = f.stat()
+        history.append({
+            "filename": f.name,
+            "size_bytes": stat.st_size,
+            "created_at": datetime.utcfromtimestamp(stat.st_mtime).isoformat(),
+        })
+    return history
+
+
+@router.get("/history/{filename}")
+async def download_backup_file(filename: str):
+    """Download a specific stored backup file."""
+    if ".." in filename or "/" in filename:
+        raise HTTPException(400, "Invalid filename")
+    path = BACKUP_DIR / filename
+    if not path.exists():
+        raise HTTPException(404, "Backup file not found")
+    return FileResponse(
+        path,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.delete("/history/{filename}")
+async def delete_backup_file(filename: str):
+    """Delete a specific stored backup file."""
+    if ".." in filename or "/" in filename:
+        raise HTTPException(400, "Invalid filename")
+    path = BACKUP_DIR / filename
+    if not path.exists():
+        raise HTTPException(404, "Backup file not found")
+    path.unlink()
+    return {"deleted": filename}
