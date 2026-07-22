@@ -295,17 +295,25 @@ export default function Finance() {
   }
 
   function handleGlExport() {
-    // Export GL journal from live Stripe data currently on screen
-    if (stripe?.transactions?.length) {
-      exportStripeGl(stripe.transactions);
-    } else {
-      // Fallback to DB-based export if no Stripe data loaded
-      const params = new URLSearchParams();
-      if (glFrom) params.set("since", glFrom.format("YYYY-MM-DD"));
-      if (glTo) params.set("until", glTo.format("YYYY-MM-DD"));
-      const qs = params.toString() ? `?${params}` : "";
-      downloadWithAuth(`/api/payments/export/oracle-gl${qs}`, "gl-journal.csv");
+    if (!stripe?.transactions?.length) {
+      message.warning("No Stripe data loaded to export");
+      return;
     }
+    // Filter by date range if set
+    let txns = stripe.transactions;
+    if (glFrom) {
+      const from = glFrom.startOf("day").toISOString();
+      txns = txns.filter(t => t.created >= from);
+    }
+    if (glTo) {
+      const to = glTo.endOf("day").toISOString();
+      txns = txns.filter(t => t.created <= to);
+    }
+    if (!txns.length) {
+      message.warning("No transactions in the selected date range");
+      return;
+    }
+    exportStripeGl(txns);
   }
 
   const citationRevenue = report?.by_payment_type?.ticket_payment;
@@ -426,7 +434,9 @@ export default function Finance() {
         <h2 className="text-2xl font-bold">Finance & Reconciliation</h2>
         <Space>
           <Button onClick={() => downloadWithAuth("/api/payments/export/csv", "payments.csv")}>Export CSV</Button>
-          <Button onClick={handleGlExport}>Export GL Journal</Button>
+          <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} size="small" />
+          <DatePicker placeholder="To" value={glTo} onChange={setGlTo} size="small" />
+          <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
         </Space>
       </div>
 
@@ -626,12 +636,11 @@ export default function Finance() {
           children: (
             <div className="space-y-6">
               <Card title="Oracle GL Journal Export">
-                <p className="text-sm text-ink-mute mb-4">Export payments in Oracle General Ledger journal format.</p>
-                <Space>
-                  <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} />
-                  <DatePicker placeholder="To" value={glTo} onChange={setGlTo} />
-                  <Button type="primary" onClick={handleGlExport}>Export GL Journal</Button>
-                </Space>
+                <p className="text-sm text-ink-mute mb-4">
+                  Exports the live Stripe transactions as a balanced Oracle GL journal. Use the date pickers in the page header to filter by date range.
+                </p>
+                <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
+              </Card>
               </Card>
               <Card title="Stripe Payment Backfill">
                 <p className="text-sm text-ink-mute mb-4">Pull all succeeded PaymentIntents from Stripe into the local payments table. Skips any already imported.</p>
