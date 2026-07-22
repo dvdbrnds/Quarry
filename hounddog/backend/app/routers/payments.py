@@ -1313,8 +1313,14 @@ def _pi_to_txn(pi) -> StripeTransaction:
     fee = Decimal("0")
     net = Decimal("0")
 
-    if charges and charges.data:
+    # Prefer latest_charge (expanded via API), fall back to charges.data[0]
+    ch = None
+    if latest_charge and hasattr(latest_charge, "id"):
+        ch = latest_charge
+    elif charges and charges.data:
         ch = charges.data[0]
+
+    if ch:
         refunded = Decimal(str(getattr(ch, "amount_refunded", 0))) / 100
         receipt_url = getattr(ch, "receipt_url", None)
         pmd = getattr(ch, "payment_method_details", None)
@@ -1340,8 +1346,8 @@ def _pi_to_txn(pi) -> StripeTransaction:
     customer_name = None
     if getattr(pi, "receipt_email", None):
         customer_email = pi.receipt_email
-    elif charges and charges.data:
-        billing = getattr(charges.data[0], "billing_details", None)
+    elif ch:
+        billing = getattr(ch, "billing_details", None)
         if billing:
             customer_email = getattr(billing, "email", None)
             customer_name = getattr(billing, "name", None)
@@ -1445,7 +1451,7 @@ async def stripe_transactions(
 
     # --- Charges (canonical records — have fee, net, and full metadata) ---
     try:
-        charges = stripe.Charge.list(limit=limit)
+        charges = stripe.Charge.list(limit=limit, expand=["data.balance_transaction"])
         has_more = has_more or charges.has_more
         for i, ch in enumerate(charges.data):
             try:
@@ -1460,7 +1466,7 @@ async def stripe_transactions(
 
     # --- PaymentIntents (skip if we already have the charge) ---
     try:
-        pis = stripe.PaymentIntent.list(limit=limit)
+        pis = stripe.PaymentIntent.list(limit=limit, expand=["data.latest_charge.balance_transaction"])
         has_more = has_more or pis.has_more
         for i, pi in enumerate(pis.data):
             try:
