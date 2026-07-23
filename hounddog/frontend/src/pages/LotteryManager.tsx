@@ -418,7 +418,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
       onOk: async () => {
         setPurging(true);
         try {
-          const res = await fetch(`/api/permit-types/${permitType.id}/test-applications`, { method: "DELETE", headers: await authHeaders() });
+          const res = await fetch(`/api/permit-types/${permitType.id}/purge-test-applications`, { method: "POST", headers: await authHeaders() });
           if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
           const result = await res.json();
           msg.success(`Deleted ${result.deleted} test entries`);
@@ -430,7 +430,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
 
   async function handleDeleteApplication(appId: string) {
     try {
-      const res = await fetch(`/api/permit-types/${permitType.id}/applications/${appId}`, { method: "DELETE", headers: await authHeaders() });
+      const res = await fetch(`/api/permit-types/${permitType.id}/applications/${appId}/delete`, { method: "POST", headers: await authHeaders() });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
       msg.success("Application deleted");
       load();

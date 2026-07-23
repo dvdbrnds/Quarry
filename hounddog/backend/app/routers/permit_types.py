@@ -140,7 +140,7 @@ async def deactivate_permit_type(
     await db.flush()
 
 
-@router.delete("/{ptype_id}/permanent", status_code=204)
+@router.post("/{ptype_id}/permanent-delete", status_code=204)
 async def permanently_delete_permit_type(
     ptype_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -164,10 +164,6 @@ async def permanently_delete_permit_type(
             f"Cannot delete: {active_permits} active permit(s) still reference this type. "
             "Revoke or expire them first.",
         )
-    await db.execute(
-        select(PermitApplication)
-        .where(PermitApplication.permit_type_id == ptype_id)
-    )
     apps = (
         await db.execute(
             select(PermitApplication).where(
@@ -269,6 +265,21 @@ async def delete_application(
     _admin: OktaUser = Depends(require_admin()),
 ):
     """Delete a single lottery application."""
+    app = await db.get(PermitApplication, app_id)
+    if not app or app.permit_type_id != ptype_id:
+        raise HTTPException(404, "Application not found")
+    await db.delete(app)
+    await db.flush()
+
+
+@router.post("/{ptype_id}/applications/{app_id}/delete", status_code=204)
+async def delete_application_post(
+    ptype_id: uuid.UUID,
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Delete a single lottery application (POST variant for WAF compatibility)."""
     app = await db.get(PermitApplication, app_id)
     if not app or app.permit_type_id != ptype_id:
         raise HTTPException(404, "Application not found")
@@ -670,6 +681,32 @@ async def purge_test_applications(
     _admin: OktaUser = Depends(require_admin()),
 ):
     """Delete all test entries for a permit type (staff tests + synthetic data)."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    test_apps = (await db.execute(
+        select(PermitApplication).where(
+            PermitApplication.permit_type_id == ptype_id,
+            PermitApplication.is_test_entry.is_(True),
+        )
+    )).scalars().all()
+
+    count = len(test_apps)
+    for app in test_apps:
+        await db.delete(app)
+
+    await db.flush()
+    return {"deleted": count}
+
+
+@router.post("/{ptype_id}/purge-test-applications")
+async def purge_test_applications_post(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Purge test entries (POST variant for WAF compatibility)."""
     pt = await db.get(PermitType, ptype_id)
     if not pt:
         raise HTTPException(404, "Permit type not found")

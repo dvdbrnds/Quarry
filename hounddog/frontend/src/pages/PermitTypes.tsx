@@ -198,7 +198,21 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
       title: `Deactivate "${pt.label}"?`,
       content: "This will hide the permit type from students, stop new purchases, and remove it from lottery. Existing permits are not affected. You can reactivate it later.",
       okText: "Deactivate Permit Type", okButtonProps: { danger: true },
-      onOk: async () => { await fetch(`/api/permit-types/${pt.id}`, { method: "DELETE", headers: await authHeaders() }); message.success("Deactivated"); load(); },
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/permit-types/${pt.id}`, {
+            method: "PUT",
+            headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: false }),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error((body as any).detail || `Failed (${res.status})`);
+          }
+          message.success("Deactivated");
+          load();
+        } catch (e: any) { message.error(e.message || "Failed to deactivate"); }
+      },
     });
   }
 
@@ -222,8 +236,8 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const res = await fetch(`/api/permit-types/${pt.id}/permanent`, {
-            method: "DELETE",
+          const res = await fetch(`/api/permit-types/${pt.id}/permanent-delete`, {
+            method: "POST",
             headers: await authHeaders(),
           });
           if (!res.ok) {
