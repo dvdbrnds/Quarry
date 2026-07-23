@@ -1,4 +1,4 @@
-import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { useEffect, useRef } from "react";
 import type { Lot } from "../api";
 
@@ -52,6 +52,7 @@ function MapContent({
   defaultCenter,
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
+  const markerLib = useMapsLibrary("marker");
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -73,7 +74,7 @@ function MapContent({
 
   // Recreate polygons + labels with correct styles when highlight changes
   useEffect(() => {
-    if (!map) return;
+    if (!map || !markerLib) return;
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
@@ -122,7 +123,7 @@ function MapContent({
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
 
       const showLabel = !hasHighlight || isHighlighted;
-      const label = new google.maps.marker.AdvancedMarkerElement({
+      const label = new markerLib.AdvancedMarkerElement({
         position: bounds.getCenter(),
         map,
         content: createLabelElement(
@@ -153,7 +154,7 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       markersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, lots, highlightedLots]);
+  }, [map, markerLib, lots, highlightedLots]);
 
   return (
     <>

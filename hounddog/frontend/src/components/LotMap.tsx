@@ -2,6 +2,7 @@ import {
   APIProvider,
   Map,
   useMap,
+  useMapsLibrary,
 } from "@vis.gl/react-google-maps";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, Lot, ParkingSpot } from "../api";
@@ -147,6 +148,7 @@ function MapContent({
   onPlaceSpot,
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
+  const markerLib = useMapsLibrary("marker");
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const labelMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
@@ -175,7 +177,7 @@ function MapContent({
 
   // Render existing lot polygons
   useEffect(() => {
-    if (!map) return;
+    if (!map || !markerLib) return;
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
@@ -241,7 +243,7 @@ function MapContent({
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
       const center = bounds.getCenter();
 
-      const label = new google.maps.marker.AdvancedMarkerElement({
+      const label = new markerLib.AdvancedMarkerElement({
         position: center,
         map,
         content: createLabelElement(lot.name),
@@ -253,14 +255,14 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       labelMarkersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
+  }, [map, markerLib, lots, selectedLotId, editingBoundary, onSelectLot]);
 
   // Render spot markers for the selected lot (zoom-aware)
   useEffect(() => {
     spotMarkersRef.current.forEach((m) => { m.map = null; });
     spotMarkersRef.current = [];
 
-    if (!map || !selectedLotId || spots.length === 0) return;
+    if (!map || !markerLib || !selectedLotId || spots.length === 0) return;
 
     const currentZoom = map.getZoom() ?? 19;
 
@@ -282,7 +284,7 @@ function MapContent({
 
       if (iconScale < 3) content.style.display = "none";
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new markerLib.AdvancedMarkerElement({
         position: { lat: spot.latitude, lng: spot.longitude },
         map,
         content,
@@ -325,7 +327,7 @@ function MapContent({
       google.maps.event.removeListener(zoomListener);
       spotMarkersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, selectedLotId, spots, selectedSpotId, onSelectSpot]);
+  }, [map, markerLib, selectedLotId, spots, selectedSpotId, onSelectSpot]);
 
   // Fit map to all lots on initial load / when no lot is selected
   useEffect(() => {
@@ -364,10 +366,10 @@ function MapContent({
     markersRef.current.forEach((m) => { m.map = null; });
     markersRef.current = [];
 
-    if (!map || !editingBoundary || !drawingActive) return;
+    if (!map || !markerLib || !editingBoundary || !drawingActive) return;
 
     editingBoundary.forEach((c, i) => {
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new markerLib.AdvancedMarkerElement({
         position: { lat: c.latitude, lng: c.longitude },
         map,
         content: createVertexElement(i),
@@ -378,7 +380,7 @@ function MapContent({
     return () => {
       markersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, editingBoundary, drawingActive]);
+  }, [map, markerLib, editingBoundary, drawingActive]);
 
   // Render editable polygon for the boundary being edited (not in drawing mode)
   useEffect(() => {

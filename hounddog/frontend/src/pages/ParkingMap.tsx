@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { Modal, Spin } from "antd";
 import { loadConfig, initAuth, isAuthenticated, login } from "../auth";
 import type { AppConfig } from "../auth";
@@ -43,12 +43,13 @@ function MapContent({
   onLotClick: (lot: PublicLot) => void;
 }) {
   const map = useMap();
+  const markerLib = useMapsLibrary("marker");
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const labelsRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !markerLib) return;
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
@@ -107,7 +108,7 @@ function MapContent({
       labelEl.style.textShadow = "0 1px 3px rgba(0,0,0,0.8)";
       labelEl.textContent = lot.name;
 
-      const label = new google.maps.marker.AdvancedMarkerElement({
+      const label = new markerLib.AdvancedMarkerElement({
         position: bounds.getCenter(),
         map,
         content: labelEl,
@@ -129,7 +130,7 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       labelsRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, lots, onLotClick]);
+  }, [map, markerLib, lots, onLotClick]);
 
   return (
     <>
