@@ -397,7 +397,7 @@ export default function Permits() {
         items={[
           {
             key: "permits",
-            label: "All Permits",
+            label: "Permits",
             children: (
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -578,7 +578,7 @@ export default function Permits() {
           },
           {
             key: "types",
-            label: "Permit Types",
+            label: "Manage Permits",
             children: <PermitTypes />,
           },
         ]}
