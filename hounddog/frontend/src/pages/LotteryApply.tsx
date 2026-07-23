@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space, App, Tooltip } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
+
+const CAMPUS_LAT_THRESHOLD = 40.623;
 
 interface LotDetail {
   name: string;
@@ -90,6 +92,26 @@ export default function LotteryApply() {
   );
 }
 
+function CampusToggle({ active, onChange }: { active: "north" | "south" | null; onChange: (c: "north" | "south") => void }) {
+  return (
+    <div className="flex gap-1 mt-2">
+      {([["north", "North Campus"], ["south", "South Campus"]] as const).map(([key, label]) => (
+        <button
+          key={key}
+          onClick={(e) => { e.stopPropagation(); onChange(key); }}
+          className={`text-[11px] px-2.5 py-1 rounded-full transition-colors font-medium ${
+            active === key
+              ? "bg-blue-600 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function LotTags({ details }: { details: LotDetail[] }) {
   if (!details?.length) return null;
   return (
@@ -117,8 +139,47 @@ function LotteryPage({ user }: { user: AuthUser }) {
   const [loading, setLoading] = useState(true);
   const [lots, setLots] = useState<Lot[]>([]);
   const [highlightedLots, setHighlightedLots] = useState<string[]>([]);
+  const [campusFilter, setCampusFilter] = useState<"north" | "south" | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
+
+  /** Map lot name → campus ("north" | "south") using centroid latitude */
+  const lotCampusMap = useMemo(() => {
+    const m: Record<string, "north" | "south"> = {};
+    for (const lot of lots) {
+      if (lot.boundary.length < 3) continue;
+      const avgLat = lot.boundary.reduce((s, c) => s + c.latitude, 0) / lot.boundary.length;
+      const normalized = lot.name.replace(/^lot\s+/i, "").trim().toLowerCase();
+      m[normalized] = avgLat >= CAMPUS_LAT_THRESHOLD ? "north" : "south";
+    }
+    return m;
+  }, [lots]);
+
+  /** Check if a set of lot assignments spans both campuses */
+  function spansBothCampuses(lotAssignments: string[]): boolean {
+    let hasNorth = false, hasSouth = false;
+    for (const name of lotAssignments) {
+      const campus = lotCampusMap[name.replace(/^lot\s+/i, "").trim().toLowerCase()];
+      if (campus === "north") hasNorth = true;
+      if (campus === "south") hasSouth = true;
+      if (hasNorth && hasSouth) return true;
+    }
+    return false;
+  }
+
+  /** Filter lot assignments to a single campus */
+  function filterLotsByCampus(lotAssignments: string[], campus: "north" | "south"): string[] {
+    return lotAssignments.filter(name => {
+      const c = lotCampusMap[name.replace(/^lot\s+/i, "").trim().toLowerCase()];
+      return c === campus;
+    });
+  }
+
+  /** The actual highlighted lots sent to the map (filtered if campus toggle active) */
+  const effectiveHighlightedLots = useMemo(() => {
+    if (!campusFilter || highlightedLots.length === 0) return highlightedLots;
+    return filterLotsByCampus(highlightedLots, campusFilter);
+  }, [highlightedLots, campusFilter, lotCampusMap]);
 
   const load = useCallback(async () => {
     try {
@@ -208,7 +269,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
             {/* Mobile map (shown above cards on small screens) */}
             {mapsApiKey && lots.length > 0 && (
               <div className="lg:hidden h-[300px] rounded-xl overflow-hidden shadow">
-                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={highlightedLots} defaultCenter={campusCenter} />
+                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={effectiveHighlightedLots} defaultCenter={campusCenter} />
               </div>
             )}
 
@@ -230,8 +291,8 @@ function LotteryPage({ user }: { user: AuthUser }) {
                         <Card
                           key={app.id}
                           className={`transition-shadow ${isDone ? "opacity-50" : "hover:shadow-md"}`}
-                          onMouseEnter={() => !isDone && setHighlightedLots(app.lot_assignments)}
-                          onMouseLeave={() => setHighlightedLots([])}
+                          onMouseEnter={() => { if (!isDone) { setHighlightedLots(app.lot_assignments); setCampusFilter(spansBothCampuses(app.lot_assignments) ? "north" : null); } }}
+                          onMouseLeave={() => { setHighlightedLots([]); setCampusFilter(null); }}
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div>
@@ -242,6 +303,9 @@ function LotteryPage({ user }: { user: AuthUser }) {
                               <div className="text-xs text-gray-500 mt-1">
                                 {app.lot_details?.length ? <LotTags details={app.lot_details} /> : <>Lots: {app.lot_assignments.join(", ")}</>}
                               </div>
+                              {!isDone && spansBothCampuses(app.lot_assignments) && highlightedLots.length > 0 && (
+                                <CampusToggle active={campusFilter} onChange={setCampusFilter} />
+                              )}
                               {app.assigned_lot && <div className="text-xs text-green-700 font-medium mt-1">Assigned: Lot {app.assigned_lot}</div>}
                               {app.status === "waitlisted" && app.waitlist_position != null && (
                                 <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>
@@ -279,8 +343,8 @@ function LotteryPage({ user }: { user: AuthUser }) {
                         <Card
                           key={pt.id}
                           className="transition-shadow hover:shadow-md"
-                          onMouseEnter={() => setHighlightedLots(pt.lot_assignments)}
-                          onMouseLeave={() => setHighlightedLots([])}
+                          onMouseEnter={() => { setHighlightedLots(pt.lot_assignments); setCampusFilter(spansBothCampuses(pt.lot_assignments) ? "north" : null); }}
+                          onMouseLeave={() => { setHighlightedLots([]); setCampusFilter(null); }}
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -299,6 +363,9 @@ function LotteryPage({ user }: { user: AuthUser }) {
                                   <div className="text-xs text-amber-700 mt-1">* Evening & weekend access only (after 4 PM weekdays, all day Sat/Sun)</div>
                                 )}
                               </div>
+                              {spansBothCampuses(pt.lot_assignments) && highlightedLots.length > 0 && (
+                                <CampusToggle active={campusFilter} onChange={setCampusFilter} />
+                              )}
                               <div className="flex items-center gap-4 mt-2">
                                 <span className="text-xs text-gray-400">{pt.remaining} of {pt.max_capacity} spots</span>
                                 {pt.application_closes_at && (
@@ -346,7 +413,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
             {mapsApiKey && lots.length > 0 && (
               <div className="hidden lg:block lg:col-span-2 min-w-0">
                 <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
-                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={highlightedLots} defaultCenter={campusCenter} />
+                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={effectiveHighlightedLots} defaultCenter={campusCenter} />
                 </div>
               </div>
             )}
