@@ -114,3 +114,13 @@ class ActivityEventRead(BaseModel):
 class ApplicationAdminRead(ApplicationRead):
     permit_type_code: str = ""
     permit_type_label: str = ""
+
+
+class DirectPurchaseRequest(BaseModel):
+    permit_type_id: uuid.UUID
+    student_name: str
+    plate: str
+    plate_state: str
+    class_year: int
+    phone: str | None = None
+    lot_preference: str | None = None

@@ -21,6 +21,7 @@ from ..schemas.permit_application import (
     ApplicationSubmit,
     ApplicationWithType,
     AvailablePermitType,
+    DirectPurchaseRequest,
     LotAccessInfo,
 )
 
@@ -58,18 +59,28 @@ def _build_lot_details(
 
 @router.get("/available", response_model=list[AvailablePermitType])
 async def available_permit_types(db: AsyncSession = Depends(get_db)):
-    """List permit types currently open for application."""
+    """List permit types currently open for application or direct purchase."""
     now = datetime.now(timezone.utc)
-    from sqlalchemy import or_
+    from sqlalchemy import or_, and_
     result = await db.execute(
         select(PermitType).where(
             PermitType.is_active.is_(True),
-            PermitType.requires_lottery.is_(True),
-            PermitType.application_opens_at.isnot(None),
-            PermitType.application_opens_at <= now,
             or_(
-                PermitType.application_closes_at.is_(None),
-                PermitType.application_closes_at > now,
+                # Lottery types with an open application window
+                and_(
+                    PermitType.requires_lottery.is_(True),
+                    PermitType.application_opens_at.isnot(None),
+                    PermitType.application_opens_at <= now,
+                    or_(
+                        PermitType.application_closes_at.is_(None),
+                        PermitType.application_closes_at > now,
+                    ),
+                ),
+                # Always-available types (direct purchase)
+                and_(
+                    PermitType.requires_lottery.is_(False),
+                    PermitType.is_purchasable_online.is_(True),
+                ),
             ),
         ).order_by(PermitType.sort_order)
     )
@@ -379,6 +390,134 @@ async def accept_offer(
             "plate": app.plate,
             "email": app.student_email,
             "valid_days": str(pt.valid_days),
+        },
+    )
+
+    return {"checkout_url": session.url, "session_id": session.id}
+
+
+@router.post("/purchase")
+async def direct_purchase(
+    data: DirectPurchaseRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Buy an always-available permit directly via Stripe (no lottery)."""
+    pt = await db.get(PermitType, data.permit_type_id)
+    if not pt or not pt.is_active:
+        raise HTTPException(404, "Permit type not found")
+    if not pt.is_purchasable_online or pt.requires_lottery:
+        raise HTTPException(400, "This permit type cannot be purchased directly")
+
+    active_count = (await db.execute(
+        select(func.count()).select_from(Permit).where(
+            Permit.permit_type == pt.code,
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+        )
+    )).scalar() or 0
+    remaining = max(0, pt.max_capacity - active_count)
+    if remaining <= 0:
+        raise HTTPException(400, "No permits remaining for this type")
+
+    if pt.min_class_year and data.class_year > pt.min_class_year:
+        raise HTTPException(
+            403,
+            f"This permit type requires class year {pt.min_class_year} or earlier.",
+        )
+
+    existing = await db.execute(
+        select(Permit).where(
+            Permit.permit_type == pt.code,
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+            Permit.email == user.email,
+        )
+    )
+    if existing.scalar():
+        raise HTTPException(409, "You already have an active permit of this type")
+
+    citation_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM tickets
+            WHERE UPPER(plate) = UPPER(:plate)
+              AND status NOT IN ('paid', 'voided', 'resolved_permit')
+        """),
+        {"plate": data.plate.upper().strip()},
+    )
+    unpaid_count = citation_result.scalar() or 0
+    if unpaid_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You have {unpaid_count} unpaid parking citation(s). "
+            f"Pay all outstanding fines before purchasing a permit. "
+            f"Visit {settings.student_facing_url}/pay to pay online.",
+        )
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+
+    lot_assignment = data.lot_preference or (
+        ",".join(pt.lot_assignments) if pt.lot_assignments else ""
+    )
+
+    session = stripe.checkout.Session.create(
+        customer_email=user.email,
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"{pt.label} Parking Permit",
+                    "description": f"Plate: {data.plate.upper()} | Valid for {pt.valid_days} days",
+                },
+                "unit_amount": int(pt.price * 100),
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "direct_permit_purchase",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_permits, settings.gl_activity_permits,
+                    settings.gl_segment5, settings.gl_segment6,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_permits,
+                "gl_activity": settings.gl_activity_permits,
+                "permit_type_code": pt.code,
+                "permit_type_label": pt.label,
+                "permit_price": str(pt.price),
+                "permit_valid_days": str(pt.valid_days),
+                "plate": data.plate.upper().strip(),
+                "student_name": data.student_name,
+                "student_email": user.email,
+                "class_year": str(data.class_year),
+                "lot_assignment": lot_assignment,
+                "institution": settings.school_name or "moravian",
+            },
+        },
+        success_url=f"{base_url}/parking?purchased=true",
+        cancel_url=f"{base_url}/parking",
+        metadata={
+            "type": "direct_permit_purchase",
+            "permit_type_id": str(pt.id),
+            "permit_type_code": pt.code,
+            "student_name": data.student_name,
+            "plate": data.plate.upper().strip(),
+            "email": user.email,
+            "valid_days": str(pt.valid_days),
+            "lot_assignment": lot_assignment,
         },
     )
 
