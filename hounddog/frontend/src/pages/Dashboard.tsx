@@ -169,7 +169,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    let retries = 0;
+    const MAX_RETRIES = 5;
     const connect = async () => {
+      if (retries >= MAX_RETRIES) return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const token = await getAccessToken();
       const url = token
@@ -178,10 +181,14 @@ export default function Dashboard() {
       if (cancelled) return;
       const ws = new WebSocket(url);
       wsRef.current = ws;
+      ws.onopen = () => { retries = 0; };
       ws.onmessage = () => load();
       ws.onerror = () => {};
       ws.onclose = () => {
-        if (!cancelled) setTimeout(connect, 3000);
+        if (cancelled) return;
+        retries++;
+        const delay = Math.min(3000 * Math.pow(2, retries - 1), 60000);
+        setTimeout(connect, delay);
       };
     };
     connect();
