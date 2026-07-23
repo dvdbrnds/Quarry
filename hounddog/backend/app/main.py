@@ -359,6 +359,8 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMPTZ DEFAULT now()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_visitor_approval_token ON visitor_approval_tokens(token)",
+            # Rename South Standalone → South Third Party
+            "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
@@ -459,7 +461,7 @@ async def lifespan(app: FastAPI):
                     {"code": "steel_field_resident", "label": "Steel Field Resident", "eligible": "Resident students", "price": 75, "max_capacity": 42, "valid_days": 365, "lot_assignments": ["Q"], "is_purchasable_online": True, "sort_order": 6},
                     {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 37, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},
                     {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 88, "valid_days": 365, "lot_assignments": ["U", "Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 8},
-                    {"code": "south_standalone", "label": "South Standalone", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": True, "sort_order": 9},
+                    {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": True, "sort_order": 9},
                     {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 730, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10},
                 ]
                 for row in default_permits:
