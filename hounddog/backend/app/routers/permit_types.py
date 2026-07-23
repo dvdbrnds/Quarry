@@ -328,12 +328,13 @@ async def run_lottery(
 
     spots = max(0, pt.max_capacity - active_count - already_selected)
 
-    from ..services.lottery import get_strategy, assign_lots
+    from ..services.lottery import get_strategy, assign_lots, distribute_capacity
     strategy = get_strategy(pt.lottery_strategy or "seniority_weighted")
     selected_apps, remaining = strategy.rank(list(pending), spots)
 
     if pt.lot_assignments and len(pt.lot_assignments) > 1:
-        assign_lots(selected_apps, pt.lot_assignments, pt.max_capacity)
+        lot_caps = distribute_capacity(spots, pt.lot_assignments)
+        assign_lots(selected_apps, lot_caps)
 
     offer_deadline = datetime.now(timezone.utc) + timedelta(days=pt.offer_window_days)
     for rank, app in enumerate(selected_apps, 1):
@@ -611,7 +612,7 @@ async def simulate_lottery(
     capacity = data.capacity_override if data.capacity_override else pt.max_capacity
     spots = max(0, capacity)
 
-    from ..services.lottery import get_strategy, assign_lots
+    from ..services.lottery import get_strategy, assign_lots, distribute_capacity
     strategy_name = data.strategy or pt.lottery_strategy or "seniority_timestamp"
     strategy = get_strategy(strategy_name)
 
@@ -621,7 +622,8 @@ async def simulate_lottery(
     selected_apps, remaining = strategy.rank(apps_copy, spots)
 
     if pt.lot_assignments and len(pt.lot_assignments) > 1:
-        assign_lots(selected_apps, pt.lot_assignments, capacity)
+        lot_caps = distribute_capacity(spots, pt.lot_assignments)
+        assign_lots(selected_apps, lot_caps)
 
     selected_results = [
         SimulatedAppResult(
