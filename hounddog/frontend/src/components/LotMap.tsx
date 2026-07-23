@@ -49,9 +49,10 @@ interface LotMapProps {
 }
 
 function lotFillColor(lot: Lot): string {
+  if (lot.is_closed) return LOT_CLOSED;
   if (lot.lot_type === "external") return EXTERNAL_COLOR;
   if (lot.lot_type === "street") return STREET_COLOR;
-  return lot.is_closed ? LOT_CLOSED : LOT_OPEN;
+  return LOT_OPEN;
 }
 
 /** Create an HTML element for a text-only map label */

@@ -28,9 +28,10 @@ const COLOR_STREET = "#3B82F6";
 const COLOR_EXTERNAL = "#F59E0B";
 
 function getLotColor(lot: PublicLot): string {
+  if (lot.is_closed) return COLOR_CLOSED;
   if (lot.lot_type === "external") return COLOR_EXTERNAL;
   if (lot.lot_type === "street") return COLOR_STREET;
-  return lot.is_closed ? COLOR_CLOSED : COLOR_OPEN;
+  return COLOR_OPEN;
 }
 
 function MapContent({
