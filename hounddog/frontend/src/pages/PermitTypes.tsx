@@ -51,14 +51,6 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   const code = Form.useWatch("code", form);
 
   useEffect(() => {
-    if (requiresLottery && isPurchasableOnline) form.setFieldsValue({ is_purchasable_online: false });
-  }, [requiresLottery]);
-
-  useEffect(() => {
-    if (isPurchasableOnline && requiresLottery) form.setFieldsValue({ requires_lottery: false });
-  }, [isPurchasableOnline]);
-
-  useEffect(() => {
     if (initial) {
       form.setFieldsValue({
         ...initial,
@@ -144,8 +136,12 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
           <Form.Item name="sort_order" label="Sort Order"><InputNumber className="w-full" /></Form.Item>
         </div>
         <Space className="mb-4">
-          <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle><Checkbox>Always available for purchase (no lottery)</Checkbox></Form.Item>
-          <Form.Item name="requires_lottery" valuePropName="checked" noStyle><Checkbox>Requires lottery</Checkbox></Form.Item>
+          <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle>
+            <Checkbox onChange={e => { if (e.target.checked) form.setFieldsValue({ requires_lottery: false }); }}>Always available for purchase (no lottery)</Checkbox>
+          </Form.Item>
+          <Form.Item name="requires_lottery" valuePropName="checked" noStyle>
+            <Checkbox onChange={e => { if (e.target.checked) form.setFieldsValue({ is_purchasable_online: false }); }}>Requires lottery</Checkbox>
+          </Form.Item>
         </Space>
         {(requiresLottery || isPurchasableOnline) && (
           <>
