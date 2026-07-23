@@ -2,12 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import { api, LotteryVerification } from "../api";
 import {
-  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm, Tooltip, Switch,
+  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Empty, Alert, Progress, Popconfirm, Tooltip, Switch,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import dayjs from "dayjs";
 
-interface PermitTypeRow {
+export interface LotteryPermitTypeRow {
   id: string; code: string; label: string; eligible: string; price: string;
   max_capacity: number; valid_days: number; lot_assignments: string[];
   is_active: boolean; active_count: number; remaining: number;
@@ -16,6 +15,8 @@ interface PermitTypeRow {
   application_opens_at: string | null; application_closes_at: string | null;
   offer_window_days: number; lottery_run_at: string | null;
 }
+
+type PermitTypeRow = LotteryPermitTypeRow;
 
 interface Application {
   id: string; student_email: string; student_name: string; class_year: number;
@@ -37,17 +38,17 @@ interface SimulatedApp {
 
 interface ActivityEvent { id: string; student_name: string; old_status: string; new_status: string; timestamp: string; }
 
-interface LotInfo { name: string; designation_code: string; total_spaces: number; }
+export interface LotInfo { name: string; designation_code: string; total_spaces: number; }
 
 const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad"]);
 
-function lotIsRestricted(lotName: string, permitCode: string, lotLookup: Record<string, LotInfo>): boolean {
+export function lotIsRestricted(lotName: string, permitCode: string, lotLookup: Record<string, LotInfo>): boolean {
   if (!COMMUTER_CODES.has(permitCode)) return false;
   const lot = lotLookup[lotName];
   return !!lot && (lot.designation_code === "FS" || lot.designation_code === "FSC");
 }
 
-function calculateLotCapacity(lotAssignments: string[], permitCode: string, lotLookup: Record<string, LotInfo>): { fullTime: number; afterFour: number; total: number } {
+export function calculateLotCapacity(lotAssignments: string[], permitCode: string, lotLookup: Record<string, LotInfo>): { fullTime: number; afterFour: number; total: number } {
   let fullTime = 0;
   let afterFour = 0;
   for (const name of lotAssignments) {
@@ -62,7 +63,7 @@ function calculateLotCapacity(lotAssignments: string[], permitCode: string, lotL
   return { fullTime, afterFour, total: fullTime + afterFour };
 }
 
-function AdminLotTags({ lots, permitCode, lotLookup }: { lots: string[]; permitCode: string; lotLookup: Record<string, LotInfo> }) {
+export function AdminLotTags({ lots, permitCode, lotLookup }: { lots: string[]; permitCode: string; lotLookup: Record<string, LotInfo> }) {
   if (!lots.length) return <span className="text-ink-mute">—</span>;
   return (
     <span className="inline-flex flex-wrap gap-1">
@@ -80,7 +81,7 @@ function AdminLotTags({ lots, permitCode, lotLookup }: { lots: string[]; permitC
   );
 }
 
-const STRATEGY_LABELS: Record<string, string> = {
+export const STRATEGY_LABELS: Record<string, string> = {
   seniority_weighted: "Seniority Weighted", pure_random: "Pure Random",
   class_priority: "Class Priority", seniority_timestamp: "Seniority + Timestamp",
 };
@@ -90,230 +91,7 @@ const STATUS_COLORS: Record<string, string> = {
   accepted: "lime", expired: "default", declined: "default",
 };
 
-type View = "overview" | "manage" | "simulate" | "live";
-
-export default function LotteryManager({ preselect, onPreselectHandled, onEditType }: {
-  preselect?: string | null;
-  onPreselectHandled?: () => void;
-  onEditType?: (typeId: string) => void;
-} = {}) {
-  const [types, setTypes] = useState<PermitTypeRow[]>([]);
-  const [selected, setSelected] = useState<PermitTypeRow | null>(null);
-  const [view, setView] = useState<View>("overview");
-  const [lotLookup, setLotLookup] = useState<Record<string, LotInfo>>({});
-
-  const load = useCallback(async () => {
-    const [ptRes, lotRes] = await Promise.all([
-      fetch("/api/permit-types?all=true", { headers: await authHeaders() }),
-      fetch("/api/lots", { headers: await authHeaders() }),
-    ]);
-    if (ptRes.ok) { const all: PermitTypeRow[] = await ptRes.json(); setTypes(all.filter(t => t.is_active)); }
-    if (lotRes.ok) {
-      const lots: { id: string; name: string; designation_code: string; total_spaces: number }[] = await lotRes.json();
-      const lookup: Record<string, LotInfo> = {};
-      for (const l of lots) {
-        const name = l.name.trim();
-        const info: LotInfo = { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces ?? 0 };
-        lookup[name] = info;
-        if (l.id) lookup[l.id] = info;
-        const lotPrefix = name.match(/^Lot\s+(.+)$/i);
-        if (lotPrefix) lookup[lotPrefix[1]] = info;
-      }
-      setLotLookup(lookup);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (preselect && types.length > 0) {
-      const match = types.find(t => t.id === preselect);
-      if (match) { setSelected(match); setView("manage"); }
-      onPreselectHandled?.();
-    }
-  }, [preselect, types, onPreselectHandled]);
-
-  function openManage(pt: PermitTypeRow) { setSelected(pt); setView("manage"); }
-  function goBack() { if (view === "simulate" || view === "live") setView("manage"); else { setSelected(null); setView("overview"); load(); } }
-
-  const reloadSelected = useCallback(async () => {
-    await load();
-    if (selected) {
-      const res = await fetch("/api/permit-types?all=true", { headers: await authHeaders() });
-      if (res.ok) { const all: PermitTypeRow[] = await res.json(); const u = all.find(t => t.id === selected.id); if (u) setSelected(u); }
-    }
-  }, [load, selected]);
-
-  if (view === "overview" || !selected) return <OverviewGrid types={types} onSelect={openManage} onReload={load} lotLookup={lotLookup} />;
-  if (view === "simulate") return <SimulationView permitType={selected} onBack={goBack} />;
-  if (view === "live") return <LiveDashboard permitType={selected} onBack={goBack} />;
-  return <ManageView permitType={selected} onBack={goBack} onSimulate={() => setView("simulate")} onGoLive={() => setView("live")} onReload={reloadSelected} lotLookup={lotLookup} onEditType={onEditType} />;
-}
-
-function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => Promise<void> | void; lotLookup: Record<string, LotInfo> }) {
-  const { modal, message } = App.useApp();
-  const now = new Date();
-  const [toggling, setToggling] = useState<string | null>(null);
-  const [batchToggling, setBatchToggling] = useState(false);
-  const lotteryTypes = types.filter(t => t.requires_lottery);
-  const otherTypes = types.filter(t => !t.requires_lottery);
-  const studentUrl = `${window.location.origin}/parking`;
-
-  function getStatus(pt: PermitTypeRow) {
-    if (pt.lottery_run_at) return { label: "Completed", color: "green" as const };
-    if (pt.application_closes_at && new Date(pt.application_closes_at) < now) return { label: "Ready to run", color: "gold" as const };
-    if (pt.application_opens_at && new Date(pt.application_opens_at) < now && !pt.application_closes_at) return { label: "Open-ended", color: "blue" as const };
-    if (pt.application_opens_at && new Date(pt.application_opens_at) < now) return { label: "Accepting applications", color: "blue" as const };
-    if (pt.application_opens_at) return { label: "Scheduled", color: "default" as const };
-    return { label: "Not configured", color: "default" as const };
-  }
-
-  async function enableLottery(pt: PermitTypeRow) {
-    setToggling(pt.id);
-    try {
-      const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
-      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || "Failed to enable lottery"); }
-      message.success("Lottery enabled");
-      await onReload();
-    } catch (e: any) { message.error(e.message); } finally { setToggling(null); }
-  }
-
-  async function batchToggle(ids: string[], enable: boolean) {
-    setBatchToggling(true);
-    try {
-      const res = await fetch("/api/permit-types/batch-lottery-toggle", {
-        method: "POST", headers: await authHeaders(),
-        body: JSON.stringify({ ids, requires_lottery: enable }),
-      });
-      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
-      const result = await res.json();
-      message.success(`Lottery ${enable ? "enabled" : "disabled"} for ${result.updated} permit type(s)`);
-      await onReload();
-    } catch (e: any) { message.error(e.message); } finally { setBatchToggling(false); }
-  }
-
-  function handleEnableAll() {
-    const ids = otherTypes.map(t => t.id);
-    if (ids.length === 0) return;
-    modal.confirm({
-      title: `Enable lottery on ${ids.length} permit type(s)?`,
-      content: "All non-lottery permit types will require a lottery for students to get a permit.",
-      okText: "Enable All",
-      onOk: () => batchToggle(ids, true),
-    });
-  }
-
-  function handleDisableAll() {
-    const ids = lotteryTypes.map(t => t.id);
-    if (ids.length === 0) return;
-    modal.confirm({
-      title: `Disable lottery on ${ids.length} permit type(s)?`,
-      content: "Existing applications will be preserved. Students will be able to purchase permits directly.",
-      okText: "Disable All", okButtonProps: { danger: true },
-      onOk: () => batchToggle(ids, false),
-    });
-  }
-
-  const otherColumns: ColumnsType<PermitTypeRow> = [
-    { title: "Permit Type", key: "label", render: (_, pt) => <><div className="font-medium">{pt.label}</div><div className="text-xs text-ink-mute">{pt.code}</div></> },
-    { title: "Capacity", dataIndex: "max_capacity", key: "capacity" },
-    { title: "Calculated Capacity", key: "calc_capacity", render: (_, pt) => {
-      const calc = calculateLotCapacity(pt.lot_assignments, pt.code, lotLookup);
-      if (calc.total === 0) return <span className="text-ink-mute">—</span>;
-      return (
-        <div>
-          <div className="font-medium">{calc.total} spots</div>
-          {calc.afterFour > 0 && (
-            <div className="text-[11px] text-ink-mute">{calc.fullTime} full-time + {calc.afterFour} after 4pm</div>
-          )}
-        </div>
-      );
-    }},
-    { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
-    { title: "Lots", key: "lots", render: (_, pt) => pt.lot_assignments.length ? <AdminLotTags lots={pt.lot_assignments} permitCode={pt.code} lotLookup={lotLookup} /> : "—" },
-    { title: "", key: "action", render: (_, pt) => <Button size="small" loading={toggling === pt.id} onClick={() => enableLottery(pt)} style={{ borderColor: "#9333ea", color: "#7e22ce" }}>Enable Lottery</Button> },
-  ];
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-brand-primary">Lottery Management</h2>
-          <p className="text-sm text-ink-mute mt-1">Manage lotteries, run simulations, and monitor live draws.</p>
-        </div>
-        <Space>
-          {otherTypes.length > 0 && (
-            <Button onClick={handleEnableAll} loading={batchToggling}
-              style={{ borderColor: "#9333ea", color: "#7e22ce" }}>
-              Enable All Lotteries
-            </Button>
-          )}
-          {lotteryTypes.length > 0 && (
-            <Button danger onClick={handleDisableAll} loading={batchToggling}>
-              Disable All Lotteries
-            </Button>
-          )}
-        </Space>
-      </div>
-      {lotteryTypes.length > 0 && (
-        <Card size="small" className="mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-medium text-ink-mute uppercase tracking-wide mb-1">Student Application URL</div>
-              <code className="text-sm font-mono text-brand-primary bg-gray-50 px-2 py-1 rounded">{studentUrl}</code>
-            </div>
-            <Button size="small" onClick={() => { navigator.clipboard.writeText(studentUrl); message.success("URL copied to clipboard"); }}>Copy URL</Button>
-          </div>
-          <p className="text-xs text-ink-mute mt-2">Share this link with students. They'll log in with their university credentials and see open lottery permits.</p>
-        </Card>
-      )}
-      {lotteryTypes.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {lotteryTypes.map(pt => {
-            const status = getStatus(pt);
-            return (
-              <Card key={pt.id} hoverable className="cursor-pointer" onClick={() => onSelect(pt)}>
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-brand-primary">{pt.label}</h3>
-                  <Tag color={status.color}>{status.label}</Tag>
-                </div>
-                <div className="text-xs text-ink-mute space-y-1 mb-4">
-                  <div>Strategy: {STRATEGY_LABELS[pt.lottery_strategy] || pt.lottery_strategy}</div>
-                  <div>Capacity: {pt.max_capacity} set &middot; {pt.remaining} remaining</div>
-                  {(() => {
-                    const calc = calculateLotCapacity(pt.lot_assignments, pt.code, lotLookup);
-                    if (calc.total === 0) return null;
-                    return (
-                      <div>
-                        Lot spots: {calc.total}
-                        {calc.afterFour > 0
-                          ? <span className="text-ink-mute"> ({calc.fullTime} full-time + {calc.afterFour} after 4pm)</span>
-                          : null}
-                      </div>
-                    );
-                  })()}
-                  <div className="flex items-center flex-wrap gap-0.5">Lots: {pt.lot_assignments.length ? <AdminLotTags lots={pt.lot_assignments} permitCode={pt.code} lotLookup={lotLookup} /> : "None"}</div>
-                  {pt.application_closes_at && <div>Closes: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
-                  {pt.lottery_run_at && <div className="text-green-700">Ran: {new Date(pt.lottery_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <Empty className="mb-8" description="No permit types have lottery enabled yet. Enable lottery on a type below." />
-      )}
-      {otherTypes.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-ink-mute uppercase tracking-wide mb-3">Available Permit Types</h3>
-          <Table dataSource={otherTypes} columns={otherColumns} rowKey="id" size="small" pagination={false} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLookup, onEditType }: {
+export function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLookup, onEditType }: {
   permitType: PermitTypeRow; onBack: () => void; onSimulate: () => void; onGoLive: () => void; onReload: () => Promise<void>; lotLookup: Record<string, LotInfo>;
   onEditType?: (typeId: string) => void;
 }) {
@@ -776,7 +554,7 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
   );
 }
 
-function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onBack: () => void }) {
+export function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onBack: () => void }) {
   const { message: msg } = App.useApp();
   const [strategy, setStrategy] = useState(permitType.lottery_strategy);
   const [capacityOverride, setCapacityOverride] = useState<number | null>(null);
@@ -860,7 +638,7 @@ function SimulationView({ permitType, onBack }: { permitType: PermitTypeRow; onB
   );
 }
 
-function LiveDashboard({ permitType, onBack }: { permitType: PermitTypeRow; onBack: () => void }) {
+export function LiveDashboard({ permitType, onBack }: { permitType: PermitTypeRow; onBack: () => void }) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [isLive, setIsLive] = useState(true);

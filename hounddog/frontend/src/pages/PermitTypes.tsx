@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import {
+  ManageView, SimulationView, LiveDashboard,
+  type LotInfo, type LotteryPermitTypeRow,
+} from "./LotteryManager";
 
 interface PermitTypeRow {
   id: string; code: string; label: string; eligible: string; price: string;
@@ -12,6 +16,7 @@ interface PermitTypeRow {
   time_restriction: string | null; is_purchasable_online: boolean;
   is_active: boolean; sort_order: number; active_count: number; remaining: number;
   requires_lottery: boolean; lottery_strategy: string; min_class_year: number | null;
+  allow_freshmen: boolean;
   application_opens_at: string | null; application_closes_at: string | null;
   offer_window_days: number; lottery_run_at: string | null;
 }
@@ -163,17 +168,16 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   );
 }
 
-export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHandled }: {
-  onManageLottery?: (typeId: string) => void;
-  editTypeId?: string | null;
-  onEditTypeHandled?: () => void;
-} = {}) {
+export default function PermitTypes() {
   const { modal, message } = App.useApp();
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [lots, setLots] = useState<LotForSelect[]>([]);
   const [editing, setEditing] = useState<PermitTypeRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [managingLottery, setManagingLottery] = useState<PermitTypeRow | null>(null);
+  const [lotteryView, setLotteryView] = useState<"manage" | "simulate" | "live">("manage");
+  const [batchToggling, setBatchToggling] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,13 +193,29 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (editTypeId && types.length > 0) {
-      const match = types.find(t => t.id === editTypeId);
-      if (match) { setEditing(match); setCreating(false); }
-      onEditTypeHandled?.();
+  const lotteryLotLookup = useMemo<Record<string, LotInfo>>(() => {
+    const lookup: Record<string, LotInfo> = {};
+    for (const l of lots) {
+      const name = l.name.trim();
+      const info: LotInfo = { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces };
+      lookup[name] = info;
+      if (l.id) lookup[l.id] = info;
+      const lotPrefix = name.match(/^Lot\s+(.+)$/i);
+      if (lotPrefix) lookup[lotPrefix[1]] = info;
     }
-  }, [editTypeId, types, onEditTypeHandled]);
+    return lookup;
+  }, [lots]);
+
+  const reloadManaging = useCallback(async () => {
+    await load();
+  }, [load]);
+
+  useEffect(() => {
+    if (managingLottery && types.length > 0) {
+      const updated = types.find(t => t.id === managingLottery.id);
+      if (updated) setManagingLottery(updated);
+    }
+  }, [types]);
 
   function handleDeactivate(pt: PermitTypeRow) {
     modal.confirm({
@@ -371,8 +391,8 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
               {pt.requires_lottery ? "Disable Lottery" : "Enable Lottery"}
             </Button>
           )}
-          {pt.requires_lottery && pt.is_active && onManageLottery && (
-            <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => onManageLottery(pt.id)}>Manage Lottery &rarr;</Button>
+          {pt.requires_lottery && pt.is_active && (
+            <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => { setManagingLottery(pt); setLotteryView("manage"); }}>Manage Lottery &rarr;</Button>
           )}
           {pt.is_active
             ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt)}>Deactivate</Button>
@@ -386,12 +406,106 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
     },
   ];
 
+  const lotteryTypes = types.filter(t => t.requires_lottery && t.is_active);
+  const nonLotteryTypes = types.filter(t => !t.requires_lottery && t.is_active);
+  const studentUrl = `${window.location.origin}/parking`;
+
+  async function batchToggle(ids: string[], enable: boolean) {
+    setBatchToggling(true);
+    try {
+      const res = await fetch("/api/permit-types/batch-lottery-toggle", {
+        method: "POST", headers: await authHeaders(),
+        body: JSON.stringify({ ids, requires_lottery: enable }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+      const result = await res.json();
+      message.success(`Lottery ${enable ? "enabled" : "disabled"} for ${result.updated} permit type(s)`);
+      await load();
+    } catch (e: any) { message.error(e.message); } finally { setBatchToggling(false); }
+  }
+
+  function handleEnableAll() {
+    const ids = nonLotteryTypes.map(t => t.id);
+    if (ids.length === 0) return;
+    modal.confirm({
+      title: `Enable lottery on ${ids.length} permit type(s)?`,
+      content: "All non-lottery permit types will require a lottery for students to get a permit.",
+      okText: "Enable All",
+      onOk: () => batchToggle(ids, true),
+    });
+  }
+
+  function handleDisableAll() {
+    const ids = lotteryTypes.map(t => t.id);
+    if (ids.length === 0) return;
+    modal.confirm({
+      title: `Disable lottery on ${ids.length} permit type(s)?`,
+      content: "Existing applications will be preserved. Students will be able to purchase permits directly.",
+      okText: "Disable All", okButtonProps: { danger: true },
+      onOk: () => batchToggle(ids, false),
+    });
+  }
+
+  if (managingLottery) {
+    const lotteryGoBack = () => {
+      if (lotteryView === "simulate" || lotteryView === "live") {
+        setLotteryView("manage");
+      } else {
+        setManagingLottery(null);
+        load();
+      }
+    };
+
+    if (lotteryView === "simulate") return <SimulationView permitType={managingLottery as LotteryPermitTypeRow} onBack={lotteryGoBack} />;
+    if (lotteryView === "live") return <LiveDashboard permitType={managingLottery as LotteryPermitTypeRow} onBack={lotteryGoBack} />;
+    return (
+      <ManageView
+        permitType={managingLottery as LotteryPermitTypeRow}
+        onBack={lotteryGoBack}
+        onSimulate={() => setLotteryView("simulate")}
+        onGoLive={() => setLotteryView("live")}
+        onReload={reloadManaging}
+        lotLookup={lotteryLotLookup}
+        onEditType={(typeId) => {
+          const match = types.find(t => t.id === typeId);
+          if (match) { setEditing(match); setCreating(false); }
+          setManagingLottery(null);
+        }}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Permit Types</h2>
-        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>
+        <Space>
+          {nonLotteryTypes.length > 0 && (
+            <Button onClick={handleEnableAll} loading={batchToggling}
+              style={{ borderColor: "#9333ea", color: "#7e22ce" }}>
+              Enable All Lotteries
+            </Button>
+          )}
+          {lotteryTypes.length > 0 && (
+            <Button danger onClick={handleDisableAll} loading={batchToggling}>
+              Disable All Lotteries
+            </Button>
+          )}
+          <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>
+        </Space>
       </div>
+      {lotteryTypes.length > 0 && (
+        <Card size="small" className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-ink-mute uppercase tracking-wide mb-1">Student Application URL</div>
+              <code className="text-sm font-mono text-brand-primary bg-gray-50 px-2 py-1 rounded">{studentUrl}</code>
+            </div>
+            <Button size="small" onClick={() => { navigator.clipboard.writeText(studentUrl); message.success("URL copied to clipboard"); }}>Copy URL</Button>
+          </div>
+          <p className="text-xs text-ink-mute mt-2">Share this link with students. They'll log in with their university credentials and see open lottery permits.</p>
+        </Card>
+      )}
       {(creating || editing) && (
         <PermitTypeForm initial={editing ?? undefined} lots={lots}
           onSave={() => { setCreating(false); setEditing(null); load(); }}
