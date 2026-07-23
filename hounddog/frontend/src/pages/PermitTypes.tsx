@@ -316,6 +316,19 @@ export default function PermitTypes() {
     }
   }
 
+  async function handleTogglePurchasing(pt: PermitTypeRow) {
+    const enable = !pt.is_purchasable_online;
+    try {
+      const res = await fetch(`/api/permit-types/${pt.id}`, {
+        method: "PUT", headers: await authHeaders(),
+        body: JSON.stringify({ is_purchasable_online: enable }),
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
+      message.success(enable ? "Purchasing enabled" : "Purchasing disabled");
+      load();
+    } catch (e: any) { message.error(e.message); }
+  }
+
   const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad"]);
   const lotLookup: Record<string, LotForSelect> = {};
   for (const l of lots) {
@@ -392,10 +405,16 @@ export default function PermitTypes() {
     },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     {
-      title: "Actions", key: "actions", width: 240,
+      title: "Actions", key: "actions", width: 280,
       render: (_, pt) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
+          {pt.is_active && !pt.requires_lottery && (
+            <Button type="link" size="small" onClick={() => handleTogglePurchasing(pt)}
+              style={pt.is_purchasable_online ? undefined : { color: "#16a34a" }}>
+              {pt.is_purchasable_online ? "Disable Purchasing" : "Enable Purchasing"}
+            </Button>
+          )}
           {pt.is_active && (
             <Button type="link" size="small" onClick={() => handleToggleLottery(pt)}
               style={pt.requires_lottery ? { color: "#9333ea" } : undefined}>
