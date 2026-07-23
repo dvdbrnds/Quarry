@@ -130,7 +130,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
           <Form.Item name="sort_order" label="Sort Order"><InputNumber className="w-full" /></Form.Item>
         </div>
         <Space className="mb-4">
-          <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle><Checkbox>Available for online purchase</Checkbox></Form.Item>
+          <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle><Checkbox>Always available for purchase (no lottery)</Checkbox></Form.Item>
           <Form.Item name="requires_lottery" valuePropName="checked" noStyle><Checkbox>Requires lottery</Checkbox></Form.Item>
         </Space>
         {requiresLottery && (
@@ -357,7 +357,7 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
         ? <Tag color="red">Inactive</Tag>
         : pt.requires_lottery
           ? <Tag color="purple">Lottery</Tag>
-          : pt.is_purchasable_online ? <Tag color="green">Online</Tag> : <Tag>Manual</Tag>,
+          : pt.is_purchasable_online ? <Tag color="green">Always Available</Tag> : <Tag>Admin-Issued</Tag>,
     },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     {
