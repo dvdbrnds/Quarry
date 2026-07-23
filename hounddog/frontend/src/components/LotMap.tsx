@@ -53,6 +53,86 @@ function lotFillColor(lot: Lot): string {
   return lot.is_closed ? LOT_CLOSED : LOT_OPEN;
 }
 
+/** Create an HTML element for a text-only map label */
+function createLabelElement(text: string): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "lot-map-label";
+  el.style.color = "white";
+  el.style.fontSize = "11px";
+  el.style.fontWeight = "bold";
+  el.style.whiteSpace = "nowrap";
+  el.style.textShadow = "0 1px 3px rgba(0,0,0,0.8)";
+  el.textContent = text;
+  return el;
+}
+
+/** Create an HTML element for a circular spot marker */
+function createSpotElement(
+  number: number,
+  color: string,
+  strokeColor: string,
+  strokeWeight: number,
+  scale: number,
+  fontSize: string,
+): HTMLDivElement {
+  const size = scale * 2;
+  const el = document.createElement("div");
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.borderRadius = "50%";
+  el.style.backgroundColor = color;
+  el.style.border = `${strokeWeight}px solid ${strokeColor}`;
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.justifyContent = "center";
+  el.style.color = "white";
+  el.style.fontSize = fontSize;
+  el.style.fontWeight = "bold";
+  el.style.lineHeight = "1";
+  el.style.cursor = "pointer";
+  el.textContent = String(number);
+  return el;
+}
+
+/** Update an existing spot element's appearance */
+function updateSpotElement(
+  el: HTMLDivElement,
+  color: string,
+  strokeColor: string,
+  strokeWeight: number,
+  scale: number,
+  fontSize: string,
+  visible: boolean,
+): void {
+  const size = scale * 2;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.backgroundColor = color;
+  el.style.border = `${strokeWeight}px solid ${strokeColor}`;
+  el.style.fontSize = fontSize;
+  el.style.display = visible ? "flex" : "none";
+}
+
+/** Create an HTML element for a vertex marker (boundary drawing) */
+function createVertexElement(index: number): HTMLDivElement {
+  const size = 20;
+  const el = document.createElement("div");
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.borderRadius = "50%";
+  el.style.backgroundColor = HIGHLIGHT;
+  el.style.border = "2px solid white";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.justifyContent = "center";
+  el.style.color = "white";
+  el.style.fontSize = "11px";
+  el.style.fontWeight = "bold";
+  el.style.lineHeight = "1";
+  el.textContent = String(index + 1);
+  return el;
+}
+
 function MapContent({
   lots,
   selectedLotId,
@@ -68,10 +148,10 @@ function MapContent({
 }: Omit<LotMapProps, "apiKey">) {
   const map = useMap();
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
-  const labelMarkersRef = useRef<google.maps.Marker[]>([]);
+  const labelMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const editPolygonRef = useRef<google.maps.Polygon | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const spotMarkersRef = useRef<google.maps.Marker[]>([]);
+  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const spotMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [drawingActive, setDrawingActive] = useState(false);
 
@@ -99,7 +179,7 @@ function MapContent({
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
-    labelMarkersRef.current.forEach((m) => m.setMap(null));
+    labelMarkersRef.current.forEach((m) => { m.map = null; });
     labelMarkersRef.current = [];
 
     lots.forEach((lot) => {
@@ -161,34 +241,23 @@ function MapContent({
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
       const center = bounds.getCenter();
 
-      const label = new google.maps.Marker({
+      const label = new google.maps.marker.AdvancedMarkerElement({
         position: center,
         map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 0,
-        },
-        label: {
-          text: lot.name,
-          color: "white",
-          fontSize: "11px",
-          fontWeight: "bold",
-          className: "lot-map-label",
-        },
-        clickable: false,
+        content: createLabelElement(lot.name),
       });
       labelMarkersRef.current.push(label);
     });
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
-      labelMarkersRef.current.forEach((m) => m.setMap(null));
+      labelMarkersRef.current.forEach((m) => { m.map = null; });
     };
   }, [map, lots, selectedLotId, editingBoundary, onSelectLot]);
 
-  // Render spot markers for the selected SheepDog lot (zoom-aware)
+  // Render spot markers for the selected lot (zoom-aware)
   useEffect(() => {
-    spotMarkersRef.current.forEach((m) => m.setMap(null));
+    spotMarkersRef.current.forEach((m) => { m.map = null; });
     spotMarkersRef.current = [];
 
     if (!map || !selectedLotId || spots.length === 0) return;
@@ -202,29 +271,26 @@ function MapContent({
       const color = SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard;
       const { iconScale, fontSize } = spotScale(currentZoom, isSelected);
 
-      const marker = new google.maps.Marker({
+      const content = createSpotElement(
+        spot.number,
+        color,
+        isSelected ? HIGHLIGHT : "white",
+        isSelected ? 3 : 2,
+        iconScale,
+        fontSize,
+      );
+
+      if (iconScale < 3) content.style.display = "none";
+
+      const marker = new google.maps.marker.AdvancedMarkerElement({
         position: { lat: spot.latitude, lng: spot.longitude },
         map,
-        label: {
-          text: String(spot.number),
-          color: "white",
-          fontSize,
-          fontWeight: "bold",
-        },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: iconScale,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: isSelected ? HIGHLIGHT : "white",
-          strokeWeight: isSelected ? 3 : 2,
-        },
+        content,
         title: `#${spot.number}${spot.label ? ` — ${spot.label}` : ""}${spot.sensor_id ? ` [${spot.sensor_id}]` : ""}`,
         zIndex: isSelected ? 100 : 10,
-        visible: iconScale >= 3,
       });
 
-      marker.addListener("click", () => {
+      marker.addListener("gmp-click", () => {
         onSelectSpot?.(spot.id);
       });
 
@@ -233,32 +299,31 @@ function MapContent({
 
     const zoomListener = map.addListener("zoom_changed", () => {
       const z = map.getZoom() ?? 19;
+      const filteredSpots = spots.filter(s => s.latitude != null && s.longitude != null);
       spotMarkersRef.current.forEach((marker, i) => {
-        const spot = spots.filter(s => s.latitude != null && s.longitude != null)[i];
+        const spot = filteredSpots[i];
         if (!spot) return;
         const isSelected = spot.id === selectedSpotId;
+        const color = SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard;
         const { iconScale, fontSize } = spotScale(z, isSelected);
-        marker.setIcon({
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: iconScale,
-          fillColor: SPOT_TYPE_COLORS[spot.spot_type] ?? SPOT_TYPE_COLORS.standard,
-          fillOpacity: 1,
-          strokeColor: isSelected ? HIGHLIGHT : "white",
-          strokeWeight: isSelected ? 3 : 2,
-        });
-        marker.setLabel({
-          text: String(spot.number),
-          color: "white",
-          fontSize,
-          fontWeight: "bold",
-        });
-        marker.setVisible(iconScale >= 3);
+        const el = marker.content as HTMLDivElement;
+        if (el) {
+          updateSpotElement(
+            el,
+            color,
+            isSelected ? HIGHLIGHT : "white",
+            isSelected ? 3 : 2,
+            iconScale,
+            fontSize,
+            iconScale >= 3,
+          );
+        }
       });
     });
 
     return () => {
       google.maps.event.removeListener(zoomListener);
-      spotMarkersRef.current.forEach((m) => m.setMap(null));
+      spotMarkersRef.current.forEach((m) => { m.map = null; });
     };
   }, [map, selectedLotId, spots, selectedSpotId, onSelectSpot]);
 
@@ -296,30 +361,22 @@ function MapContent({
 
   // Render vertex markers for the points being placed (boundary drawing)
   useEffect(() => {
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((m) => { m.map = null; });
     markersRef.current = [];
 
     if (!map || !editingBoundary || !drawingActive) return;
 
     editingBoundary.forEach((c, i) => {
-      const marker = new google.maps.Marker({
+      const marker = new google.maps.marker.AdvancedMarkerElement({
         position: { lat: c.latitude, lng: c.longitude },
         map,
-        label: { text: String(i + 1), color: "white", fontSize: "11px", fontWeight: "bold" },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: HIGHLIGHT,
-          fillOpacity: 1,
-          strokeColor: "white",
-          strokeWeight: 2,
-        },
+        content: createVertexElement(i),
       });
       markersRef.current.push(marker);
     });
 
     return () => {
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => { m.map = null; });
     };
   }, [map, editingBoundary, drawingActive]);
 
@@ -505,6 +562,7 @@ function MapContent({
       <Map
         defaultCenter={defaultCenter ?? DEFAULT_CENTER}
         defaultZoom={16}
+        mapId="DEMO_MAP_ID"
         mapTypeId="satellite"
         gestureHandling="greedy"
         disableDefaultUI={false}

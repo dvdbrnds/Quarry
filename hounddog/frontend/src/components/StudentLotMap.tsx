@@ -27,6 +27,25 @@ function isLotHighlighted(lotName: string, highlightedLots: string[]): boolean {
   return highlightedLots.some((hl) => normalizeLotName(hl) === normalized);
 }
 
+/** Create an HTML element for a text-only map label */
+function createLabelElement(
+  text: string,
+  color: string,
+  fontSize: string,
+  opacity: number,
+): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "lot-map-label";
+  el.style.color = color;
+  el.style.fontSize = fontSize;
+  el.style.fontWeight = "bold";
+  el.style.whiteSpace = "nowrap";
+  el.style.textShadow = "0 1px 3px rgba(0,0,0,0.8)";
+  el.style.opacity = String(opacity);
+  el.textContent = text;
+  return el;
+}
+
 function MapContent({
   lots,
   highlightedLots,
@@ -34,7 +53,7 @@ function MapContent({
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const initialFitDoneRef = useRef(false);
 
@@ -58,7 +77,7 @@ function MapContent({
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((m) => { m.map = null; });
     markersRef.current = [];
 
     const hasHighlight = highlightedLots.length > 0;
@@ -103,19 +122,15 @@ function MapContent({
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
 
       const showLabel = !hasHighlight || isHighlighted;
-      const label = new google.maps.Marker({
+      const label = new google.maps.marker.AdvancedMarkerElement({
         position: bounds.getCenter(),
         map,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-        label: {
-          text: lot.name,
-          color: isHighlighted ? HIGHLIGHT_FILL : "white",
-          fontSize: isHighlighted ? "14px" : "11px",
-          fontWeight: "bold",
-          className: "lot-map-label",
-        },
-        opacity: showLabel ? 1 : 0.25,
-        clickable: false,
+        content: createLabelElement(
+          lot.name,
+          isHighlighted ? HIGHLIGHT_FILL : "white",
+          isHighlighted ? "14px" : "11px",
+          showLabel ? 1 : 0.25,
+        ),
       });
       markersRef.current.push(label);
     });
@@ -136,7 +151,7 @@ function MapContent({
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => { m.map = null; });
     };
   }, [map, lots, highlightedLots]);
 
@@ -145,6 +160,7 @@ function MapContent({
       <Map
         defaultCenter={defaultCenter ?? DEFAULT_CENTER}
         defaultZoom={DEFAULT_ZOOM}
+        mapId="DEMO_MAP_ID"
         mapTypeId="satellite"
         gestureHandling="cooperative"
         disableDefaultUI

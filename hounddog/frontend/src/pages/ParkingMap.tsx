@@ -44,7 +44,7 @@ function MapContent({
 }) {
   const map = useMap();
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
-  const labelsRef = useRef<google.maps.Marker[]>([]);
+  const labelsRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ function MapContent({
 
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
-    labelsRef.current.forEach((m) => m.setMap(null));
+    labelsRef.current.forEach((m) => { m.map = null; });
     labelsRef.current = [];
 
     lots.forEach((lot) => {
@@ -98,18 +98,19 @@ function MapContent({
       const bounds = new google.maps.LatLngBounds();
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
 
-      const label = new google.maps.Marker({
+      const labelEl = document.createElement("div");
+      labelEl.className = "lot-map-label";
+      labelEl.style.color = "white";
+      labelEl.style.fontSize = "11px";
+      labelEl.style.fontWeight = "bold";
+      labelEl.style.whiteSpace = "nowrap";
+      labelEl.style.textShadow = "0 1px 3px rgba(0,0,0,0.8)";
+      labelEl.textContent = lot.name;
+
+      const label = new google.maps.marker.AdvancedMarkerElement({
         position: bounds.getCenter(),
         map,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-        label: {
-          text: lot.name,
-          color: "white",
-          fontSize: "11px",
-          fontWeight: "bold",
-          className: "lot-map-label",
-        },
-        clickable: false,
+        content: labelEl,
       });
       labelsRef.current.push(label);
     });
@@ -126,7 +127,7 @@ function MapContent({
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
-      labelsRef.current.forEach((m) => m.setMap(null));
+      labelsRef.current.forEach((m) => { m.map = null; });
     };
   }, [map, lots, onLotClick]);
 
@@ -135,6 +136,7 @@ function MapContent({
       <Map
         defaultCenter={center}
         defaultZoom={16}
+        mapId="DEMO_MAP_ID"
         mapTypeId="satellite"
         gestureHandling="greedy"
         disableDefaultUI={false}
