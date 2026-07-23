@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
+import { api, LotteryVerification } from "../api";
 import {
-  Table, Button, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm, Tooltip, Switch,
+  Table, Button, Input, InputNumber, Select, Tag, Card, Statistic, Space, App, Spin, Empty, Alert, DatePicker, Progress, Popconfirm, Tooltip, Switch,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -91,7 +92,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 type View = "overview" | "manage" | "simulate" | "live";
 
-export default function LotteryManager() {
+export default function LotteryManager({ preselect, onPreselectHandled, onEditType }: {
+  preselect?: string | null;
+  onPreselectHandled?: () => void;
+  onEditType?: (typeId: string) => void;
+} = {}) {
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [selected, setSelected] = useState<PermitTypeRow | null>(null);
   const [view, setView] = useState<View>("overview");
@@ -120,6 +125,14 @@ export default function LotteryManager() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (preselect && types.length > 0) {
+      const match = types.find(t => t.id === preselect);
+      if (match) { setSelected(match); setView("manage"); }
+      onPreselectHandled?.();
+    }
+  }, [preselect, types, onPreselectHandled]);
+
   function openManage(pt: PermitTypeRow) { setSelected(pt); setView("manage"); }
   function goBack() { if (view === "simulate" || view === "live") setView("manage"); else { setSelected(null); setView("overview"); load(); } }
 
@@ -134,7 +147,7 @@ export default function LotteryManager() {
   if (view === "overview" || !selected) return <OverviewGrid types={types} onSelect={openManage} onReload={load} lotLookup={lotLookup} />;
   if (view === "simulate") return <SimulationView permitType={selected} onBack={goBack} />;
   if (view === "live") return <LiveDashboard permitType={selected} onBack={goBack} />;
-  return <ManageView permitType={selected} onBack={goBack} onSimulate={() => setView("simulate")} onGoLive={() => setView("live")} onReload={reloadSelected} lotLookup={lotLookup} />;
+  return <ManageView permitType={selected} onBack={goBack} onSimulate={() => setView("simulate")} onGoLive={() => setView("live")} onReload={reloadSelected} lotLookup={lotLookup} onEditType={onEditType} />;
 }
 
 function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitTypeRow[]; onSelect: (pt: PermitTypeRow) => void; onReload: () => Promise<void> | void; lotLookup: Record<string, LotInfo> }) {
@@ -300,8 +313,9 @@ function OverviewGrid({ types, onSelect, onReload, lotLookup }: { types: PermitT
   );
 }
 
-function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLookup }: {
+function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLookup, onEditType }: {
   permitType: PermitTypeRow; onBack: () => void; onSimulate: () => void; onGoLive: () => void; onReload: () => Promise<void>; lotLookup: Record<string, LotInfo>;
+  onEditType?: (typeId: string) => void;
 }) {
   const { modal, message: msg } = App.useApp();
   const [applications, setApplications] = useState<Application[]>([]);
@@ -309,13 +323,6 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
   const [running, setRunning] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [resetting, setResetting] = useState(false);
-  
-  const [configSaving, setConfigSaving] = useState(false);
-  const [strategy, setStrategy] = useState(permitType.lottery_strategy);
-  const [allowFreshmen, setAllowFreshmen] = useState(permitType.allow_freshmen ?? false);
-  const [offerDays, setOfferDays] = useState(permitType.offer_window_days);
-  const [opensAt, setOpensAt] = useState<dayjs.Dayjs | null>(permitType.application_opens_at ? dayjs(permitType.application_opens_at) : null);
-  const [closesAt, setClosesAt] = useState<dayjs.Dayjs | null>(permitType.application_closes_at ? dayjs(permitType.application_closes_at) : null);
   const [generating, setGenerating] = useState(false);
   const [genCount, setGenCount] = useState<number>(50);
   const [purging, setPurging] = useState(false);
@@ -462,15 +469,20 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
     });
   }
 
-  async function saveConfig() {
-    setConfigSaving(true);
+  const [verifyingSeed, setVerifyingSeed] = useState("");
+  const [verification, setVerification] = useState<LotteryVerification | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  async function handleVerify() {
+    if (!verifyingSeed.trim()) return;
+    setVerifying(true);
     try {
-      await fetch(`/api/permit-types/${permitType.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({
-        lottery_strategy: strategy, allow_freshmen: allowFreshmen,
-        offer_window_days: offerDays, application_opens_at: opensAt?.toISOString() ?? null, application_closes_at: closesAt?.toISOString() ?? null,
-      })});
-      msg.success("Configuration saved");
-    } catch { msg.error("Failed to save config"); } finally { setConfigSaving(false); }
+      const v = await api.permits.lottery.verify(permitType.id, verifyingSeed.trim());
+      setVerification(v);
+      if (v.verified) msg.success("Seed verified — draw is authentic");
+      else msg.error(v.error || "Verification failed");
+    } catch (e: any) { msg.error(e.message); }
+    finally { setVerifying(false); }
   }
 
   const appColumns: ColumnsType<Application> = [
@@ -639,23 +651,30 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
 
       {renderStatusBanner()}
 
-      <Card className="mb-5" title="Configuration" size="small">
+      <Card className="mb-5" title="Configuration" size="small"
+        extra={onEditType && <Button type="link" size="small" onClick={() => onEditType(permitType.id)}>Edit Configuration &rarr;</Button>}>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div><label className="block text-xs font-medium text-ink-mute mb-1">Strategy</label>
-            <Select value={strategy} onChange={setStrategy} className="w-full" options={Object.entries(STRATEGY_LABELS).map(([v, l]) => ({ label: l, value: v }))} /></div>
-          <div><label className="block text-xs font-medium text-ink-mute mb-1">Allow Freshmen</label>
-            <div className="flex items-center gap-2 mt-1">
-              <Switch checked={allowFreshmen} onChange={setAllowFreshmen} size="small" />
-              <span className="text-xs text-gray-500">{allowFreshmen ? "All class years" : "Sophomores & up"}</span>
-            </div></div>
-          <div><label className="block text-xs font-medium text-ink-mute mb-1">Offer Window (days)</label>
-            <InputNumber value={offerDays} onChange={v => setOfferDays(v ?? 5)} min={1} max={30} className="w-full" /></div>
-          <div><label className="block text-xs font-medium text-ink-mute mb-1">Opens</label>
-            <DatePicker showTime value={opensAt} onChange={setOpensAt} className="w-full" /></div>
-          <div><label className="block text-xs font-medium text-ink-mute mb-1">Closes (optional)</label>
-            <DatePicker showTime value={closesAt} onChange={setClosesAt} className="w-full" placeholder="Open-ended" /></div>
+          <div>
+            <div className="text-xs font-medium text-ink-mute mb-1">Strategy</div>
+            <div className="text-sm font-medium">{STRATEGY_LABELS[permitType.lottery_strategy] || permitType.lottery_strategy}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-ink-mute mb-1">Allow Freshmen</div>
+            <Tag color={permitType.allow_freshmen ? "green" : "default"}>{permitType.allow_freshmen ? "All class years" : "Sophomores & up"}</Tag>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-ink-mute mb-1">Offer Window</div>
+            <div className="text-sm font-medium">{permitType.offer_window_days} days</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-ink-mute mb-1">Opens</div>
+            <div className="text-sm">{permitType.application_opens_at ? new Date(permitType.application_opens_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : <span className="text-ink-mute">Not set</span>}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-ink-mute mb-1">Closes</div>
+            <div className="text-sm">{permitType.application_closes_at ? new Date(permitType.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : <span className="text-ink-mute">Open-ended</span>}</div>
+          </div>
         </div>
-        <div className="flex justify-end mt-3"><Button type="primary" onClick={saveConfig} loading={configSaving}>Save</Button></div>
       </Card>
 
       <div className="grid grid-cols-6 gap-3 mb-5">
@@ -687,6 +706,38 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
         pagination={{ pageSize: 50 }}
         locale={{ emptyText: <Empty description="No applications yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
+
+      {lotteryAlreadyRun && (
+        <Card className="mt-5" title="Verify Draw" size="small">
+          <p className="text-sm text-gray-600 mb-3">
+            Paste the original random seed to cryptographically verify that the lottery draw was authentic and unmodified.
+          </p>
+          <Space.Compact className="w-full">
+            <Input
+              placeholder="Paste seed here..."
+              value={verifyingSeed}
+              onChange={e => { setVerifyingSeed(e.target.value); setVerification(null); }}
+              className="font-mono text-xs"
+            />
+            <Button type="primary" onClick={handleVerify} loading={verifying} disabled={!verifyingSeed.trim()}>
+              Verify
+            </Button>
+          </Space.Compact>
+          {verification && (
+            <Alert
+              className="mt-3"
+              type={verification.verified ? "success" : "error"}
+              showIcon
+              message={verification.verified ? "Verified — seed matches the recorded draw" : verification.error || "Verification failed"}
+              description={verification.verified ? (
+                <span className="text-xs">
+                  Strategy: {verification.strategy} &middot; Selected: {verification.selected_count} &middot; Waitlisted: {verification.waitlisted_count}
+                </span>
+              ) : undefined}
+            />
+          )}
+        </Card>
+      )}
 
       <div className="mt-4 border-t pt-4">
         <Button type="text" size="small" className="text-gray-400" onClick={() => setShowTestTools(!showTestTools)}>

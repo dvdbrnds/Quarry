@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { authHeaders } from "../auth";
-import { api, LotteryResults, LotteryRunResult, LotteryVerification } from "../api";
 import {
-  Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Progress, Tooltip, Drawer, Descriptions, Alert, Statistic, Tabs,
+  Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -161,15 +159,17 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   );
 }
 
-export default function PermitTypes() {
+export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHandled }: {
+  onManageLottery?: (typeId: string) => void;
+  editTypeId?: string | null;
+  onEditTypeHandled?: () => void;
+} = {}) {
   const { modal, message } = App.useApp();
-  const navigate = useNavigate();
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [lots, setLots] = useState<LotForSelect[]>([]);
   const [editing, setEditing] = useState<PermitTypeRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [lotteryTarget, setLotteryTarget] = useState<PermitTypeRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,6 +184,14 @@ export default function PermitTypes() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (editTypeId && types.length > 0) {
+      const match = types.find(t => t.id === editTypeId);
+      if (match) { setEditing(match); setCreating(false); }
+      onEditTypeHandled?.();
+    }
+  }, [editTypeId, types, onEditTypeHandled]);
 
   function handleDeactivate(pt: PermitTypeRow) {
     modal.confirm({
@@ -312,7 +320,9 @@ export default function PermitTypes() {
               {pt.requires_lottery ? "Disable Lottery" : "Enable Lottery"}
             </Button>
           )}
-          {pt.requires_lottery && pt.is_active && <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => setLotteryTarget(pt)}>Lottery</Button>}
+          {pt.requires_lottery && pt.is_active && onManageLottery && (
+            <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => onManageLottery(pt.id)}>Manage Lottery &rarr;</Button>
+          )}
           {pt.is_active
             ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt)}>Deactivate</Button>
             : <Button type="link" size="small" onClick={() => handleActivate(pt.id)}>Activate</Button>
@@ -338,242 +348,6 @@ export default function PermitTypes() {
         pagination={false}
         locale={{ emptyText: <Empty description="No permit types configured" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
-      <LotteryDrawer
-        permitType={lotteryTarget}
-        onClose={() => { setLotteryTarget(null); load(); }}
-      />
     </div>
-  );
-}
-
-
-function LotteryDrawer({ permitType, onClose }: { permitType: PermitTypeRow | null; onClose: () => void }) {
-  const { modal, message } = App.useApp();
-  const [results, setResults] = useState<LotteryResults | null>(null);
-  const [runResult, setRunResult] = useState<LotteryRunResult | null>(null);
-  const [loadingResults, setLoadingResults] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [verifyingSeed, setVerifyingSeed] = useState("");
-  const [verification, setVerification] = useState<LotteryVerification | null>(null);
-  const [verifying, setVerifying] = useState(false);
-
-  useEffect(() => {
-    if (!permitType) { setResults(null); setRunResult(null); setVerification(null); return; }
-    if (permitType.lottery_run_at) {
-      setLoadingResults(true);
-      api.permits.lottery.results(permitType.id)
-        .then(setResults)
-        .catch(() => {})
-        .finally(() => setLoadingResults(false));
-    }
-  }, [permitType]);
-
-  function handleRun(force = false) {
-    if (!permitType) return;
-    const action = async () => {
-      setRunning(true);
-      try {
-        const r = await api.permits.lottery.run(permitType.id, force);
-        setRunResult(r);
-        message.success(`Lottery complete: ${r.selected} selected, ${r.waitlisted} waitlisted`);
-        const updatedResults = await api.permits.lottery.results(permitType.id);
-        setResults(updatedResults);
-      } catch (e: any) {
-        message.error(e.message || "Lottery failed");
-      } finally { setRunning(false); }
-    };
-
-    if (permitType.lottery_run_at && !force) {
-      modal.confirm({
-        title: "Re-run lottery?",
-        content: "This lottery has already been run. Re-running will overwrite the previous results. This cannot be undone.",
-        okText: "Re-run Lottery", okButtonProps: { danger: true },
-        onOk: () => action(),
-      });
-    } else {
-      modal.confirm({
-        title: `Run lottery for "${permitType.label}"?`,
-        content: `This will draw ${permitType.max_capacity} winners from all pending applications using the "${permitType.lottery_strategy}" strategy. Selected students will be notified by email.`,
-        okText: "Run Lottery",
-        onOk: () => action(),
-      });
-    }
-  }
-
-  async function handleVerify() {
-    if (!permitType || !verifyingSeed.trim()) return;
-    setVerifying(true);
-    try {
-      const v = await api.permits.lottery.verify(permitType.id, verifyingSeed.trim());
-      setVerification(v);
-      if (v.verified) message.success("Seed verified — draw is authentic");
-      else message.error(v.error || "Verification failed");
-    } catch (e: any) { message.error(e.message); }
-    finally { setVerifying(false); }
-  }
-
-  const windowOpen = permitType?.application_closes_at
-    ? new Date(permitType.application_closes_at) > new Date()
-    : false;
-  const alreadyRun = !!permitType?.lottery_run_at;
-
-  const selected = results?.applications.filter(a => a.status === "selected") || [];
-  const waitlisted = results?.applications.filter(a => a.status === "waitlisted") || [];
-  const ineligible = results?.applications.filter(a => a.status === "ineligible") || [];
-
-  const selectedCols: ColumnsType<any> = [
-    { title: "#", dataIndex: "lottery_rank", key: "rank", width: 50 },
-    { title: "Name", dataIndex: "student_name", key: "name" },
-    { title: "Class", dataIndex: "class_year", key: "year", width: 70 },
-    { title: "Lot", dataIndex: "assigned_lot", key: "lot", width: 80, render: v => v || "—" },
-    { title: "Status", dataIndex: "status", key: "status", width: 100, render: v => <Tag color={v === "selected" ? "green" : v === "accepted" ? "lime" : "default"}>{v}</Tag> },
-  ];
-  const waitlistCols: ColumnsType<any> = [
-    { title: "#", dataIndex: "waitlist_position", key: "pos", width: 50 },
-    { title: "Name", dataIndex: "student_name", key: "name" },
-    { title: "Class", dataIndex: "class_year", key: "year", width: 70 },
-    { title: "Status", dataIndex: "status", key: "status", width: 100, render: v => <Tag color="blue">{v}</Tag> },
-  ];
-
-  return (
-    <Drawer
-      open={!!permitType}
-      onClose={onClose}
-      title={`Lottery — ${permitType?.label || ""}`}
-      width={720}
-      destroyOnClose
-    >
-      {permitType && (
-        <div className="space-y-6">
-          {/* Status banner */}
-          {windowOpen && (
-            <Alert type="warning" showIcon
-              message="Application window is still open"
-              description={`Closes ${new Date(permitType.application_closes_at!).toLocaleString()}. The lottery cannot be run until the window closes.`}
-            />
-          )}
-          {alreadyRun && !runResult && (
-            <Alert type="info" showIcon
-              message={`Lottery was run on ${new Date(permitType.lottery_run_at!).toLocaleString()}`}
-            />
-          )}
-          {runResult && (
-            <Alert type="success" showIcon
-              message={`Lottery complete — ${runResult.selected} selected, ${runResult.waitlisted} waitlisted`}
-              description={runResult.warnings.length > 0 ? `Warnings: ${runResult.warnings.join("; ")}` : undefined}
-            />
-          )}
-
-          {/* Action buttons */}
-          <div className="flex gap-3">
-            <Button
-              type="primary"
-              onClick={() => handleRun(alreadyRun)}
-              loading={running}
-              disabled={windowOpen}
-            >
-              {alreadyRun ? "Re-run Lottery" : "Run Lottery"}
-            </Button>
-          </div>
-
-          {/* Results */}
-          {(results || loadingResults) && (
-            <Tabs items={[
-              {
-                key: "summary",
-                label: "Summary",
-                children: results?.audit ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <Statistic title="Total Applicants" value={results.audit.total_applicants} />
-                      <Statistic title="Eligible" value={results.audit.eligible_applicants} />
-                      <Statistic title="Selected" value={results.audit.selected_count} valueStyle={{ color: "#16a34a" }} />
-                      <Statistic title="Waitlisted" value={results.audit.waitlisted_count} valueStyle={{ color: "#2563eb" }} />
-                    </div>
-                    <Descriptions size="small" column={2} bordered>
-                      <Descriptions.Item label="Strategy">{results.audit.strategy}</Descriptions.Item>
-                      <Descriptions.Item label="Spots Available">{results.audit.spots_available}</Descriptions.Item>
-                      <Descriptions.Item label="Filtered (test)">{results.audit.filtered_test_entries}</Descriptions.Item>
-                      <Descriptions.Item label="Filtered (citations)">{results.audit.filtered_unpaid_citations}</Descriptions.Item>
-                      <Descriptions.Item label="Run At">{new Date(results.audit.run_at).toLocaleString()}</Descriptions.Item>
-                      <Descriptions.Item label="Run By">{results.audit.run_by}</Descriptions.Item>
-                      <Descriptions.Item label="Seed Hash" span={2}>
-                        <code className="text-xs break-all">{results.audit.seed_hash}</code>
-                      </Descriptions.Item>
-                    </Descriptions>
-                    <p className="text-xs text-gray-500 mt-2">
-                      The seed hash is a SHA-256 fingerprint of the random seed used. An admin with the original seed can verify that the draw was not tampered with.
-                    </p>
-                  </div>
-                ) : <div className="text-center py-8 text-gray-400">Loading...</div>,
-              },
-              {
-                key: "selected",
-                label: `Selected (${selected.length})`,
-                children: (
-                  <Table dataSource={selected} columns={selectedCols} rowKey="id" size="small" pagination={false} />
-                ),
-              },
-              {
-                key: "waitlist",
-                label: `Waitlist (${waitlisted.length})`,
-                children: (
-                  <Table dataSource={waitlisted} columns={waitlistCols} rowKey="id" size="small" pagination={false} />
-                ),
-              },
-              ...(ineligible.length > 0 ? [{
-                key: "ineligible",
-                label: `Ineligible (${ineligible.length})`,
-                children: (
-                  <Table
-                    dataSource={ineligible}
-                    columns={[
-                      { title: "Name", dataIndex: "student_name", key: "name" },
-                      { title: "Plate", dataIndex: "plate", key: "plate", render: (v: string) => <span className="font-mono">{v}</span> },
-                      { title: "Reason", dataIndex: "admin_notes", key: "notes", render: (v: string | null) => v || "—" },
-                    ]}
-                    rowKey="id" size="small" pagination={false}
-                  />
-                ),
-              }] : []),
-              {
-                key: "verify",
-                label: "Verify Draw",
-                children: (
-                  <div className="space-y-4">
-                    <p className="text-sm text-gray-600">
-                      Paste the original random seed to cryptographically verify that the lottery draw was authentic and unmodified.
-                    </p>
-                    <Space.Compact className="w-full">
-                      <Input
-                        placeholder="Paste seed here..."
-                        value={verifyingSeed}
-                        onChange={e => { setVerifyingSeed(e.target.value); setVerification(null); }}
-                        className="font-mono text-xs"
-                      />
-                      <Button type="primary" onClick={handleVerify} loading={verifying} disabled={!verifyingSeed.trim()}>
-                        Verify
-                      </Button>
-                    </Space.Compact>
-                    {verification && (
-                      <Alert
-                        type={verification.verified ? "success" : "error"}
-                        showIcon
-                        message={verification.verified ? "Verified — seed matches the recorded draw" : verification.error || "Verification failed"}
-                        description={verification.verified ? (
-                          <span className="text-xs">
-                            Strategy: {verification.strategy} &middot; Selected: {verification.selected_count} &middot; Waitlisted: {verification.waitlisted_count}
-                          </span>
-                        ) : undefined}
-                      />
-                    )}
-                  </div>
-                ),
-              },
-            ]} />
-          )}
-        </div>
-      )}
-    </Drawer>
   );
 }

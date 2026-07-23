@@ -10,6 +10,7 @@ import { MailOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import LotteryManager from "./LotteryManager";
+import PermitTypes from "./PermitTypes";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -157,7 +158,10 @@ export default function Permits() {
   const location = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [tab, setTab] = useState(location.hash === "#lottery" ? "lottery" : "permits");
+  const initTab = location.hash === "#lottery" ? "lottery" : location.hash === "#types" ? "types" : "permits";
+  const [tab, setTab] = useState(initTab);
+  const [lotteryPreselect, setLotteryPreselect] = useState<string | null>(null);
+  const [editTypeId, setEditTypeId] = useState<string | null>(null);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -392,11 +396,11 @@ export default function Permits() {
     <div>
       <Tabs
         activeKey={tab}
-        onChange={(key) => { setTab(key); window.location.hash = key === "lottery" ? "lottery" : ""; }}
+        onChange={(key) => { setTab(key); window.location.hash = key === "permits" ? "" : key === "types" ? "types" : "lottery"; }}
         items={[
           {
             key: "permits",
-            label: "Permits",
+            label: "All Permits",
             children: (
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -576,9 +580,26 @@ export default function Permits() {
             ),
           },
           {
+            key: "types",
+            label: "Permit Types",
+            children: (
+              <PermitTypes
+                onManageLottery={(typeId) => { setTab("lottery"); setLotteryPreselect(typeId); window.location.hash = "lottery"; }}
+                editTypeId={editTypeId}
+                onEditTypeHandled={() => setEditTypeId(null)}
+              />
+            ),
+          },
+          {
             key: "lottery",
             label: "Lottery",
-            children: <LotteryManager />,
+            children: (
+              <LotteryManager
+                preselect={lotteryPreselect}
+                onPreselectHandled={() => setLotteryPreselect(null)}
+                onEditType={(typeId) => { setTab("types"); setEditTypeId(typeId); window.location.hash = "types"; }}
+              />
+            ),
           },
         ]}
       />
