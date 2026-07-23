@@ -58,7 +58,10 @@ def _build_lot_details(
 
 
 @router.get("/available", response_model=list[AvailablePermitType])
-async def available_permit_types(db: AsyncSession = Depends(get_db)):
+async def available_permit_types(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
     """List permit types currently open for application or direct purchase."""
     now = datetime.now(timezone.utc)
     from sqlalchemy import or_, and_
@@ -92,7 +95,15 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
             ),
         ).order_by(PermitType.sort_order)
     )
-    types = result.scalars().all()
+    all_types = result.scalars().all()
+
+    # Filter by eligible_groups: if a permit type has eligible_groups set,
+    # the user must belong to at least one of those groups to see it.
+    user_groups = set(user.groups)
+    types = [
+        pt for pt in all_types
+        if not pt.eligible_groups or user_groups & set(pt.eligible_groups)
+    ]
 
     lot_lookup = await _load_lot_lookup(db)
 

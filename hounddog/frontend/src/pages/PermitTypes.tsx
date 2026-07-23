@@ -16,7 +16,7 @@ interface PermitTypeRow {
   time_restriction: string | null; is_purchasable_online: boolean;
   is_active: boolean; sort_order: number; active_count: number; remaining: number;
   requires_lottery: boolean; lottery_strategy: string; min_class_year: number | null;
-  allow_freshmen: boolean;
+  allow_freshmen: boolean; eligible_groups: string[];
   application_opens_at: string | null; application_closes_at: string | null;
   offer_window_days: number; lottery_run_at: string | null;
 }
@@ -81,6 +81,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       lot_assignments: values.lot_assignments || [],
       is_purchasable_online: values.is_purchasable_online ?? false,
       sort_order: values.sort_order ?? 0,
+      eligible_groups: values.eligible_groups || [],
       requires_lottery: values.requires_lottery ?? false,
       lottery_strategy: values.lottery_strategy ?? "seniority_timestamp",
       min_class_year: values.min_class_year ? parseInt(values.min_class_year) : null,
@@ -134,6 +135,20 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             />
           </Form.Item>
           <Form.Item name="sort_order" label="Sort Order"><InputNumber className="w-full" /></Form.Item>
+          <Form.Item name="eligible_groups" label={
+            <span className="flex items-center gap-2">
+              Restrict to Groups
+              <Tooltip title="Only users in these Okta groups can see this permit. Leave empty for all users.">
+                <span className="text-xs text-ink-mute">ⓘ</span>
+              </Tooltip>
+            </span>
+          }>
+            <Select
+              mode="tags"
+              placeholder="e.g. Quarry-Staff (leave empty for everyone)"
+              tokenSeparators={[","]}
+            />
+          </Form.Item>
         </div>
         <Space className="mb-4">
           <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle>

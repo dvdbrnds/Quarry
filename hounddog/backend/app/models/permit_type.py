@@ -24,6 +24,7 @@ class PermitType(Base):
     is_purchasable_online: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    eligible_groups: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
     requires_lottery: Mapped[bool] = mapped_column(Boolean, default=False)
     lottery_strategy: Mapped[str] = mapped_column(String(64), default="seniority_timestamp")
