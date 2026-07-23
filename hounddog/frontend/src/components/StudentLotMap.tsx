@@ -1,9 +1,14 @@
 import { APIProvider, Map, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Lot } from "../api";
 
 const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
 const DEFAULT_ZOOM = 17;
+
+const CAMPUS_VIEWS: Record<string, { center: { lat: number; lng: number }; zoom: number }> = {
+  north: { center: { lat: 40.6265, lng: -75.3707 }, zoom: 17 },
+  south: { center: { lat: 40.6195, lng: -75.3755 }, zoom: 17 },
+};
 const HIGHLIGHT_FILL = "#FFD700";
 const HIGHLIGHT_STROKE = "#FFFFFF";
 
@@ -44,6 +49,23 @@ function createLabelElement(
   el.style.opacity = String(opacity);
   el.textContent = text;
   return el;
+}
+
+function CampusToggle({ onSelect }: { onSelect: (campus: string) => void }) {
+  const [active, setActive] = useState<string | null>(null);
+  return (
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex bg-[#1a2744]/90 backdrop-blur rounded-lg shadow-lg overflow-hidden text-xs font-medium">
+      {[{ key: "north", label: "North Campus" }, { key: "south", label: "South Campus" }].map(c => (
+        <button
+          key={c.key}
+          onClick={() => { setActive(c.key); onSelect(c.key); }}
+          className={`px-4 py-2 transition-colors ${active === c.key ? "bg-white/20 text-white" : "text-white/60 hover:text-white hover:bg-white/10"}`}
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function MapContent({
@@ -156,6 +178,14 @@ function MapContent({
     };
   }, [map, markerLib, lots, highlightedLots]);
 
+  function handleCampusSelect(campus: string) {
+    if (!map) return;
+    const view = CAMPUS_VIEWS[campus];
+    if (!view) return;
+    map.panTo(view.center);
+    map.setZoom(view.zoom);
+  }
+
   return (
     <>
       <Map
@@ -178,6 +208,7 @@ function MapContent({
           Showing: {highlightedLots.map((n) => `Lot ${n}`).join(", ")}
         </div>
       )}
+      <CampusToggle onSelect={handleCampusSelect} />
     </>
   );
 }
