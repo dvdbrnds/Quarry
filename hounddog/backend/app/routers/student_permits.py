@@ -76,10 +76,18 @@ async def available_permit_types(db: AsyncSession = Depends(get_db)):
                         PermitType.application_closes_at > now,
                     ),
                 ),
-                # Always-available types (direct purchase)
+                # Always-available types (direct purchase) — respects schedule if set
                 and_(
                     PermitType.requires_lottery.is_(False),
                     PermitType.is_purchasable_online.is_(True),
+                    or_(
+                        PermitType.application_opens_at.is_(None),
+                        PermitType.application_opens_at <= now,
+                    ),
+                    or_(
+                        PermitType.application_closes_at.is_(None),
+                        PermitType.application_closes_at > now,
+                    ),
                 ),
             ),
         ).order_by(PermitType.sort_order)

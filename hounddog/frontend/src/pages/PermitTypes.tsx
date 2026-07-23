@@ -147,25 +147,38 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
           <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle><Checkbox>Always available for purchase (no lottery)</Checkbox></Form.Item>
           <Form.Item name="requires_lottery" valuePropName="checked" noStyle><Checkbox>Requires lottery</Checkbox></Form.Item>
         </Space>
-        {requiresLottery && (
+        {(requiresLottery || isPurchasableOnline) && (
           <>
-            <h4 className="text-sm font-semibold text-brand-primary mb-3 mt-4 pt-4 border-t">Lottery Configuration</h4>
+            <h4 className="text-sm font-semibold text-brand-primary mb-3 mt-4 pt-4 border-t">
+              {requiresLottery ? "Lottery Configuration" : "Purchasing Schedule"}
+            </h4>
             <div className="grid grid-cols-2 gap-x-4">
-              <Form.Item name="lottery_strategy" label="Strategy">
-                <Select options={[
-                  { label: "Seniority + Timestamp (default)", value: "seniority_timestamp" },
-                  { label: "Seniority Weighted", value: "seniority_weighted" },
-                  { label: "Pure Random", value: "pure_random" },
-                  { label: "Class Priority", value: "class_priority" },
-                ]} />
+              {requiresLottery && (
+                <>
+                  <Form.Item name="lottery_strategy" label="Strategy">
+                    <Select options={[
+                      { label: "Seniority + Timestamp (default)", value: "seniority_timestamp" },
+                      { label: "Seniority Weighted", value: "seniority_weighted" },
+                      { label: "Pure Random", value: "pure_random" },
+                      { label: "Class Priority", value: "class_priority" },
+                    ]} />
+                  </Form.Item>
+                  <Form.Item name="min_class_year" label="Min. Class Year (blank = all)">
+                    <Input type="number" placeholder="e.g. 2027" />
+                  </Form.Item>
+                  <Form.Item name="offer_window_days" label="Offer Window (days)"><InputNumber className="w-full" min={1} max={30} /></Form.Item>
+                </>
+              )}
+              <Form.Item name="application_opens_at" label={requiresLottery ? "Application Opens" : "Purchasing Opens"}>
+                <DatePicker showTime className="w-full" />
               </Form.Item>
-              <Form.Item name="min_class_year" label="Min. Class Year (blank = all)">
-                <Input type="number" placeholder="e.g. 2027" />
+              <Form.Item name="application_closes_at" label={requiresLottery ? "Application Closes" : "Purchasing Closes"}>
+                <DatePicker showTime className="w-full" />
               </Form.Item>
-              <Form.Item name="offer_window_days" label="Offer Window (days)"><InputNumber className="w-full" min={1} max={30} /></Form.Item>
-              <Form.Item name="application_opens_at" label="Application Opens"><DatePicker showTime className="w-full" /></Form.Item>
-              <Form.Item name="application_closes_at" label="Application Closes"><DatePicker showTime className="w-full" /></Form.Item>
             </div>
+            {!requiresLottery && (
+              <p className="text-xs text-ink-mute -mt-2 mb-2">Leave blank to make available immediately with no end date.</p>
+            )}
           </>
         )}
         <div className="flex justify-end gap-3 pt-2">
@@ -397,11 +410,46 @@ export default function PermitTypes() {
     },
     {
       title: "Status", key: "type",
-      render: (_, pt) => !pt.is_active
-        ? <Tag color="red">Inactive</Tag>
-        : pt.requires_lottery
-          ? <Tag color="purple">Lottery</Tag>
-          : pt.is_purchasable_online ? <Tag color="green">Always Available</Tag> : <Tag>Admin-Issued</Tag>,
+      render: (_, pt) => {
+        if (!pt.is_active) return <Tag color="red">Inactive</Tag>;
+        const now = new Date();
+        const opens = pt.application_opens_at ? new Date(pt.application_opens_at) : null;
+        const closes = pt.application_closes_at ? new Date(pt.application_closes_at) : null;
+        const notYetOpen = opens && opens > now;
+        const closed = closes && closes < now;
+
+        if (pt.requires_lottery) {
+          return (
+            <div>
+              <Tag color="purple">Lottery</Tag>
+              {notYetOpen && <div className="text-[10px] text-ink-mute mt-0.5">Opens {opens!.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
+              {closed && <div className="text-[10px] text-amber-700 mt-0.5">Closed</div>}
+            </div>
+          );
+        }
+        if (pt.is_purchasable_online) {
+          if (notYetOpen) return (
+            <div>
+              <Tag color="blue">Scheduled</Tag>
+              <div className="text-[10px] text-ink-mute mt-0.5">Opens {opens!.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+            </div>
+          );
+          if (closed) return (
+            <div>
+              <Tag color="default">Purchasing Closed</Tag>
+              <div className="text-[10px] text-ink-mute mt-0.5">Ended {closes!.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+            </div>
+          );
+          if (closes) return (
+            <div>
+              <Tag color="green">Available Now</Tag>
+              <div className="text-[10px] text-ink-mute mt-0.5">Until {closes.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+            </div>
+          );
+          return <Tag color="green">Always Available</Tag>;
+        }
+        return <Tag>Admin-Issued</Tag>;
+      },
     },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     {
