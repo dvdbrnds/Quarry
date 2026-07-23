@@ -550,6 +550,37 @@ async def manually_select_application(
     }
 
 
+class FeeExemptRequest(BaseModel):
+    fee_exempt: bool
+
+
+@router.post("/{ptype_id}/applications/{app_id}/fee-exempt")
+async def toggle_fee_exempt(
+    ptype_id: uuid.UUID,
+    app_id: uuid.UUID,
+    data: FeeExemptRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Toggle fee-exempt status on a lottery application."""
+    pt = await db.get(PermitType, ptype_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    app = await db.get(PermitApplication, app_id)
+    if not app or app.permit_type_id != ptype_id:
+        raise HTTPException(404, "Application not found")
+
+    app.fee_exempt = data.fee_exempt
+    await db.flush()
+
+    return {
+        "id": str(app.id),
+        "fee_exempt": app.fee_exempt,
+        "student_name": app.student_name,
+    }
+
+
 @router.post("/{ptype_id}/simulate-lottery", response_model=SimulationResponse)
 async def simulate_lottery(
     ptype_id: uuid.UUID,

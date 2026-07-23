@@ -16,7 +16,7 @@ interface MyApplication {
   permit_type_price: string; lot_assignments: string[];
   lot_preferences: string[]; assigned_lot: string | null;
   waitlist_position: number | null; offer_expires_at: string | null; created_at: string;
-  waitlist_message: string | null;
+  waitlist_message: string | null; fee_exempt: boolean;
 }
 
 const STATUS_LABELS: Record<string, { text: string; color: string }> = {
@@ -62,8 +62,13 @@ export default function StudentPermits() {
     try {
       const res = await fetch(`/api/student/permits/${appId}/accept`, { method: "POST", headers: await authHeaders() });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Accept failed"); }
-      const { checkout_url } = await res.json();
-      window.location.href = checkout_url;
+      const data = await res.json();
+      if (data.fee_exempt) {
+        message.success("Your permit has been issued — no payment required.");
+        load();
+      } else {
+        window.location.href = data.checkout_url;
+      }
     } catch (e: any) { message.error(e.message); }
   }
 
@@ -111,13 +116,20 @@ export default function StudentPermits() {
                       </div>
                       {app.status === "waitlisted" && app.waitlist_message && <div className="text-xs text-blue-600 mt-1">{app.waitlist_message}</div>}
                       {app.status === "waitlisted" && !app.waitlist_message && app.waitlist_position != null && <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>}
-                      {app.status === "selected" && app.offer_expires_at && <div className="text-xs text-green-700 mt-1">Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
+                      {app.status === "selected" && app.offer_expires_at && (
+                        <div className="text-xs text-green-700 mt-1">
+                          {app.fee_exempt && <span className="font-semibold">No charge — </span>}
+                          Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </div>
+                      )}
                     </div>
                     <Space>
                       <Tag color={st.color}>{st.text}</Tag>
                       {app.status === "selected" && (
                         <>
-                          <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>Accept & Pay</Button>
+                          <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>
+                            {app.fee_exempt ? "Claim Permit (Free)" : "Accept & Pay"}
+                          </Button>
                           <Button size="small" onClick={() => handleDecline(app.id)}>Decline</Button>
                         </>
                       )}

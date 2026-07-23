@@ -41,6 +41,7 @@ class ApplicationRead(BaseModel):
     waitlist_position: int | None = None
     offer_expires_at: datetime | None = None
     is_test_entry: bool = False
+    fee_exempt: bool = False
     created_at: datetime
     updated_at: datetime
 

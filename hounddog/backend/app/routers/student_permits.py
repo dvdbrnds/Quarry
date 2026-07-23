@@ -1,7 +1,8 @@
 """Student-facing permit application endpoints."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, text
@@ -11,9 +12,11 @@ from ..auth.okta import OktaUser, get_current_user
 from ..config import settings
 from ..database import get_db
 from ..models.lot import ParkingLot
+from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
+from ..services.permit_numbering import next_permit_number
 from ..schemas.permit_application import (
     ApplicationSubmit,
     ApplicationWithType,
@@ -275,6 +278,44 @@ async def accept_offer(
     if not pt:
         raise HTTPException(404, "Permit type not found")
 
+    # Fee-exempt path: issue permit directly at $0, skip Stripe
+    if app.fee_exempt:
+        lot_assignment = ""
+        if app.assigned_lot:
+            lot_assignment = app.assigned_lot
+        elif pt.lot_assignments:
+            lot_assignment = ",".join(pt.lot_assignments)
+
+        new_permit = Permit(
+            permit_number=await next_permit_number(db),
+            name=app.student_name,
+            email=app.student_email or None,
+            plates=[app.plate],
+            permit_type=pt.code,
+            lot_assignment=lot_assignment,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=pt.valid_days),
+            status="active",
+        )
+        db.add(new_permit)
+
+        payment = Payment(
+            amount=Decimal("0.00"),
+            method="fee_exempt",
+            payment_type="lottery_permit",
+            payer_name=app.student_name or None,
+            payer_email=app.student_email or None,
+            plate=app.plate or None,
+            description=f"Fee-Exempt Permit ({pt.code}) — {app.plate}",
+        )
+        db.add(payment)
+
+        app.status = "accepted"
+        await db.flush()
+
+        return {"status": "accepted", "fee_exempt": True}
+
+    # Standard payment path via Stripe
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
 

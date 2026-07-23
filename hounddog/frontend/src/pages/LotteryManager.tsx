@@ -22,7 +22,7 @@ interface Application {
   plate: string; plate_state: string; phone: string | null; lot_preferences: string[];
   assigned_lot: string | null; status: string; lottery_rank: number | null;
   waitlist_position: number | null; offer_expires_at: string | null;
-  is_test_entry: boolean; created_at: string; updated_at: string;
+  is_test_entry: boolean; fee_exempt: boolean; created_at: string; updated_at: string;
 }
 
 interface SimulationResult {
@@ -485,8 +485,22 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
     finally { setVerifying(false); }
   }
 
+  const [togglingFeeExempt, setTogglingFeeExempt] = useState<string | null>(null);
+
+  async function handleToggleFeeExempt(appId: string, checked: boolean) {
+    setTogglingFeeExempt(appId);
+    try {
+      const res = await fetch(`/api/permit-types/${permitType.id}/applications/${appId}/fee-exempt`, {
+        method: "POST", headers: await authHeaders(), body: JSON.stringify({ fee_exempt: checked }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
+      msg.success(checked ? "Marked fee-exempt" : "Fee-exempt removed");
+      load();
+    } catch (e: any) { msg.error(e.message); } finally { setTogglingFeeExempt(null); }
+  }
+
   const appColumns: ColumnsType<Application> = [
-    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}</> },
+    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}{a.fee_exempt && <Tag color="green" className="ml-1.5 text-[10px]">FREE</Tag>}</> },
     { title: "Email", dataIndex: "student_email", key: "email", ellipsis: true },
     { title: "Class", dataIndex: "class_year", key: "class" },
     { title: "Plate", dataIndex: "plate", key: "plate", render: (_v, r: Application) => <span className="font-mono text-xs">{r.plate}{r.plate_state ? ` (${r.plate_state})` : ""}</span> },
@@ -522,6 +536,10 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
         : <span className="text-green-700 font-medium">{v}</span>;
     }},
     { title: "Applied", dataIndex: "created_at", key: "applied", render: d => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) },
+    { title: "Fee Exempt", key: "fee_exempt", width: 90, align: "center" as const, render: (_, a) => (
+      <Switch size="small" checked={a.fee_exempt} loading={togglingFeeExempt === a.id}
+        onChange={(checked) => handleToggleFeeExempt(a.id, checked)} />
+    )},
     { title: "", key: "actions", width: 120, render: (_, a) => (
       <Space>
         {(a.status === "pending" || a.status === "waitlisted") && (

@@ -27,6 +27,7 @@ class PermitApplication(Base):
     waitlist_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     offer_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_test_entry: Mapped[bool] = mapped_column(Boolean, default=False)
+    fee_exempt: Mapped[bool] = mapped_column(Boolean, default=False)
     okta_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
