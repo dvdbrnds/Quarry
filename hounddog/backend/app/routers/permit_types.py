@@ -140,6 +140,47 @@ async def deactivate_permit_type(
     await db.flush()
 
 
+@router.delete("/{ptype_id}/permanent", status_code=204)
+async def permanently_delete_permit_type(
+    ptype_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    ptype = await db.get(PermitType, ptype_id)
+    if not ptype:
+        raise HTTPException(404, "Permit type not found")
+    if ptype.is_active:
+        raise HTTPException(
+            400, "Permit type must be deactivated before it can be permanently deleted"
+        )
+    active_permits = await db.scalar(
+        select(func.count())
+        .select_from(Permit)
+        .where(Permit.permit_type == ptype.code, Permit.status == "active")
+    )
+    if active_permits:
+        raise HTTPException(
+            400,
+            f"Cannot delete: {active_permits} active permit(s) still reference this type. "
+            "Revoke or expire them first.",
+        )
+    await db.execute(
+        select(PermitApplication)
+        .where(PermitApplication.permit_type_id == ptype_id)
+    )
+    apps = (
+        await db.execute(
+            select(PermitApplication).where(
+                PermitApplication.permit_type_id == ptype_id
+            )
+        )
+    ).scalars().all()
+    for app in apps:
+        await db.delete(app)
+    await db.delete(ptype)
+    await db.flush()
+
+
 @router.post("/import", response_model=PermitTypeImportResult)
 async def import_permit_types(
     payload: PermitTypeImportPayload,

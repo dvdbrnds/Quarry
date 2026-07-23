@@ -214,6 +214,29 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
     } catch { message.error("Failed to activate"); }
   }
 
+  function handleDelete(pt: PermitTypeRow) {
+    modal.confirm({
+      title: `Permanently delete "${pt.label}"?`,
+      content: "This will permanently remove this permit type and all associated lottery applications. This cannot be undone.",
+      okText: "Delete Permanently",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/permit-types/${pt.id}/permanent`, {
+            method: "DELETE",
+            headers: await authHeaders(),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error((body as any).detail || "Failed to delete");
+          }
+          message.success("Permit type deleted");
+          load();
+        } catch (e: any) { message.error(e.message); }
+      },
+    });
+  }
+
   function handleToggleLottery(pt: PermitTypeRow) {
     if (pt.requires_lottery) {
       modal.confirm({
@@ -310,7 +333,7 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
     },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     {
-      title: "Actions", key: "actions", width: 200,
+      title: "Actions", key: "actions", width: 240,
       render: (_, pt) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
@@ -325,7 +348,10 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
           )}
           {pt.is_active
             ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt)}>Deactivate</Button>
-            : <Button type="link" size="small" onClick={() => handleActivate(pt.id)}>Activate</Button>
+            : <>
+                <Button type="link" size="small" onClick={() => handleActivate(pt.id)}>Activate</Button>
+                <Button type="link" size="small" danger onClick={() => handleDelete(pt)}>Delete</Button>
+              </>
           }
         </Space>
       ),
