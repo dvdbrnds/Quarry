@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty, Spin, Tabs, Descriptions,
+  Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty, Spin, Tabs, Descriptions, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -377,8 +377,18 @@ export default function Finance() {
       render: v => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
     },
     {
-      title: "Fee", dataIndex: "fee", key: "fee", align: "right", width: 80,
-      render: v => Number(v) > 0 ? <span className="text-ink-mute text-xs">{fmtDollars(v)}</span> : "—",
+      title: <Tooltip title="Stripe charges 2.9% + $0.30 per successful card transaction"><span className="cursor-help border-b border-dotted border-gray-400">Fee</span></Tooltip>,
+      dataIndex: "fee", key: "fee", align: "right", width: 80,
+      render: (v: string, t: StripeTransaction) => {
+        if (Number(v) <= 0) return "—";
+        const gross = Number(t.amount);
+        const pct = gross > 0 ? ((Number(v) / gross) * 100).toFixed(1) : "—";
+        return (
+          <Tooltip title={`${pct}% of ${fmtDollars(gross)} — Stripe's standard rate is 2.9% + $0.30 per transaction`}>
+            <span className="text-ink-mute text-xs cursor-help">{fmtDollars(v)}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "Net", dataIndex: "net", key: "net", align: "right", width: 100,
@@ -446,7 +456,7 @@ export default function Finance() {
       ) : ov ? (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
           <Card size="small"><Statistic title="Stripe Volume" value={Number(ov.total_volume)} prefix="$" precision={2} valueStyle={{ color: "#15803d", fontWeight: 700 }} /></Card>
-          <Card size="small"><Statistic title="Stripe Fees" value={Number(ov.total_fees)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
+          <Tooltip title="Stripe charges 2.9% + $0.30 per successful card transaction. These fees are deducted before funds reach your account."><Card size="small"><Statistic title="Stripe Fees" value={Number(ov.total_fees)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card></Tooltip>
           <Card size="small"><Statistic title="Net Revenue" value={Number(ov.total_net)} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
           <Card size="small"><Statistic title="Refunded" value={Number(ov.total_refunded)} prefix="$" precision={2} /></Card>
           <Card size="small"><Statistic title="Successful" value={ov.successful_count} valueStyle={{ color: "#15803d" }} /></Card>
