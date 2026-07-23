@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user
+from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_token
 from ..config import settings
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
@@ -75,6 +75,20 @@ async def profile(user: OktaUser = Depends(get_current_user)):
         "class_year": user.class_year,
         "groups": user.groups,
         "role": user.role,
+    }
+
+
+@router.get("/okta-debug")
+async def okta_debug(request: Request, user: OktaUser = Depends(get_current_user)):
+    """Admin-only: show full Okta userinfo payload to discover available attributes."""
+    if not user.is_admin:
+        return {"error": "Admin only"}
+    token = _extract_token(request)
+    raw_userinfo = await _fetch_userinfo(token) if token else {}
+    return {
+        "token_profile": user.profile,
+        "userinfo": raw_userinfo,
+        "groups": user.groups,
     }
 
 
