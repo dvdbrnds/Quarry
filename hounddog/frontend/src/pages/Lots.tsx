@@ -671,7 +671,7 @@ export default function Lots() {
                       {lot.lot_type === "external" && <Tag color="orange" className="!text-[10px]">External</Tag>}
                       {lot.campus && <Tag color="blue" className="!text-[10px]">{CAMPUS_OPTIONS.find(c => c.value === lot.campus)?.label ?? lot.campus}</Tag>}
                       {lot.has_sheepdog && <Tag color="gold" className="!text-[10px]">SD</Tag>}
-                      {lot.is_closed && lot.lot_type !== "street" && lot.lot_type !== "external" && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
+                      {lot.is_closed && lot.lot_type !== "external" && <Tag color="red" className="!text-[10px]">CLOSED</Tag>}
                     </div>
                     <p className="text-xs text-ink-mute mt-0.5 truncate">
                       {lot.lot_type === "external"
@@ -688,7 +688,7 @@ export default function Lots() {
                   </div>
                   {!isEditing && (
                     <div className="flex items-center gap-1 flex-shrink-0 text-xs" onClick={e => e.stopPropagation()}>
-                      {lot.lot_type !== "street" && lot.lot_type !== "external" && (lot.is_closed
+                      {lot.lot_type !== "external" && (lot.is_closed
                         ? <Button type="link" size="small" className="!px-1" onClick={() => handleReopen(lot)}>Reopen</Button>
                         : <Button type="link" size="small" className="!px-1" danger onClick={() => setClosingLot(lot)}>Close</Button>)}
                       <Button type="link" size="small" className="!px-1" onClick={() => startEdit(lot)}>Edit</Button>
