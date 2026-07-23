@@ -285,7 +285,9 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
   }
 
   const columns: ColumnsType<PermitTypeRow> = [
-    { title: "Label", dataIndex: "label", key: "label", render: v => <span className="font-medium">{v}</span> },
+    { title: "Label", dataIndex: "label", key: "label", render: (v, pt) => (
+      <span className={`font-medium ${!pt.is_active ? "line-through text-ink-mute" : ""}`}>{v}</span>
+    )},
     { title: <Tooltip title="Orange = after 4pm only (FS/FSC) · Blue = street parking">Lots</Tooltip>, key: "lots", render: (_, pt) => {
       if (!pt.lot_assignments.length) return <span className="text-ink-mute">—</span>;
       return (
@@ -326,10 +328,12 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
       ),
     },
     {
-      title: "Type", key: "type",
-      render: (_, pt) => pt.requires_lottery
-        ? <Tag color="purple">Lottery</Tag>
-        : pt.is_purchasable_online ? <Tag color="green">Online</Tag> : <Tag>Manual</Tag>,
+      title: "Status", key: "type",
+      render: (_, pt) => !pt.is_active
+        ? <Tag color="red">Inactive</Tag>
+        : pt.requires_lottery
+          ? <Tag color="purple">Lottery</Tag>
+          : pt.is_purchasable_online ? <Tag color="green">Online</Tag> : <Tag>Manual</Tag>,
     },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
     {
