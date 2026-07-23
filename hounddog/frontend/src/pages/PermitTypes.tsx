@@ -47,7 +47,16 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const requiresLottery = Form.useWatch("requires_lottery", form);
+  const isPurchasableOnline = Form.useWatch("is_purchasable_online", form);
   const code = Form.useWatch("code", form);
+
+  useEffect(() => {
+    if (requiresLottery && isPurchasableOnline) form.setFieldsValue({ is_purchasable_online: false });
+  }, [requiresLottery]);
+
+  useEffect(() => {
+    if (isPurchasableOnline && requiresLottery) form.setFieldsValue({ requires_lottery: false });
+  }, [isPurchasableOnline]);
 
   useEffect(() => {
     if (initial) {
@@ -292,11 +301,13 @@ export default function PermitTypes() {
     } else {
       modal.confirm({
         title: `Enable lottery for "${pt.label}"?`,
-        content: "Students will need to apply through the lottery to get this permit type.",
+        content: pt.is_purchasable_online
+          ? "This will switch the permit from \"Always Available\" to lottery-based. Students will need to apply through the lottery."
+          : "Students will need to apply through the lottery to get this permit type.",
         okText: "Enable Lottery",
         onOk: async () => {
           try {
-            const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
+            const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, is_purchasable_online: false, lottery_strategy: "seniority_timestamp" }) });
             if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
             message.success("Lottery enabled"); load();
           } catch (e: any) { message.error(e.message); }
