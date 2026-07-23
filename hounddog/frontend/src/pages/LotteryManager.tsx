@@ -641,9 +641,12 @@ function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload, lotLoo
             title: `Disable lottery for "${permitType.label}"?`, content: "Existing applications will be preserved.",
             okText: "Disable", okButtonProps: { danger: true },
             onOk: async () => {
-              await fetch(`/api/permit-types/${permitType.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
-              msg.success("Lottery disabled");
-              onBack();
+              try {
+                const res = await fetch(`/api/permit-types/${permitType.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
+                if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || "Failed"); }
+                msg.success("Lottery disabled");
+                onBack();
+              } catch (e: any) { msg.error(e.message); }
             },
           })}>Disable Lottery</Button>
         </Space>

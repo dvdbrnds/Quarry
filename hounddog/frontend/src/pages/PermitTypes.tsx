@@ -85,10 +85,14 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
     try {
       const method = initial ? "PUT" : "POST";
       const url = initial ? `/api/permit-types/${initial.id}` : "/api/permit-types";
-      await fetch(url, { method, headers: await authHeaders(), body: JSON.stringify(body) });
+      const res = await fetch(url, { method, headers: await authHeaders(), body: JSON.stringify(body) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).detail || `Failed (${res.status})`);
+      }
       message.success(initial ? "Permit type updated" : "Permit type created");
       onSave();
-    } catch { message.error("Failed to save"); } finally { setSaving(false); }
+    } catch (e: any) { message.error(e.message || "Failed to save"); } finally { setSaving(false); }
   }
 
   const lotOptions = lots.map(l => ({
@@ -258,8 +262,11 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
         content: "The permit type will stay active. Students will no longer apply through the lottery — it will become a regular permit. Existing applications are preserved.",
         okText: "Disable Lottery",
         onOk: async () => {
-          await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
-          message.success("Lottery disabled"); load();
+          try {
+            const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
+            if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
+            message.success("Lottery disabled"); load();
+          } catch (e: any) { message.error(e.message); }
         },
       });
     } else {
@@ -268,8 +275,11 @@ export default function PermitTypes({ onManageLottery, editTypeId, onEditTypeHan
         content: "Students will need to apply through the lottery to get this permit type.",
         okText: "Enable Lottery",
         onOk: async () => {
-          await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
-          message.success("Lottery enabled"); load();
+          try {
+            const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, lottery_strategy: "seniority_timestamp" }) });
+            if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
+            message.success("Lottery enabled"); load();
+          } catch (e: any) { message.error(e.message); }
         },
       });
     }
