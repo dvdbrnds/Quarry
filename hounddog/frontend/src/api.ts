@@ -12,7 +12,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  let method = init?.method ?? "GET";
+  if (method === "DELETE") {
+    method = "POST";
+    headers["X-HTTP-Method-Override"] = "DELETE";
+  }
+
+  const res = await fetch(`${BASE}${path}`, { ...init, method, headers });
   if (!res.ok) {
     if (res.status === 401) {
       window.location.href = "/";

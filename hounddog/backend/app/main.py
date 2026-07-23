@@ -683,6 +683,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class MethodOverrideMiddleware(BaseHTTPMiddleware):
+    """Translate POST with X-HTTP-Method-Override: DELETE into a real DELETE.
+
+    This works around WAFs/proxies that block the HTTP DELETE method.
+    """
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.method == "POST":
+            override = request.headers.get("x-http-method-override", "").upper()
+            if override == "DELETE":
+                request.scope["method"] = "DELETE"
+        return await call_next(request)
+
+app.add_middleware(MethodOverrideMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
