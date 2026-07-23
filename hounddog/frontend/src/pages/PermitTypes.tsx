@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip,
@@ -196,6 +196,13 @@ export default function PermitTypes() {
   const [managingLottery, setManagingLottery] = useState<PermitTypeRow | null>(null);
   const [lotteryView, setLotteryView] = useState<"manage" | "simulate" | "live">("manage");
   const [batchToggling, setBatchToggling] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if ((editing || creating) && formRef.current) {
+      formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [editing, creating]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -581,9 +588,11 @@ export default function PermitTypes() {
         </Card>
       )}
       {(creating || editing) && (
-        <PermitTypeForm initial={editing ?? undefined} lots={lots}
-          onSave={() => { setCreating(false); setEditing(null); load(); }}
-          onCancel={() => { setCreating(false); setEditing(null); }} />
+        <div ref={formRef}>
+          <PermitTypeForm key={editing?.id ?? "new"} initial={editing ?? undefined} lots={lots}
+            onSave={() => { setCreating(false); setEditing(null); load(); }}
+            onCancel={() => { setCreating(false); setEditing(null); }} />
+        </div>
       )}
       <Table dataSource={types} columns={columns} rowKey="id" loading={loading} size="small"
         rowClassName={pt => !pt.is_active ? "opacity-50" : ""}
