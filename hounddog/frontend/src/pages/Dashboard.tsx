@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Statistic, Spin, Tag, Segmented, Empty } from "antd";
-import { authHeaders, getAccessToken } from "../auth";
+import { authHeaders } from "../auth";
 import { useCurrentUser } from "../UserContext";
 
 type Period = "today" | "week" | "month";
@@ -145,7 +145,6 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [period, setPeriod] = useState<Period>("today");
   const [loading, setLoading] = useState(true);
-  const wsRef = useRef<WebSocket | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -167,36 +166,6 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [load]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let retries = 0;
-    const MAX_RETRIES = 5;
-    const connect = async () => {
-      if (retries >= MAX_RETRIES) return;
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const token = await getAccessToken();
-      const url = token
-        ? `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
-        : `${proto}//${window.location.host}/ws`;
-      if (cancelled) return;
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-      ws.onopen = () => { retries = 0; };
-      ws.onmessage = () => load();
-      ws.onerror = () => {};
-      ws.onclose = () => {
-        if (cancelled) return;
-        retries++;
-        const delay = Math.min(3000 * Math.pow(2, retries - 1), 60000);
-        setTimeout(connect, delay);
-      };
-    };
-    connect();
-    return () => {
-      cancelled = true;
-      wsRef.current?.close();
-    };
-  }, [load]);
 
   const name = user ? extractName(user.email) : "";
   const maxTrend = data ? Math.max(...data.trend.map((d) => d.count), 1) : 1;

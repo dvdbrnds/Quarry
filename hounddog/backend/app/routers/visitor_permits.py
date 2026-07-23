@@ -14,7 +14,6 @@ from ..database import get_db
 from ..models.permit import Permit
 from ..models.visitor_approval_token import VisitorApprovalToken
 from ..services.permit_numbering import next_permit_number
-from ..websocket import manager
 
 
 router = APIRouter()
@@ -362,8 +361,7 @@ def _extract_metadata(permit: Permit, key: str) -> str:
 
 
 async def _notify_permit_change(action: str, count: int):
-    """Broadcast permit change to WebSocket clients and send APNs push to devices."""
-    await manager.broadcast("permit_changed", {"action": action, "count": count})
+    """Send APNs push to devices on permit change."""
     from ..services.apns import send_permit_push
     await send_permit_push(action, count)
 

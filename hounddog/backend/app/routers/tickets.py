@@ -14,7 +14,6 @@ from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
 from ..services.email import send_citation_email
-from ..websocket import manager
 from ..schemas.ticket import (
     ActionItem,
     ActivityEvent,
@@ -89,15 +88,6 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
     db.add(ticket)
     await db.flush()
     await db.refresh(ticket)
-
-    await manager.broadcast("ticket_created", {
-        "id": str(ticket.id),
-        "ticket_number": ticket.ticket_number,
-        "plate": ticket.plate,
-        "lot": ticket.lot,
-        "status": ticket.status,
-        "violation_type": ticket.violation_type,
-    })
 
     try:
         if ticket.plate:
@@ -340,12 +330,6 @@ async def update_ticket(
 
     await db.flush()
     await db.refresh(ticket)
-
-    await manager.broadcast("ticket_updated", {
-        "id": str(ticket.id),
-        "plate": ticket.plate,
-        "status": ticket.status,
-    })
 
     return ticket
 

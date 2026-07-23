@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -34,7 +34,6 @@ from .routers import (
     visitor_permits,
 )
 from .middleware.audit import AuditMiddleware
-from .websocket import manager
 
 logger = logging.getLogger("quarry")
 
@@ -774,27 +773,3 @@ async def health():
             content={"status": "degraded", "error": str(exc)},
         )
     return {"status": "ok", "version": "1.0.0"}
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    token: str | None = Query(default=None),
-):
-    from .auth.okta import verify_token_string
-    if settings.okta_domain:
-        if not token:
-            await websocket.close(code=4001, reason="Missing token")
-            return
-        try:
-            await verify_token_string(token)
-        except ValueError:
-            await websocket.close(code=4001, reason="Invalid token")
-            return
-
-    await manager.connect(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)

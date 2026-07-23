@@ -47,7 +47,6 @@ from ..schemas.payment import (
     TicketLookup,
     TicketLookupList,
 )
-from ..websocket import manager
 
 router = APIRouter()
 
@@ -231,13 +230,6 @@ async def dispute_ticket(
     ticket.dispute_email = data.email
     ticket.dispute_phone = data.phone
     await db.flush()
-
-    await manager.broadcast("ticket_disputed", {
-        "id": str(ticket.id),
-        "plate": ticket.plate,
-        "status": "appealed",
-        "dispute_name": data.name,
-    })
 
     return DisputeResponse(
         status="received",

@@ -42,7 +42,6 @@ from ..schemas.sync import (
     TicketUploadResponse,
 )
 from ..services.email import send_citation_email
-from ..websocket import manager
 
 router = APIRouter()
 diagnostic_router = APIRouter()
@@ -534,16 +533,6 @@ async def _upload_ticket_impl(
     db.add(new_ticket)
     await db.flush()
     await db.refresh(new_ticket)
-
-    await manager.broadcast("ticket_created", {
-        "id": str(new_ticket.id),
-        "ticket_number": new_ticket.ticket_number,
-        "plate": new_ticket.plate,
-        "lot": new_ticket.lot,
-        "status": new_ticket.status,
-        "violation_type": new_ticket.violation_type,
-        "ticket_category": new_ticket.ticket_category,
-    })
 
     payment_url = f"{settings.student_facing_url}/pay?ticket={new_ticket.id}"
 

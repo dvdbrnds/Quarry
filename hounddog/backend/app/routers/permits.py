@@ -31,7 +31,6 @@ from ..services.permit_lifecycle import (
     get_permit_stats,
 )
 from ..services.permit_numbering import next_permit_number
-from ..websocket import manager
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -685,8 +684,7 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
 
 
 async def _notify_permit_change(action: str, count: int):
-    """Broadcast permit change to WebSocket clients and send APNs push to devices."""
-    await manager.broadcast("permit_changed", {"action": action, "count": count})
+    """Send APNs push to devices on permit change."""
     from ..services.apns import send_permit_push
     await send_permit_push(action, count)
 
