@@ -363,6 +363,8 @@ async def lifespan(app: FastAPI):
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
             # Eligible groups for role-based permit visibility
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS eligible_groups TEXT[] DEFAULT '{}'",
+            # Set eligible_groups on faculty_staff so only staff/admin see it
+            "UPDATE permit_types SET eligible_groups = '{Quarry-Staff,Quarry-Admin}' WHERE code = 'faculty_staff' AND (eligible_groups IS NULL OR eligible_groups = '{}')",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
