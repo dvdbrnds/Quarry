@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Card, Button, Input, Upload, App, Spin, ColorPicker, Popconfirm, Space, Modal } from "antd";
+import { Card, Button, Input, Upload, App, Spin, ColorPicker, Popconfirm, Space, Modal, Tooltip } from "antd";
 import { UploadOutlined, UndoOutlined, SaveOutlined, DeleteOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 import { useBranding } from "../useBranding";
@@ -243,13 +243,18 @@ export default function BrandingSettings() {
             <p className="text-xs text-ink-mute mt-1">Optional if you have a logo uploaded.</p>
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-ink mb-1">Department Name</label>
+            <label className="block text-sm font-medium text-ink mb-1">
+              Department Name{" "}
+              <Tooltip title={`This is combined with your school name automatically. For example, "${data.school_name || "University"} ${data.department_name || "Parking Authority"}" — so just enter the department part, not the full name.`}>
+                <span className="text-ink-mute cursor-help border-b border-dotted border-gray-400 text-xs font-normal ml-1">ⓘ</span>
+              </Tooltip>
+            </label>
             <Input
               value={data.department_name}
               onChange={(e) => setData({ ...data, department_name: e.target.value })}
               placeholder="e.g. Parking Authority, Campus Safety"
             />
-            <p className="text-xs text-ink-mute mt-1">Appears in emails, footers, and student-facing pages.</p>
+            <p className="text-xs text-ink-mute mt-1">Combined with school name in emails and footers → "{data.school_name || "University"} {data.department_name || "Parking Authority"}"</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Primary Color</label>
