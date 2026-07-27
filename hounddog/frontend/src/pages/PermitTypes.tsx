@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip,
@@ -203,13 +204,30 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
 
 export default function PermitTypes() {
   const { modal, message } = App.useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [lots, setLots] = useState<LotForSelect[]>([]);
   const [editing, setEditing] = useState<PermitTypeRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [managingLottery, setManagingLottery] = useState<PermitTypeRow | null>(null);
-  const [lotteryView, setLotteryView] = useState<"manage" | "simulate" | "live">("manage");
+
+  // Derive lottery management state from URL search params
+  const lotteryId = searchParams.get("lottery");
+  const lotteryView = (searchParams.get("lotteryView") || "manage") as "manage" | "simulate" | "live";
+  const managingLottery = lotteryId ? types.find(t => t.id === lotteryId) || null : null;
+
+  const setManagingLottery = (pt: PermitTypeRow | null) => {
+    if (pt) {
+      setSearchParams({ lottery: pt.id, lotteryView: "manage" }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+  const setLotteryView = (view: "manage" | "simulate" | "live") => {
+    if (lotteryId) {
+      setSearchParams({ lottery: lotteryId, lotteryView: view }, { replace: true });
+    }
+  };
   const [batchToggling, setBatchToggling] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -249,13 +267,6 @@ export default function PermitTypes() {
   const reloadManaging = useCallback(async () => {
     await load();
   }, [load]);
-
-  useEffect(() => {
-    if (managingLottery && types.length > 0) {
-      const updated = types.find(t => t.id === managingLottery.id);
-      if (updated) setManagingLottery(updated);
-    }
-  }, [types]);
 
   function handleDeactivate(pt: PermitTypeRow) {
     modal.confirm({
@@ -488,7 +499,7 @@ export default function PermitTypes() {
             </Button>
           )}
           {pt.requires_lottery && pt.is_active && (
-            <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => { setManagingLottery(pt); setLotteryView("manage"); }}>Manage Lottery &rarr;</Button>
+            <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => setManagingLottery(pt)}>Manage Lottery &rarr;</Button>
           )}
           {pt.is_active
             ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt)}>Deactivate</Button>

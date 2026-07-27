@@ -157,7 +157,7 @@ export default function Permits() {
   const location = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const initTab = location.hash === "#types" ? "types" : "permits";
+  const initTab = (location.hash === "#types" || location.search.includes("lottery=")) ? "types" : "permits";
   const [tab, setTab] = useState(initTab);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
