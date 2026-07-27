@@ -95,8 +95,8 @@ function LotForm({
       const isExternal = values.lot_type === "external";
       const data = {
         name: values.name, boundary,
-        total_spaces: isExternal ? 0 : (values.total_spaces ?? 0),
-        handicap_spaces: isExternal ? 0 : (values.handicap_spaces ?? 0),
+        total_spaces: values.total_spaces ?? 0,
+        handicap_spaces: values.handicap_spaces ?? 0,
         designation_code: isExternal ? "" : values.designation_code,
         designation_label: isExternal ? "" : designLabel,
         is_snow_lot: isExternal ? false : (values.is_snow_lot ?? false),
@@ -131,7 +131,7 @@ function LotForm({
               <Select options={CAMPUS_OPTIONS} />
             </Form.Item>
           </div>
-          {watchedLotType === "external" ? (
+          {watchedLotType === "external" && (
             <>
               <Form.Item name="external_provider" label="Provider Name" rules={[{ required: true, message: "Provider name is required" }]}>
                 <Input placeholder="e.g. City of Bethlehem" />
@@ -140,19 +140,22 @@ function LotForm({
                 <Input placeholder="https://parking.bethlehem-pa.gov/permits" />
               </Form.Item>
             </>
-          ) : (
+          )}
+          {watchedLotType !== "external" && (
+            <Form.Item name="designation_code" label="Designation">
+              <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
+            </Form.Item>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <Form.Item name="total_spaces" label="Total Spaces">
+              <InputNumber className="w-full" min={0} />
+            </Form.Item>
+            <Form.Item name="handicap_spaces" label="HC Spaces">
+              <InputNumber className="w-full" min={0} />
+            </Form.Item>
+          </div>
+          {watchedLotType !== "external" && (
             <>
-              <Form.Item name="designation_code" label="Designation">
-                <Select options={DESIGNATION_OPTIONS.map(d => ({ label: d.label, value: d.code }))} />
-              </Form.Item>
-              <div className="grid grid-cols-2 gap-2">
-                <Form.Item name="total_spaces" label="Total Spaces">
-                  <InputNumber className="w-full" />
-                </Form.Item>
-                <Form.Item name="handicap_spaces" label="HC Spaces">
-                  <InputNumber className="w-full" />
-                </Form.Item>
-              </div>
               <Form.Item name="is_snow_lot" valuePropName="checked">
                 <Checkbox>Snow lot (prohibited 11pm-7am during snow regulations)</Checkbox>
               </Form.Item>
@@ -675,7 +678,10 @@ export default function Lots() {
                     </div>
                     <p className="text-xs text-ink-mute mt-0.5 truncate">
                       {lot.lot_type === "external"
-                        ? lot.external_provider || "Third-party parking"
+                        ? <>
+                            {lot.external_provider || "Third-party parking"}
+                            {lot.total_spaces > 0 && ` · ${lot.total_spaces} spaces`}
+                          </>
                         : <>
                             {lot.designation_code && <Tag className="!text-[10px]">{lot.designation_code}</Tag>}
                             {lot.boundary.length >= 3
