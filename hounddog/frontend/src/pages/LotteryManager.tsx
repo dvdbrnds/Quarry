@@ -138,8 +138,27 @@ export function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload,
           const res = await fetch(`/api/permit-types/${permitType.id}/run-lottery`, { method: "POST", headers: await authHeaders() });
           if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
           const result = await res.json();
-          msg.success(`Lottery complete: ${result.selected} selected, ${result.waitlisted} waitlisted`);
           load();
+          modal.success({
+            title: "Lottery Complete",
+            width: 560,
+            content: (
+              <div className="space-y-3 mt-2">
+                <p><strong>{result.selected}</strong> selected, <strong>{result.waitlisted}</strong> waitlisted</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-amber-800 mb-1">🔑 Verification Seed — save this now</p>
+                  <p className="text-[11px] text-amber-700 mb-2">
+                    This seed is shown <strong>once</strong>. Copy and store it securely. Anyone with this seed can verify the draw was fair and unmodified.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-white border border-amber-300 rounded px-2 py-1.5 text-xs font-mono break-all select-all">{result.seed}</code>
+                    <Button size="small" onClick={() => { navigator.clipboard.writeText(result.seed); msg.success("Seed copied to clipboard"); }}>Copy</Button>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">Seed hash (stored): <code className="text-[10px]">{result.seed_hash}</code></p>
+              </div>
+            ),
+          });
         } catch (e: any) { msg.error(e.message); } finally { setRunning(false); }
       },
     });

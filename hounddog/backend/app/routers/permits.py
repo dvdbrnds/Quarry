@@ -716,6 +716,7 @@ async def run_permit_lottery(
             "success": True,
             "permit_type": result.permit_type_name,
             "strategy": result.strategy,
+            "seed": result.seed,
             "seed_hash": result.seed_hash,
             "total_applicants": result.total_applicants,
             "eligible_applicants": result.eligible_applicants,
