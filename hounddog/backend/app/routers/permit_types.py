@@ -1,3 +1,4 @@
+import logging
 import random
 import string
 import uuid
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..config import settings
@@ -349,7 +352,7 @@ async def run_lottery(
     pt.lottery_run_at = datetime.now(timezone.utc)
     await db.flush()
 
-    from ..services.email import send_lottery_selection_email
+    from ..services.email import send_lottery_selection_email, send_email, branded_email_shell
     for app in selected_apps:
         await send_lottery_selection_email(
             recipient_email=app.student_email,
@@ -360,6 +363,59 @@ async def run_lottery(
             portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
             assigned_lot=app.assigned_lot,
         )
+
+    # Notify waitlisted applicants with their position
+    school = settings.school_name or "Campus"
+    total_waitlisted = len(remaining)
+    for app in remaining:
+        if not app.student_email:
+            continue
+        try:
+            position = app.waitlist_position
+            first_name = app.student_name.split()[0] if app.student_name else "Student"
+            inner = (
+                f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">'
+                f'Waitlisted &mdash; {pt.label}</h2>'
+                f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name}, '
+                f'thank you for applying for the <strong>{pt.label}</strong> parking permit.</p>'
+                '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+                '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+                'text-transform:uppercase;letter-spacing:1px;">Waitlist Status</td></tr>'
+                '<tr style="border-bottom:1px solid #eee;">'
+                '<td style="padding:10px 16px;color:#666;font-size:14px;">Your Position</td>'
+                f'<td style="padding:10px 16px;font-weight:600;font-size:16px;color:{settings.brand_primary_color};">#{position}</td></tr>'
+                '<tr>'
+                '<td style="padding:10px 16px;color:#666;font-size:14px;">Total Waitlisted</td>'
+                f'<td style="padding:10px 16px;font-size:14px;">{total_waitlisted}</td></tr>'
+                '</table>'
+                '<p style="color:#333;font-size:14px;line-height:1.6;">You were not selected in '
+                'the initial lottery draw, but you have been placed on the waitlist. If a selected '
+                'student declines or does not pay by the deadline, you will be notified by email '
+                'with an offer to claim the spot.</p>'
+                '<div style="background:#f8f9fa;border-radius:8px;padding:14px 20px;margin:20px 0;text-align:center;">'
+                '<p style="font-size:14px;color:#666;margin:0;">No action is required at this time.</p>'
+                '</div>'
+            )
+            body_html = await branded_email_shell(school, inner)
+            body_text = (
+                f"WAITLISTED — {pt.label}\n\n"
+                f"Dear {first_name},\n\n"
+                f"Thank you for applying for the {pt.label} parking permit.\n\n"
+                f"You were not selected in the initial lottery draw, but you have been "
+                f"placed on the waitlist at position #{position} out of {total_waitlisted}.\n\n"
+                f"If a selected student declines or does not pay by the deadline, you will "
+                f"be notified by email with an offer to claim the spot.\n\n"
+                f"You do not need to take any action at this time.\n\n"
+                f"{school} Parking Services"
+            )
+            await send_email(
+                to=[app.student_email],
+                subject=f"Parking Permit Waitlisted — {pt.label}",
+                body_html=body_html,
+                body_text=body_text,
+            )
+        except Exception:
+            logger.error("Failed to notify waitlisted applicant %s", app.id, exc_info=True)
 
     return LotteryResult(
         selected=len(selected_apps),
