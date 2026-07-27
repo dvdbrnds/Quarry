@@ -295,3 +295,55 @@ async def send_renewal_email(
     )
     return await send_email([recipient_email], subject, body_html, body_text)
 
+
+async def send_waitlist_position_update_email(
+    recipient_email: str,
+    student_name: str,
+    permit_type_label: str,
+    new_position: int,
+    total_waitlisted: int,
+    school_name: str | None = None,
+) -> bool:
+    """Send a waitlist position update email when a student moves up."""
+    b = await _load_branding()
+    school = school_name or settings.school_name or "Campus"
+    primary = b["primary_color"]
+    first_name = student_name.split()[0] if student_name else "Student"
+    subject = f"Waitlist Update — {permit_type_label}"
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 8px;font-size:20px;">'
+        f'Waitlist Update &mdash; {permit_type_label}</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name}, '
+        f'good news! Your position on the <strong>{permit_type_label}</strong> waitlist has moved up.</p>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+        'text-transform:uppercase;letter-spacing:1px;">Updated Waitlist Position</td></tr>'
+        '<tr style="border-bottom:1px solid #eee;">'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Your Position</td>'
+        f'<td style="padding:10px 16px;font-weight:600;font-size:16px;color:{primary};">#{new_position}</td></tr>'
+        '<tr>'
+        '<td style="padding:10px 16px;color:#666;font-size:14px;">Total Waitlisted</td>'
+        f'<td style="padding:10px 16px;font-size:14px;">{total_waitlisted}</td></tr>'
+        '</table>'
+        '<p style="color:#333;font-size:14px;line-height:1.6;">A spot ahead of you has been filled or declined, '
+        'moving you closer to the front of the line. If a permit becomes available, '
+        'you will receive an offer via email.</p>'
+        '<div style="background:#f8f9fa;border-radius:8px;padding:14px 20px;margin:20px 0;text-align:center;">'
+        '<p style="font-size:14px;color:#666;margin:0;">No action is required at this time.</p>'
+        '</div>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"WAITLIST UPDATE — {permit_type_label}\n\n"
+        f"Dear {first_name},\n\n"
+        f"Good news! Your position on the {permit_type_label} waitlist has moved up.\n\n"
+        f"New position: #{new_position} out of {total_waitlisted}\n\n"
+        f"A spot ahead of you has been filled or declined, moving you closer to "
+        f"the front of the line. If a permit becomes available, you will receive "
+        f"an offer via email.\n\n"
+        f"You do not need to take any action at this time.\n\n"
+        f"{school} Parking Services"
+    )
+    return await send_email([recipient_email], subject, body_html, body_text)
+

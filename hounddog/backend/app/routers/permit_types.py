@@ -479,6 +479,46 @@ async def advance_waitlist(
         )
 
     await db.flush()
+
+    # Recompute waitlist positions after advancement
+    if advanced > 0:
+        remaining_waitlisted = (await db.execute(
+            select(PermitApplication)
+            .where(
+                PermitApplication.permit_type_id == ptype_id,
+                PermitApplication.status == "waitlisted",
+            )
+            .order_by(PermitApplication.waitlist_position.asc())
+        )).scalars().all()
+
+        for new_pos, app in enumerate(remaining_waitlisted, 1):
+            app.waitlist_position = new_pos
+        await db.flush()
+
+        # Send position update emails only if 24+ hours since lottery ran
+        # (avoids email flood on the first day when most churn happens)
+        lottery_ran = pt.lottery_run_at
+        cooldown_passed = (
+            lottery_ran is None
+            or (now - lottery_ran).total_seconds() > 86400
+        )
+        if cooldown_passed and remaining_waitlisted:
+            from ..services.email import send_waitlist_position_update_email
+            total_wl = len(remaining_waitlisted)
+            for app in remaining_waitlisted:
+                if not app.student_email:
+                    continue
+                try:
+                    await send_waitlist_position_update_email(
+                        recipient_email=app.student_email,
+                        student_name=app.student_name,
+                        permit_type_label=pt.label,
+                        new_position=app.waitlist_position,
+                        total_waitlisted=total_wl,
+                    )
+                except Exception:
+                    logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)
+
     return {"expired": len(expired), "advanced": advanced}
 
 

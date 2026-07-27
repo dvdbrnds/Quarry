@@ -567,7 +567,7 @@ async def decline_offer(
 
 
 async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
-    """Promote the next waitlisted applicant to selected."""
+    """Promote the next waitlisted applicant to selected and notify remaining."""
     pt = await db.get(PermitType, permit_type_id)
     if not pt:
         return
@@ -586,9 +586,10 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
         return
 
     from datetime import timedelta
+    now = datetime.now(timezone.utc)
     next_app.status = "selected"
     offer_days = pt.offer_window_days if pt.offer_window_days is not None else 5
-    next_app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
+    next_app.offer_expires_at = now + timedelta(days=offer_days)
     await db.flush()
 
     from ..services.email import send_lottery_selection_email
@@ -602,3 +603,42 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
         portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
         assigned_lot=next_app.assigned_lot,
     )
+
+    # Recompute positions for remaining waitlisted applicants
+    remaining_waitlisted = (await db.execute(
+        select(PermitApplication)
+        .where(
+            PermitApplication.permit_type_id == permit_type_id,
+            PermitApplication.status == "waitlisted",
+        )
+        .order_by(PermitApplication.waitlist_position.asc())
+    )).scalars().all()
+
+    for new_pos, app in enumerate(remaining_waitlisted, 1):
+        app.waitlist_position = new_pos
+    await db.flush()
+
+    # Send position update emails only if 24+ hours since lottery ran
+    lottery_ran = pt.lottery_run_at
+    cooldown_passed = (
+        lottery_ran is None
+        or (now - lottery_ran).total_seconds() > 86400
+    )
+    if cooldown_passed and remaining_waitlisted:
+        import logging
+        _logger = logging.getLogger(__name__)
+        from ..services.email import send_waitlist_position_update_email
+        total_wl = len(remaining_waitlisted)
+        for app in remaining_waitlisted:
+            if not app.student_email:
+                continue
+            try:
+                await send_waitlist_position_update_email(
+                    recipient_email=app.student_email,
+                    student_name=app.student_name,
+                    permit_type_label=pt.label,
+                    new_position=app.waitlist_position,
+                    total_waitlisted=total_wl,
+                )
+            except Exception:
+                _logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)
