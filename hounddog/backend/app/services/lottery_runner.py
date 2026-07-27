@@ -283,6 +283,8 @@ async def _notify_waitlisted(waitlisted, permit_type):
     """Email all waitlisted applicants with their position."""
     pt_label = permit_type.get("label") or permit_type.get("name") or ""
     school = settings.school_name or "Campus"
+    from .email import get_department_name
+    dept = await get_department_name()
 
     for idx, app in enumerate(waitlisted):
         email = app._row.get("student_email") or app._row.get("email")
@@ -325,7 +327,7 @@ async def _notify_waitlisted(waitlisted, permit_type):
                 f"If a selected student declines or does not pay by the deadline, you will "
                 f"be notified by email with an offer to claim the spot.\n\n"
                 f"You do not need to take any action at this time.\n\n"
-                f"{school} Parking Services"
+                f"{school} {dept}"
             )
             await send_email(
                 to=[email],

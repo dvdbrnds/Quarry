@@ -39,7 +39,7 @@ export default function BuyPermitSuccess() {
         )}
         {status === "error" && (
           <Result status="error" title="Payment Issue"
-            subTitle="We couldn't verify your payment. If you were charged, please contact Parking Services."
+            subTitle={`We couldn't verify your payment. If you were charged, please contact the ${brand.departmentName}.`}
             extra={<Button type="primary" href="/permits/buy">Try Again</Button>} />
         )}
       </main>

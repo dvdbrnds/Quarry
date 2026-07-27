@@ -366,6 +366,8 @@ async def run_lottery(
 
     # Notify waitlisted applicants with their position
     school = settings.school_name or "Campus"
+    from ..services.email import get_department_name
+    dept = await get_department_name()
     total_waitlisted = len(remaining)
     for app in remaining:
         if not app.student_email:
@@ -406,7 +408,7 @@ async def run_lottery(
                 f"If a selected student declines or does not pay by the deadline, you will "
                 f"be notified by email with an offer to claim the spot.\n\n"
                 f"You do not need to take any action at this time.\n\n"
-                f"{school} Parking Services"
+                f"{school} {dept}"
             )
             await send_email(
                 to=[app.student_email],

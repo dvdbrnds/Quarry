@@ -29,6 +29,7 @@ interface BrandingData {
   logo_url: string | null;
   favicon_url: string;
   school_name: string;
+  department_name: string;
 }
 
 export default function BrandingSettings() {
@@ -60,6 +61,7 @@ export default function BrandingSettings() {
           brand_name: data.brand_name,
           primary_color: data.primary_color,
           accent_color: data.accent_color,
+          department_name: data.department_name,
         }),
       });
       if (!res.ok) {
@@ -240,6 +242,15 @@ export default function BrandingSettings() {
             />
             <p className="text-xs text-ink-mute mt-1">Optional if you have a logo uploaded.</p>
           </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-ink mb-1">Department Name</label>
+            <Input
+              value={data.department_name}
+              onChange={(e) => setData({ ...data, department_name: e.target.value })}
+              placeholder="e.g. Parking Authority, Campus Safety"
+            />
+            <p className="text-xs text-ink-mute mt-1">Appears in emails, footers, and student-facing pages.</p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Primary Color</label>
             <div className="flex items-center gap-2">
@@ -355,7 +366,7 @@ export default function BrandingSettings() {
               {data.brand_name}
             </span>
           )}
-          <span className="text-sm text-white/60 ml-2">Parking Services</span>
+          <span className="text-sm text-white/60 ml-2">{data.department_name || "Parking Authority"}</span>
         </div>
       </Card>
     </div>

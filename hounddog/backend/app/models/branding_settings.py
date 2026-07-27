@@ -13,6 +13,7 @@ class BrandingSettings(Base):
     brand_name: Mapped[str] = mapped_column(String(256), default="Quarry")
     primary_color: Mapped[str] = mapped_column(String(32), default="#1a2744")
     accent_color: Mapped[str] = mapped_column(String(32), default="#c9a84c")
+    department_name: Mapped[str] = mapped_column(String(256), default="Parking Authority")
 
     logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     logo_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)

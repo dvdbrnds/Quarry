@@ -47,6 +47,7 @@ async def get_branding(db: AsyncSession = Depends(get_db)):
         "logo_url": logo_url,
         "favicon_url": favicon_url,
         "school_name": settings.school_name,
+        "department_name": bs.department_name or "Parking Authority",
     }
 
 
@@ -80,6 +81,7 @@ class BrandIdentityUpdate(BaseModel):
     brand_name: str
     primary_color: str
     accent_color: str
+    department_name: str = "Parking Authority"
 
 
 @admin_router.put("")
@@ -89,6 +91,7 @@ async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = De
     bs.brand_name = body.brand_name
     bs.primary_color = body.primary_color
     bs.accent_color = body.accent_color
+    bs.department_name = body.department_name
     await db.flush()
     invalidate_branding_cache()
     return {"ok": True}
@@ -100,6 +103,7 @@ async def reset_branding(db: AsyncSession = Depends(get_db)):
     bs.brand_name = "Quarry"
     bs.primary_color = "#1a2744"
     bs.accent_color = "#c9a84c"
+    bs.department_name = "Parking Authority"
     bs.logo_data = None
     bs.logo_mime = None
     bs.favicon_data = None

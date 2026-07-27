@@ -366,6 +366,8 @@ async def lifespan(app: FastAPI):
             # Set eligible_groups on faculty_staff so only employees see it
             """UPDATE permit_types SET eligible_groups = '{"_Bethlehem - All - Faculty","_Bethlehem - All - Staff","_MU - Faculty, Adjunct",Quarry-Staff,Quarry-Admin}' WHERE code = 'faculty_staff'""",
             "UPDATE permit_types SET valid_days = 365 WHERE code = 'faculty_staff' AND valid_days = 730",
+            "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS department_name VARCHAR(256) DEFAULT 'Parking Authority'",
+            "UPDATE branding_settings SET department_name = 'Parking Authority' WHERE department_name IS NULL OR department_name = ''",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
@@ -558,7 +560,7 @@ async def lifespan(app: FastAPI):
                         "reason_label": "Snow Emergency",
                         "is_emergency": True,
                         "email_subject": "URGENT: {lot_name} Closed — Snow Emergency",
-                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #c0392b;">Snow Emergency — Lot Closure</h2><p><strong>{lot_name}</strong> at {school} is closed for snow removal effective <strong>{closes_at}</strong>.</p><p><strong>Move your vehicle immediately.</strong> Vehicles remaining may be towed.</p><p>Expected reopening: {reopens_at}</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #c0392b;">Snow Emergency — Lot Closure</h2><p><strong>{lot_name}</strong> at {school} is closed for snow removal effective <strong>{closes_at}</strong>.</p><p><strong>Move your vehicle immediately.</strong> Vehicles remaining may be towed.</p><p>Expected reopening: {reopens_at}</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} {department} — Quarry</p></div>',
                         "sms_body": "{school} Parking: {lot_name} closed for snow removal effective {closes_at}. Move your vehicle immediately.",
                     },
                     {
@@ -566,7 +568,7 @@ async def lifespan(app: FastAPI):
                         "reason_label": "Repaving",
                         "is_emergency": False,
                         "email_subject": "Parking Lot Closed: {lot_name} — Repaving",
-                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Repaving</h2><p><strong>{lot_name}</strong> at {school} will be closed for repaving effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Repaving</h2><p><strong>{lot_name}</strong> at {school} will be closed for repaving effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} {department} — Quarry</p></div>',
                         "sms_body": "{school} Parking: {lot_name} closed for repaving {closes_at}. Reopens {reopens_at}.",
                     },
                     {
@@ -574,7 +576,7 @@ async def lifespan(app: FastAPI):
                         "reason_label": "Tree Maintenance",
                         "is_emergency": False,
                         "email_subject": "Parking Lot Closed: {lot_name} — Tree Maintenance",
-                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Tree Maintenance</h2><p><strong>{lot_name}</strong> at {school} will be closed for tree work effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Tree Maintenance</h2><p><strong>{lot_name}</strong> at {school} will be closed for tree work effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} {department} — Quarry</p></div>',
                         "sms_body": "{school} Parking: {lot_name} closed for tree work {closes_at}. Reopens {reopens_at}.",
                     },
                     {
@@ -582,7 +584,7 @@ async def lifespan(app: FastAPI):
                         "reason_label": "Campus Event",
                         "is_emergency": False,
                         "email_subject": "Parking Lot Closed: {lot_name} — Campus Event",
-                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Campus Event</h2><p><strong>{lot_name}</strong> at {school} will be closed for a campus event effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure — Campus Event</h2><p><strong>{lot_name}</strong> at {school} will be closed for a campus event effective <strong>{closes_at}</strong>.</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} {department} — Quarry</p></div>',
                         "sms_body": "{school} Parking: {lot_name} closed for campus event {closes_at}. Reopens {reopens_at}.",
                     },
                     {
@@ -590,7 +592,7 @@ async def lifespan(app: FastAPI):
                         "reason_label": "Emergency",
                         "is_emergency": True,
                         "email_subject": "URGENT: {lot_name} Closed — Emergency",
-                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #c0392b;">Emergency Lot Closure</h2><p><strong>{lot_name}</strong> at {school} has been closed immediately.</p><p><strong>Reason:</strong> {reason}</p><p>Please avoid the area. Vehicles remaining may be towed.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #c0392b;">Emergency Lot Closure</h2><p><strong>{lot_name}</strong> at {school} has been closed immediately.</p><p><strong>Reason:</strong> {reason}</p><p>Please avoid the area. Vehicles remaining may be towed.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} {department} — Quarry</p></div>',
                         "sms_body": "{school} Parking: {lot_name} closed immediately. {reason}. Avoid the area.",
                     },
                     {
@@ -598,7 +600,7 @@ async def lifespan(app: FastAPI):
                         "reason_label": "General Closure",
                         "is_emergency": False,
                         "email_subject": "Parking Lot Closed: {lot_name}",
-                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure Notice</h2><p><strong>{lot_name}</strong> at {school} has been closed effective <strong>{closes_at}</strong>.</p><p><strong>Reason:</strong> {reason}</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} Parking Services — Quarry</p></div>',
+                        "email_body": '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1a2744;">Lot Closure Notice</h2><p><strong>{lot_name}</strong> at {school} has been closed effective <strong>{closes_at}</strong>.</p><p><strong>Reason:</strong> {reason}</p><p>Expected reopening: <strong>{reopens_at}</strong></p><p>Please make alternative parking arrangements.</p><hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"><p style="font-size: 12px; color: #888;">{school} {department} — Quarry</p></div>',
                         "sms_body": "{school} Parking: {lot_name} closed {closes_at}. Reason: {reason}.",
                     },
                 ]

@@ -174,7 +174,7 @@ export default function Pay() {
           </Card>
         ))}
 
-        <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.schoolName || "Campus"} Parking Services</div>
+        <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.schoolName || "Campus"} {brand.departmentName}</div>
 
         <DisputeModal ticket={disputeTicket} onClose={() => setDisputeTicket(null)}
           onSuccess={msg => { setDisputeTicket(null); setSuccess(msg); setTickets([]); }} />

@@ -341,7 +341,7 @@ function StaffPage({ user }: { user: AuthUser }) {
 
             {activeVehicles.length === 0 && pastVehicles.length === 0 && !permitType && (
               <Card className="text-center py-12">
-                <Empty description={<span className="text-gray-500">No permits found. Contact Parking Services for assistance.</span>} />
+                <Empty description={<span className="text-gray-500">No permits found. Contact the {brand.departmentName} for assistance.</span>} />
               </Card>
             )}
 
@@ -352,7 +352,7 @@ function StaffPage({ user }: { user: AuthUser }) {
             )}
 
             <div className="text-center text-xs text-gray-400 pt-4 border-t">
-              {brand.schoolName || "Campus"} Parking Services{brand.brandName ? ` — ${brand.brandName}` : ""}
+              {brand.schoolName || "Campus"} {brand.departmentName}{brand.brandName ? ` — ${brand.brandName}` : ""}
             </div>
           </div>
         )}

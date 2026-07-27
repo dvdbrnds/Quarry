@@ -162,6 +162,7 @@ def render_lot_closure_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -199,7 +200,7 @@ def render_lot_closure_email(
         plain += f"Expected Reopening: {reopens_at}\n"
     plain += (
         f"\nPlease make alternative parking arrangements.\n"
-        f"\n{school} Parking Services"
+        f"\n{school} {department_name}"
     )
     return html, plain
 
@@ -212,6 +213,7 @@ def render_lot_reopen_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -237,7 +239,7 @@ def render_lot_reopen_email(
         f"PARKING LOT REOPENED\n\n"
         f"Lot: {lot_name}\n"
         f"{lot_name} is now open and available for parking.\n"
-        f"\n{school} Parking Services"
+        f"\n{school} {department_name}"
     )
     return html, plain
 
@@ -261,6 +263,7 @@ def render_citation_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -308,7 +311,7 @@ def render_citation_email(
         plain += f"Officer: {officer_name}\n"
     plain += (
         f"\nPay online: {payment_url}\n"
-        f"\n{school} Parking Services"
+        f"\n{school} {department_name}"
     )
     return html, plain
 
@@ -330,6 +333,7 @@ def render_lottery_selection_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -380,7 +384,7 @@ def render_lottery_selection_email(
         f"Accept By: {deadline}\n\n"
         f"Log in to accept your offer: {portal_url}\n\n"
         f"If you do not respond by {deadline}, your spot will be released.\n\n"
-        f"{school} Parking Services"
+        f"{school} {department_name}"
     )
     return html, plain
 
@@ -402,6 +406,7 @@ def render_renewal_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -460,7 +465,7 @@ def render_renewal_email(
         f"No payment is required for renewal.\n"
         f"If you do not respond by June 30, your permit will expire.\n\n"
         f"To add or manage vehicles, visit: {portal_url}\n\n"
-        f"{school} Parking Services"
+        f"{school} {department_name}"
     )
     return html, plain
 
@@ -484,6 +489,7 @@ def render_conduct_referral_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -525,7 +531,7 @@ def render_conduct_referral_email(
         f"Threshold: {threshold}\n\n"
         f"Ticket IDs: {', '.join(ticket_ids)}\n\n"
         f"View details: {detail_url}\n\n"
-        f"{school} Parking Services"
+        f"{school} {department_name}"
     )
     return html, plain
 
@@ -544,6 +550,7 @@ def render_hold_student_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -569,7 +576,7 @@ def render_hold_student_email(
         f"A hold has been placed on your university account due to "
         f"{ticket_count} unpaid parking violations.\n\n"
         f"Pay now: {pay_url}\n\n"
-        f"{school} Parking Services"
+        f"{school} {department_name}"
     )
     return html, plain
 
@@ -592,6 +599,7 @@ def render_hold_admin_email(
     accent: str = "",
     brand_name: str | None = None,
     has_logo: bool = False,
+    department_name: str = "Parking Authority",
 ) -> tuple[str, str]:
     primary = primary or settings.brand_primary_color or "#1a2744"
     school = school_name or "Campus"
@@ -635,6 +643,6 @@ def render_hold_admin_email(
         f"Unpaid Violations: {ticket_count}\n"
         f"SIS hold: {'placed via API' if sis_configured else 'NOT configured \u2014 place manually'}\n\n"
         f"View details: {detail_url}\n\n"
-        f"{school} Parking Services"
+        f"{school} {department_name}"
     )
     return html, plain

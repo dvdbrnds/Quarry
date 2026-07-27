@@ -33,6 +33,7 @@ async def _load_branding() -> dict:
                     "primary_color": bs.primary_color or settings.brand_primary_color,
                     "accent_color": bs.accent_color or settings.brand_accent_color,
                     "has_logo": bs.logo_data is not None and len(bs.logo_data) > 0,
+                    "department_name": bs.department_name or "Parking Authority",
                 }
                 return _cached_branding
     except Exception:
@@ -42,6 +43,7 @@ async def _load_branding() -> dict:
         "primary_color": settings.brand_primary_color,
         "accent_color": settings.brand_accent_color,
         "has_logo": False,
+        "department_name": "Parking Authority",
     }
 
 
@@ -54,6 +56,7 @@ def email_shell(
     school: str, inner_html: str, footer_extra: str = "",
     *, primary: str = "", accent: str = "", brand_name: str | None = None,
     has_logo: bool = False, category_stripe_html: str = "",
+    department_name: str = "Parking Authority",
 ) -> str:
     """Wrap inner content in the branded email shell.
 
@@ -86,13 +89,13 @@ def email_shell(
         'max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;">'
         f'<div style="background:{primary};padding:28px 32px;text-align:center;">'
         f'{logo_html}'
-        f'<p style="color:#f5f0e8;margin:6px 0 0;font-size:12px;letter-spacing:0.5px;">{school} Parking Services</p>'
+        f'<p style="color:#f5f0e8;margin:6px 0 0;font-size:12px;letter-spacing:0.5px;">{school} {department_name}</p>'
         '</div>'
         f'{category_stripe_html}'
         f'<div style="padding:32px 32px 24px;">{inner_html}</div>'
         f'<div style="background:{_FOOTER_BG};padding:20px 32px;text-align:center;">'
         f'{footer_extra}'
-        f'<p style="font-size:12px;color:#999;margin:0;">{school} Parking Services{footer_brand}</p>'
+        f'<p style="font-size:12px;color:#999;margin:0;">{school} {department_name}{footer_brand}</p>'
         '</div>'
         '</div>'
     )
@@ -105,7 +108,14 @@ async def branded_email_shell(school: str, inner_html: str, footer_extra: str = 
         school, inner_html, footer_extra,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
+
+
+async def get_department_name() -> str:
+    """Get the configured department name from branding settings."""
+    b = await _load_branding()
+    return b.get("department_name", "Parking Authority")
 
 
 async def send_email(
@@ -185,6 +195,7 @@ async def send_lot_closure_notification(
         reopens_at=reopens_at, school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
     return await send_email(recipients, subject, body_html, body_text)
 
@@ -214,6 +225,7 @@ async def send_lot_reopen_notification(
         lot_name, school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
     return await send_email(recipients, subject, body_html, body_text)
 
@@ -241,6 +253,7 @@ async def send_citation_email(
         officer_name=officer_name, school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
     return await send_email([recipient_email], subject, body_html, body_text, from_override=from_addr)
 
@@ -266,6 +279,7 @@ async def send_lottery_selection_email(
         assigned_lot=assigned_lot, school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
     return await send_email([recipient_email], subject, body_html, body_text)
 
@@ -292,6 +306,7 @@ async def send_renewal_email(
         school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
     return await send_email([recipient_email], subject, body_html, body_text)
 
@@ -343,7 +358,7 @@ async def send_waitlist_position_update_email(
         f"the front of the line. If a permit becomes available, you will receive "
         f"an offer via email.\n\n"
         f"You do not need to take any action at this time.\n\n"
-        f"{school} Parking Services"
+        f"{school} {b.get('department_name', 'Parking Authority')}"
     )
     return await send_email([recipient_email], subject, body_html, body_text)
 

@@ -38,12 +38,15 @@ def _render_template(text: str, context: dict[str, str]) -> str:
 async def _build_context(
     lot: ParkingLot | None, reason: str = "", closes_at: str = "", reopens_at: str = ""
 ) -> dict[str, str]:
+    from ..services.email import get_department_name
+    dept = await get_department_name()
     return {
         "lot_name": lot.name if lot else "All Lots",
         "reason": reason,
         "closes_at": closes_at or datetime.now(timezone.utc).strftime("%b %d, %Y %I:%M %p %Z"),
         "reopens_at": reopens_at or "TBD",
         "school": settings.school_name or "Campus",
+        "department": dept,
     }
 
 

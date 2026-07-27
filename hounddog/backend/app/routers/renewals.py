@@ -15,7 +15,7 @@ from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.renewal_token import RenewalToken
-from ..services.email import send_renewal_email
+from ..services.email import send_renewal_email, get_department_name
 from ..services.permit_numbering import next_permit_number
 
 router = APIRouter()
@@ -260,6 +260,7 @@ async def send_renewal_to_permit(
 @router.get("/{token}/quick-renew", response_class=HTMLResponse)
 async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
     """One-click renewal from email button. Renews the permit and shows confirmation."""
+    dept = await get_department_name()
     renewal = (await db.execute(
         select(RenewalToken).where(RenewalToken.token == token)
     )).scalar()
@@ -267,7 +268,7 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
     if not renewal:
         return HTMLResponse(_build_response_html(
             "Invalid Link", "Link Not Found",
-            "This renewal link is invalid. Please contact Parking Services.", False
+            f"This renewal link is invalid. Please contact the {dept}.", False
         ), status_code=404)
 
     if renewal.used_at:
@@ -278,20 +279,20 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
             ))
         return HTMLResponse(_build_response_html(
             "Link Used", "Link Already Used",
-            "This link has already been used. Please contact Parking Services if you need assistance.", False
+            f"This link has already been used. Please contact the {dept} if you need assistance.", False
         ))
 
     if renewal.expires_at < datetime.now(timezone.utc):
         return HTMLResponse(_build_response_html(
             "Link Expired", "Link Expired",
-            "This renewal link has expired. Please contact Parking Services for assistance.", False
+            f"This renewal link has expired. Please contact the {dept} for assistance.", False
         ), status_code=400)
 
     permit = await db.get(Permit, renewal.permit_id)
     if not permit:
         return HTMLResponse(_build_response_html(
             "Not Found", "Permit Not Found",
-            "The associated permit could not be found. Please contact Parking Services.", False
+            f"The associated permit could not be found. Please contact the {dept}.", False
         ), status_code=404)
 
     new_end = _next_june_30()
@@ -332,6 +333,7 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{token}/decline", response_class=HTMLResponse)
 async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
     """One-click decline from email button. Marks the permit as not renewing."""
+    dept = await get_department_name()
     renewal = (await db.execute(
         select(RenewalToken).where(RenewalToken.token == token)
     )).scalar()
@@ -339,7 +341,7 @@ async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
     if not renewal:
         return HTMLResponse(_build_response_html(
             "Invalid Link", "Link Not Found",
-            "This renewal link is invalid. Please contact Parking Services.", False
+            f"This renewal link is invalid. Please contact the {dept}.", False
         ), status_code=404)
 
     if renewal.used_at:
@@ -347,13 +349,13 @@ async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
             return HTMLResponse(_build_response_html(
                 "Already Declined", "Already Declined",
                 "You've already indicated you don't need your permit. "
-                "If you change your mind, please contact Parking Services."
+                f"If you change your mind, please contact the {dept}."
             ))
         if renewal.response == "renewed":
             return HTMLResponse(_build_response_html(
                 "Already Renewed", "Already Renewed",
                 "Your permit has already been renewed. If you'd like to cancel, "
-                "please contact Parking Services."
+                f"please contact the {dept}."
             ))
         return HTMLResponse(_build_response_html(
             "Link Used", "Link Already Used",
@@ -382,13 +384,14 @@ async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
         "Permit Declined", "Thank You",
         "We've recorded that you no longer need your parking permit. "
         "Your permit has been deactivated. If you change your mind, "
-        "please contact Parking Services."
+        f"please contact the {dept}."
     ))
 
 
 @router.get("/{token}", response_model=RenewalInfo)
 async def get_renewal_info(token: str, db: AsyncSession = Depends(get_db)):
     """Public endpoint — validate a renewal token and return permit info."""
+    dept = await get_department_name()
     renewal = (await db.execute(
         select(RenewalToken).where(RenewalToken.token == token)
     )).scalar()
@@ -400,7 +403,7 @@ async def get_renewal_info(token: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "This renewal link has already been used")
 
     if renewal.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(400, "This renewal link has expired. Please contact Parking Services.")
+        raise HTTPException(400, f"This renewal link has expired. Please contact the {dept}.")
 
     permit = await db.get(Permit, renewal.permit_id)
     if not permit:

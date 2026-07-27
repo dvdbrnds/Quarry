@@ -42,7 +42,7 @@ export default function PaySuccess() {
             ]}
           />
         )}
-        <div className="text-center text-xs text-ink-mute mt-8">&copy; {brand.schoolName || "Campus"} Parking Services</div>
+        <div className="text-center text-xs text-ink-mute mt-8">&copy; {brand.schoolName || "Campus"} {brand.departmentName}</div>
       </div>
     </div>
   );

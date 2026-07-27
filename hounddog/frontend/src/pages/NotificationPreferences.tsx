@@ -71,7 +71,7 @@ export default function NotificationPreferences() {
           <Alert type="warning" message="Emergency notifications will always be sent regardless of preferences." />
           <Button type="primary" block onClick={handleSave} loading={saving}>Save Preferences</Button>
         </div>
-        <p className="text-center text-xs text-ink-mute mt-6">Parking Services — {brand.brandName}</p>
+        <p className="text-center text-xs text-ink-mute mt-6">{brand.departmentName} — {brand.brandName}</p>
       </Card>
     </div>
   );

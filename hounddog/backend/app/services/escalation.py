@@ -175,6 +175,7 @@ async def _send_maxient_email_referral(
         school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
 
     try:
@@ -252,6 +253,7 @@ async def _notify_student_of_hold(
         school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
 
     try:
@@ -285,6 +287,7 @@ async def _notify_admin_of_hold(
         detail_url=detail_url, school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
     )
 
     try:

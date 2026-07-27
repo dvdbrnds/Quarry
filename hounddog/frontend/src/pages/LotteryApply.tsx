@@ -405,7 +405,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
               )}
 
               <div className="text-center text-xs text-gray-400 pt-4 border-t">
-                {brand.schoolName || "Campus"} Parking Services — {brand.brandName}
+                {brand.schoolName || "Campus"} {brand.departmentName} — {brand.brandName}
               </div>
             </div>
 
