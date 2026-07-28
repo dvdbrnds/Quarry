@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Tag, Empty, Modal, Form, Input, InputNumber, Spin, Space, App, Tooltip } from "antd";
+import { Button, Card, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
@@ -176,10 +176,6 @@ function LotteryPage({ user }: { user: AuthUser }) {
   }
 
   /** The actual highlighted lots sent to the map (filtered if campus toggle active) */
-  const effectiveHighlightedLots = useMemo(() => {
-    if (!campusFilter || highlightedLots.length === 0) return highlightedLots;
-    return filterLotsByCampus(highlightedLots, campusFilter);
-  }, [highlightedLots, campusFilter, lotCampusMap]);
 
   const load = useCallback(async () => {
     try {
@@ -243,6 +239,18 @@ function LotteryPage({ user }: { user: AuthUser }) {
 
   const appliedTypeIds = new Set(applications.filter(a => !["expired", "declined"].includes(a.status)).map(a => a.permit_type_code));
 
+  // Keep lots highlighted while applying/buying
+  const activeHighlightedLots = useMemo(() => {
+    if (applying) return applying.lot_assignments;
+    if (buying) return buying.lot_assignments;
+    return highlightedLots;
+  }, [applying, buying, highlightedLots]);
+
+  const activeEffectiveHighlightedLots = useMemo(() => {
+    if (!campusFilter || activeHighlightedLots.length === 0) return activeHighlightedLots;
+    return filterLotsByCampus(activeHighlightedLots, campusFilter);
+  }, [activeHighlightedLots, campusFilter, lotCampusMap]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
@@ -269,12 +277,25 @@ function LotteryPage({ user }: { user: AuthUser }) {
             {/* Mobile map (shown above cards on small screens) */}
             {mapsApiKey && lots.length > 0 && (
               <div className="lg:hidden h-[300px] rounded-xl overflow-hidden shadow">
-                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={effectiveHighlightedLots} defaultCenter={campusCenter} />
+                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={activeEffectiveHighlightedLots} defaultCenter={campusCenter} />
               </div>
             )}
 
             {/* Permit cards column */}
             <div className="lg:col-span-1 space-y-8">
+              {/* Inline apply/buy form (replaces cards while open) */}
+              {applying && (
+                <ApplyPanel permit={applying} onClose={() => setApplying(null)}
+                  onSuccess={() => { setApplying(null); message.success("Application submitted! You're entered in the lottery."); load(); }}
+                  onError={msg => { message.error(msg); setApplying(null); }} />
+              )}
+              {buying && (
+                <BuyPanel permit={buying} onClose={() => setBuying(null)}
+                  onError={msg => { message.error(msg); setBuying(null); }} />
+              )}
+
+              {!applying && !buying && (
+              <>
               <div>
                 <h2 className="text-2xl font-bold text-brand-primary">Parking Permits</h2>
                 <p className="text-gray-500 mt-1">Purchase a permit or apply for a lottery below. Hover over a permit to see its lots on the map.</p>
@@ -407,31 +428,26 @@ function LotteryPage({ user }: { user: AuthUser }) {
               <div className="text-center text-xs text-gray-400 pt-4 border-t">
                 {brand.schoolName || "Campus"} {brand.departmentName} — {brand.brandName}
               </div>
+              </>
+              )}
             </div>
 
             {/* Desktop map (sticky on the right) */}
             {mapsApiKey && lots.length > 0 && (
               <div className="hidden lg:block lg:col-span-2 min-w-0">
                 <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
-                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={effectiveHighlightedLots} defaultCenter={campusCenter} />
+                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={activeEffectiveHighlightedLots} defaultCenter={campusCenter} />
                 </div>
               </div>
             )}
           </div>
         )}
       </main>
-
-      <ApplyModal permit={applying} onClose={() => setApplying(null)}
-        onSuccess={() => { setApplying(null); message.success("Application submitted! You're entered in the lottery."); load(); }}
-        onError={msg => { message.error(msg); setApplying(null); }} />
-
-      <BuyModal permit={buying} onClose={() => setBuying(null)}
-        onError={msg => { message.error(msg); setBuying(null); }} />
     </div>
   );
 }
 
-function ApplyModal({ permit, onClose, onSuccess, onError }: {
+function ApplyPanel({ permit, onClose, onSuccess, onError }: {
   permit: AvailablePermit | null; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
 }) {
   const brand = useBranding();
@@ -492,15 +508,25 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
   const classYearFromOkta = !!profile?.class_year;
 
   return (
-    <Modal open={!!permit} onCancel={onClose} footer={null} title={permit ? `Apply for ${permit.label}` : ""} destroyOnClose width={520}>
+    <Card className="shadow-md border-2 border-brand-primary/20">
       {permit && (
-        <div className="pt-2">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-bold text-brand-primary">Apply for {permit.label}</h3>
+            <Button type="text" size="small" onClick={onClose}>✕</Button>
+          </div>
           <div className="flex items-center justify-between mb-4 pb-3 border-b">
             <span className="text-gray-500">{permit.eligible}</span>
             <span className="text-lg font-bold text-brand-primary">${Number(permit.price).toFixed(0)}</span>
           </div>
+          <div className="text-xs text-gray-500 mb-4">
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="font-medium">Lots highlighted on map:</span>
+              {permit.lot_details?.length ? <LotTags details={permit.lot_details} /> : <span>{permit.lot_assignments.join(", ")}</span>}
+            </div>
+          </div>
           {profileLoading ? <div className="flex justify-center py-4"><Spin size="small" /></div> : (
-            <Form form={form} layout="vertical" onFinish={handleFinish}>
+            <Form form={form} layout="vertical" onFinish={handleFinish} size="small">
               <Form.Item name="name" label="Full Name" rules={[{ required: true }]} tooltip={nameFromOkta ? "From your university account" : undefined}>
                 <Input disabled={nameFromOkta} className={nameFromOkta ? "bg-gray-50" : ""} />
               </Form.Item>
@@ -519,7 +545,7 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
                 <Input placeholder="610-555-0123" />
               </Form.Item>
               {permit.lot_assignments.length > 1 && (
-                <Form.Item label="Lot Preference (drag to reorder — #1 is top choice)">
+                <Form.Item label="Lot Preference (reorder — #1 is top choice)">
                   <div className="space-y-1.5">
                     {lotPreferences.map((lot, idx) => {
                       const detail = permit.lot_details?.find(d => d.name === lot);
@@ -548,11 +574,11 @@ function ApplyModal({ permit, onClose, onSuccess, onError }: {
           )}
         </div>
       )}
-    </Modal>
+    </Card>
   );
 }
 
-function BuyModal({ permit, onClose, onError }: {
+function BuyPanel({ permit, onClose, onError }: {
   permit: AvailablePermit | null; onClose: () => void; onError: (msg: string) => void;
 }) {
   const brand = useBranding();
@@ -607,21 +633,26 @@ function BuyModal({ permit, onClose, onError }: {
   const classYearFromOkta = !!profile?.class_year;
 
   return (
-    <Modal open={!!permit} onCancel={onClose} footer={null} title={permit ? `Buy ${permit.label}` : ""} destroyOnClose width={520}>
+    <Card className="shadow-md border-2 border-brand-primary/20">
       {permit && (
-        <div className="pt-2">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-bold text-brand-primary">Buy {permit.label}</h3>
+            <Button type="text" size="small" onClick={onClose}>✕</Button>
+          </div>
           <div className="flex items-center justify-between mb-4 pb-3 border-b">
             <span className="text-gray-500">{permit.eligible}</span>
             <span className="text-lg font-bold text-brand-primary">${Number(permit.price).toFixed(0)}</span>
           </div>
-          <div className="text-sm text-gray-500 mb-4">
+          <div className="text-xs text-gray-500 mb-4">
             <div>Valid for {permit.valid_days} days · {permit.remaining} spots remaining</div>
-            {permit.lot_details?.length > 0 && (
-              <div className="flex items-center gap-1 mt-1">Lots: <LotTags details={permit.lot_details} /></div>
-            )}
+            <div className="flex items-center gap-1 mt-1 flex-wrap">
+              <span className="font-medium">Lots highlighted on map:</span>
+              {permit.lot_details?.length > 0 ? <LotTags details={permit.lot_details} /> : <span>{permit.lot_assignments.join(", ")}</span>}
+            </div>
           </div>
           {profileLoading ? <div className="flex justify-center py-4"><Spin size="small" /></div> : (
-            <Form form={form} layout="vertical" onFinish={handleFinish}>
+            <Form form={form} layout="vertical" onFinish={handleFinish} size="small">
               <Form.Item name="name" label="Full Name" rules={[{ required: true }]} tooltip={nameFromOkta ? "From your university account" : undefined}>
                 <Input disabled={nameFromOkta} className={nameFromOkta ? "bg-gray-50" : ""} />
               </Form.Item>
@@ -649,6 +680,6 @@ function BuyModal({ permit, onClose, onError }: {
           )}
         </div>
       )}
-    </Modal>
+    </Card>
   );
 }
