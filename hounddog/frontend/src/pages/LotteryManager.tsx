@@ -677,7 +677,7 @@ export function LiveDashboard({ permitType, onBack }: { permitType: PermitTypeRo
   }, [permitType.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (isLive) intervalRef.current = setInterval(fetchData, 4000); return () => { if (intervalRef.current) clearInterval(intervalRef.current); }; }, [isLive, fetchData]);
+  useEffect(() => { if (isLive) intervalRef.current = setInterval(fetchData, 2000); return () => { if (intervalRef.current) clearInterval(intervalRef.current); }; }, [isLive, fetchData]);
 
   const pendingCount = applications.filter(a => a.status === "pending").length;
   const selectedCount = applications.filter(a => a.status === "selected").length;
