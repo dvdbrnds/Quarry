@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.lottery import get_strategy, assign_lots, distribute_capacity
-from app.services.email import send_email, send_lottery_selection_email, branded_email_shell
+from app.services.email import send_email, send_lottery_selection_email, branded_email_shell, extract_first_name
 
 logger = logging.getLogger(__name__)
 
@@ -293,7 +293,7 @@ async def _notify_waitlisted(waitlisted, permit_type):
             continue
         try:
             position = idx + 1
-            first_name = name.split()[0] if name else "Student"
+            first_name = extract_first_name(name)
 
             inner = (
                 f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">Waitlisted &mdash; {pt_label}</h2>'

@@ -352,7 +352,7 @@ async def run_lottery(
     pt.lottery_run_at = datetime.now(timezone.utc)
     await db.flush()
 
-    from ..services.email import send_lottery_selection_email, send_email, branded_email_shell
+    from ..services.email import send_lottery_selection_email, send_email, branded_email_shell, extract_first_name
     for app in selected_apps:
         await send_lottery_selection_email(
             recipient_email=app.student_email,
@@ -374,7 +374,7 @@ async def run_lottery(
             continue
         try:
             position = app.waitlist_position
-            first_name = app.student_name.split()[0] if app.student_name else "Student"
+            first_name = extract_first_name(app.student_name)
             inner = (
                 f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">'
                 f'Waitlisted &mdash; {pt.label}</h2>'

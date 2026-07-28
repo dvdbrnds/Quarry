@@ -8,6 +8,7 @@ from ..database import get_db
 from ..models.notification_preference import NotificationPreference
 from ..models.permit import Permit
 from ..schemas.messaging import NotificationPreferenceRead, NotificationPreferenceUpdate
+from ..services.email import extract_first_name
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ async def get_preferences(token: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "Preference link not found or expired")
 
     pref, permit = row
-    first_name = permit.name.split()[0] if permit.name else ""
+    first_name = extract_first_name(permit.name)
 
     return NotificationPreferenceRead(
         first_name=first_name,
@@ -57,7 +58,7 @@ async def update_preferences(
 
     await db.flush()
 
-    first_name = permit.name.split()[0] if permit.name else ""
+    first_name = extract_first_name(permit.name)
     return NotificationPreferenceRead(
         first_name=first_name,
         phone=permit.phone,

@@ -13,6 +13,28 @@ logger = logging.getLogger("quarry.email")
 
 _FOOTER_BG = "#f5f5f5"
 
+
+def extract_first_name(full_name: str) -> str:
+    """Extract a first name from various name formats.
+
+    Handles:
+      - "First Last" → "First"
+      - "Last, First" → "First"
+      - "Last, First Middle" → "First"
+      - "First" → "First"
+      - Strips trailing commas/punctuation from naive splits
+    """
+    if not full_name or not full_name.strip():
+        return "Student"
+    name = full_name.strip()
+    if "," in name:
+        parts = name.split(",", 1)
+        after_comma = parts[1].strip()
+        if after_comma:
+            return after_comma.split()[0]
+        return parts[0].strip().split()[0]
+    return name.split()[0].rstrip(",")
+
 _cached_branding: dict | None = None
 
 
@@ -270,7 +292,7 @@ async def send_lottery_selection_email(
 ) -> bool:
     b = await _load_branding()
     school = school_name or settings.school_name or "Campus"
-    first_name = student_name.split()[0] if student_name else "Student"
+    first_name = extract_first_name(student_name)
     subject = f"You\u2019ve Been Selected \u2014 {permit_type_label} Parking Permit"
 
     from .email_templates import render_lottery_selection_email
@@ -323,7 +345,7 @@ async def send_waitlist_position_update_email(
     b = await _load_branding()
     school = school_name or settings.school_name or "Campus"
     primary = b["primary_color"]
-    first_name = student_name.split()[0] if student_name else "Student"
+    first_name = extract_first_name(student_name)
     subject = f"Waitlist Update — {permit_type_label}"
 
     inner = (
