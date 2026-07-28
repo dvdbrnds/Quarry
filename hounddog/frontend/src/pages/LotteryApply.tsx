@@ -140,6 +140,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
   const [lots, setLots] = useState<Lot[]>([]);
   const [highlightedLots, setHighlightedLots] = useState<string[]>([]);
   const [campusFilter, setCampusFilter] = useState<"north" | "south" | null>(null);
+  const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
 
@@ -277,7 +278,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
             {/* Mobile map (shown above cards on small screens) */}
             {mapsApiKey && lots.length > 0 && (
               <div className="lg:hidden h-[300px] rounded-xl overflow-hidden shadow">
-                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={activeEffectiveHighlightedLots} defaultCenter={campusCenter} />
+                <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={activeEffectiveHighlightedLots} focusedLot={focusedLot} defaultCenter={campusCenter} />
               </div>
             )}
 
@@ -285,9 +286,10 @@ function LotteryPage({ user }: { user: AuthUser }) {
             <div className="lg:col-span-1 space-y-8">
               {/* Inline apply/buy form (replaces cards while open) */}
               {applying && (
-                <ApplyPanel permit={applying} onClose={() => setApplying(null)}
-                  onSuccess={() => { setApplying(null); message.success("Application submitted! You're entered in the lottery."); load(); }}
-                  onError={msg => { message.error(msg); setApplying(null); }} />
+                <ApplyPanel permit={applying} onClose={() => { setApplying(null); setFocusedLot(null); }}
+                  onSuccess={() => { setApplying(null); setFocusedLot(null); message.success("Application submitted! You're entered in the lottery."); load(); }}
+                  onError={msg => { message.error(msg); setApplying(null); setFocusedLot(null); }}
+                  onLotHover={setFocusedLot} />
               )}
               {buying && (
                 <BuyPanel permit={buying} onClose={() => setBuying(null)}
@@ -436,7 +438,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
             {mapsApiKey && lots.length > 0 && (
               <div className="hidden lg:block lg:col-span-2 min-w-0">
                 <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
-                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={activeEffectiveHighlightedLots} defaultCenter={campusCenter} />
+                  <StudentLotMap apiKey={mapsApiKey} lots={lots} highlightedLots={activeEffectiveHighlightedLots} focusedLot={focusedLot} defaultCenter={campusCenter} />
                 </div>
               </div>
             )}
@@ -447,8 +449,9 @@ function LotteryPage({ user }: { user: AuthUser }) {
   );
 }
 
-function ApplyPanel({ permit, onClose, onSuccess, onError }: {
+function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
   permit: AvailablePermit | null; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
+  onLotHover?: (lot: string | null) => void;
 }) {
   const brand = useBranding();
   const [form] = Form.useForm();
@@ -550,7 +553,11 @@ function ApplyPanel({ permit, onClose, onSuccess, onError }: {
                     {lotPreferences.map((lot, idx) => {
                       const detail = permit.lot_details?.find(d => d.name === lot);
                       return (
-                        <div key={lot} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${detail?.is_time_restricted ? "bg-amber-50 border border-amber-200" : "bg-gray-50"}`}>
+                        <div key={lot}
+                          className={`flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors ${detail?.is_time_restricted ? "bg-amber-50 border border-amber-200 hover:bg-amber-100" : "bg-gray-50 hover:bg-blue-50 hover:border-blue-200 border border-transparent"}`}
+                          onMouseEnter={() => onLotHover?.(lot)}
+                          onMouseLeave={() => onLotHover?.(null)}
+                        >
                           <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}.</span>
                           <div className="flex-1">
                             <span className="text-sm font-medium">Lot {lot}</span>

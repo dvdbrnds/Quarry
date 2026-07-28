@@ -6,11 +6,14 @@ const DEFAULT_CENTER = { lat: 40.6265, lng: -75.3707 };
 const DEFAULT_ZOOM = 17;
 const HIGHLIGHT_FILL = "#FFD700";
 const HIGHLIGHT_STROKE = "#FFFFFF";
+const FOCUS_FILL = "#FF6B00";
+const FOCUS_STROKE = "#FFFFFF";
 
 interface StudentLotMapProps {
   apiKey: string;
   lots: Lot[];
   highlightedLots: string[];
+  focusedLot?: string | null;
   defaultCenter?: { lat: number; lng: number };
 }
 
@@ -49,6 +52,7 @@ function createLabelElement(
 function MapContent({
   lots,
   highlightedLots,
+  focusedLot,
   defaultCenter,
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
@@ -87,15 +91,16 @@ function MapContent({
       if (lot.boundary.length < 3) return;
 
       const isHighlighted = hasHighlight && isLotHighlighted(lot.name, highlightedLots);
+      const isFocused = !!focusedLot && normalizeLotName(lot.name) === normalizeLotName(focusedLot);
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor: !hasHighlight ? "#D1D5DB" : isHighlighted ? HIGHLIGHT_STROKE : "#6B7280",
-        strokeOpacity: !hasHighlight ? 1 : isHighlighted ? 1 : 0.3,
-        strokeWeight: !hasHighlight ? 2 : isHighlighted ? 4 : 1,
-        fillColor: !hasHighlight ? "#9CA3AF" : isHighlighted ? HIGHLIGHT_FILL : "#374151",
-        fillOpacity: !hasHighlight ? 0.25 : isHighlighted ? 0.7 : 0.1,
-        zIndex: isHighlighted ? 10 : 1,
+        strokeColor: !hasHighlight ? "#D1D5DB" : isFocused ? FOCUS_STROKE : isHighlighted ? HIGHLIGHT_STROKE : "#6B7280",
+        strokeOpacity: !hasHighlight ? 1 : (isFocused || isHighlighted) ? 1 : 0.3,
+        strokeWeight: !hasHighlight ? 2 : isFocused ? 5 : isHighlighted ? 4 : 1,
+        fillColor: !hasHighlight ? "#9CA3AF" : isFocused ? FOCUS_FILL : isHighlighted ? HIGHLIGHT_FILL : "#374151",
+        fillOpacity: !hasHighlight ? 0.25 : isFocused ? 0.85 : isHighlighted ? 0.55 : 0.1,
+        zIndex: isFocused ? 20 : isHighlighted ? 10 : 1,
         map,
         clickable: true,
       });
@@ -122,14 +127,14 @@ function MapContent({
       const bounds = new google.maps.LatLngBounds();
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
 
-      const showLabel = !hasHighlight || isHighlighted;
+      const showLabel = !hasHighlight || isHighlighted || isFocused;
       const label = new markerLib.AdvancedMarkerElement({
         position: bounds.getCenter(),
         map,
         content: createLabelElement(
           lot.name,
-          isHighlighted ? HIGHLIGHT_FILL : "white",
-          isHighlighted ? "14px" : "11px",
+          isFocused ? FOCUS_FILL : isHighlighted ? HIGHLIGHT_FILL : "white",
+          isFocused ? "16px" : isHighlighted ? "14px" : "11px",
           showLabel ? 1 : 0.25,
         ),
       });
@@ -154,7 +159,7 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       markersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, markerLib, lots, highlightedLots]);
+  }, [map, markerLib, lots, highlightedLots, focusedLot]);
 
   return (
     <>
@@ -197,6 +202,7 @@ export default function StudentLotMap(props: StudentLotMapProps) {
         <MapContent
           lots={props.lots}
           highlightedLots={props.highlightedLots}
+          focusedLot={props.focusedLot}
           defaultCenter={props.defaultCenter}
         />
       </div>
