@@ -636,7 +636,7 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
                   <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
                 </Form.Item>
               )}
-              <Form.Item name="phone" label="Cell Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
+              <Form.Item name="phone" label="Mobile Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
                 <Input placeholder="610-555-0123" />
               </Form.Item>
               {permit.lot_assignments.length > 1 && (
@@ -768,7 +768,7 @@ function BuyPanel({ permit, onClose, onError }: {
                   <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
                 </Form.Item>
               )}
-              <Form.Item name="phone" label="Cell Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
+              <Form.Item name="phone" label="Mobile Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
                 <Input placeholder="610-555-0123" />
               </Form.Item>
               <div className="flex justify-end gap-3 pt-4 border-t mt-4">
