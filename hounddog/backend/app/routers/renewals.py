@@ -30,26 +30,50 @@ def _next_june_30(from_date: date | None = None) -> date:
     return target
 
 
-def _build_response_html(title: str, heading: str, message: str, success: bool = True) -> str:
+async def _build_response_html(title: str, heading: str, message: str, success: bool = True) -> str:
+    from ..models.branding_settings import BrandingSettings
+    from ..database import async_session
+
+    # Load branding from DB
     primary = settings.brand_primary_color or "#1a2744"
     accent = settings.brand_accent_color or "#c9a84c"
     brand = settings.brand_name or "Quarry"
+    school = ""
+    department = "Parking Authority"
+    logo_url = ""
+
+    try:
+        async with async_session() as session:
+            bs = (await session.execute(select(BrandingSettings))).scalar()
+            if bs:
+                primary = bs.primary_color or primary
+                accent = bs.accent_color or accent
+                brand = bs.brand_name or brand
+                school = bs.school_name or ""
+                department = bs.department_name or department
+                logo_url = bs.logo_url or ""
+    except Exception:
+        pass
+
+    nav_title = f"{school} {department}" if school else f"{brand}"
     color = "#16a34a" if success else primary
     icon = "&#10003;" if success else "&#10005;"
+    logo_html = f'<img src="{logo_url}" alt="{brand}" style="height:32px;margin-right:12px;vertical-align:middle;">' if logo_url else ""
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <style>
 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f8f9fa; }}
-.nav {{ background: {primary}; color: #f5f0e8; padding: 16px 24px; }}
+.nav {{ background: {primary}; color: #f5f0e8; padding: 16px 24px; display: flex; align-items: center; }}
 .nav h1 {{ margin: 0; font-size: 18px; color: {accent}; }}
+.nav .sub {{ font-size: 11px; color: rgba(255,255,255,0.5); }}
 .container {{ max-width: 500px; margin: 60px auto; padding: 0 24px; text-align: center; }}
 .icon {{ width: 64px; height: 64px; border-radius: 50%; background: {color}; color: white;
          font-size: 32px; line-height: 64px; margin: 0 auto 24px; }}
 h2 {{ color: {primary}; margin-bottom: 12px; }}
 p {{ color: #555; line-height: 1.6; }}
 </style></head><body>
-<div class="nav"><h1>{brand} Parking</h1></div>
+<div class="nav">{logo_html}<div><h1>{brand}</h1><span class="sub">{nav_title}</span></div></div>
 <div class="container">
 <div class="icon">{icon}</div>
 <h2>{heading}</h2>
@@ -266,31 +290,31 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
     )).scalar()
 
     if not renewal:
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Invalid Link", "Link Not Found",
             f"This renewal link is invalid. Please contact the {dept}.", False
         ), status_code=404)
 
     if renewal.used_at:
         if renewal.response == "renewed":
-            return HTMLResponse(_build_response_html(
+            return HTMLResponse(await _build_response_html(
                 "Already Renewed", "Already Renewed",
                 "Your permit has already been renewed. No further action is needed."
             ))
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Link Used", "Link Already Used",
             f"This link has already been used. Please contact the {dept} if you need assistance.", False
         ))
 
     if renewal.expires_at < datetime.now(timezone.utc):
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Link Expired", "Link Expired",
             f"This renewal link has expired. Please contact the {dept} for assistance.", False
         ), status_code=400)
 
     permit = await db.get(Permit, renewal.permit_id)
     if not permit:
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Not Found", "Permit Not Found",
             f"The associated permit could not be found. Please contact the {dept}.", False
         ), status_code=404)
@@ -322,7 +346,7 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     end_str = new_end.strftime("%B %d, %Y")
-    return HTMLResponse(_build_response_html(
+    return HTMLResponse(await _build_response_html(
         "Permit Renewed", "Thank You!",
         f"Your parking permit has been renewed through <strong>{end_str}</strong>. "
         f"Your lot assignment ({permit.lot_assignment}) remains the same. "
@@ -339,31 +363,31 @@ async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
     )).scalar()
 
     if not renewal:
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Invalid Link", "Link Not Found",
             f"This renewal link is invalid. Please contact the {dept}.", False
         ), status_code=404)
 
     if renewal.used_at:
         if renewal.response == "declined":
-            return HTMLResponse(_build_response_html(
+            return HTMLResponse(await _build_response_html(
                 "Already Declined", "Already Declined",
                 "You've already indicated you don't need your permit. "
                 f"If you change your mind, please contact the {dept}."
             ))
         if renewal.response == "renewed":
-            return HTMLResponse(_build_response_html(
+            return HTMLResponse(await _build_response_html(
                 "Already Renewed", "Already Renewed",
                 "Your permit has already been renewed. If you'd like to cancel, "
                 f"please contact the {dept}."
             ))
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Link Used", "Link Already Used",
             "This link has already been used.", False
         ))
 
     if renewal.expires_at < datetime.now(timezone.utc):
-        return HTMLResponse(_build_response_html(
+        return HTMLResponse(await _build_response_html(
             "Link Expired", "Link Expired",
             "This renewal link has expired. Your permit will expire on June 30 as scheduled.", False
         ), status_code=400)
@@ -380,7 +404,7 @@ async def decline_renewal(token: str, db: AsyncSession = Depends(get_db)):
     await db.flush()
     await db.commit()
 
-    return HTMLResponse(_build_response_html(
+    return HTMLResponse(await _build_response_html(
         "Permit Declined", "Thank You",
         "We've recorded that you no longer need your parking permit. "
         "Your permit has been deactivated. If you change your mind, "
