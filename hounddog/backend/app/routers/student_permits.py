@@ -146,6 +146,7 @@ async def available_permit_types(
             lot_details=_build_lot_details(pt.lot_assignments, pt.code, lot_lookup),
             valid_days=pt.valid_days,
             min_class_year=pt.min_class_year,
+            allow_multiple=pt.allow_multiple,
             application_closes_at=pt.application_closes_at,
             requires_lottery=pt.requires_lottery,
             current_applicants=current_applicants,

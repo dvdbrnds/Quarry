@@ -19,6 +19,7 @@ interface AvailablePermit {
   max_capacity: number; remaining: number; lot_assignments: string[];
   lot_details: LotDetail[];
   valid_days: number; min_class_year: number | null;
+  allow_multiple: boolean;
   application_closes_at: string | null; requires_lottery: boolean;
 }
 
@@ -356,7 +357,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
                             <div>
                               <div className="font-semibold text-brand-primary">{app.permit_type_label}</div>
                               <div className="text-xs text-gray-500 mt-1">
-                                Plate: <span className="font-mono font-medium">{app.status === "accepted" && app.current_plate ? app.current_plate : app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
+                                Plate: <span className="font-mono font-medium">{app.status === "accepted" && app.current_plate ? app.current_plate : app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>}{app.class_year > 0 && <> &middot; Class of {app.class_year}</>}
                               </div>
                               <div className="text-xs text-gray-500 mt-1">
                                 {app.lot_details?.length ? <LotTags details={app.lot_details} /> : <>Lots: {app.lot_assignments.join(", ")}</>}
@@ -588,7 +589,7 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
         body: JSON.stringify({
           permit_type_id: permit.id, student_name: values.name,
           plate: values.plate.toUpperCase().trim(), plate_state: (values.plate_state || "").toUpperCase().trim(),
-          class_year: values.class_year, phone: values.phone || null, lot_preferences: lotPreferences,
+          class_year: values.class_year || 0, phone: values.phone || null, lot_preferences: lotPreferences,
         }),
       });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Application failed"); }
@@ -630,9 +631,11 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
                   <Input placeholder="PA" maxLength={2} className="font-mono uppercase" />
                 </Form.Item>
               </div>
-              <Form.Item name="class_year" label="Graduation Year" rules={[{ required: true }]} tooltip={classYearFromOkta ? "From your university account" : undefined}>
-                <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
-              </Form.Item>
+              {!permit.allow_multiple && (
+                <Form.Item name="class_year" label="Graduation Year" rules={[{ required: !permit.allow_multiple }]} tooltip={classYearFromOkta ? "From your university account" : undefined}>
+                  <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
+                </Form.Item>
+              )}
               <Form.Item name="phone" label="Phone (optional)">
                 <Input placeholder="610-555-0123" />
               </Form.Item>
@@ -715,7 +718,7 @@ function BuyPanel({ permit, onClose, onError }: {
           student_name: values.name,
           plate: values.plate.toUpperCase().trim(),
           plate_state: (values.plate_state || "").toUpperCase().trim(),
-          class_year: values.class_year,
+          class_year: values.class_year || 0,
           phone: values.phone || null,
         }),
       });
@@ -760,9 +763,11 @@ function BuyPanel({ permit, onClose, onError }: {
                   <Input placeholder="PA" maxLength={2} className="font-mono uppercase" />
                 </Form.Item>
               </div>
-              <Form.Item name="class_year" label="Graduation Year" rules={[{ required: true }]} tooltip={classYearFromOkta ? "From your university account" : undefined}>
-                <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
-              </Form.Item>
+              {!permit.allow_multiple && (
+                <Form.Item name="class_year" label="Graduation Year" rules={[{ required: !permit.allow_multiple }]} tooltip={classYearFromOkta ? "From your university account" : undefined}>
+                  <InputNumber min={2024} max={2035} placeholder="2027" className="w-full" disabled={classYearFromOkta} />
+                </Form.Item>
+              )}
               <Form.Item name="phone" label="Phone (optional)">
                 <Input placeholder="610-555-0123" />
               </Form.Item>

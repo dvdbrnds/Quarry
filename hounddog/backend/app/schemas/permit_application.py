@@ -72,6 +72,7 @@ class AvailablePermitType(BaseModel):
     lot_details: list[LotAccessInfo] = []
     valid_days: int
     min_class_year: int | None = None
+    allow_multiple: bool = False
     application_closes_at: datetime | None = None
     requires_lottery: bool = False
     current_applicants: int | None = None
