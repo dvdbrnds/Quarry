@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty } from "antd";
+import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders } from "../auth";
 import { useCurrentUser } from "../UserContext";
@@ -58,6 +58,8 @@ export default function Tickets() {
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") ?? "");
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [bulkVoiding, setBulkVoiding] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -108,6 +110,24 @@ export default function Tickets() {
         }
       },
     });
+  }
+
+  async function handleBulkVoid() {
+    if (selectedRowKeys.length === 0) return;
+    setBulkVoiding(true);
+    try {
+      const res = await fetch("/api/tickets/bulk-void", {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ ids: selectedRowKeys }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Bulk void failed"); }
+      const { voided, skipped } = await res.json();
+      message.success(`${voided} ticket(s) voided${skipped > 0 ? `, ${skipped} skipped (already paid/voided)` : ""}`);
+      setSelectedRowKeys([]);
+      load();
+    } catch (e: any) { message.error(e.message); }
+    finally { setBulkVoiding(false); }
   }
 
   async function handleAppealDecision(id: string, decision: string) {
@@ -292,11 +312,26 @@ export default function Tickets() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Tickets</h2>
-        {isAdmin && (
-          <Button onClick={() => { setMailNoticesOpen(true); loadPendingNotices(); }}>
-            Mail Notices
-          </Button>
-        )}
+        <Space>
+          {isAdmin && selectedRowKeys.length > 0 && (
+            <Popconfirm
+              title={`Void ${selectedRowKeys.length} ticket(s)?`}
+              description="This will void all selected tickets. Paid and already-voided tickets will be skipped."
+              onConfirm={handleBulkVoid}
+              okText="Void All"
+              okButtonProps={{ danger: true, loading: bulkVoiding }}
+            >
+              <Button danger loading={bulkVoiding}>
+                Void Selected ({selectedRowKeys.length})
+              </Button>
+            </Popconfirm>
+          )}
+          {isAdmin && (
+            <Button onClick={() => { setMailNoticesOpen(true); loadPendingNotices(); }}>
+              Mail Notices
+            </Button>
+          )}
+        </Space>
       </div>
 
       <Space className="mb-4" wrap>
@@ -342,6 +377,13 @@ export default function Tickets() {
         columns={columns}
         rowKey="id"
         loading={loading}
+        rowSelection={isAdmin ? {
+          selectedRowKeys,
+          onChange: setSelectedRowKeys,
+          getCheckboxProps: (t) => ({
+            disabled: ["paid", "voided"].includes(t.status),
+          }),
+        } : undefined}
         onRow={(t) => ({ onClick: () => setSelected(t), className: "cursor-pointer" })}
         pagination={{
           current: page,

@@ -347,6 +347,37 @@ async def void_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     return ticket
 
 
+@router.post("/bulk-void")
+async def bulk_void_tickets(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Void multiple tickets at once."""
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(400, "No ticket IDs provided")
+
+    voided = 0
+    skipped = 0
+    for tid in ids:
+        try:
+            ticket = await db.get(Ticket, uuid.UUID(tid))
+        except (ValueError, AttributeError):
+            skipped += 1
+            continue
+        if not ticket:
+            skipped += 1
+            continue
+        if ticket.status in ("paid", "voided"):
+            skipped += 1
+            continue
+        ticket.status = "voided"
+        voided += 1
+
+    await db.flush()
+    return {"voided": voided, "skipped": skipped}
+
+
 @router.post("/{ticket_id}/appeal", response_model=TicketRead)
 async def appeal_ticket(
     ticket_id: uuid.UUID, appeal: AppealRequest, db: AsyncSession = Depends(get_db)
