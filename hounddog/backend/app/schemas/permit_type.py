@@ -25,6 +25,7 @@ class PermitTypeBase(BaseModel):
     application_closes_at: datetime | None = None
     offer_window_days: int = 5
     eligible_groups: list[str] = []
+    allow_multiple: bool = False
 
 
 class PermitTypeCreate(PermitTypeBase):
@@ -51,6 +52,7 @@ class PermitTypeUpdate(BaseModel):
     application_closes_at: datetime | None = None
     offer_window_days: int | None = None
     eligible_groups: list[str] | None = None
+    allow_multiple: bool | None = None
 
 
 class PermitTypeRead(PermitTypeBase):

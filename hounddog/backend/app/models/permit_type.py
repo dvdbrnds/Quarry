@@ -26,6 +26,8 @@ class PermitType(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     eligible_groups: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
+    allow_multiple: Mapped[bool] = mapped_column(Boolean, default=False)
+
     requires_lottery: Mapped[bool] = mapped_column(Boolean, default=False)
     lottery_strategy: Mapped[str] = mapped_column(String(64), default="seniority_timestamp")
     min_class_year: Mapped[int | None] = mapped_column(Integer, nullable=True)

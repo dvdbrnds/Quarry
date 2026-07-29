@@ -23,6 +23,7 @@ from ..schemas.permit_application import (
     AvailablePermitType,
     DirectPurchaseRequest,
     LotAccessInfo,
+    VehicleSwapRequest,
 )
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -180,15 +181,16 @@ async def submit_application(
             f"First-year students are not eligible for resident parking.",
         )
 
-    existing = await db.execute(
-        select(PermitApplication).where(
-            PermitApplication.student_sub == user.sub,
-            PermitApplication.permit_type_id == pt.id,
-            PermitApplication.status.notin_(["expired", "declined"]),
+    if not pt.allow_multiple:
+        existing = await db.execute(
+            select(PermitApplication).where(
+                PermitApplication.student_sub == user.sub,
+                PermitApplication.permit_type_id == pt.id,
+                PermitApplication.status.notin_(["expired", "declined"]),
+            )
         )
-    )
-    if existing.scalar():
-        raise HTTPException(409, "You already have an active application for this permit type")
+        if existing.scalar():
+            raise HTTPException(409, "You already have an active application for this permit type")
 
     citation_result = await db.execute(
         text("""
@@ -260,6 +262,8 @@ async def my_applications(
 
     lot_lookup = await _load_lot_lookup(db)
 
+    from sqlalchemy import or_
+
     out: list[ApplicationWithType] = []
     for app in apps:
         pt = await db.get(PermitType, app.permit_type_id)
@@ -271,6 +275,30 @@ async def my_applications(
                 f"You are #{app.waitlist_position} on the waitlist. "
                 "You will be notified by email if a spot becomes available."
             )
+
+        swap_info: dict = {}
+        if app.status == "accepted":
+            permit_result = await db.execute(
+                select(Permit).where(
+                    Permit.permit_type == pt_code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                    or_(Permit.student_id == user.sub, Permit.email == user.email),
+                ).order_by(Permit.created_at.desc()).limit(1)
+            )
+            permit = permit_result.scalar()
+            if permit:
+                now = datetime.now(timezone.utc)
+                lpc = permit.last_plate_change
+                next_swap = (lpc + timedelta(days=7)) if lpc else None
+                swap_info = {
+                    "permit_id": str(permit.id),
+                    "current_plate": permit.plates[0] if permit.plates else app.plate,
+                    "last_plate_change": lpc,
+                    "next_swap_available": next_swap,
+                    "can_swap": next_swap is None or now >= next_swap,
+                }
+
         out.append(ApplicationWithType(
             **{k: v for k, v in app.__dict__.items() if not k.startswith("_")},
             permit_type_label=pt.label if pt else "",
@@ -279,6 +307,7 @@ async def my_applications(
             lot_assignments=pt_lots,
             lot_details=_build_lot_details(pt_lots, pt_code, lot_lookup),
             waitlist_message=waitlist_msg,
+            **swap_info,
         ))
     return out
 
@@ -445,16 +474,17 @@ async def direct_purchase(
             f"This permit type requires class year {pt.min_class_year} or earlier.",
         )
 
-    existing = await db.execute(
-        select(Permit).where(
-            Permit.permit_type == pt.code,
-            Permit.status == "active",
-            Permit.deleted_at.is_(None),
-            Permit.email == user.email,
+    if not pt.allow_multiple:
+        existing = await db.execute(
+            select(Permit).where(
+                Permit.permit_type == pt.code,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+                Permit.email == user.email,
+            )
         )
-    )
-    if existing.scalar():
-        raise HTTPException(409, "You already have an active permit of this type")
+        if existing.scalar():
+            raise HTTPException(409, "You already have an active permit of this type")
 
     citation_result = await db.execute(
         text("""
@@ -541,6 +571,65 @@ async def direct_purchase(
     )
 
     return {"checkout_url": session.url, "session_id": session.id}
+
+
+@router.post("/swap-vehicle")
+async def swap_vehicle(
+    data: VehicleSwapRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Change the vehicle (plate) on an existing active permit. Limited to once per week."""
+    from sqlalchemy import or_
+
+    permit = await db.get(Permit, data.permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+    if permit.status != "active":
+        raise HTTPException(400, "Only active permits can have their vehicle changed")
+
+    is_owner = (permit.student_id == user.sub) or (permit.email and permit.email == user.email)
+    if not is_owner:
+        raise HTTPException(403, "Not your permit")
+
+    new_plate = data.new_plate.upper().strip()
+    if not new_plate:
+        raise HTTPException(400, "License plate is required")
+
+    now = datetime.now(timezone.utc)
+    if permit.last_plate_change:
+        cooldown_end = permit.last_plate_change + timedelta(days=7)
+        if now < cooldown_end:
+            next_available = cooldown_end.strftime("%B %d, %Y")
+            raise HTTPException(
+                429,
+                f"You can only change your vehicle once per week. "
+                f"Next change available {next_available}.",
+            )
+
+    dupe = await db.execute(
+        select(Permit).where(
+            Permit.plates.any(new_plate),
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+            Permit.id != permit.id,
+        )
+    )
+    if dupe.scalar():
+        raise HTTPException(409, f"Plate {new_plate} is already registered on another active permit")
+
+    old_plate = permit.plates[0] if permit.plates else ""
+    permit.plates = [new_plate]
+    permit.last_plate_change = now
+    await db.flush()
+    await db.refresh(permit)
+
+    return {
+        "status": "ok",
+        "old_plate": old_plate,
+        "new_plate": new_plate,
+        "next_swap_available": (now + timedelta(days=7)).isoformat(),
+    }
 
 
 @router.post("/{application_id}/decline")

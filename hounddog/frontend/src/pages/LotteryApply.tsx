@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip } from "antd";
+import { Button, Card, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip, Modal } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
@@ -29,6 +29,8 @@ interface MyApplication {
   lot_details: LotDetail[];
   lot_preferences: string[]; assigned_lot: string | null;
   waitlist_position: number | null; offer_expires_at: string | null; created_at: string;
+  permit_id: string | null; current_plate: string | null;
+  last_plate_change: string | null; next_swap_available: string | null; can_swap: boolean;
 }
 
 interface OktaProfile {
@@ -143,6 +145,10 @@ function LotteryPage({ user }: { user: AuthUser }) {
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
+  const [swapping, setSwapping] = useState<MyApplication | null>(null);
+  const [swapPlate, setSwapPlate] = useState("");
+  const [swapState, setSwapState] = useState("");
+  const [swapLoading, setSwapLoading] = useState(false);
 
   /** Map lot name → campus ("north" | "south") using centroid latitude */
   const lotCampusMap = useMemo(() => {
@@ -238,6 +244,35 @@ function LotteryPage({ user }: { user: AuthUser }) {
     });
   }
 
+  async function handleSwapVehicle() {
+    if (!swapping?.permit_id || !swapPlate.trim()) return;
+    setSwapLoading(true);
+    try {
+      const res = await fetch("/api/student/permits/swap-vehicle", {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          permit_id: swapping.permit_id,
+          new_plate: swapPlate.trim(),
+          new_plate_state: swapState.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as any).detail || `Failed (${res.status})`);
+      }
+      message.success(`Vehicle updated to ${swapPlate.trim().toUpperCase()}`);
+      setSwapping(null);
+      setSwapPlate("");
+      setSwapState("");
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSwapLoading(false);
+    }
+  }
+
   const appliedTypeIds = new Set(applications.filter(a => !["expired", "declined"].includes(a.status)).map(a => a.permit_type_code));
 
   // Keep lots highlighted while applying/buying
@@ -321,7 +356,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
                             <div>
                               <div className="font-semibold text-brand-primary">{app.permit_type_label}</div>
                               <div className="text-xs text-gray-500 mt-1">
-                                Plate: <span className="font-mono font-medium">{app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
+                                Plate: <span className="font-mono font-medium">{app.status === "accepted" && app.current_plate ? app.current_plate : app.plate}</span>{app.plate_state && <span className="text-gray-400"> ({app.plate_state})</span>} &middot; Class of {app.class_year}
                               </div>
                               <div className="text-xs text-gray-500 mt-1">
                                 {app.lot_details?.length ? <LotTags details={app.lot_details} /> : <>Lots: {app.lot_assignments.join(", ")}</>}
@@ -346,6 +381,19 @@ function LotteryPage({ user }: { user: AuthUser }) {
                                   <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>Accept &amp; Pay ${Number(app.permit_type_price).toFixed(0)}</Button>
                                   <Button size="small" danger onClick={() => handleDecline(app.id)}>Decline</Button>
                                 </Space>
+                              )}
+                              {app.status === "accepted" && app.permit_id && (
+                                <div className="flex flex-col items-end gap-1">
+                                  {app.can_swap ? (
+                                    <Button size="small" onClick={() => { setSwapping(app); setSwapPlate(""); setSwapState(""); }}>
+                                      Change Vehicle
+                                    </Button>
+                                  ) : app.next_swap_available ? (
+                                    <Tooltip title={`Next change available ${new Date(app.next_swap_available).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}>
+                                      <Button size="small" disabled>Change Vehicle</Button>
+                                    </Tooltip>
+                                  ) : null}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -445,6 +493,47 @@ function LotteryPage({ user }: { user: AuthUser }) {
           </div>
         )}
       </main>
+
+      <Modal
+        title="Change Vehicle"
+        open={!!swapping}
+        onCancel={() => { setSwapping(null); setSwapPlate(""); setSwapState(""); }}
+        onOk={handleSwapVehicle}
+        okText="Update Vehicle"
+        okButtonProps={{ loading: swapLoading, disabled: !swapPlate.trim() }}
+        cancelButtonProps={{ disabled: swapLoading }}
+      >
+        {swapping && (
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-600">
+              Current plate: <span className="font-mono font-bold">{swapping.current_plate || swapping.plate}</span>
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">New License Plate</label>
+              <Input
+                value={swapPlate}
+                onChange={e => setSwapPlate(e.target.value.toUpperCase())}
+                placeholder="ABC1234"
+                className="font-mono"
+                maxLength={12}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">State (optional)</label>
+              <Input
+                value={swapState}
+                onChange={e => setSwapState(e.target.value.toUpperCase())}
+                placeholder="PA"
+                className="font-mono"
+                maxLength={2}
+              />
+            </div>
+            <p className="text-xs text-gray-400">
+              You can change your vehicle once per week. After this change, the next swap will be available in 7 days.
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -17,7 +17,7 @@ interface PermitTypeRow {
   time_restriction: string | null; is_purchasable_online: boolean;
   is_active: boolean; sort_order: number; active_count: number; remaining: number;
   requires_lottery: boolean; lottery_strategy: string; min_class_year: number | null;
-  allow_freshmen: boolean; eligible_groups: string[];
+  allow_freshmen: boolean; eligible_groups: string[]; allow_multiple: boolean;
   application_opens_at: string | null; application_closes_at: string | null;
   offer_window_days: number; lottery_run_at: string | null;
 }
@@ -83,6 +83,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       is_purchasable_online: values.is_purchasable_online ?? false,
       sort_order: values.sort_order ?? 0,
       eligible_groups: values.eligible_groups || [],
+      allow_multiple: values.allow_multiple ?? false,
       requires_lottery: values.requires_lottery ?? false,
       lottery_strategy: values.lottery_strategy ?? "seniority_timestamp",
       min_class_year: values.min_class_year ? parseInt(values.min_class_year) : null,
@@ -151,12 +152,19 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             />
           </Form.Item>
         </div>
-        <Space className="mb-4">
+        <Space className="mb-4" wrap>
           <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle>
             <Checkbox onChange={e => { if (e.target.checked) form.setFieldsValue({ requires_lottery: false }); }}>Always available for purchase (no lottery)</Checkbox>
           </Form.Item>
           <Form.Item name="requires_lottery" valuePropName="checked" noStyle>
             <Checkbox onChange={e => { if (e.target.checked) form.setFieldsValue({ is_purchasable_online: false }); }}>Requires lottery</Checkbox>
+          </Form.Item>
+          <Form.Item name="allow_multiple" valuePropName="checked" noStyle>
+            <Checkbox>
+              <Tooltip title="When enabled, a person can register multiple permits of this type (e.g. faculty with multiple vehicles). When disabled, each person is limited to one permit.">
+                Allow multiple permits per person
+              </Tooltip>
+            </Checkbox>
           </Form.Item>
         </Space>
         {(requiresLottery || isPurchasableOnline) && (

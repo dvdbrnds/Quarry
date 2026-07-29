@@ -53,6 +53,11 @@ class ApplicationWithType(ApplicationRead):
     lot_assignments: list[str] = []
     lot_details: list[LotAccessInfo] = []
     waitlist_message: str | None = None
+    permit_id: str | None = None
+    current_plate: str | None = None
+    last_plate_change: datetime | None = None
+    next_swap_available: datetime | None = None
+    can_swap: bool = False
 
 
 class AvailablePermitType(BaseModel):
@@ -124,3 +129,9 @@ class DirectPurchaseRequest(BaseModel):
     class_year: int
     phone: str | None = None
     lot_preference: str | None = None
+
+
+class VehicleSwapRequest(BaseModel):
+    permit_id: uuid.UUID
+    new_plate: str
+    new_plate_state: str = ""
