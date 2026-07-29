@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip, Modal } from "antd";
+import { Button, Card, Checkbox, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip, Modal } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
@@ -590,6 +590,7 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
           permit_type_id: permit.id, student_name: values.name,
           plate: values.plate.toUpperCase().trim(), plate_state: (values.plate_state || "").toUpperCase().trim(),
           class_year: values.class_year || 0, phone: values.phone || null, lot_preferences: lotPreferences,
+          sms_opt_in: !!values.sms_opt_in,
         }),
       });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Application failed"); }
@@ -638,6 +639,13 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
               )}
               <Form.Item name="phone" label="Mobile Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
                 <Input placeholder="610-555-0123" />
+              </Form.Item>
+              <Form.Item name="sms_opt_in" valuePropName="checked" initialValue={true}>
+                <Checkbox>
+                  <span className="text-xs text-gray-600">
+                    Send me text messages about my permit, lot closures, weather alerts, and campus emergency notifications
+                  </span>
+                </Checkbox>
               </Form.Item>
               {permit.lot_assignments.length > 1 && (
                 <Form.Item label="Lot Preference (reorder — #1 is top choice)">
@@ -720,6 +728,7 @@ function BuyPanel({ permit, onClose, onError }: {
           plate_state: (values.plate_state || "").toUpperCase().trim(),
           class_year: values.class_year || 0,
           phone: values.phone || null,
+          sms_opt_in: !!values.sms_opt_in,
         }),
       });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Purchase failed"); }
@@ -770,6 +779,13 @@ function BuyPanel({ permit, onClose, onError }: {
               )}
               <Form.Item name="phone" label="Mobile Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
                 <Input placeholder="610-555-0123" />
+              </Form.Item>
+              <Form.Item name="sms_opt_in" valuePropName="checked" initialValue={true}>
+                <Checkbox>
+                  <span className="text-xs text-gray-600">
+                    Send me text messages about my permit, lot closures, weather alerts, and campus emergency notifications
+                  </span>
+                </Checkbox>
               </Form.Item>
               <div className="flex justify-end gap-3 pt-4 border-t mt-4">
                 <Button onClick={onClose}>Cancel</Button>

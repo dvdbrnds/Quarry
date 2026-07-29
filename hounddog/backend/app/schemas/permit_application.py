@@ -20,6 +20,7 @@ class ApplicationSubmit(BaseModel):
     class_year: int
     phone: str | None = None
     lot_preferences: list[str] = []
+    sms_opt_in: bool = False
 
 
 class ApplicationRead(BaseModel):
@@ -130,6 +131,7 @@ class DirectPurchaseRequest(BaseModel):
     class_year: int
     phone: str | None = None
     lot_preference: str | None = None
+    sms_opt_in: bool = False
 
 
 class VehicleSwapRequest(BaseModel):

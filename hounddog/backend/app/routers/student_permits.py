@@ -1,5 +1,6 @@
 """Student-facing permit application endpoints."""
 
+import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -11,12 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, get_current_user
 from ..config import settings
 from ..database import get_db
+from ..models.alert_subscriber import AlertSubscriber
 from ..models.lot import ParkingLot
 from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
 from ..services.permit_numbering import next_permit_number
+
+_logger = logging.getLogger("quarry.student_permits")
 from ..schemas.permit_application import (
     ApplicationSubmit,
     ApplicationWithType,
@@ -29,6 +33,42 @@ from ..schemas.permit_application import (
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
+
+ALL_ALERT_CATEGORIES = ["emergency", "weather", "campus_closing", "parking", "general"]
+
+
+async def _opt_in_alerts(
+    db: AsyncSession,
+    name: str,
+    email: str,
+    phone: str,
+) -> None:
+    """Create or update an alert subscriber when a student opts in during
+    permit registration. Subscribes them to all alert categories."""
+    try:
+        existing = await db.execute(
+            select(AlertSubscriber).where(AlertSubscriber.email == email)
+        )
+        subscriber = existing.scalar_one_or_none()
+        if subscriber:
+            if phone and not subscriber.phone:
+                subscriber.phone = phone
+            subscriber.sms_enabled = True
+            subscriber.categories = ALL_ALERT_CATEGORIES
+        else:
+            subscriber = AlertSubscriber(
+                name=name,
+                email=email,
+                phone=phone,
+                sms_enabled=True,
+                email_enabled=True,
+                categories=ALL_ALERT_CATEGORIES,
+                source="permit_registration",
+            )
+            db.add(subscriber)
+        await db.flush()
+    except Exception as e:
+        _logger.warning("Alert opt-in failed (non-fatal): %s", e)
 
 
 async def _load_lot_lookup(db: AsyncSession) -> dict[str, ParkingLot]:
@@ -236,6 +276,9 @@ async def submit_application(
     db.add(app)
     await db.flush()
     await db.refresh(app)
+
+    if data.sms_opt_in and data.phone:
+        await _opt_in_alerts(db, data.student_name, user.email, data.phone)
 
     lot_lookup = await _load_lot_lookup(db)
     return ApplicationWithType(
@@ -503,6 +546,9 @@ async def direct_purchase(
             f"Pay all outstanding fines before purchasing a permit. "
             f"Visit {settings.student_facing_url}/pay to pay online.",
         )
+
+    if data.sms_opt_in and data.phone:
+        await _opt_in_alerts(db, data.student_name, user.email, data.phone)
 
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
