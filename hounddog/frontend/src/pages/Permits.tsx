@@ -136,9 +136,7 @@ function PermitForm({
           <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone is required" }]}>
             <Input placeholder="+1 (555) 123-4567" />
           </Form.Item>
-          <Form.Item name="beacon_id" label="Beacon ID (SheepDog)">
-            <Input placeholder="optional hangtag beacon ID" />
-          </Form.Item>
+          {/* beacon_id field hidden — bluetooth beacons no longer used as hangtag alternatives */}
         </div>
         <div className="flex justify-end gap-3">
           <Button onClick={onCancel}>Cancel</Button>
