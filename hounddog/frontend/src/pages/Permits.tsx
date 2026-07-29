@@ -348,7 +348,10 @@ export default function Permits() {
     { title: "Student ID", dataIndex: "student_id", key: "student_id", sorter: true, render: (v) => v || "—" },
     { title: "Plates", dataIndex: "plates", key: "plates", render: (plates: string[]) => <span className="font-mono text-xs">{plates.join(", ")}</span> },
     { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true },
-    { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => <span className="capitalize">{v}</span> },
+    { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => {
+      const pt = permitTypes.find(p => p.code === v);
+      return <span className="capitalize">{pt?.label || v?.replace(/_/g, " ") || "—"}</span>;
+    }},
     { title: "Issued", dataIndex: "start_date", key: "start_date", sorter: true, render: (v) => v || "—" },
     {
       title: "Expires", dataIndex: "end_date", key: "end_date", sorter: true,

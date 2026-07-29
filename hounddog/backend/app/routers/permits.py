@@ -229,6 +229,24 @@ async def bulk_status(
     return {"updated": updated, "status": data.status}
 
 
+@router.post("/backfill-numbers")
+async def backfill_permit_numbers(db: AsyncSession = Depends(get_db)):
+    """Assign permit numbers to any permits that don't have one."""
+    result = await db.execute(
+        select(Permit).where(
+            Permit.permit_number.is_(None),
+            Permit.deleted_at.is_(None),
+        )
+    )
+    permits = result.scalars().all()
+    count = 0
+    for permit in permits:
+        permit.permit_number = await next_permit_number(db)
+        count += 1
+    await db.flush()
+    return {"backfilled": count}
+
+
 @router.post("/{permit_id}/renew", response_model=PermitRead)
 async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     old = await db.get(Permit, permit_id)
