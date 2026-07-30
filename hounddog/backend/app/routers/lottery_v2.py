@@ -337,15 +337,46 @@ async def my_application(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    # Prefer application on open/drawn/closed cycle
-    result = await db.execute(
-        select(LotteryV2Application)
-        .join(LotteryV2Cycle, LotteryV2Application.cycle_id == LotteryV2Cycle.id)
-        .where(LotteryV2Application.student_sub == user.sub)
-        .order_by(LotteryV2Application.created_at.desc())
-        .limit(1)
-    )
-    app = result.scalar_one_or_none()
+    """Return this student's application for the current cycle only.
+
+    Scoped to the open cycle when one exists, otherwise the latest drawn/closed
+    cycle — never an older cycle's application that would block a new open window.
+    """
+    now = datetime.now(timezone.utc)
+    cycle = (
+        await db.execute(
+            select(LotteryV2Cycle)
+            .where(LotteryV2Cycle.status == "open")
+            .order_by(LotteryV2Cycle.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if cycle and cycle.closes_at and cycle.closes_at < now:
+        cycle.status = "closed"
+        await db.flush()
+        cycle = None
+
+    if not cycle:
+        cycle = (
+            await db.execute(
+                select(LotteryV2Cycle)
+                .where(LotteryV2Cycle.status.in_(["drawn", "closed"]))
+                .order_by(LotteryV2Cycle.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    if not cycle:
+        return None
+
+    app = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle.id,
+                LotteryV2Application.student_sub == user.sub,
+            )
+        )
+    ).scalar_one_or_none()
     if not app:
         return None
     return await _app_to_read(db, app)

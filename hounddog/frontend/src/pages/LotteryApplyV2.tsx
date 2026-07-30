@@ -142,16 +142,20 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         fetch("/api/auth/profile", { headers }),
         fetch("/api/lots", { headers }),
       ]);
-      if (cycleRes.ok) setCycle(await cycleRes.json());
-      else setCycle(null);
 
-      if (appRes.ok) {
-        const body = await appRes.json();
-        if (body) {
-          setApplication(body);
-          setStep("done");
-        }
+      const cycleData: Cycle | null = cycleRes.ok ? await cycleRes.json() : null;
+      setCycle(cycleData);
+
+      const appBody = appRes.ok ? await appRes.json() : null;
+      // Only lock into results if the app belongs to the cycle currently shown
+      if (appBody && cycleData && appBody.cycle_id === cycleData.id) {
+        setApplication(appBody);
+        setStep("done");
+      } else {
+        setApplication(null);
+        if (cycleData?.status === "open") setStep("intake");
       }
+
       if (profileRes.ok) {
         const p = await profileRes.json();
         if (p.display_name) setStudentName(p.display_name);
