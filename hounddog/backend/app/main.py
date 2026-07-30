@@ -364,6 +364,8 @@ async def lifespan(app: FastAPI):
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
             # Lottery V2 is production — drop staging cycle names
             "UPDATE lottery_v2_cycles SET name = 'Parking Lottery' WHERE name ILIKE '%staging%'",
+            # Third-party South lots are sold off-platform (City of Bethlehem)
+            "UPDATE permit_types SET is_purchasable_online = FALSE WHERE code = 'south_standalone'",
             # Eligible groups for role-based permit visibility
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS eligible_groups TEXT[] DEFAULT '{}'",
             # Set eligible_groups on faculty_staff so only employees see it
@@ -475,7 +477,7 @@ async def lifespan(app: FastAPI):
                     {"code": "steel_field_resident", "label": "Steel Field Resident", "eligible": "Resident students", "price": 75, "max_capacity": 42, "valid_days": 365, "lot_assignments": ["Q"], "is_purchasable_online": True, "sort_order": 6},
                     {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 37, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},
                     {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 88, "valid_days": 365, "lot_assignments": ["U", "Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 8},
-                    {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": True, "sort_order": 9},
+                    {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 9},
                     {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
                 ]
                 for row in default_permits:

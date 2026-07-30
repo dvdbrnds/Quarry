@@ -15,6 +15,12 @@ const LOTTERY_TIER_CODES = new Set([
   "south_guaranteed_resident",
 ]);
 
+/** External City lots — sold off-platform; never Quarry online purchase. */
+const NO_ONLINE_PURCHASE_CODES = new Set([
+  ...LOTTERY_TIER_CODES,
+  "south_standalone",
+]);
+
 interface PermitTypeRow {
   id: string; code: string; label: string; eligible: string; price: string;
   max_capacity: number; valid_days: number; lot_assignments: string[];
@@ -53,6 +59,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   const [saving, setSaving] = useState(false);
   const isPurchasableOnline = Form.useWatch("is_purchasable_online", form);
   const code = Form.useWatch("code", form);
+  const blockOnlinePurchase = NO_ONLINE_PURCHASE_CODES.has(code || initial?.code || "");
 
   useEffect(() => {
     if (initial) {
@@ -83,7 +90,9 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       code: values.code, label: values.label, eligible: values.eligible, price: values.price,
       max_capacity: values.max_capacity, valid_days: values.valid_days,
       lot_assignments: values.lot_assignments || [],
-      is_purchasable_online: values.is_purchasable_online ?? false,
+      is_purchasable_online: NO_ONLINE_PURCHASE_CODES.has(values.code)
+        ? false
+        : (values.is_purchasable_online ?? false),
       sort_order: values.sort_order ?? 0,
       eligible_groups: values.eligible_groups || [],
       allow_multiple: values.allow_multiple ?? false,
@@ -156,9 +165,17 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
           </Form.Item>
         </div>
         <Space className="mb-4" wrap>
-          <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle>
-            <Checkbox>Available for online purchase</Checkbox>
-          </Form.Item>
+          {!blockOnlinePurchase && (
+            <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle>
+              <Checkbox>Available for online purchase</Checkbox>
+            </Form.Item>
+          )}
+          {blockOnlinePurchase && code === "south_standalone" && (
+            <span className="text-sm text-ink-mute">Third-party lots are sold off-platform — online purchase disabled.</span>
+          )}
+          {blockOnlinePurchase && LOTTERY_TIER_CODES.has(code || "") && (
+            <span className="text-sm text-ink-mute">Lottery tiers are assigned via the Lottery tab — online purchase disabled.</span>
+          )}
           <Form.Item name="allow_multiple" valuePropName="checked" noStyle>
             <Checkbox>
               <Tooltip title="When enabled, a person can register multiple permits of this type (e.g. faculty with multiple vehicles). When disabled, each person is limited to one permit.">
@@ -167,7 +184,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             </Checkbox>
           </Form.Item>
         </Space>
-        {isPurchasableOnline && (
+        {isPurchasableOnline && !blockOnlinePurchase && (
           <>
             <h4 className="text-sm font-semibold text-brand-primary mb-3 mt-4 pt-4 border-t">
               Purchasing Schedule
@@ -371,6 +388,14 @@ export default function PermitTypes() {
             </div>
           );
         }
+        if (pt.code === "south_standalone") {
+          return (
+            <div>
+              <Tag color="orange">Third party</Tag>
+              <div className="text-[10px] text-ink-mute mt-0.5">Sold off-platform</div>
+            </div>
+          );
+        }
 
         const now = new Date();
         const opens = pt.application_opens_at ? new Date(pt.application_opens_at) : null;
@@ -408,7 +433,7 @@ export default function PermitTypes() {
       render: (_, pt) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
-          {pt.is_active && !LOTTERY_TIER_CODES.has(pt.code) && (
+          {pt.is_active && !NO_ONLINE_PURCHASE_CODES.has(pt.code) && (
             <Button type="link" size="small" onClick={() => handleTogglePurchasing(pt)}
               style={pt.is_purchasable_online ? undefined : { color: "#16a34a" }}>
               {pt.is_purchasable_online ? "Disable Purchasing" : "Enable Purchasing"}
