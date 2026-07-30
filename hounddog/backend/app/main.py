@@ -362,6 +362,8 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_visitor_approval_token ON visitor_approval_tokens(token)",
             # Rename South Standalone → South Third Party
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
+            # Lottery V2 is production — drop staging cycle names
+            "UPDATE lottery_v2_cycles SET name = 'Parking Lottery' WHERE name ILIKE '%staging%'",
             # Eligible groups for role-based permit visibility
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS eligible_groups TEXT[] DEFAULT '{}'",
             # Set eligible_groups on faculty_staff so only employees see it
