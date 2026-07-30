@@ -401,6 +401,7 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET total_spaces = 22 WHERE name = 'G'",
             "UPDATE parking_lots SET total_spaces = 19 WHERE name = 'H'",
             "UPDATE parking_lots SET total_spaces = 22 WHERE name = 'I'",
+            "UPDATE parking_lots SET total_spaces = 18 WHERE name = 'J'",
             "UPDATE parking_lots SET total_spaces = 18 WHERE name = 'M'",
             "UPDATE parking_lots SET total_spaces = 20 WHERE name = 'N'",
             "UPDATE parking_lots SET total_spaces = 16 WHERE name = 'O'",
@@ -414,6 +415,7 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET total_spaces = 264 WHERE name = 'X'",
             "UPDATE parking_lots SET total_spaces = 40 WHERE name = 'Z'",
             "UPDATE parking_lots SET total_spaces = 36 WHERE name = 'W. Laurel St'",
+            "UPDATE parking_lots SET total_spaces = 25 WHERE name = 'W. Locust St'",
             "UPDATE parking_lots SET total_spaces = 50 WHERE name = 'Lehigh St'",
             "UPDATE parking_lots SET total_spaces = 100 WHERE name = 'Spring St'",
             # Create Lot J if it doesn't exist (F/S primary, commuter 4p-6a secondary)
