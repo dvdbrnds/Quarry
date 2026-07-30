@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space } from "antd";
+import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space, Alert, Modal } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
@@ -41,6 +41,29 @@ function commuterLotAccess(lot: Lot): keyof typeof COMMUTER_ACCESS {
   if (lot.lot_type === "street") return "street";
   if (lot.designation_code === "FS" || lot.designation_code === "FSC") return "afterHours";
   return "fullTime";
+}
+
+/** South Campus City of Bethlehem street permits */
+const EXTERNAL_LOT_STYLE = {
+  fill: "#F59E0B",
+  soft: "#FFFBEB",
+  border: "#D97706",
+  label: "Third-party — City of Bethlehem",
+};
+
+const UNIVERSITY_LOT_FILL = "#FFD700";
+
+function normalizeLotKey(name: string) {
+  return name
+    .replace(/^lot\s+/i, "")
+    .replace(/\./g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function isExternalLot(lot: Lot) {
+  return lot.lot_type === "external";
 }
 
 interface Cycle {
@@ -176,14 +199,12 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
-
-  function normalizeLotKey(name: string) {
-    return name.replace(/^lot\s+/i, "").trim().toLowerCase();
-  }
+  const [externalLot, setExternalLot] = useState<Lot | null>(null);
 
   /** Lots belonging to the eligible path options only */
   const eligibleTiers = ranked.length > 0 ? ranked : tiers;
   const isCommuterPath = campus === "commuter";
+  const isSouthPath = campus === "south";
 
   const eligibleLotNames = useMemo(() => {
     const names = new Set<string>();
@@ -193,13 +214,28 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     return [...names];
   }, [eligibleTiers]);
 
-  const mapLots = useMemo(() => {
-    if (eligibleLotNames.length === 0) return [] as Lot[];
-    const allowed = new Set(eligibleLotNames.map(normalizeLotKey));
-    return lots.filter((lot) => allowed.has(normalizeLotKey(lot.name)));
-  }, [lots, eligibleLotNames]);
+  /** South Campus City of Bethlehem lots (Lehigh St. / Spring St.) */
+  const southExternalLots = useMemo(
+    () => lots.filter((l) => l.campus === "south" && isExternalLot(l)),
+    [lots],
+  );
 
-  /** Lot assignment name → tier fill color (for resident rank map) */
+  const mapLots = useMemo(() => {
+    const byId = new Map<string, Lot>();
+    if (eligibleLotNames.length > 0) {
+      const allowed = new Set(eligibleLotNames.map(normalizeLotKey));
+      for (const lot of lots) {
+        if (allowed.has(normalizeLotKey(lot.name))) byId.set(lot.id, lot);
+      }
+    }
+    // Always include south third-party lots when on the south path (name punctuation can diverge)
+    if (isSouthPath) {
+      for (const lot of southExternalLots) byId.set(lot.id, lot);
+    }
+    return [...byId.values()];
+  }, [lots, eligibleLotNames, isSouthPath, southExternalLots]);
+
+  /** Lot assignment name → tier fill color (for resident rank map); external lots stay amber */
   const lotColors = useMemo(() => {
     const map: Record<string, string> = {};
     eligibleTiers.forEach((tier, i) => {
@@ -208,20 +244,50 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         if (!map[lot]) map[lot] = color;
       }
     });
+    for (const lot of mapLots) {
+      if (isExternalLot(lot)) {
+        map[lot.name] = EXTERNAL_LOT_STYLE.fill;
+        map[lot.name.replace(/^lot\s+/i, "").trim()] = EXTERNAL_LOT_STYLE.fill;
+      }
+    }
     return map;
-  }, [eligibleTiers]);
+  }, [eligibleTiers, mapLots]);
 
-  const mapLegend = useMemo(
-    () =>
-      eligibleTiers.map((tier, i) => ({
-        label: tier.label
-          .replace(/\s+Resident$/i, "")
-          .replace(/^Regular Commuter\s*/i, "")
-          .replace(/^Extended Premium Commuter$/i, "Premium Commuter"),
-        color: tierColor(tier, i).fill,
-      })),
-    [eligibleTiers],
-  );
+  const mapLegend = useMemo(() => {
+    const items = eligibleTiers.map((tier, i) => ({
+      label: tier.label
+        .replace(/\s+Resident$/i, "")
+        .replace(/^Regular Commuter\s*/i, "")
+        .replace(/^Extended Premium Commuter$/i, "Premium Commuter"),
+      color: tierColor(tier, i).fill,
+    }));
+    if (mapLots.some(isExternalLot)) {
+      items.push({ label: EXTERNAL_LOT_STYLE.label, color: EXTERNAL_LOT_STYLE.fill });
+    }
+    return items;
+  }, [eligibleTiers, mapLots]);
+
+  /** South intake: university yellow + third-party amber */
+  const southIntakeColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const lot of mapLots) {
+      const fill = isExternalLot(lot) ? EXTERNAL_LOT_STYLE.fill : UNIVERSITY_LOT_FILL;
+      map[lot.name] = fill;
+      map[lot.name.replace(/^lot\s+/i, "").trim()] = fill;
+    }
+    return map;
+  }, [mapLots]);
+
+  const southIntakeLegend = useMemo(() => {
+    const items: { label: string; color: string }[] = [];
+    if (mapLots.some((l) => !isExternalLot(l))) {
+      items.push({ label: "University lots", color: UNIVERSITY_LOT_FILL });
+    }
+    if (mapLots.some(isExternalLot)) {
+      items.push({ label: EXTERNAL_LOT_STYLE.label, color: EXTERNAL_LOT_STYLE.fill });
+    }
+    return items;
+  }, [mapLots]);
 
   /** Commuter path: color by access (full-time / after-hours FS-FSC / street) */
   const commuterAccessColors = useMemo(() => {
@@ -473,13 +539,13 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     ? STATUS_LABELS[application.status] || { text: application.status, color: "default" }
     : null;
 
-  // Intake residents: uniform yellow. Commuter: access-type colors. Rank/choose residents: tier colors.
+  // Intake residents: uniform yellow. South: university + third-party colors. Commuter: access. Rank: tiers (+ external amber).
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
       : application?.assigned_lot && step === "done"
         ? [application.assigned_lot]
-        : step === "intake" && !isCommuterPath && eligibleLotNames.length > 0
+        : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
           ? eligibleLotNames
           : [];
 
@@ -492,17 +558,41 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
   const showCommuterAccessColors = isCommuterPath && (step === "intake" || step === "choose");
-  const showTierColors = !isCommuterPath && (step === "rank" || step === "choose");
+  const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
+  const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
   const activeLotColors = showCommuterAccessColors
     ? commuterAccessColors
-    : showTierColors
-      ? lotColors
-      : undefined;
+    : showSouthAccessColors && step === "intake"
+      ? southIntakeColors
+      : showSouthAccessColors && step === "rank"
+        ? lotColors
+        : showTierColors
+          ? lotColors
+          : undefined;
   const activeLegend = showCommuterAccessColors
     ? commuterAccessLegend
-    : showTierColors
-      ? mapLegend
-      : undefined;
+    : showSouthAccessColors && step === "intake"
+      ? southIntakeLegend
+      : showSouthAccessColors && step === "rank"
+        ? mapLegend
+        : showTierColors
+          ? mapLegend
+          : undefined;
+
+  const schoolName = brand.schoolName || "Moravian University";
+
+  function handleLotClick(lot: Lot) {
+    if (isExternalLot(lot) && lot.external_url) {
+      setExternalLot(lot);
+    }
+  }
+
+  function openExternalPermit(lot: Lot | null) {
+    if (lot?.external_url) {
+      window.open(lot.external_url, "_blank", "noopener,noreferrer");
+    }
+    setExternalLot(null);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -533,6 +623,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                 defaultCenter={campusCenter}
                 lotColors={activeLotColors}
                 legend={activeLegend}
+                onLotClick={handleLotClick}
               />
             </div>
           )}
@@ -652,6 +743,34 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       ]}
                     />
                   </Form.Item>
+                  {isSouthPath && southExternalLots.length > 0 && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      className="mb-4"
+                      message="Third-party street parking"
+                      description={
+                        <div className="space-y-2 text-sm">
+                          <p className="m-0">
+                            Lehigh St. and Spring St. are operated by the{" "}
+                            <strong>City of Bethlehem</strong>, not {schoolName}. Permits,
+                            enforcement, and policies for those streets are handled by the city.
+                          </p>
+                          <p className="m-0">
+                            Amber areas on the map are third-party. Click a lot for details, or{" "}
+                            <Button
+                              type="link"
+                              className="p-0 h-auto"
+                              onClick={() => setExternalLot(southExternalLots[0])}
+                            >
+                              continue to {southExternalLots[0].external_provider || "their site"}
+                            </Button>
+                            .
+                          </p>
+                        </div>
+                      }
+                    />
+                  )}
                   <Form.Item label="Name">
                     <Input value={studentName} onChange={(e) => setStudentName(e.target.value)} />
                   </Form.Item>
@@ -887,29 +1006,47 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                             <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                               <span>Lots:</span>
                               {tier.lot_assignments.length ? (
-                                tier.lot_assignments.map((lot) => (
-                                  <Tag
-                                    key={lot}
-                                    className="m-0 cursor-default"
-                                    style={{
-                                      color: colors.border,
-                                      background: colors.soft,
-                                      borderColor: colors.fill,
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.stopPropagation();
-                                      setFocusedLot(lot);
-                                      setHighlightedLots(tier.lot_assignments);
-                                      setHoveredTierId(tier.id);
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.stopPropagation();
-                                      setFocusedLot(null);
-                                    }}
-                                  >
-                                    {lot}
-                                  </Tag>
-                                ))
+                                tier.lot_assignments.map((lotName) => {
+                                  const lot = mapLots.find(
+                                    (l) => normalizeLotKey(l.name) === normalizeLotKey(lotName),
+                                  );
+                                  const external = lot && isExternalLot(lot);
+                                  const tagColor = external
+                                    ? EXTERNAL_LOT_STYLE
+                                    : { fill: colors.fill, soft: colors.soft, border: colors.border };
+                                  return (
+                                    <Tag
+                                      key={lotName}
+                                      className="m-0 cursor-default"
+                                      title={
+                                        external
+                                          ? `${EXTERNAL_LOT_STYLE.label}${lot?.external_provider ? ` (${lot.external_provider})` : ""}`
+                                          : undefined
+                                      }
+                                      style={{
+                                        color: tagColor.border,
+                                        background: tagColor.soft,
+                                        borderColor: tagColor.fill,
+                                      }}
+                                      onClick={() => {
+                                        if (external && lot) setExternalLot(lot);
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.stopPropagation();
+                                        setFocusedLot(lotName);
+                                        setHighlightedLots(tier.lot_assignments);
+                                        setHoveredTierId(tier.id);
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.stopPropagation();
+                                        setFocusedLot(null);
+                                      }}
+                                    >
+                                      {lotName}
+                                      {external ? " · 3rd party" : ""}
+                                    </Tag>
+                                  );
+                                })
                               ) : (
                                 <span>—</span>
                               )}
@@ -933,6 +1070,26 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                         );
                       })}
                     </ul>
+                    {isSouthPath && southExternalLots.length > 0 && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        className="mb-4"
+                        message="Third-party option (not part of the lottery)"
+                        description={
+                          <div className="space-y-2 text-sm">
+                            <p className="m-0">
+                              {southExternalLots.map((l) => l.name).join(" and ")} are City of
+                              Bethlehem residential parking. {schoolName} does not sell or enforce
+                              permits there.
+                            </p>
+                            <Button size="small" onClick={() => setExternalLot(southExternalLots[0])}>
+                              Get a City of Bethlehem permit
+                            </Button>
+                          </div>
+                        }
+                      />
+                    )}
                     <Button type="primary" loading={submitting} onClick={submit} block>
                       Submit application
                     </Button>
@@ -961,12 +1118,43 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                   defaultCenter={campusCenter}
                   lotColors={activeLotColors}
                   legend={activeLegend}
+                  onLotClick={handleLotClick}
                 />
               </div>
             </div>
           )}
         </div>
       </main>
+
+      <Modal
+        open={!!externalLot}
+        title={`You are leaving ${schoolName} Parking`}
+        onCancel={() => setExternalLot(null)}
+        centered
+        okText={`Continue to ${externalLot?.external_provider || "external site"}`}
+        cancelText="Cancel"
+        onOk={() => openExternalPermit(externalLot)}
+      >
+        {externalLot && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              <p className="text-amber-800 text-sm font-medium mb-1">External Parking Facility</p>
+              <p className="text-amber-700 text-sm m-0">
+                <strong>{externalLot.name}</strong> is operated by{" "}
+                <strong>{externalLot.external_provider || "a third party"}</strong>.
+              </p>
+            </div>
+            <p className="text-gray-600 text-sm m-0">
+              {schoolName} is not responsible for permits, enforcement, or policies at this location.
+              You will be redirected to their website to purchase a permit or view availability.
+            </p>
+            <p className="text-gray-500 text-xs m-0">
+              A new tab will open at:{" "}
+              <span className="font-mono text-xs break-all">{externalLot.external_url}</span>
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

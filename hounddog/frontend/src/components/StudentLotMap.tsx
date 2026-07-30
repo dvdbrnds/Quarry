@@ -24,14 +24,21 @@ interface StudentLotMapProps {
   lotColors?: Record<string, string>;
   /** Optional legend chips shown instead of the "Showing: Lot …" list */
   legend?: MapLegendItem[];
+  /** Called when a lot polygon is clicked */
+  onLotClick?: (lot: Lot) => void;
 }
 
 /**
- * Normalize a lot name for comparison: strip "Lot " prefix, lowercase, trim.
- * Handles mismatches between lot_assignments (e.g. "A") and lot.name (e.g. "Lot A").
+ * Normalize a lot name for comparison: strip "Lot " prefix, periods, lowercase, trim.
+ * Handles mismatches between lot_assignments (e.g. "Lehigh St") and lot.name (e.g. "Lehigh St.").
  */
 function normalizeLotName(name: string): string {
-  return name.replace(/^lot\s+/i, "").trim().toLowerCase();
+  return name
+    .replace(/^lot\s+/i, "")
+    .replace(/\./g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function isLotHighlighted(lotName: string, highlightedLots: string[]): boolean {
@@ -77,6 +84,7 @@ function MapContent({
   defaultCenter,
   lotColors,
   legend,
+  onLotClick,
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
   const markerLib = useMapsLibrary("marker");
@@ -189,14 +197,18 @@ function MapContent({
         clickable: true,
       });
 
+      poly.addListener("click", () => onLotClick?.(lot));
+
       poly.addListener("mouseover", () => {
         if (tooltipRef.current) {
           const accessNote =
-            lot.lot_type === "street"
-              ? "Street parking"
-              : lot.designation_code === "FS" || lot.designation_code === "FSC"
-                ? "After 4 PM &amp; weekends"
-                : null;
+            lot.lot_type === "external"
+              ? `Third-party · ${lot.external_provider || "External"}`
+              : lot.lot_type === "street"
+                ? "Street parking"
+                : lot.designation_code === "FS" || lot.designation_code === "FSC"
+                  ? "After 4 PM &amp; weekends"
+                  : null;
           tooltipRef.current.innerHTML = accessNote
             ? `<strong>${lot.name}</strong><br/><span style="opacity:0.9">${accessNote}</span>`
             : `<strong>${lot.name}</strong>`;
@@ -245,7 +257,7 @@ function MapContent({
       polygonsRef.current.forEach((p) => p.setMap(null));
       markersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, markerLib, lots, highlightedLots, focusedLot, lotColors, colorMode]);
+  }, [map, markerLib, lots, highlightedLots, focusedLot, lotColors, colorMode, onLotClick]);
 
   return (
     <>
@@ -306,6 +318,7 @@ export default function StudentLotMap(props: StudentLotMapProps) {
           defaultCenter={props.defaultCenter}
           lotColors={props.lotColors}
           legend={props.legend}
+          onLotClick={props.onLotClick}
         />
       </div>
     </APIProvider>
