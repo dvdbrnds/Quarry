@@ -30,6 +30,19 @@ function tierColor(tier: { code: string }, index: number) {
   return TIER_COLORS[tier.code] || FALLBACK_TIER_COLORS[index % FALLBACK_TIER_COLORS.length];
 }
 
+/** Commuter map access types — matches Permit Types admin legend convention */
+const COMMUTER_ACCESS = {
+  fullTime: { fill: "#2563EB", label: "Full-time" },
+  afterHours: { fill: "#D97706", label: "After 4 PM & weekends" },
+  street: { fill: "#0D9488", label: "Street parking" },
+} as const;
+
+function commuterLotAccess(lot: Lot): keyof typeof COMMUTER_ACCESS {
+  if (lot.lot_type === "street") return "street";
+  if (lot.designation_code === "FS" || lot.designation_code === "FSC") return "afterHours";
+  return "fullTime";
+}
+
 interface Cycle {
   id: string;
   name: string;
@@ -186,7 +199,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     return lots.filter((lot) => allowed.has(normalizeLotKey(lot.name)));
   }, [lots, eligibleLotNames]);
 
-  /** Lot assignment name → tier fill color (for map polygons) */
+  /** Lot assignment name → tier fill color (for resident rank map) */
   const lotColors = useMemo(() => {
     const map: Record<string, string> = {};
     eligibleTiers.forEach((tier, i) => {
@@ -209,6 +222,24 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
       })),
     [eligibleTiers],
   );
+
+  /** Commuter path: color by access (full-time / after-hours FS-FSC / street) */
+  const commuterAccessColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const lot of mapLots) {
+      const key = lot.name.replace(/^lot\s+/i, "").trim();
+      map[key] = COMMUTER_ACCESS[commuterLotAccess(lot)].fill;
+      map[lot.name] = COMMUTER_ACCESS[commuterLotAccess(lot)].fill;
+    }
+    return map;
+  }, [mapLots]);
+
+  const commuterAccessLegend = useMemo(() => {
+    const present = new Set(mapLots.map(commuterLotAccess));
+    return (["fullTime", "afterHours", "street"] as const)
+      .filter((k) => present.has(k))
+      .map((k) => ({ label: COMMUTER_ACCESS[k].label, color: COMMUTER_ACCESS[k].fill }));
+  }, [mapLots]);
 
   async function loadTiers(c: "north" | "south" | "commuter", year?: number | null) {
     const headers = await authHeaders();
@@ -442,13 +473,13 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     ? STATUS_LABELS[application.status] || { text: application.status, color: "default" }
     : null;
 
-  // Intake: uniform highlight of campus-eligible lots. Rank: multi-color tiers (lotColors).
+  // Intake residents: uniform yellow. Commuter: access-type colors. Rank/choose residents: tier colors.
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
       : application?.assigned_lot && step === "done"
         ? [application.assigned_lot]
-        : step === "intake" && eligibleLotNames.length > 0
+        : step === "intake" && !isCommuterPath && eligibleLotNames.length > 0
           ? eligibleLotNames
           : [];
 
@@ -460,7 +491,18 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
-  const showTierColors = step === "rank" || step === "choose";
+  const showCommuterAccessColors = isCommuterPath && (step === "intake" || step === "choose");
+  const showTierColors = !isCommuterPath && (step === "rank" || step === "choose");
+  const activeLotColors = showCommuterAccessColors
+    ? commuterAccessColors
+    : showTierColors
+      ? lotColors
+      : undefined;
+  const activeLegend = showCommuterAccessColors
+    ? commuterAccessLegend
+    : showTierColors
+      ? mapLegend
+      : undefined;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -489,8 +531,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                 highlightedLots={mapHighlight}
                 focusedLot={focusedLot}
                 defaultCenter={campusCenter}
-                lotColors={showTierColors ? lotColors : undefined}
-                legend={showTierColors ? mapLegend : undefined}
+                lotColors={activeLotColors}
+                legend={activeLegend}
               />
             </div>
           )}
@@ -684,8 +726,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                 ) : (
                   <>
                     <p className="text-sm text-gray-500 mb-4">
-                      Hover a permit to highlight its lots (including street parking). Pick one to purchase —
-                      this is not a lottery.
+                      Map colors: blue = full-time, amber = after 4 PM &amp; weekends, teal = street.
+                      Hover a permit to emphasize its lots. Purchase is not a lottery.
                     </p>
                     <ul className="space-y-2 list-none p-0 m-0">
                       {ranked.map((tier, i) => {
@@ -726,19 +768,29 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                                 </p>
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                                   <span>Lots:</span>
-                                  {tier.lot_assignments.slice(0, 8).map((lot) => (
-                                    <Tag
-                                      key={lot}
-                                      className="m-0"
-                                      style={{
-                                        color: colors.border,
-                                        background: colors.soft,
-                                        borderColor: colors.fill,
-                                      }}
-                                    >
-                                      {lot}
-                                    </Tag>
-                                  ))}
+                                  {tier.lot_assignments.slice(0, 8).map((lotName) => {
+                                    const lot = mapLots.find(
+                                      (l) =>
+                                        normalizeLotKey(l.name) === normalizeLotKey(lotName),
+                                    );
+                                    const access = lot
+                                      ? COMMUTER_ACCESS[commuterLotAccess(lot)]
+                                      : COMMUTER_ACCESS.fullTime;
+                                    return (
+                                      <Tag
+                                        key={lotName}
+                                        className="m-0"
+                                        title={access.label}
+                                        style={{
+                                          color: access.fill,
+                                          background: `${access.fill}18`,
+                                          borderColor: access.fill,
+                                        }}
+                                      >
+                                        {lotName}
+                                      </Tag>
+                                    );
+                                  })}
                                   {tier.lot_assignments.length > 8 && (
                                     <span>+{tier.lot_assignments.length - 8} more</span>
                                   )}
@@ -907,8 +959,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                   highlightedLots={mapHighlight}
                   focusedLot={focusedLot}
                   defaultCenter={campusCenter}
-                  lotColors={showTierColors ? lotColors : undefined}
-                  legend={showTierColors ? mapLegend : undefined}
+                  lotColors={activeLotColors}
+                  legend={activeLegend}
                 />
               </div>
             </div>

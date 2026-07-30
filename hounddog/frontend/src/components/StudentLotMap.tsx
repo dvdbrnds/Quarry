@@ -191,7 +191,15 @@ function MapContent({
 
       poly.addListener("mouseover", () => {
         if (tooltipRef.current) {
-          tooltipRef.current.innerHTML = `<strong>${lot.name}</strong>`;
+          const accessNote =
+            lot.lot_type === "street"
+              ? "Street parking"
+              : lot.designation_code === "FS" || lot.designation_code === "FSC"
+                ? "After 4 PM &amp; weekends"
+                : null;
+          tooltipRef.current.innerHTML = accessNote
+            ? `<strong>${lot.name}</strong><br/><span style="opacity:0.9">${accessNote}</span>`
+            : `<strong>${lot.name}</strong>`;
           tooltipRef.current.style.display = "block";
         }
       });
