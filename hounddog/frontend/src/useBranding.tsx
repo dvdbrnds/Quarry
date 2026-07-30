@@ -58,6 +58,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     if (!link.parentNode) document.head.appendChild(link);
   }, [branding.faviconUrl]);
 
+  useEffect(() => {
+    const name = branding.schoolName || branding.departmentName || "Parking Management";
+    document.title = `${name} – Parking`;
+  }, [branding.schoolName, branding.departmentName]);
+
   const theme = useMemo(() => ({
     token: {
       colorPrimary: branding.primaryColor,
