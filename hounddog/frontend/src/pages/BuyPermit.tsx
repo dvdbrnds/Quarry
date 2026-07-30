@@ -56,9 +56,6 @@ export default function BuyPermit() {
                 </div>
                 <div className="text-sm text-ink-mute mt-2">Lots: {pt.lot_assignments.join(", ")}</div>
                 <div className="text-sm text-ink-mute mt-1">Valid for {pt.valid_days} days</div>
-                <div className={`text-sm mt-2 ${pt.remaining <= 5 ? "text-amber-700 font-medium" : "text-ink-mute"}`}>
-                  {pt.remaining} spot{pt.remaining !== 1 ? "s" : ""} remaining
-                </div>
                 <div className="mt-5">
                   {pt.remaining > 0
                     ? <Button type="primary" block onClick={() => setSelected(pt)}>Purchase</Button>

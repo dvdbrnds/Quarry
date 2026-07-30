@@ -888,7 +888,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                                   {tier.label}
                                 </p>
                                 <p className="m-0 text-xs text-gray-500 mt-1">
-                                  ${tier.price} · {tier.remaining} of {tier.max_capacity} left
+                                  ${tier.price}
                                 </p>
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                                   <span>Lots:</span>
@@ -1006,7 +1006,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                               {tier.label}
                             </p>
                             <p className="m-0 text-xs text-gray-500">
-                              ${tier.price} · {tier.remaining} spots left
+                              ${tier.price}
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                               <span>Lots:</span>

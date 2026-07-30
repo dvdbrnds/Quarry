@@ -243,11 +243,12 @@ function PermitModal({ permits, onClose, onSelect }: {
                 <div>
                   <div className="font-medium">{pt.label}</div>
                   <div className="text-xs text-ink-mute mt-1">Lots: {pt.lot_assignments.join(", ")} &middot; Valid {pt.valid_days} days</div>
-                  <div className="text-xs text-ink-mute">{pt.remaining} remaining</div>
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-brand-primary">${Number(pt.price).toFixed(0)}</div>
-                  <Button type="primary" size="small" className="mt-1" onClick={() => onSelect(pt.id)}>Select</Button>
+                  <Button type="primary" size="small" className="mt-1" onClick={() => onSelect(pt.id)} disabled={pt.remaining <= 0}>
+                    {pt.remaining <= 0 ? "Full" : "Select"}
+                  </Button>
                 </div>
               </div>
             </Card>

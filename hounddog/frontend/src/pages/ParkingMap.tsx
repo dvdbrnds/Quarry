@@ -278,12 +278,6 @@ export default function ParkingMap() {
                   <span className="font-medium">{selectedLot.designation_label}</span>
                 </div>
               )}
-              {selectedLot.total_spaces > 0 && (
-                <div>
-                  <span className="text-gray-500 block text-xs">Total Spaces</span>
-                  <span className="font-medium">{selectedLot.total_spaces}</span>
-                </div>
-              )}
               {selectedLot.handicap_spaces > 0 && (
                 <div>
                   <span className="text-gray-500 block text-xs">Accessible Spaces</span>

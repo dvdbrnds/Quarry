@@ -157,20 +157,13 @@ export default function StudentPermits() {
                   <div className="text-xs text-ink-mute mt-1">{pt.eligible}</div>
                   <div className="text-xs text-ink-mute mt-1">Lots: {pt.lot_assignments.join(", ")} &middot; Valid {pt.valid_days} days</div>
                   <Space className="mt-2" wrap>
-                    <span className="text-xs text-ink-mute">{pt.remaining} of {pt.max_capacity} spots remaining</span>
                     {pt.requires_lottery && <Tag color="purple">Lottery</Tag>}
-                    {pt.requires_lottery && pt.current_applicants != null && (
-                      <span className="text-xs text-ink-mute">{pt.current_applicants} applicant{pt.current_applicants !== 1 ? "s" : ""} so far</span>
-                    )}
-                    {pt.requires_lottery && pt.approximate_odds && (
-                      <span className="text-xs text-blue-600">~{pt.approximate_odds} chance</span>
-                    )}
                   </Space>
                   {pt.application_closes_at && <div className="text-xs text-amber-700 mt-1">Deadline: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>}
                   {pt.min_class_year && <div className="text-xs text-ink-mute mt-1">Eligibility: Class of {pt.min_class_year} or earlier only</div>}
                   <div className="mt-4">
                     {alreadyApplied ? <span className="text-xs text-ink-mute italic">Already applied</span>
-                      : pt.remaining <= 0 ? <span className="text-xs text-red-600">No spots remaining</span>
+                      : pt.remaining <= 0 ? <span className="text-xs text-red-600">Unavailable</span>
                       : <Button type="primary" block onClick={() => setApplying(pt)}>Apply</Button>}
                   </div>
                 </Card>

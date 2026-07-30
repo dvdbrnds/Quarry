@@ -444,7 +444,6 @@ function LotteryPage({ user }: { user: AuthUser }) {
                                 <CampusToggle active={campusFilter} onChange={setCampusFilter} />
                               )}
                               <div className="flex items-center gap-4 mt-2">
-                                <span className="text-xs text-gray-400">{pt.remaining} of {pt.max_capacity} spots</span>
                                 {pt.application_closes_at && (
                                   <span className="text-xs text-amber-700 font-medium">
                                     Deadline: {new Date(pt.application_closes_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
@@ -758,7 +757,7 @@ function BuyPanel({ permit, onClose, onError }: {
             <span className="text-lg font-bold text-brand-primary">${Number(permit.price).toFixed(0)}</span>
           </div>
           <div className="text-xs text-gray-500 mb-4">
-            <div>Valid for {permit.valid_days} days · {permit.remaining} spots remaining</div>
+            <div>Valid for {permit.valid_days} days</div>
             <div className="flex items-center gap-1 mt-1 flex-wrap">
               <span className="font-medium">Lots highlighted on map:</span>
               {permit.lot_details?.length > 0 ? <LotTags details={permit.lot_details} /> : <span>{permit.lot_assignments.join(", ")}</span>}
