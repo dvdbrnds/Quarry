@@ -5,7 +5,6 @@ import {
   Form,
   Input,
   DatePicker,
-  Radio,
   Result,
   Spin,
   Tag,
@@ -20,7 +19,6 @@ import StudentLotMap from "../components/StudentLotMap";
 import { loadConfig } from "../auth";
 import type { Lot } from "../api";
 
-type Purpose = "day_guest" | "vendor";
 type Duration = "single_day" | "multi_day" | "long_term_30" | "long_term_60" | "long_term_90";
 type Step = "intake" | "choose" | "details" | "done";
 
@@ -28,8 +26,9 @@ interface PermitOption {
   id: string;
   label: string;
   description: string;
+  /** One day or less → day_guest API (no sponsor). Longer → vendor API (sponsor required). */
+  moreThanOneDay: boolean;
   duration?: Duration;
-  requiresApproval?: boolean;
 }
 
 interface PermitResult {
@@ -62,48 +61,42 @@ interface PublicLot {
 
 const VISITOR_FILL = "#2563EB";
 
-const DAY_GUEST_OPTIONS: PermitOption[] = [
+/** Duration drives the path — not guest vs vendor purpose */
+const PERMIT_OPTIONS: PermitOption[] = [
   {
-    id: "day_pass",
-    label: "Day pass",
-    description: "Free one-day visitor parking for meetings, events, or campus visits.",
-  },
-];
-
-const VENDOR_OPTIONS: PermitOption[] = [
-  {
-    id: "single_day",
-    label: "Single day",
-    description: "On campus for contracted work or a delivery today.",
-    duration: "single_day",
+    id: "one_day",
+    label: "One day or less",
+    description:
+      "Guest visit, delivery, or same-day vendor work. No campus sponsor required.",
+    moreThanOneDay: false,
   },
   {
     id: "multi_day",
     label: "Multiple days",
-    description: "Custom date range for short projects. Requires campus sponsor approval.",
+    description: "Custom date range. A campus sponsor must approve your request.",
+    moreThanOneDay: true,
     duration: "multi_day",
-    requiresApproval: true,
   },
   {
     id: "long_term_30",
-    label: "Long-term — 30 days",
-    description: "Ongoing project parking. Requires campus sponsor approval.",
+    label: "Up to 30 days",
+    description: "Ongoing work or extended stay. A campus sponsor must approve.",
+    moreThanOneDay: true,
     duration: "long_term_30",
-    requiresApproval: true,
   },
   {
     id: "long_term_60",
-    label: "Long-term — 60 days",
-    description: "Ongoing project parking. Requires campus sponsor approval.",
+    label: "Up to 60 days",
+    description: "Ongoing work or extended stay. A campus sponsor must approve.",
+    moreThanOneDay: true,
     duration: "long_term_60",
-    requiresApproval: true,
   },
   {
     id: "long_term_90",
-    label: "Long-term — 90 days",
-    description: "Ongoing project parking. Requires campus sponsor approval.",
+    label: "Up to 90 days",
+    description: "Ongoing work or extended stay. A campus sponsor must approve.",
+    moreThanOneDay: true,
     duration: "long_term_90",
-    requiresApproval: true,
   },
 ];
 
@@ -149,7 +142,6 @@ function VisitorFlow() {
   const brand = useBranding();
   const { message } = App.useApp();
   const [step, setStep] = useState<Step>("intake");
-  const [purpose, setPurpose] = useState<Purpose | null>(null);
   const [selectedOption, setSelectedOption] = useState<PermitOption | null>(null);
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
@@ -187,12 +179,6 @@ function VisitorFlow() {
     })();
   }, []);
 
-  const availableOptions = useMemo(() => {
-    if (purpose === "day_guest") return DAY_GUEST_OPTIONS;
-    if (purpose === "vendor") return VENDOR_OPTIONS;
-    return [];
-  }, [purpose]);
-
   const lotColors = useMemo(() => {
     const map: Record<string, string> = {};
     for (const lot of visitorLots) {
@@ -212,22 +198,19 @@ function VisitorFlow() {
 
   const mapHighlight = useMemo(() => {
     if (focusedLot) return [focusedLot];
-    if (hoveredOptionId || step === "choose" || step === "intake" || step === "details") {
-      return visitorLots.map((l) => l.name);
-    }
     return visitorLots.map((l) => l.name);
-  }, [focusedLot, hoveredOptionId, step, visitorLots]);
+  }, [focusedLot, visitorLots]);
 
   const showMap = Boolean(mapsApiKey && visitorLots.length > 0);
 
   const continueToChoose = useCallback(() => {
-    if (!purpose || !name.trim() || !plate.trim()) {
-      message.warning("Purpose, name, and license plate are required");
+    if (!name.trim() || !plate.trim()) {
+      message.warning("Name and license plate are required");
       return;
     }
     setSelectedOption(null);
     setStep("choose");
-  }, [purpose, name, plate, message]);
+  }, [name, plate, message]);
 
   function chooseOption(opt: PermitOption) {
     setSelectedOption(opt);
@@ -235,44 +218,43 @@ function VisitorFlow() {
   }
 
   async function submitDetails(values: Record<string, unknown>) {
-    if (!purpose || !selectedOption) return;
+    if (!selectedOption) return;
     setSubmitting(true);
     try {
-      const payload =
-        purpose === "day_guest"
-          ? {
-              visitor_type: "day_guest",
-              name: name.trim(),
-              plate: plate.trim().toUpperCase(),
-              plate_state: plateState.trim().toUpperCase(),
-              email: (values.email as string) || "",
-              phone: (values.phone as string) || "",
-              visit_date: values.visit_date
-                ? (values.visit_date as dayjs.Dayjs).format("YYYY-MM-DD")
-                : undefined,
-              visiting_person: (values.visiting_person as string) || "",
-              visiting_event: (values.visiting_event as string) || "",
-            }
-          : {
-              visitor_type: "vendor",
-              name: name.trim(),
-              plate: plate.trim().toUpperCase(),
-              plate_state: plateState.trim().toUpperCase(),
-              email: (values.email as string) || "",
-              phone: (values.phone as string) || "",
-              company_name: String(values.company_name || "").trim(),
-              duration: selectedOption.duration || "single_day",
-              start_date: values.start_date
-                ? (values.start_date as dayjs.Dayjs).format("YYYY-MM-DD")
-                : undefined,
-              end_date: values.end_date
-                ? (values.end_date as dayjs.Dayjs).format("YYYY-MM-DD")
-                : undefined,
-              sponsor_name: String(values.sponsor_name || "").trim(),
-              sponsor_email: String(values.sponsor_email || "").trim(),
-              sponsor_department: (values.sponsor_department as string) || "",
-              work_description: (values.work_description as string) || "",
-            };
+      const payload = selectedOption.moreThanOneDay
+        ? {
+            visitor_type: "vendor",
+            name: name.trim(),
+            plate: plate.trim().toUpperCase(),
+            plate_state: plateState.trim().toUpperCase(),
+            email: (values.email as string) || "",
+            phone: (values.phone as string) || "",
+            company_name: String(values.company_name || "").trim() || "Visitor",
+            duration: selectedOption.duration || "multi_day",
+            start_date: values.start_date
+              ? (values.start_date as dayjs.Dayjs).format("YYYY-MM-DD")
+              : undefined,
+            end_date: values.end_date
+              ? (values.end_date as dayjs.Dayjs).format("YYYY-MM-DD")
+              : undefined,
+            sponsor_name: String(values.sponsor_name || "").trim(),
+            sponsor_email: String(values.sponsor_email || "").trim(),
+            sponsor_department: (values.sponsor_department as string) || "",
+            work_description: (values.work_description as string) || "",
+          }
+        : {
+            visitor_type: "day_guest",
+            name: name.trim(),
+            plate: plate.trim().toUpperCase(),
+            plate_state: plateState.trim().toUpperCase(),
+            email: (values.email as string) || "",
+            phone: (values.phone as string) || "",
+            visit_date: values.visit_date
+              ? (values.visit_date as dayjs.Dayjs).format("YYYY-MM-DD")
+              : undefined,
+            visiting_person: (values.visiting_person as string) || "",
+            visiting_event: (values.visiting_event as string) || "",
+          };
 
       const res = await fetch("/api/visitor/permits", {
         method: "POST",
@@ -302,7 +284,6 @@ function VisitorFlow() {
 
   function startOver() {
     setStep("intake");
-    setPurpose(null);
     setSelectedOption(null);
     setResult(null);
     setName("");
@@ -344,36 +325,13 @@ function VisitorFlow() {
               {step === "intake" && (
                 <Card title="1. About you">
                   <Form layout="vertical" onFinish={continueToChoose}>
-                    <Form.Item label="Why are you parking?" required>
-                      <Radio.Group
-                        value={purpose}
-                        onChange={(e) => setPurpose(e.target.value)}
-                        optionType="button"
-                        buttonStyle="solid"
-                        options={[
-                          { label: "Day guest", value: "day_guest" },
-                          { label: "Vendor / trade", value: "vendor" },
-                        ]}
-                      />
-                    </Form.Item>
-                    {purpose === "day_guest" && (
-                      <Alert
-                        type="info"
-                        showIcon
-                        className="mb-4"
-                        message="Day guest"
-                        description="Visiting for a meeting, event, or to see someone. Map shows visitor parking lots."
-                      />
-                    )}
-                    {purpose === "vendor" && (
-                      <Alert
-                        type="info"
-                        showIcon
-                        className="mb-4"
-                        message="Vendor / trade"
-                        description="Contracted work, deliveries, or an ongoing project. Long-term options need campus sponsor approval."
-                      />
-                    )}
+                    <Alert
+                      type="info"
+                      showIcon
+                      className="mb-4"
+                      message="How long will you park?"
+                      description="Guests and vendors use the same process. Parking for more than one day requires a campus sponsor’s approval."
+                    />
                     <Form.Item label="Full name" required>
                       <Input
                         value={name}
@@ -402,11 +360,11 @@ function VisitorFlow() {
                     <Button
                       type="primary"
                       htmlType="submit"
-                      disabled={!purpose || !name.trim() || !plate.trim()}
+                      disabled={!name.trim() || !plate.trim()}
                       style={{ background: brand.primaryColor }}
                       block
                     >
-                      Continue — choose a permit
+                      Continue — choose duration
                     </Button>
                   </Form>
                 </Card>
@@ -414,7 +372,7 @@ function VisitorFlow() {
 
               {step === "choose" && (
                 <Card
-                  title="2. Choose your permit"
+                  title="2. How long do you need?"
                   extra={
                     <Button
                       type="link"
@@ -430,12 +388,11 @@ function VisitorFlow() {
                   }
                 >
                   <p className="text-sm text-gray-500 mb-4">
-                    {purpose === "day_guest"
-                      ? "Based on your day guest selection, this is what’s available."
-                      : "Based on your vendor/trade selection, pick the duration that fits your work."}
+                    One day or less does not need a sponsor. Anything longer requires campus
+                    sponsor approval — whether you’re a guest or a vendor.
                   </p>
                   <ul className="space-y-2 list-none p-0 m-0">
-                    {availableOptions.map((opt) => {
+                    {PERMIT_OPTIONS.map((opt) => {
                       const isHovered = hoveredOptionId === opt.id;
                       return (
                         <li
@@ -467,9 +424,13 @@ function VisitorFlow() {
                                 {opt.label}
                               </p>
                               <p className="m-0 text-xs text-gray-500 mt-1">{opt.description}</p>
-                              {opt.requiresApproval && (
+                              {opt.moreThanOneDay ? (
                                 <Tag color="gold" className="mt-2 m-0">
                                   Sponsor approval required
+                                </Tag>
+                              ) : (
+                                <Tag color="blue" className="mt-2 m-0">
+                                  No sponsor needed
                                 </Tag>
                               )}
                             </div>
@@ -492,9 +453,9 @@ function VisitorFlow() {
                 </Card>
               )}
 
-              {step === "details" && selectedOption && purpose && (
+              {step === "details" && selectedOption && (
                 <Card
-                  title={`3. ${selectedOption.label} details`}
+                  title={`3. ${selectedOption.label}`}
                   extra={
                     <Button
                       type="link"
@@ -507,17 +468,17 @@ function VisitorFlow() {
                     </Button>
                   }
                 >
-                  {purpose === "day_guest" ? (
-                    <DayGuestDetails
+                  {selectedOption.moreThanOneDay ? (
+                    <MultiDayDetails
                       form={detailsForm}
+                      option={selectedOption}
                       onSubmit={submitDetails}
                       submitting={submitting}
                       brand={brand}
                     />
                   ) : (
-                    <VendorDetails
+                    <OneDayDetails
                       form={detailsForm}
-                      option={selectedOption}
                       onSubmit={submitDetails}
                       submitting={submitting}
                       brand={brand}
@@ -545,7 +506,7 @@ function VisitorFlow() {
   );
 }
 
-function DayGuestDetails({
+function OneDayDetails({
   form,
   onSubmit,
   submitting,
@@ -558,14 +519,18 @@ function DayGuestDetails({
 }) {
   return (
     <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ visit_date: dayjs() }}>
+      <p className="text-sm text-gray-500 mb-4">
+        For guest visits, deliveries, or same-day vendor work. Optional fields help campus staff
+        if they need to reach you.
+      </p>
       <Form.Item name="visit_date" label="Date of visit">
         <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
       </Form.Item>
-      <Form.Item name="visiting_person" label="Person you are visiting">
-        <Input placeholder="Prof. Johnson, Admissions Office, etc." />
+      <Form.Item name="visiting_person" label="Who are you visiting or working with? (optional)">
+        <Input placeholder="Prof. Johnson, Facilities, Admissions, etc." />
       </Form.Item>
-      <Form.Item name="visiting_event" label="Event (if applicable)">
-        <Input placeholder="Open House, Conference, etc." />
+      <Form.Item name="visiting_event" label="Event, job, or reason (optional)">
+        <Input placeholder="Open House, delivery, HVAC repair, etc." />
       </Form.Item>
       <Form.Item name="email" label="Email (optional — for confirmation)">
         <Input type="email" placeholder="you@example.com" />
@@ -574,13 +539,13 @@ function DayGuestDetails({
         <Input placeholder="610-555-0123" />
       </Form.Item>
       <Button type="primary" htmlType="submit" loading={submitting} block style={{ background: brand.primaryColor }}>
-        Get day pass
+        Get parking pass
       </Button>
     </Form>
   );
 }
 
-function VendorDetails({
+function MultiDayDetails({
   form,
   option,
   onSubmit,
@@ -594,19 +559,21 @@ function VendorDetails({
   brand: { primaryColor: string };
 }) {
   const needsEndDate = option.duration === "multi_day";
-  const isLongTerm = Boolean(option.requiresApproval);
 
   return (
     <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ start_date: dayjs() }}>
-      <Form.Item
-        name="company_name"
-        label="Company name"
-        rules={[{ required: true, message: "Company name is required" }]}
-      >
-        <Input placeholder="ABC Plumbing" />
+      <Alert
+        type="warning"
+        showIcon
+        className="mb-4"
+        message="Campus sponsor required"
+        description="Parking for more than one day needs approval from a Moravian staff or faculty sponsor, whether you are a guest or a vendor."
+      />
+      <Form.Item name="company_name" label="Company or organization (optional)">
+        <Input placeholder="ABC Plumbing, or leave blank if visiting as a guest" />
       </Form.Item>
       <Form.Item name="email" label="Your email">
-        <Input type="email" placeholder="john@abcplumbing.com" />
+        <Input type="email" placeholder="you@example.com" />
       </Form.Item>
       <Form.Item name="phone" label="Phone">
         <Input placeholder="610-555-0123" />
@@ -629,9 +596,8 @@ function VendorDetails({
       <div className="border-t pt-4 mt-2">
         <h4 className="text-sm font-semibold text-gray-700 mb-2">Campus sponsor</h4>
         <p className="text-xs text-gray-500 mb-4">
-          {isLongTerm
-            ? "Long-term permits require approval from your campus sponsor. They will receive an email to confirm."
-            : "Please provide the staff or faculty member who arranged your visit."}
+          Enter the staff or faculty member who can approve your multi-day parking. They will get
+          an email to confirm.
         </p>
         <Form.Item
           name="sponsor_name"
@@ -655,22 +621,15 @@ function VendorDetails({
         </Form.Item>
       </div>
 
-      <Form.Item name="work_description" label="Description of work">
-        <Input.TextArea rows={3} placeholder="HVAC repair in Comenius Hall, Room 204" />
+      <Form.Item name="work_description" label="Reason for extended parking">
+        <Input.TextArea
+          rows={3}
+          placeholder="Multi-day visit, contracted project, conference, etc."
+        />
       </Form.Item>
 
-      {isLongTerm && (
-        <Alert
-          type="warning"
-          showIcon
-          className="mb-4"
-          message="Sponsor approval required"
-          description="Your permit will stay pending until your campus sponsor approves the request via email."
-        />
-      )}
-
       <Button type="primary" htmlType="submit" loading={submitting} block style={{ background: brand.primaryColor }}>
-        {isLongTerm ? "Submit for approval" : "Get vendor pass"}
+        Submit for sponsor approval
       </Button>
     </Form>
   );
