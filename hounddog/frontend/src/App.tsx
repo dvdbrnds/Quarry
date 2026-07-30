@@ -21,7 +21,6 @@ import SignagePlayer from "./pages/SignagePlayer";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
 import StaffPermits from "./pages/StaffPermits";
-import LotteryApply from "./pages/LotteryApply";
 import LotteryApplyV2 from "./pages/LotteryApplyV2";
 import ParkingMap from "./pages/ParkingMap";
 import AuthCallback from "./pages/AuthCallback";
@@ -198,8 +197,7 @@ export default function App() {
   const isNotificationsRoute = location.pathname.startsWith("/notifications/");
   const isAlertSubscribeRoute = location.pathname.startsWith("/alerts/subscribe") || location.pathname.startsWith("/alerts/unsubscribe");
   const isSignageRoute = location.pathname.startsWith("/signage/player");
-  const isLotteryRoute = location.pathname === "/parking";
-  const isLotteryV2Route = location.pathname === "/parking/lottery-v2";
+  const isLotteryRoute = location.pathname === "/parking" || location.pathname === "/parking/lottery-v2";
   const isEmployeeParkingRoute = location.pathname === "/employee-parking";
   const isParkingMapRoute = location.pathname === "/parking-map";
   const isVisitorRoute = location.pathname.startsWith("/visitor");
@@ -269,15 +267,8 @@ export default function App() {
   if (isLotteryRoute) {
     return (
       <Routes>
-        <Route path="/parking" element={<LotteryApply />} />
-      </Routes>
-    );
-  }
-
-  if (isLotteryV2Route) {
-    return (
-      <Routes>
-        <Route path="/parking/lottery-v2" element={<LotteryApplyV2 />} />
+        <Route path="/parking" element={<LotteryApplyV2 />} />
+        <Route path="/parking/lottery-v2" element={<Navigate to="/parking" replace />} />
       </Routes>
     );
   }

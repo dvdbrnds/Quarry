@@ -129,7 +129,7 @@ export default function LotteryApplyV2() {
         await initAuth();
         const authed = await isAuthenticated();
         if (!authed) {
-          sessionStorage.setItem("quarry_return_path", "/parking/lottery-v2");
+          sessionStorage.setItem("quarry_return_path", "/parking");
           await login();
           return;
         }
@@ -606,7 +606,6 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wider opacity-70">Staging</p>
             <h1 style={{ color: brand.accentColor }} className="text-xl font-bold m-0">
               Parking Permits
             </h1>

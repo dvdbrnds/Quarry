@@ -500,7 +500,7 @@ async def promote_from_waitlist(
                         permit_type_label=pt.label,
                         price=str(pt.price),
                         deadline=app.offer_expires_at.strftime("%B %d, %Y"),
-                        portal_url=f"{settings.student_facing_url.rstrip('/')}/parking/lottery-v2",
+                        portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                         assigned_lot=app.assigned_lot,
                     )
                 except Exception as e:
@@ -528,7 +528,7 @@ async def _notify_selected(
                 permit_type_label=pt.label,
                 price=str(pt.price),
                 deadline=offer_expires.strftime("%B %d, %Y"),
-                portal_url=f"{settings.student_facing_url.rstrip('/')}/parking/lottery-v2",
+                portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                 assigned_lot=app.assigned_lot,
             )
         except Exception as e:

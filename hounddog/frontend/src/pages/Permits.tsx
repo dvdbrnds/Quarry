@@ -157,8 +157,8 @@ export default function Permits() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const initTab =
-    location.hash === "#lottery-v2"
-      ? "lottery-v2"
+    location.hash === "#lottery" || location.hash === "#lottery-v2"
+      ? "lottery"
       : location.hash === "#types" || location.search.includes("lottery=")
         ? "types"
         : "permits";
@@ -400,7 +400,10 @@ export default function Permits() {
     <div>
       <Tabs
         activeKey={tab}
-        onChange={(key) => { setTab(key); window.location.hash = key === "permits" ? "" : "types"; }}
+        onChange={(key) => {
+          setTab(key);
+          window.location.hash = key === "permits" ? "" : key === "lottery" ? "lottery" : "types";
+        }}
         items={[
           {
             key: "permits",
@@ -589,8 +592,8 @@ export default function Permits() {
             children: <PermitTypes />,
           },
           {
-            key: "lottery-v2",
-            label: "Lottery V2 (Staging)",
+            key: "lottery",
+            label: "Lottery",
             children: <LotteryV2Manager />,
           },
         ]}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Button, Card, Space, Statistic, Table, Tag, App as AntApp,
+  Alert, Button, Card, Collapse, Space, Statistic, Table, Tag, App as AntApp,
 } from "antd";
 import { authHeaders } from "../auth";
 
@@ -69,7 +69,7 @@ export default function LotteryV2Manager() {
   const [busy, setBusy] = useState(false);
 
   const active = cycles.find((c) => c.id === activeId) || null;
-  const stagingUrl = `${window.location.origin}/parking/lottery-v2`;
+  const studentUrl = `${window.location.origin}/parking`;
 
   const loadCycles = useCallback(async () => {
     setLoading(true);
@@ -117,7 +117,7 @@ export default function LotteryV2Manager() {
       const res = await fetch("/api/lottery-v2/cycles", {
         method: "POST",
         headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Lottery V2 Staging" }),
+        body: JSON.stringify({ name: "Parking Lottery" }),
       });
       if (!res.ok) throw new Error("Create failed");
       const cycle = await res.json();
@@ -230,20 +230,15 @@ export default function LotteryV2Manager() {
       <Alert
         type="info"
         showIcon
-        message="Lottery V2 Staging"
+        message="Student parking lottery"
         description={
-          <div>
-            <p className="m-0 mb-2">
-              Isolated single-entry waterfall lottery. Does not affect the live per-tier system at{" "}
-              <code>/parking</code>.
-            </p>
-            <p className="m-0">
-              Student demo URL:{" "}
-              <a href={stagingUrl} target="_blank" rel="noreferrer">
-                {stagingUrl}
-              </a>
-            </p>
-          </div>
+          <p className="m-0">
+            Single-entry waterfall lottery for resident students. Student portal:{" "}
+            <a href={studentUrl} target="_blank" rel="noreferrer">
+              {studentUrl}
+            </a>
+            . Commuters purchase directly from the same page.
+          </p>
         }
       />
 
@@ -299,35 +294,48 @@ export default function LotteryV2Manager() {
                 Close window
               </Button>
               <Button
-                disabled={busy || active.status === "drawn"}
-                onClick={async () => {
-                  const data = await postAction(`/api/lottery-v2/cycles/${active.id}/seed`);
-                  if (data) message.success(`Seeded ${data.seeded} test applicants`);
-                }}
-              >
-                Seed test data
-              </Button>
-              <Button
                 type="primary"
                 disabled={busy || active.status === "drawn" || active.application_count === 0}
                 onClick={confirmRun}
               >
-                Run V2 draw
-              </Button>
-              <Button
-                danger
-                disabled={busy || active.status !== "drawn"}
-                onClick={() => {
-                  modal.confirm({
-                    title: "Reset draw results?",
-                    content: "Non-accepted applications return to pending so you can re-run.",
-                    onOk: () => postAction(`/api/lottery-v2/cycles/${active.id}/reset`),
-                  });
-                }}
-              >
-                Reset draw
+                Run draw
               </Button>
             </Space>
+            <Collapse
+              className="mt-4"
+              items={[
+                {
+                  key: "test",
+                  label: "Test tools",
+                  children: (
+                    <Space wrap>
+                      <Button
+                        disabled={busy || active.status === "drawn"}
+                        onClick={async () => {
+                          const data = await postAction(`/api/lottery-v2/cycles/${active.id}/seed`);
+                          if (data) message.success(`Seeded ${data.seeded} test applicants`);
+                        }}
+                      >
+                        Seed test data
+                      </Button>
+                      <Button
+                        danger
+                        disabled={busy || active.status !== "drawn"}
+                        onClick={() => {
+                          modal.confirm({
+                            title: "Reset draw results?",
+                            content: "Non-accepted applications return to pending so you can re-run.",
+                            onOk: () => postAction(`/api/lottery-v2/cycles/${active.id}/reset`),
+                          });
+                        }}
+                      >
+                        Reset draw
+                      </Button>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
           </Card>
 
           {results?.audit?.warnings && (

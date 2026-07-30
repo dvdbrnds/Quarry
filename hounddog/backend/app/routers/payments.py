@@ -866,9 +866,9 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
         payer_email=(email or app.student_email) or None,
         plate=(plate or app.plate) or None,
         description=(
-            f"Lottery V2 Permit ({permit_type_code}) — {plate or app.plate}"
+            f"Lottery Permit ({permit_type_code}) — {plate or app.plate}"
             if (plate or app.plate)
-            else f"Lottery V2 Permit ({permit_type_code})"
+            else f"Lottery Permit ({permit_type_code})"
         ),
     )
     db.add(payment)

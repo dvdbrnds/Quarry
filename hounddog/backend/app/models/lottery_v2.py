@@ -1,6 +1,6 @@
-"""Staging tables for the single-entry waterfall lottery (v2).
+"""Lottery V2 tables — single-entry waterfall lottery.
 
-Isolated from the live per-tier lottery — do not write to permit_applications.
+Isolated from the legacy per-tier lottery tables (permit_applications).
 """
 
 import uuid
@@ -17,7 +17,7 @@ class LotteryV2Cycle(Base):
     __tablename__ = "lottery_v2_cycles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(256), default="Lottery V2 Staging")
+    name: Mapped[str] = mapped_column(String(256), default="Parking Lottery")
     status: Mapped[str] = mapped_column(String(32), default="draft")  # draft|open|closed|drawn
     opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1,6 +1,7 @@
-"""Lottery V2 staging API — single-entry waterfall lottery.
+"""Lottery V2 API — single-entry waterfall lottery (production).
 
-Isolated from live /api/student/permits and /api/permit-types lottery endpoints.
+Uses dedicated lottery_v2_* tables. Does not write to the legacy per-tier
+permit_applications lottery tables.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ router = APIRouter()
 
 
 class CycleCreate(BaseModel):
-    name: str = "Lottery V2 Staging"
+    name: str = "Parking Lottery"
     offer_window_days: int = 5
 
 
@@ -491,8 +492,8 @@ async def accept_offer(
                 "institution": settings.school_name or "moravian",
             },
         },
-        success_url=f"{base_url}/parking/lottery-v2?accepted={application_id}",
-        cancel_url=f"{base_url}/parking/lottery-v2",
+        success_url=f"{base_url}/parking?accepted={application_id}",
+        cancel_url=f"{base_url}/parking",
         metadata={
             "type": "lottery_v2_permit",
             "application_id": str(app.id),
