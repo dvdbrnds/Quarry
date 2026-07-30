@@ -418,14 +418,6 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET total_spaces = 25 WHERE name = 'W. Locust St'",
             "UPDATE parking_lots SET total_spaces = 50 WHERE name = 'Lehigh St'",
             "UPDATE parking_lots SET total_spaces = 100 WHERE name = 'Spring St'",
-            # Create Lot J if it doesn't exist (F/S primary, commuter 4p-6a secondary)
-            """INSERT INTO parking_lots (id, name, boundary, total_spaces, designation_code, designation_label, lot_type, campus, access_schedule)
-               SELECT gen_random_uuid(), 'J', '[]'::jsonb, 18, 'FSC', 'Faculty/Staff + Commuter (time-split)', 'lot', 'north', '[]'::jsonb
-               WHERE NOT EXISTS (SELECT 1 FROM parking_lots WHERE name = 'J')""",
-            # Create W. Locust St if it doesn't exist (street, F/S primary, commuter 4p-6a secondary)
-            """INSERT INTO parking_lots (id, name, boundary, total_spaces, designation_code, designation_label, lot_type, campus, access_schedule)
-               SELECT gen_random_uuid(), 'W. Locust St', '[]'::jsonb, 25, 'FSC', 'Faculty/Staff + Commuter (time-split)', 'street', 'north', '[]'::jsonb
-               WHERE NOT EXISTS (SELECT 1 FROM parking_lots WHERE name = 'W. Locust St')""",
             # Update COMMUTER_EVENING_SCHEDULE on all FSC lots (change 07:00 to 06:00)
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
