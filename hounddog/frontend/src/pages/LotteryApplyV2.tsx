@@ -748,20 +748,6 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       ]}
                     />
                   </Form.Item>
-                  {campus === "visitor" && (
-                    <Alert
-                      type="info"
-                      showIcon
-                      className="mb-4"
-                      message="Visitor & vendor parking"
-                      description="Day guests and vendors register on the public visitor portal — no student lottery required."
-                      action={
-                        <Button size="small" type="primary" onClick={() => window.location.assign("/visitor")}>
-                          Open visitor portal
-                        </Button>
-                      }
-                    />
-                  )}
                   {isSouthPath && southExternalLots.length > 0 && (
                     <Alert
                       type="warning"
