@@ -394,14 +394,15 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     ? STATUS_LABELS[application.status] || { text: application.status, color: "default" }
     : null;
 
-  // Prefer tier hover → else all lots from eligible V2 tiers → assigned lot after draw
-  // In color mode, empty highlight = show all tier colors; non-empty = emphasize hovered tier
+  // Intake: uniform highlight of campus-eligible lots. Rank: multi-color tiers (lotColors).
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
       : application?.assigned_lot && step === "done"
         ? [application.assigned_lot]
-        : [];
+        : step === "intake" && eligibleLotNames.length > 0
+          ? eligibleLotNames
+          : [];
 
   const lotsForMap =
     step === "done" && application?.assigned_lot
@@ -411,7 +412,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
-  const showTierColors = step === "rank" || (step === "intake" && eligibleTier.length > 0);
+  const showTierColors = step === "rank";
 
   return (
     <div className="min-h-screen bg-gray-50">
