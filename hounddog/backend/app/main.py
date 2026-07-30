@@ -383,15 +383,15 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT FALSE",
             "UPDATE permit_types SET allow_multiple = TRUE WHERE code = 'faculty_staff' AND allow_multiple = FALSE",
             # 2025 planning spreadsheet: update tier caps and lot assignments
-            "UPDATE permit_types SET max_capacity = 264, lot_assignments = '{X,A,F,H,J,M,N,O,R,S}' WHERE code = 'commuter_undergrad'",
-            "UPDATE permit_types SET lot_assignments = '{W,A,F,H,J,M,N,O,R,S}' WHERE code = 'commuter_grad'",
+            "UPDATE permit_types SET max_capacity = 264, lot_assignments = '{X,A,F,H,M,N,O,R,S}' WHERE code = 'commuter_undergrad'",
+            "UPDATE permit_types SET lot_assignments = '{W,A,F,H,M,N,O,R,S}' WHERE code = 'commuter_grad'",
             "UPDATE permit_types SET max_capacity = 200, lot_assignments = '{\"Main St\",\"Iron St.\",\"Monocacy St.\",\"Lenox Ave\",\"W. Greenwich St.\",\"Lorain Ave.\",\"W. Elizabeth\",\"W. Locust St\"}' WHERE code = 'premium_commuter'",
             "UPDATE permit_types SET max_capacity = 58 WHERE code = 'north_premium_resident'",
             "UPDATE permit_types SET max_capacity = 218 WHERE code = 'north_guaranteed_resident'",
             "UPDATE permit_types SET max_capacity = 40 WHERE code = 'south_premium_resident'",
             "UPDATE permit_types SET max_capacity = 44, lot_assignments = '{U}' WHERE code = 'south_guaranteed_resident'",
             "UPDATE permit_types SET max_capacity = 100 WHERE code = 'south_standalone'",
-            "UPDATE permit_types SET lot_assignments = '{A,F,H,J,M,N,O,R,S,U,W}' WHERE code = 'faculty_staff'",
+            "UPDATE permit_types SET lot_assignments = '{A,F,H,M,N,O,R,S,U,W}' WHERE code = 'faculty_staff'",
             # 2025 planning spreadsheet: update lot spot counts
             "UPDATE parking_lots SET total_spaces = 103 WHERE name = 'A'",
             "UPDATE parking_lots SET total_spaces = 95 WHERE name = 'B'",
@@ -521,8 +521,8 @@ async def lifespan(app: FastAPI):
             pt_count = await session.scalar(select(func.count()).select_from(PermitType))
             if pt_count == 0:
                 default_permits = [
-                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 264, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "J", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
-                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "J", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
+                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 264, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
+                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
                     {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 200, "valid_days": 365, "lot_assignments": ["Main St", "Iron St.", "Monocacy St.", "Lenox Ave", "W. Greenwich St.", "Lorain Ave.", "W. Elizabeth", "W. Locust St"], "is_purchasable_online": True, "sort_order": 3},
                     {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 58, "valid_days": 365, "lot_assignments": ["I", "W. Laurel St"], "is_purchasable_online": False, "sort_order": 4},
                     {"code": "north_guaranteed_resident", "label": "North Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 218, "valid_days": 365, "lot_assignments": ["B", "C", "D", "G", "P", "T"], "is_purchasable_online": False, "sort_order": 5},
@@ -530,7 +530,7 @@ async def lifespan(app: FastAPI):
                     {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 40, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},
                     {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 44, "valid_days": 365, "lot_assignments": ["U"], "is_purchasable_online": False, "sort_order": 8},
                     {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 100, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 9},
-                    {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "J", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
+                    {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
                 ]
                 for row in default_permits:
                     session.add(PermitType(
