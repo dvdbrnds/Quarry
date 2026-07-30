@@ -321,11 +321,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     setRanked(data);
   }
 
-  async function selectCampus(c: "north" | "south" | "commuter" | "visitor") {
-    if (c === "visitor") {
-      window.location.assign("/visitor");
-      return;
-    }
+  async function selectCampus(c: "north" | "south" | "commuter") {
     setCampus(c);
     setFocusedLot(null);
     setHighlightedLots([]);
@@ -743,7 +739,6 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                         { label: "North Campus", value: "north" },
                         { label: "South Campus", value: "south" },
                         { label: "Commuter", value: "commuter" },
-                        { label: "Visitor", value: "visitor" },
                       ]}
                     />
                   </Form.Item>
