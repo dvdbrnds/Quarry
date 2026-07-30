@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import {
-  ManageView, SimulationView, LiveDashboard,
-  type LotInfo, type LotteryPermitTypeRow,
-} from "./LotteryManager";
+
+/** Matches backend LOTTERY_TIER_CODES — resident tiers placed by Lottery V2 waterfall. */
+const LOTTERY_TIER_CODES = new Set([
+  "north_premium_resident",
+  "north_guaranteed_resident",
+  "steel_field_resident",
+  "south_premium_resident",
+  "south_guaranteed_resident",
+]);
 
 interface PermitTypeRow {
   id: string; code: string; label: string; eligible: string; price: string;
@@ -47,7 +51,6 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
-  const requiresLottery = Form.useWatch("requires_lottery", form);
   const isPurchasableOnline = Form.useWatch("is_purchasable_online", form);
   const code = Form.useWatch("code", form);
 
@@ -84,10 +87,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       sort_order: values.sort_order ?? 0,
       eligible_groups: values.eligible_groups || [],
       allow_multiple: values.allow_multiple ?? false,
-      requires_lottery: values.requires_lottery ?? false,
-      lottery_strategy: values.lottery_strategy ?? "seniority_timestamp",
       min_class_year: values.min_class_year ? parseInt(values.min_class_year) : null,
-      offer_window_days: values.offer_window_days ?? 5,
       application_opens_at: values.application_opens_at?.toISOString() ?? null,
       application_closes_at: values.application_closes_at?.toISOString() ?? null,
     };
@@ -112,7 +112,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
-        initialValues={{ price: "0.00", max_capacity: 100, valid_days: 365, sort_order: 0, lottery_strategy: "seniority_timestamp", offer_window_days: 5, lot_assignments: [] }}>
+        initialValues={{ price: "0.00", max_capacity: 100, valid_days: 365, sort_order: 0, lot_assignments: [] }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="label" label="Label" rules={[{ required: true }]}><Input /></Form.Item>
@@ -137,6 +137,9 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             />
           </Form.Item>
           <Form.Item name="sort_order" label="Sort Order"><InputNumber className="w-full" /></Form.Item>
+          <Form.Item name="min_class_year" label="Min. Class Year (blank = all)">
+            <Input type="number" placeholder="e.g. 2027" />
+          </Form.Item>
           <Form.Item name="eligible_groups" label={
             <span className="flex items-center gap-2">
               Restrict to Groups
@@ -154,10 +157,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
         </div>
         <Space className="mb-4" wrap>
           <Form.Item name="is_purchasable_online" valuePropName="checked" noStyle>
-            <Checkbox onChange={e => { if (e.target.checked) form.setFieldsValue({ requires_lottery: false }); }}>Always available for purchase (no lottery)</Checkbox>
-          </Form.Item>
-          <Form.Item name="requires_lottery" valuePropName="checked" noStyle>
-            <Checkbox onChange={e => { if (e.target.checked) form.setFieldsValue({ is_purchasable_online: false }); }}>Requires lottery</Checkbox>
+            <Checkbox>Available for online purchase</Checkbox>
           </Form.Item>
           <Form.Item name="allow_multiple" valuePropName="checked" noStyle>
             <Checkbox>
@@ -167,38 +167,20 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             </Checkbox>
           </Form.Item>
         </Space>
-        {(requiresLottery || isPurchasableOnline) && (
+        {isPurchasableOnline && (
           <>
             <h4 className="text-sm font-semibold text-brand-primary mb-3 mt-4 pt-4 border-t">
-              {requiresLottery ? "Lottery Configuration" : "Purchasing Schedule"}
+              Purchasing Schedule
             </h4>
             <div className="grid grid-cols-2 gap-x-4">
-              {requiresLottery && (
-                <>
-                  <Form.Item name="lottery_strategy" label="Strategy">
-                    <Select options={[
-                      { label: "Seniority + Timestamp (default)", value: "seniority_timestamp" },
-                      { label: "Seniority Weighted", value: "seniority_weighted" },
-                      { label: "Pure Random", value: "pure_random" },
-                      { label: "Class Priority", value: "class_priority" },
-                    ]} />
-                  </Form.Item>
-                  <Form.Item name="min_class_year" label="Min. Class Year (blank = all)">
-                    <Input type="number" placeholder="e.g. 2027" />
-                  </Form.Item>
-                  <Form.Item name="offer_window_days" label="Offer Window (days)"><InputNumber className="w-full" min={1} max={30} /></Form.Item>
-                </>
-              )}
-              <Form.Item name="application_opens_at" label={requiresLottery ? "Application Opens" : "Purchasing Opens"}>
+              <Form.Item name="application_opens_at" label="Purchasing Opens">
                 <DatePicker showTime className="w-full" />
               </Form.Item>
-              <Form.Item name="application_closes_at" label={requiresLottery ? "Application Closes" : "Purchasing Closes"}>
+              <Form.Item name="application_closes_at" label="Purchasing Closes">
                 <DatePicker showTime className="w-full" />
               </Form.Item>
             </div>
-            {!requiresLottery && (
-              <p className="text-xs text-ink-mute -mt-2 mb-2">Leave blank to make available immediately with no end date.</p>
-            )}
+            <p className="text-xs text-ink-mute -mt-2 mb-2">Leave blank to make available immediately with no end date.</p>
           </>
         )}
         <div className="flex justify-end gap-3 pt-2">
@@ -212,31 +194,11 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
 
 export default function PermitTypes() {
   const { modal, message } = App.useApp();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [lots, setLots] = useState<LotForSelect[]>([]);
   const [editing, setEditing] = useState<PermitTypeRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Derive lottery management state from URL search params
-  const lotteryId = searchParams.get("lottery");
-  const lotteryView = (searchParams.get("lotteryView") || "manage") as "manage" | "simulate" | "live";
-  const managingLottery = lotteryId ? types.find(t => t.id === lotteryId) || null : null;
-
-  const setManagingLottery = (pt: PermitTypeRow | null) => {
-    if (pt) {
-      setSearchParams({ lottery: pt.id, lotteryView: "manage" }, { replace: true });
-    } else {
-      setSearchParams({}, { replace: true });
-    }
-  };
-  const setLotteryView = (view: "manage" | "simulate" | "live") => {
-    if (lotteryId) {
-      setSearchParams({ lottery: lotteryId, lotteryView: view }, { replace: true });
-    }
-  };
-  const [batchToggling, setBatchToggling] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -258,23 +220,6 @@ export default function PermitTypes() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const lotteryLotLookup = useMemo<Record<string, LotInfo>>(() => {
-    const lookup: Record<string, LotInfo> = {};
-    for (const l of lots) {
-      const name = l.name.trim();
-      const info: LotInfo = { name: l.name, designation_code: l.designation_code, total_spaces: l.total_spaces };
-      lookup[name] = info;
-      if (l.id) lookup[l.id] = info;
-      const lotPrefix = name.match(/^Lot\s+(.+)$/i);
-      if (lotPrefix) lookup[lotPrefix[1]] = info;
-    }
-    return lookup;
-  }, [lots]);
-
-  const reloadManaging = useCallback(async () => {
-    await load();
-  }, [load]);
 
   function handleDeactivate(pt: PermitTypeRow) {
     modal.confirm({
@@ -332,38 +277,6 @@ export default function PermitTypes() {
         } catch (e: any) { message.error(e.message); }
       },
     });
-  }
-
-  function handleToggleLottery(pt: PermitTypeRow) {
-    if (pt.requires_lottery) {
-      modal.confirm({
-        title: `Disable lottery for "${pt.label}"?`,
-        content: "The permit type will stay active. Students will no longer apply through the lottery — it will become a regular permit. Existing applications are preserved.",
-        okText: "Disable Lottery",
-        onOk: async () => {
-          try {
-            const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: false }) });
-            if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
-            message.success("Lottery disabled"); load();
-          } catch (e: any) { message.error(e.message); }
-        },
-      });
-    } else {
-      modal.confirm({
-        title: `Enable lottery for "${pt.label}"?`,
-        content: pt.is_purchasable_online
-          ? "This will switch the permit from \"Always Available\" to lottery-based. Students will need to apply through the lottery."
-          : "Students will need to apply through the lottery to get this permit type.",
-        okText: "Enable Lottery",
-        onOk: async () => {
-          try {
-            const res = await fetch(`/api/permit-types/${pt.id}`, { method: "PUT", headers: await authHeaders(), body: JSON.stringify({ requires_lottery: true, is_purchasable_online: false, lottery_strategy: "seniority_timestamp" }) });
-            if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
-            message.success("Lottery enabled"); load();
-          } catch (e: any) { message.error(e.message); }
-        },
-      });
-    }
   }
 
   async function handleTogglePurchasing(pt: PermitTypeRow) {
@@ -449,21 +362,22 @@ export default function PermitTypes() {
       title: "Status", key: "type",
       render: (_, pt) => {
         if (!pt.is_active) return <Tag color="red">Inactive</Tag>;
+
+        if (LOTTERY_TIER_CODES.has(pt.code)) {
+          return (
+            <div>
+              <Tag color="purple">Lottery tier</Tag>
+              <div className="text-[10px] text-ink-mute mt-0.5">Managed on Lottery tab</div>
+            </div>
+          );
+        }
+
         const now = new Date();
         const opens = pt.application_opens_at ? new Date(pt.application_opens_at) : null;
         const closes = pt.application_closes_at ? new Date(pt.application_closes_at) : null;
         const notYetOpen = opens && opens > now;
         const closed = closes && closes < now;
 
-        if (pt.requires_lottery) {
-          return (
-            <div>
-              <Tag color="purple">Lottery</Tag>
-              {notYetOpen && <div className="text-[10px] text-ink-mute mt-0.5">Opens {opens!.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
-              {closed && <div className="text-[10px] text-amber-700 mt-0.5">Closed</div>}
-            </div>
-          );
-        }
         if (pt.is_purchasable_online) {
           if (notYetOpen) return (
             <div>
@@ -494,20 +408,11 @@ export default function PermitTypes() {
       render: (_, pt) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
-          {pt.is_active && !pt.requires_lottery && (
+          {pt.is_active && !LOTTERY_TIER_CODES.has(pt.code) && (
             <Button type="link" size="small" onClick={() => handleTogglePurchasing(pt)}
               style={pt.is_purchasable_online ? undefined : { color: "#16a34a" }}>
               {pt.is_purchasable_online ? "Disable Purchasing" : "Enable Purchasing"}
             </Button>
-          )}
-          {pt.is_active && (
-            <Button type="link" size="small" onClick={() => handleToggleLottery(pt)}
-              style={pt.requires_lottery ? { color: "#9333ea" } : undefined}>
-              {pt.requires_lottery ? "Disable Lottery" : "Enable Lottery"}
-            </Button>
-          )}
-          {pt.requires_lottery && pt.is_active && (
-            <Button type="link" size="small" style={{ color: "#9333ea" }} onClick={() => setManagingLottery(pt)}>Manage Lottery &rarr;</Button>
           )}
           {pt.is_active
             ? <Button type="link" size="small" danger onClick={() => handleDeactivate(pt)}>Deactivate</Button>
@@ -521,106 +426,12 @@ export default function PermitTypes() {
     },
   ];
 
-  const lotteryTypes = types.filter(t => t.requires_lottery && t.is_active);
-  const nonLotteryTypes = types.filter(t => !t.requires_lottery && t.is_active);
-  const studentUrl = `${window.location.origin}/parking`;
-
-  async function batchToggle(ids: string[], enable: boolean) {
-    setBatchToggling(true);
-    try {
-      const res = await fetch("/api/permit-types/batch-lottery-toggle", {
-        method: "POST", headers: await authHeaders(),
-        body: JSON.stringify({ ids, requires_lottery: enable }),
-      });
-      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
-      const result = await res.json();
-      message.success(`Lottery ${enable ? "enabled" : "disabled"} for ${result.updated} permit type(s)`);
-      await load();
-    } catch (e: any) { message.error(e.message); } finally { setBatchToggling(false); }
-  }
-
-  function handleEnableAll() {
-    const ids = nonLotteryTypes.map(t => t.id);
-    if (ids.length === 0) return;
-    modal.confirm({
-      title: `Enable lottery on ${ids.length} permit type(s)?`,
-      content: "All non-lottery permit types will require a lottery for students to get a permit.",
-      okText: "Enable All",
-      onOk: () => batchToggle(ids, true),
-    });
-  }
-
-  function handleDisableAll() {
-    const ids = lotteryTypes.map(t => t.id);
-    if (ids.length === 0) return;
-    modal.confirm({
-      title: `Disable lottery on ${ids.length} permit type(s)?`,
-      content: "Existing applications will be preserved. Students will be able to purchase permits directly.",
-      okText: "Disable All", okButtonProps: { danger: true },
-      onOk: () => batchToggle(ids, false),
-    });
-  }
-
-  if (managingLottery) {
-    const lotteryGoBack = () => {
-      if (lotteryView === "simulate" || lotteryView === "live") {
-        setLotteryView("manage");
-      } else {
-        setManagingLottery(null);
-        load();
-      }
-    };
-
-    if (lotteryView === "simulate") return <SimulationView permitType={managingLottery as LotteryPermitTypeRow} onBack={lotteryGoBack} />;
-    if (lotteryView === "live") return <LiveDashboard permitType={managingLottery as LotteryPermitTypeRow} onBack={lotteryGoBack} />;
-    return (
-      <ManageView
-        permitType={managingLottery as LotteryPermitTypeRow}
-        onBack={lotteryGoBack}
-        onSimulate={() => setLotteryView("simulate")}
-        onGoLive={() => setLotteryView("live")}
-        onReload={reloadManaging}
-        lotLookup={lotteryLotLookup}
-        onEditType={(typeId) => {
-          const match = types.find(t => t.id === typeId);
-          if (match) { setEditing(match); setCreating(false); }
-          setManagingLottery(null);
-        }}
-      />
-    );
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Permit Types</h2>
-        <Space>
-          {nonLotteryTypes.length > 0 && (
-            <Button onClick={handleEnableAll} loading={batchToggling}
-              style={{ borderColor: "#9333ea", color: "#7e22ce" }}>
-              Enable All Lotteries
-            </Button>
-          )}
-          {lotteryTypes.length > 0 && (
-            <Button danger onClick={handleDisableAll} loading={batchToggling}>
-              Disable All Lotteries
-            </Button>
-          )}
-          <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>
-        </Space>
+        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>
       </div>
-      {lotteryTypes.length > 0 && (
-        <Card size="small" className="mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-medium text-ink-mute uppercase tracking-wide mb-1">Student Application URL</div>
-              <code className="text-sm font-mono text-brand-primary bg-gray-50 px-2 py-1 rounded">{studentUrl}</code>
-            </div>
-            <Button size="small" onClick={() => { navigator.clipboard.writeText(studentUrl); message.success("URL copied to clipboard"); }}>Copy URL</Button>
-          </div>
-          <p className="text-xs text-ink-mute mt-2">Share this link with students. They'll log in with their university credentials and see open lottery permits.</p>
-        </Card>
-      )}
       {(creating || editing) && (
         <div ref={formRef}>
           <PermitTypeForm key={editing?.id ?? "new"} initial={editing ?? undefined} lots={lots}
