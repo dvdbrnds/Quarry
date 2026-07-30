@@ -77,6 +77,22 @@ function createLabelElement(
   return el;
 }
 
+/** fitBounds, then pull back 2 zoom levels when only one small lot is in view */
+function fitMapToLots(
+  map: google.maps.Map,
+  bounds: google.maps.LatLngBounds,
+  padding: number,
+  lotCount: number,
+) {
+  map.fitBounds(bounds, padding);
+  if (lotCount !== 1) return;
+  google.maps.event.addListenerOnce(map, "idle", () => {
+    const z = map.getZoom();
+    if (z == null) return;
+    map.setZoom(Math.max(z - 2, 15));
+  });
+}
+
 function MapContent({
   lots,
   highlightedLots,
@@ -105,7 +121,7 @@ function MapContent({
     lotsWithBounds.forEach((lot) => {
       lot.boundary.forEach((c) => allBounds.extend({ lat: c.latitude, lng: c.longitude }));
     });
-    setTimeout(() => map.fitBounds(allBounds, 40), 150);
+    setTimeout(() => fitMapToLots(map, allBounds, 40, lotsWithBounds.length), 150);
   }, [map, lots]);
 
   // Recreate polygons + labels with correct styles when highlight changes
@@ -250,7 +266,7 @@ function MapContent({
       zoomTargets.forEach((lot) => {
         lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
       });
-      map.fitBounds(bounds, 60);
+      fitMapToLots(map, bounds, 60, zoomTargets.length);
     }
 
     return () => {
