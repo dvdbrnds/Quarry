@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space, Alert, Modal } from "antd";
+import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space, Alert, Modal, Checkbox } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
@@ -188,6 +188,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [classYear, setClassYear] = useState<number | null>(null);
   const [plate, setPlate] = useState("");
   const [plateState, setPlateState] = useState("PA");
+  const [phone, setPhone] = useState("");
+  const [smsOptIn, setSmsOptIn] = useState(false);
   const [studentName, setStudentName] = useState(user.email || "");
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [ranked, setRanked] = useState<Tier[]>([]);
@@ -393,8 +395,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   }, [classYear]);
 
   async function continueToRank() {
-    if (!campus || !classYear || !plate.trim()) {
-      message.warning("Campus residence, class year, and plate are required");
+    if (!campus || !classYear || !plate.trim() || !phone.trim()) {
+      message.warning("Campus, class year, plate, and phone are required");
       return;
     }
     await loadTiers(campus, classYear);
@@ -411,7 +413,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   }
 
   async function purchaseCommuterPermit(tier: Tier) {
-    if (!classYear || !plate.trim()) return;
+    if (!classYear || !plate.trim() || !phone.trim()) return;
     setSubmitting(true);
     try {
       const headers = await authHeaders();
@@ -424,6 +426,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
           plate: plate.trim().toUpperCase(),
           plate_state: plateState.trim().toUpperCase(),
           class_year: classYear,
+          phone: phone.trim(),
+          sms_opt_in: smsOptIn,
         }),
       });
       if (!res.ok) {
@@ -457,6 +461,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
           class_year: classYear,
           plate: plate.trim().toUpperCase(),
           plate_state: plateState.trim().toUpperCase(),
+          phone: phone.trim(),
+          sms_opt_in: smsOptIn,
           student_name: studentName,
           tier_preferences: ranked.map((t) => t.id),
         }),
@@ -800,6 +806,22 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       placeholder="PA"
                     />
                   </Form.Item>
+                  <Form.Item label="Mobile phone" required>
+                    <Input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="610-555-0123"
+                      inputMode="tel"
+                    />
+                  </Form.Item>
+                  <Form.Item className="mb-4">
+                    <Checkbox checked={smsOptIn} onChange={(e) => setSmsOptIn(e.target.checked)}>
+                      <span className="text-sm text-gray-600">
+                        Please opt in to emergency messages and parking-related messages regarding your vehicle.
+                        {/* Phase 23: expand this opt-in to all AlertUs emergency channels */}
+                      </span>
+                    </Checkbox>
+                  </Form.Item>
                   {!isCommuterPath && cycle?.status !== "open" && campus && (
                     <p className="text-sm text-amber-700 mb-3">
                       The resident lottery is not open right now. Check back when registration opens,
@@ -813,6 +835,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       !campus ||
                       !classYear ||
                       !plate ||
+                      !phone.trim() ||
                       (!isCommuterPath && cycle?.status !== "open")
                     }
                   >

@@ -79,7 +79,8 @@ class ApplicationSubmit(BaseModel):
     class_year: int
     plate: str
     plate_state: str = ""
-    phone: str | None = None
+    phone: str = Field(..., min_length=7)
+    sms_opt_in: bool = False
     student_name: str | None = None
     tier_preferences: list[uuid.UUID] = Field(..., min_length=1)
 
@@ -319,6 +320,7 @@ async def submit_application(
         or f"{user.given_name} {user.family_name}".strip()
         or user.email
     )
+    phone = data.phone.strip()
     app = LotteryV2Application(
         cycle_id=cycle.id,
         student_sub=user.sub,
@@ -328,13 +330,21 @@ async def submit_application(
         campus=data.campus,
         plate=data.plate.strip().upper(),
         plate_state=(data.plate_state or "").strip().upper()[:2],
-        phone=data.phone,
+        phone=phone,
+        sms_opt_in=bool(data.sms_opt_in),
         tier_preferences=list(data.tier_preferences),
         status="pending",
         is_test_entry=False,
     )
     db.add(app)
     await db.flush()
+
+    # Opt into parking + emergency SMS now; Phase 23 expands to all AlertUs channels
+    if data.sms_opt_in and phone:
+        from .student_permits import _opt_in_alerts
+
+        await _opt_in_alerts(db, name, user.email, phone)
+
     return await _app_to_read(db, app)
 
 
@@ -424,6 +434,8 @@ async def accept_offer(
             permit_number=await next_permit_number(db),
             name=app.student_name,
             email=app.student_email or None,
+            phone=app.phone or "",
+            sms_opt_in=bool(app.sms_opt_in),
             plates=[app.plate],
             permit_type=pt.code,
             lot_assignment=lot_assignment,
@@ -489,6 +501,8 @@ async def accept_offer(
                 "lottery_rank": str(app.lottery_rank) if app.lottery_rank else "",
                 "assigned_lot": app.assigned_lot or "",
                 "lot_assignments": ",".join(pt.lot_assignments) if pt.lot_assignments else "",
+                "phone": app.phone or "",
+                "sms_opt_in": "true" if app.sms_opt_in else "false",
                 "institution": settings.school_name or "moravian",
             },
         },
@@ -504,6 +518,8 @@ async def accept_offer(
             "email": app.student_email,
             "valid_days": str(pt.valid_days),
             "assigned_lot": app.assigned_lot or "",
+            "phone": app.phone or "",
+            "sms_opt_in": "true" if app.sms_opt_in else "false",
         },
     )
     return {"checkout_url": session.url, "session_id": session.id}

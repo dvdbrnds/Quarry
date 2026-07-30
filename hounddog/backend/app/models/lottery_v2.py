@@ -45,6 +45,7 @@ class LotteryV2Application(Base):
     plate: Mapped[str] = mapped_column(String(32))
     plate_state: Mapped[str] = mapped_column(String(2), default="")
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
     # Ordered list of permit_type UUIDs (preference rank 1..n)
     tier_preferences: Mapped[list] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
     assigned_permit_type_id: Mapped[uuid.UUID | None] = mapped_column(

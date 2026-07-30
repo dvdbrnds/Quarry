@@ -129,7 +129,7 @@ class DirectPurchaseRequest(BaseModel):
     plate: str
     plate_state: str
     class_year: int
-    phone: str | None = None
+    phone: str
     lot_preference: str | None = None
     sms_opt_in: bool = False
 

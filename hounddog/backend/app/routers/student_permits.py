@@ -35,6 +35,8 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
 
 ALL_ALERT_CATEGORIES = ["emergency", "weather", "campus_closing", "parking", "general"]
+# Permit-registration opt-in today; Phase 23 (AlertUs) expands to ALL_ALERT_CATEGORIES + all channels
+PERMIT_OPT_IN_CATEGORIES = ["emergency", "parking"]
 
 
 async def _opt_in_alerts(
@@ -44,7 +46,8 @@ async def _opt_in_alerts(
     phone: str,
 ) -> None:
     """Create or update an alert subscriber when a student opts in during
-    permit registration. Subscribes them to all alert categories."""
+    permit registration. Subscribes to emergency + parking SMS for now;
+    Phase 23 grows this to all AlertUs emergency channels."""
     try:
         existing = await db.execute(
             select(AlertSubscriber).where(AlertSubscriber.email == email)
@@ -54,7 +57,9 @@ async def _opt_in_alerts(
             if phone and not subscriber.phone:
                 subscriber.phone = phone
             subscriber.sms_enabled = True
-            subscriber.categories = ALL_ALERT_CATEGORIES
+            # Merge so we don't wipe categories already granted elsewhere
+            existing_cats = set(subscriber.categories or [])
+            subscriber.categories = list(existing_cats | set(PERMIT_OPT_IN_CATEGORIES))
         else:
             subscriber = AlertSubscriber(
                 name=name,
@@ -62,7 +67,7 @@ async def _opt_in_alerts(
                 phone=phone,
                 sms_enabled=True,
                 email_enabled=True,
-                categories=ALL_ALERT_CATEGORIES,
+                categories=list(PERMIT_OPT_IN_CATEGORIES),
                 source="permit_registration",
             )
             db.add(subscriber)
@@ -600,6 +605,8 @@ async def direct_purchase(
                 "student_email": user.email,
                 "class_year": str(data.class_year),
                 "lot_assignment": lot_assignment,
+                "phone": data.phone or "",
+                "sms_opt_in": "true" if data.sms_opt_in else "false",
                 "institution": settings.school_name or "moravian",
             },
         },
@@ -614,6 +621,8 @@ async def direct_purchase(
             "email": user.email,
             "valid_days": str(pt.valid_days),
             "lot_assignment": lot_assignment,
+            "phone": data.phone or "",
+            "sms_opt_in": "true" if data.sms_opt_in else "false",
         },
     )
 

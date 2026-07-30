@@ -848,6 +848,8 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
         permit_number=await next_permit_number(db),
         name=student_name or app.student_name,
         email=email or app.student_email or None,
+        phone=app.phone or metadata.get("phone", "") or "",
+        sms_opt_in=bool(app.sms_opt_in) or metadata.get("sms_opt_in") == "true",
         plates=[plate or app.plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
@@ -893,6 +895,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
     plate = metadata.get("plate", "")
     email = metadata.get("email", "")
     phone = metadata.get("phone", "") or None
+    sms_opt_in = metadata.get("sms_opt_in") == "true"
     valid_days = int(metadata.get("valid_days", "365"))
 
     lot_assignment = ""
@@ -906,7 +909,8 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
         permit_number=await next_permit_number(db),
         name=student_name,
         email=email or None,
-        phone=phone,
+        phone=phone or "",
+        sms_opt_in=sms_opt_in,
         plates=[plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,

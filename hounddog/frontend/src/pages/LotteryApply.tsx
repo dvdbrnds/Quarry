@@ -644,10 +644,10 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
               <Form.Item name="phone" label="Mobile Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
                 <Input placeholder="610-555-0123" />
               </Form.Item>
-              <Form.Item name="sms_opt_in" valuePropName="checked" initialValue={true}>
+              <Form.Item name="sms_opt_in" valuePropName="checked" initialValue={false}>
                 <Checkbox>
                   <span className="text-xs text-gray-600">
-                    Send me text messages about my permit, lot closures, weather alerts, and campus emergency notifications
+                    Please opt in to emergency messages and parking-related messages regarding your vehicle.
                   </span>
                 </Checkbox>
               </Form.Item>
@@ -784,10 +784,10 @@ function BuyPanel({ permit, onClose, onError }: {
               <Form.Item name="phone" label="Mobile Phone" rules={[{ required: true, message: "Cell phone is required" }]}>
                 <Input placeholder="610-555-0123" />
               </Form.Item>
-              <Form.Item name="sms_opt_in" valuePropName="checked" initialValue={true}>
+              <Form.Item name="sms_opt_in" valuePropName="checked" initialValue={false}>
                 <Checkbox>
                   <span className="text-xs text-gray-600">
-                    Send me text messages about my permit, lot closures, weather alerts, and campus emergency notifications
+                    Please opt in to emergency messages and parking-related messages regarding your vehicle.
                   </span>
                 </Checkbox>
               </Form.Item>

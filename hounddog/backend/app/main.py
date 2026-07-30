@@ -364,6 +364,8 @@ async def lifespan(app: FastAPI):
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
             # Lottery V2 is production — drop staging cycle names
             "UPDATE lottery_v2_cycles SET name = 'Parking Lottery' WHERE name ILIKE '%staging%'",
+            # SMS opt-in captured at lottery/commuter intake (Phase 23: expand to all AlertUs channels)
+            "ALTER TABLE lottery_v2_applications ADD COLUMN IF NOT EXISTS sms_opt_in BOOLEAN DEFAULT false",
             # Third-party South lots are sold off-platform (City of Bethlehem)
             "UPDATE permit_types SET is_purchasable_online = FALSE WHERE code = 'south_standalone'",
             # Eligible groups for role-based permit visibility
