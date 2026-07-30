@@ -175,25 +175,14 @@ async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> Applicati
 
 
 async def _maybe_auto_draw(db: AsyncSession, cycle: LotteryV2Cycle) -> None:
-    """Fire the waterfall draw if the capacity threshold is met.
+    """Fire the waterfall draw when any single tier is oversubscribed.
 
-    Called after each new application. Does nothing when threshold is unset or
-    already drawn.
+    For each lottery tier, count first-choice applications vs remaining capacity.
+    If any tier's demand >= capacity * threshold, trigger the full draw.
     """
     if not cycle.auto_draw_threshold or cycle.status != "open":
         return
-    app_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(LotteryV2Application)
-            .where(
-                LotteryV2Application.cycle_id == cycle.id,
-                LotteryV2Application.status == "pending",
-            )
-        )
-    ).scalar() or 0
 
-    # Total capacity across all lottery tiers
     from ..services.lottery_v2_runner import (
         LOTTERY_TIER_CODES as _LTC,
         build_tier_capacities,
@@ -205,21 +194,42 @@ async def _maybe_auto_draw(db: AsyncSession, cycle: LotteryV2Cycle) -> None:
         )
     ).scalars().all()
     tiers = await build_tier_capacities(db, list(pts))
-    total_capacity = sum(t.remaining for t in tiers.values())
 
-    if total_capacity <= 0:
-        return
-    if app_count < total_capacity * cycle.auto_draw_threshold:
-        return
+    # For each tier, count first-choice demand (tier_preferences[0])
+    for pt_id, tier in tiers.items():
+        if tier.remaining <= 0:
+            continue
+        # Count apps whose first-ranked tier is this one
+        # Postgres arrays are 1-indexed; SQLAlchemy __getitem__ passes through as-is
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
-    logger.info(
-        "Auto-draw triggered for cycle %s: %d apps >= %d capacity * %.0f%%",
-        cycle.id, app_count, total_capacity, cycle.auto_draw_threshold * 100,
-    )
-    try:
-        await run_waterfall_draw(db, cycle.id, run_by="auto_draw")
-    except ValueError as e:
-        logger.warning("Auto-draw skipped: %s", e)
+        first_choice_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(LotteryV2Application)
+                .where(
+                    LotteryV2Application.cycle_id == cycle.id,
+                    LotteryV2Application.status == "pending",
+                    cast(
+                        LotteryV2Application.tier_preferences[1], PG_UUID(as_uuid=True)
+                    ) == pt_id,
+                )
+            )
+        ).scalar() or 0
+
+        threshold_spots = tier.remaining * cycle.auto_draw_threshold
+        if first_choice_count >= threshold_spots:
+            logger.info(
+                "Auto-draw triggered: tier %s (%s) has %d first-choice apps >= %d spots * %.0f%%",
+                tier.code, tier.label, first_choice_count,
+                tier.remaining, cycle.auto_draw_threshold * 100,
+            )
+            try:
+                await run_waterfall_draw(db, cycle.id, run_by="auto_draw")
+            except ValueError as e:
+                logger.warning("Auto-draw skipped: %s", e)
+            return
 
 
 async def _eligible_tiers_for(

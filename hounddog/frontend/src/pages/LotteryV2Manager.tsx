@@ -340,7 +340,7 @@ export default function LotteryV2Manager() {
                   </label>
                 </div>
                 <p className="text-xs text-gray-500 mt-2 mb-0">
-                  Draw runs automatically when applications reach the threshold OR the deadline passes — whichever is first.
+                  Draw runs automatically when any single tier's first-choice applications reach the threshold, OR the deadline passes — whichever is first.
                   Set to blank to disable either trigger.
                 </p>
               </div>
