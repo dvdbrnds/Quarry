@@ -823,8 +823,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                   <Form.Item className="mb-4">
                     <Checkbox checked={smsOptIn} onChange={(e) => setSmsOptIn(e.target.checked)}>
                       <span className="text-sm text-gray-600">
-                        Please opt in to emergency messages and parking-related messages regarding your vehicle.
-                        {/* Phase 23: expand this opt-in to all AlertUs emergency channels */}
+                        Text me emergency alerts and important messages about my vehicle (e.g., tow warnings, permit expiration, lot closures, lot flooding)
                       </span>
                     </Checkbox>
                   </Form.Item>
