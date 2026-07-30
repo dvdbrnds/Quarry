@@ -111,8 +111,8 @@ export default function LotteryApplyV2() {
           return;
         }
         const u = await fetchCurrentUser();
-        // Faculty/staff from Okta go straight to employee parking enrollment
-        if (u?.role === "admin" || u?.role === "staff") {
+        // Faculty/staff (not Quarry admins) go to employee parking enrollment
+        if (u?.role === "staff") {
           window.location.replace("/employee-parking");
           return;
         }
