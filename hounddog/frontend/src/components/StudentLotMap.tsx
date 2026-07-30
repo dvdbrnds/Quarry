@@ -9,12 +9,21 @@ const HIGHLIGHT_STROKE = "#FFFFFF";
 const FOCUS_FILL = "#FF6B00";
 const FOCUS_STROKE = "#FFFFFF";
 
+export interface MapLegendItem {
+  label: string;
+  color: string;
+}
+
 interface StudentLotMapProps {
   apiKey: string;
   lots: Lot[];
   highlightedLots: string[];
   focusedLot?: string | null;
   defaultCenter?: { lat: number; lng: number };
+  /** Optional per-lot fill colors (keyed by lot name or assignment code). Enables multi-tier color coding. */
+  lotColors?: Record<string, string>;
+  /** Optional legend chips shown instead of the "Showing: Lot …" list */
+  legend?: MapLegendItem[];
 }
 
 /**
@@ -28,6 +37,18 @@ function normalizeLotName(name: string): string {
 function isLotHighlighted(lotName: string, highlightedLots: string[]): boolean {
   const normalized = normalizeLotName(lotName);
   return highlightedLots.some((hl) => normalizeLotName(hl) === normalized);
+}
+
+function lookupLotColor(
+  lotName: string,
+  lotColors?: Record<string, string>,
+): string | null {
+  if (!lotColors) return null;
+  const key = normalizeLotName(lotName);
+  for (const [name, color] of Object.entries(lotColors)) {
+    if (normalizeLotName(name) === key) return color;
+  }
+  return null;
 }
 
 /** Create an HTML element for a text-only map label */
@@ -54,6 +75,8 @@ function MapContent({
   highlightedLots,
   focusedLot,
   defaultCenter,
+  lotColors,
+  legend,
 }: Omit<StudentLotMapProps, "apiKey">) {
   const map = useMap();
   const markerLib = useMapsLibrary("marker");
@@ -61,6 +84,7 @@ function MapContent({
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const initialFitDoneRef = useRef(false);
+  const colorMode = Boolean(lotColors && Object.keys(lotColors).length > 0);
 
   // Fit to all lots once on initial load
   useEffect(() => {
@@ -85,22 +109,82 @@ function MapContent({
     markersRef.current.forEach((m) => { m.map = null; });
     markersRef.current = [];
 
-    const hasHighlight = highlightedLots.length > 0;
+    const hasEmphasize = highlightedLots.length > 0;
 
     lots.forEach((lot) => {
       if (lot.boundary.length < 3) return;
 
-      const isHighlighted = hasHighlight && isLotHighlighted(lot.name, highlightedLots);
+      const tierColor = lookupLotColor(lot.name, lotColors);
+      const isEmphasized = hasEmphasize && isLotHighlighted(lot.name, highlightedLots);
       const isFocused = !!focusedLot && normalizeLotName(lot.name) === normalizeLotName(focusedLot);
+      const isColored = Boolean(tierColor);
+
+      let strokeColor: string;
+      let strokeOpacity: number;
+      let strokeWeight: number;
+      let fillColor: string;
+      let fillOpacity: number;
+      let zIndex: number;
+      let labelColor: string;
+      let labelSize: string;
+      let labelOpacity: number;
+
+      if (colorMode && isColored && tierColor) {
+        // Multi-tier color coding: keep all tier lots visible in their colors
+        if (isFocused) {
+          fillColor = tierColor;
+          fillOpacity = 0.9;
+          strokeColor = FOCUS_STROKE;
+          strokeOpacity = 1;
+          strokeWeight = 5;
+          zIndex = 30;
+          labelColor = tierColor;
+          labelSize = "16px";
+          labelOpacity = 1;
+        } else if (!hasEmphasize || isEmphasized) {
+          fillColor = tierColor;
+          fillOpacity = hasEmphasize && isEmphasized ? 0.75 : 0.5;
+          strokeColor = "#FFFFFF";
+          strokeOpacity = 1;
+          strokeWeight = hasEmphasize && isEmphasized ? 4 : 3;
+          zIndex = hasEmphasize && isEmphasized ? 20 : 10;
+          labelColor = tierColor;
+          labelSize = hasEmphasize && isEmphasized ? "14px" : "12px";
+          labelOpacity = 1;
+        } else {
+          // Other tiers while hovering one — keep color but mute
+          fillColor = tierColor;
+          fillOpacity = 0.18;
+          strokeColor = tierColor;
+          strokeOpacity = 0.45;
+          strokeWeight = 2;
+          zIndex = 2;
+          labelColor = tierColor;
+          labelSize = "11px";
+          labelOpacity = 0.45;
+        }
+      } else {
+        // Legacy single-highlight mode (live /parking)
+        const isHighlighted = hasEmphasize && isLotHighlighted(lot.name, highlightedLots);
+        strokeColor = !hasEmphasize ? "#D1D5DB" : isFocused ? FOCUS_STROKE : isHighlighted ? HIGHLIGHT_STROKE : "#6B7280";
+        strokeOpacity = !hasEmphasize ? 1 : (isFocused || isHighlighted) ? 1 : 0.3;
+        strokeWeight = !hasEmphasize ? 2 : isFocused ? 5 : isHighlighted ? 4 : 1;
+        fillColor = !hasEmphasize ? "#9CA3AF" : isFocused ? FOCUS_FILL : isHighlighted ? HIGHLIGHT_FILL : "#374151";
+        fillOpacity = !hasEmphasize ? 0.25 : isFocused ? 0.85 : isHighlighted ? 0.55 : 0.1;
+        zIndex = isFocused ? 20 : isHighlighted ? 10 : 1;
+        labelColor = isFocused ? FOCUS_FILL : isHighlighted ? HIGHLIGHT_FILL : "white";
+        labelSize = isFocused ? "16px" : isHighlighted ? "14px" : "11px";
+        labelOpacity = !hasEmphasize || isHighlighted || isFocused ? 1 : 0.25;
+      }
 
       const poly = new google.maps.Polygon({
         paths: lot.boundary.map((c) => ({ lat: c.latitude, lng: c.longitude })),
-        strokeColor: !hasHighlight ? "#D1D5DB" : isFocused ? FOCUS_STROKE : isHighlighted ? HIGHLIGHT_STROKE : "#6B7280",
-        strokeOpacity: !hasHighlight ? 1 : (isFocused || isHighlighted) ? 1 : 0.3,
-        strokeWeight: !hasHighlight ? 2 : isFocused ? 5 : isHighlighted ? 4 : 1,
-        fillColor: !hasHighlight ? "#9CA3AF" : isFocused ? FOCUS_FILL : isHighlighted ? HIGHLIGHT_FILL : "#374151",
-        fillOpacity: !hasHighlight ? 0.25 : isFocused ? 0.85 : isHighlighted ? 0.55 : 0.1,
-        zIndex: isFocused ? 20 : isHighlighted ? 10 : 1,
+        strokeColor,
+        strokeOpacity,
+        strokeWeight,
+        fillColor,
+        fillOpacity,
+        zIndex,
         map,
         clickable: true,
       });
@@ -123,43 +207,37 @@ function MapContent({
 
       polygonsRef.current.push(poly);
 
-      // Label
       const bounds = new google.maps.LatLngBounds();
       lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
 
-      const showLabel = !hasHighlight || isHighlighted || isFocused;
       const label = new markerLib.AdvancedMarkerElement({
         position: bounds.getCenter(),
         map,
-        content: createLabelElement(
-          lot.name,
-          isFocused ? FOCUS_FILL : isHighlighted ? HIGHLIGHT_FILL : "white",
-          isFocused ? "16px" : isHighlighted ? "14px" : "11px",
-          showLabel ? 1 : 0.25,
-        ),
+        content: createLabelElement(lot.name, labelColor, labelSize, labelOpacity),
       });
       markersRef.current.push(label);
     });
 
-    // Zoom to highlighted lots on hover
-    if (hasHighlight) {
-      const highlighted = lots.filter(
-        (l) => l.boundary.length >= 3 && isLotHighlighted(l.name, highlightedLots),
-      );
-      if (highlighted.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        highlighted.forEach((lot) => {
-          lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-        });
-        map.fitBounds(bounds, 60);
-      }
+    // Zoom: emphasize subset on hover, otherwise fit all colored/highlighted lots
+    const zoomTargets = hasEmphasize
+      ? lots.filter((l) => l.boundary.length >= 3 && isLotHighlighted(l.name, highlightedLots))
+      : colorMode
+        ? lots.filter((l) => l.boundary.length >= 3 && lookupLotColor(l.name, lotColors))
+        : [];
+
+    if (zoomTargets.length > 0 && (hasEmphasize || colorMode)) {
+      const bounds = new google.maps.LatLngBounds();
+      zoomTargets.forEach((lot) => {
+        lot.boundary.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+      });
+      map.fitBounds(bounds, 60);
     }
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
       markersRef.current.forEach((m) => { m.map = null; });
     };
-  }, [map, markerLib, lots, highlightedLots, focusedLot]);
+  }, [map, markerLib, lots, highlightedLots, focusedLot, lotColors, colorMode]);
 
   return (
     <>
@@ -178,10 +256,24 @@ function MapContent({
         style={{ display: "none" }}
         className="absolute z-20 pointer-events-none px-2 py-1 rounded bg-[#1a2744]/90 text-white text-xs font-medium whitespace-nowrap shadow"
       />
-      {highlightedLots.length > 0 && (
-        <div className="absolute top-3 left-3 z-10 bg-[#1a2744]/90 backdrop-blur rounded-lg px-3 py-2 text-white text-xs font-medium shadow-lg">
-          Showing: {highlightedLots.map((n) => `Lot ${n}`).join(", ")}
+      {legend && legend.length > 0 ? (
+        <div className="absolute top-3 left-3 z-10 bg-[#1a2744]/90 backdrop-blur rounded-lg px-3 py-2 text-white text-xs font-medium shadow-lg space-y-1.5">
+          {legend.map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span
+                className="inline-block w-3 h-3 rounded-sm shrink-0 border border-white/60"
+                style={{ background: item.color }}
+              />
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
+      ) : (
+        highlightedLots.length > 0 && (
+          <div className="absolute top-3 left-3 z-10 bg-[#1a2744]/90 backdrop-blur rounded-lg px-3 py-2 text-white text-xs font-medium shadow-lg">
+            Showing: {highlightedLots.map((n) => `Lot ${n}`).join(", ")}
+          </div>
+        )
       )}
     </>
   );
@@ -204,6 +296,8 @@ export default function StudentLotMap(props: StudentLotMapProps) {
           highlightedLots={props.highlightedLots}
           focusedLot={props.focusedLot}
           defaultCenter={props.defaultCenter}
+          lotColors={props.lotColors}
+          legend={props.legend}
         />
       </div>
     </APIProvider>

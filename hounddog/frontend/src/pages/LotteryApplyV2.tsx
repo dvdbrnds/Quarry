@@ -6,6 +6,27 @@ import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
 
+/** Stable colors per permit-type code — cards and map lots share these */
+const TIER_COLORS: Record<string, { fill: string; soft: string; border: string }> = {
+  north_premium_resident: { fill: "#D97706", soft: "#FFFBEB", border: "#B45309" },
+  south_premium_resident: { fill: "#D97706", soft: "#FFFBEB", border: "#B45309" },
+  north_guaranteed_resident: { fill: "#2563EB", soft: "#EFF6FF", border: "#1D4ED8" },
+  south_guaranteed_resident: { fill: "#2563EB", soft: "#EFF6FF", border: "#1D4ED8" },
+  steel_field_resident: { fill: "#0D9488", soft: "#F0FDFA", border: "#0F766E" },
+};
+
+const FALLBACK_TIER_COLORS = [
+  { fill: "#D97706", soft: "#FFFBEB", border: "#B45309" },
+  { fill: "#2563EB", soft: "#EFF6FF", border: "#1D4ED8" },
+  { fill: "#0D9488", soft: "#F0FDFA", border: "#0F766E" },
+  { fill: "#DB2777", soft: "#FDF2F8", border: "#BE185D" },
+  { fill: "#7C3AED", soft: "#F5F3FF", border: "#6D28D9" },
+];
+
+function tierColor(tier: { code: string }, index: number) {
+  return TIER_COLORS[tier.code] || FALLBACK_TIER_COLORS[index % FALLBACK_TIER_COLORS.length];
+}
+
 interface Cycle {
   id: string;
   name: string;
@@ -128,6 +149,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [accepting, setAccepting] = useState(false);
   const [lots, setLots] = useState<Lot[]>([]);
   const [highlightedLots, setHighlightedLots] = useState<string[]>([]);
+  const [hoveredTierId, setHoveredTierId] = useState<string | null>(null);
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
@@ -151,6 +173,28 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     const allowed = new Set(eligibleLotNames.map(normalizeLotKey));
     return lots.filter((lot) => allowed.has(normalizeLotKey(lot.name)));
   }, [lots, eligibleLotNames]);
+
+  /** Lot assignment name → tier fill color (for map polygons) */
+  const lotColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    eligibleTier.forEach((tier, i) => {
+      const color = tierColor(tier, i).fill;
+      for (const lot of tier.lot_assignments) {
+        // First tier wins if a lot somehow appears in multiple (shouldn't)
+        if (!map[lot]) map[lot] = color;
+      }
+    });
+    return map;
+  }, [eligibleTier]);
+
+  const mapLegend = useMemo(
+    () =>
+      eligibleTier.map((tier, i) => ({
+        label: tier.label.replace(/\s+Resident$/i, ""),
+        color: tierColor(tier, i).fill,
+      })),
+    [eligibleTier],
+  );
 
   async function loadTiers(c: "north" | "south", year: number) {
     const headers = await authHeaders();
@@ -351,12 +395,13 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     : null;
 
   // Prefer tier hover → else all lots from eligible V2 tiers → assigned lot after draw
+  // In color mode, empty highlight = show all tier colors; non-empty = emphasize hovered tier
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
       : application?.assigned_lot && step === "done"
         ? [application.assigned_lot]
-        : eligibleLotNames;
+        : [];
 
   const lotsForMap =
     step === "done" && application?.assigned_lot
@@ -366,6 +411,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
+  const showTierColors = step === "rank" || (step === "intake" && eligibleTier.length > 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -394,6 +440,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                 highlightedLots={mapHighlight}
                 focusedLot={focusedLot}
                 defaultCenter={campusCenter}
+                lotColors={showTierColors ? lotColors : undefined}
+                legend={showTierColors ? mapLegend : undefined}
               />
             </div>
           )}
@@ -558,6 +606,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                     onClick={() => {
                       setStep("intake");
                       setHighlightedLots([]);
+                      setHoveredTierId(null);
                       setFocusedLot(null);
                     }}
                   >
@@ -572,26 +621,47 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                 ) : (
                   <>
                     <p className="text-sm text-gray-500 mb-4">
-                      Rank with the arrows. Hover a tier to highlight its lots on the map.
-                      #1 is your first choice — you'll get one placement if capacity allows.
+                      Rank with the arrows. Each color matches its lots on the map — hover a tier
+                      to zoom and emphasize it. #1 is your first choice.
                     </p>
                     <ul className="space-y-2 list-none p-0 m-0 mb-6">
-                      {ranked.map((tier, i) => (
+                      {ranked.map((tier, i) => {
+                        const colors = tierColor(tier, i);
+                        const isHovered = hoveredTierId === tier.id;
+                        return (
                         <li
                           key={tier.id}
-                          className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3 transition-shadow hover:shadow-md"
+                          className="flex items-center gap-3 rounded-lg border px-3 py-3 transition-shadow hover:shadow-md"
+                          style={{
+                            borderColor: colors.border,
+                            borderLeftWidth: 4,
+                            background: isHovered ? colors.soft : "#fff",
+                          }}
                           onMouseEnter={() => {
+                            setHoveredTierId(tier.id);
                             setHighlightedLots(tier.lot_assignments);
                             setFocusedLot(null);
                           }}
                           onMouseLeave={() => {
+                            setHoveredTierId(null);
                             setHighlightedLots([]);
                             setFocusedLot(null);
                           }}
                         >
-                          <span className="text-sm font-bold text-gray-400 w-6">#{i + 1}</span>
+                          <span
+                            className="text-sm font-bold w-6"
+                            style={{ color: colors.fill }}
+                          >
+                            #{i + 1}
+                          </span>
                           <div className="flex-1 min-w-0">
-                            <p className="m-0 font-medium">{tier.label}</p>
+                            <p className="m-0 font-medium flex items-center gap-2">
+                              <span
+                                className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+                                style={{ background: colors.fill }}
+                              />
+                              {tier.label}
+                            </p>
                             <p className="m-0 text-xs text-gray-500">
                               ${tier.price} · {tier.remaining} spots left
                             </p>
@@ -602,10 +672,16 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                                   <Tag
                                     key={lot}
                                     className="m-0 cursor-default"
+                                    style={{
+                                      color: colors.border,
+                                      background: colors.soft,
+                                      borderColor: colors.fill,
+                                    }}
                                     onMouseEnter={(e) => {
                                       e.stopPropagation();
                                       setFocusedLot(lot);
                                       setHighlightedLots(tier.lot_assignments);
+                                      setHoveredTierId(tier.id);
                                     }}
                                     onMouseLeave={(e) => {
                                       e.stopPropagation();
@@ -635,7 +711,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                             />
                           </Space>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                     <Button type="primary" loading={submitting} onClick={submit} block>
                       Submit application
@@ -663,6 +740,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                   highlightedLots={mapHighlight}
                   focusedLot={focusedLot}
                   defaultCenter={campusCenter}
+                  lotColors={showTierColors ? lotColors : undefined}
+                  legend={showTierColors ? mapLegend : undefined}
                 />
               </div>
             </div>
