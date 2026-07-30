@@ -6,9 +6,6 @@ import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
 
-/** Same threshold as live /parking — lots north of this lat are North Campus */
-const CAMPUS_LAT_THRESHOLD = 40.623;
-
 interface Cycle {
   id: string;
   name: string;
@@ -135,37 +132,47 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
 
-  /** Map lot name → campus using lot.campus or centroid latitude (same as live /parking) */
-  const lotCampusMap = useMemo(() => {
-    const m: Record<string, "north" | "south"> = {};
-    for (const lot of lots) {
-      const key = lot.name.replace(/^lot\s+/i, "").trim().toLowerCase();
-      if (lot.campus === "north" || lot.campus === "south") {
-        m[key] = lot.campus;
-        continue;
-      }
-      if (lot.boundary.length < 3) continue;
-      const avgLat = lot.boundary.reduce((s, c) => s + c.latitude, 0) / lot.boundary.length;
-      m[key] = avgLat >= CAMPUS_LAT_THRESHOLD ? "north" : "south";
+  function normalizeLotKey(name: string) {
+    return name.replace(/^lot\s+/i, "").trim().toLowerCase();
+  }
+
+  /** Lots belonging to the eligible V2 tiers only — not every campus lot (excludes commuter etc.) */
+  const eligibleTier = ranked.length > 0 ? ranked : tiers;
+  const eligibleLotNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const tier of eligibleTier) {
+      for (const lot of tier.lot_assignments) names.add(lot);
     }
-    return m;
-  }, [lots]);
+    return [...names];
+  }, [eligibleTier]);
 
-  const campusLotNames = useMemo(() => {
-    if (!campus) return [] as string[];
-    return lots
-      .filter((lot) => {
-        const key = lot.name.replace(/^lot\s+/i, "").trim().toLowerCase();
-        return lotCampusMap[key] === campus;
-      })
-      .map((lot) => lot.name.replace(/^lot\s+/i, "").trim());
-  }, [campus, lots, lotCampusMap]);
+  const mapLots = useMemo(() => {
+    if (eligibleLotNames.length === 0) return [] as Lot[];
+    const allowed = new Set(eligibleLotNames.map(normalizeLotKey));
+    return lots.filter((lot) => allowed.has(normalizeLotKey(lot.name)));
+  }, [lots, eligibleLotNames]);
 
-  function selectCampus(c: "north" | "south") {
+  async function loadTiers(c: "north" | "south", year: number) {
+    const headers = await authHeaders();
+    const res = await fetch(
+      `/api/lottery-v2/eligible-tiers?campus=${c}&class_year=${year}`,
+      { headers },
+    );
+    if (!res.ok) {
+      message.error("Could not load eligible tiers");
+      return;
+    }
+    const data: Tier[] = await res.json();
+    setTiers(data);
+    setRanked(data);
+  }
+
+  async function selectCampus(c: "north" | "south") {
     setCampus(c);
     setFocusedLot(null);
-    // Clear tier hover so campus zoom takes effect immediately
     setHighlightedLots([]);
+    // Load campus V2 tiers for map (use class year when known; else permissive year to show all campus tiers)
+    await loadTiers(c, classYear ?? 2020);
   }
 
   const load = useCallback(async () => {
@@ -223,20 +230,13 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     }
   }, [load, message]);
 
-  async function loadTiers(c: "north" | "south", year: number) {
-    const headers = await authHeaders();
-    const res = await fetch(
-      `/api/lottery-v2/eligible-tiers?campus=${c}&class_year=${year}`,
-      { headers },
-    );
-    if (!res.ok) {
-      message.error("Could not load eligible tiers");
-      return;
+  // Refresh eligible tiers (and map lots) when class year changes after campus is chosen
+  useEffect(() => {
+    if (campus && classYear && step === "intake") {
+      loadTiers(campus, classYear);
     }
-    const data: Tier[] = await res.json();
-    setTiers(data);
-    setRanked(data);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classYear]);
 
   async function continueToRank() {
     if (!campus || !classYear || !plate.trim()) {
@@ -350,14 +350,22 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     ? STATUS_LABELS[application.status] || { text: application.status, color: "default" }
     : null;
 
-  const showMap = Boolean(mapsApiKey && lots.length > 0);
-  // Prefer tier hover → else campus selection (zooms to all north/south lots) → assigned lot
+  // Prefer tier hover → else all lots from eligible V2 tiers → assigned lot after draw
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
       : application?.assigned_lot && step === "done"
         ? [application.assigned_lot]
-        : campusLotNames;
+        : eligibleLotNames;
+
+  const lotsForMap =
+    step === "done" && application?.assigned_lot
+      ? lots.filter((l) => normalizeLotKey(l.name) === normalizeLotKey(application.assigned_lot!))
+      : mapLots.length > 0
+        ? mapLots
+        : [];
+
+  const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -378,11 +386,11 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className={`grid grid-cols-1 gap-6 ${showMap ? "lg:grid-cols-3" : ""}`}>
-          {showMap && (
+          {showMap && lotsForMap.length > 0 && (
             <div className="lg:hidden h-[280px] rounded-xl overflow-hidden shadow">
               <StudentLotMap
                 apiKey={mapsApiKey}
-                lots={lots}
+                lots={lotsForMap}
                 highlightedLots={mapHighlight}
                 focusedLot={focusedLot}
                 defaultCenter={campusCenter}
@@ -651,7 +659,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
               <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
                 <StudentLotMap
                   apiKey={mapsApiKey}
-                  lots={lots}
+                  lots={lotsForMap}
                   highlightedLots={mapHighlight}
                   focusedLot={focusedLot}
                   defaultCenter={campusCenter}
