@@ -10,6 +10,7 @@ import { MailOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import PermitTypes from "./PermitTypes";
+import LotteryV2Manager from "./LotteryV2Manager";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -155,7 +156,12 @@ export default function Permits() {
   const location = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const initTab = (location.hash === "#types" || location.search.includes("lottery=")) ? "types" : "permits";
+  const initTab =
+    location.hash === "#lottery-v2"
+      ? "lottery-v2"
+      : location.hash === "#types" || location.search.includes("lottery=")
+        ? "types"
+        : "permits";
   const [tab, setTab] = useState(initTab);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
@@ -581,6 +587,11 @@ export default function Permits() {
             key: "types",
             label: "Manage Permits",
             children: <PermitTypes />,
+          },
+          {
+            key: "lottery-v2",
+            label: "Lottery V2 (Staging)",
+            children: <LotteryV2Manager />,
           },
         ]}
       />

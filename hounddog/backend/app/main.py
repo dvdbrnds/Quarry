@@ -17,6 +17,7 @@ from .routers import (
     devices,
     enforcement_settings,
     lots,
+    lottery_v2,
     messaging,
     notification_preferences,
     parking_map,
@@ -742,6 +743,7 @@ app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"]
 app.include_router(notification_preferences.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(staff_permits.router, prefix="/api/staff/permits", tags=["staff-permits"])
 app.include_router(student_permits.router, prefix="/api/student/permits", tags=["student-permits"])
+app.include_router(lottery_v2.router, prefix="/api/lottery-v2", tags=["lottery-v2"])
 app.include_router(renewals.router, prefix="/api/renewals", tags=["renewals"])
 app.include_router(alerts.admin_router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(alerts.public_router, prefix="/api/alerts", tags=["alerts-public"])

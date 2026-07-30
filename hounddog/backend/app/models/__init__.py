@@ -10,6 +10,7 @@ from .enforcement_settings import EnforcementSettings
 from .lot import ParkingLot
 from .lot_closure import LotClosure
 from .lot_zone import LotZone
+from .lottery_v2 import LotteryV2Application, LotteryV2AuditLog, LotteryV2Cycle
 from .parking_spot import ParkingSpot
 from .message_template import MessageTemplate
 from .notification_preference import NotificationPreference
@@ -37,6 +38,9 @@ __all__ = [
     "EnforcementSettings",
     "LotClosure",
     "LotZone",
+    "LotteryV2Application",
+    "LotteryV2AuditLog",
+    "LotteryV2Cycle",
     "MessageTemplate",
     "NotificationPreference",
     "ParkingLot",

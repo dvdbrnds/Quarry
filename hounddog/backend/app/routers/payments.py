@@ -50,7 +50,12 @@ from ..schemas.payment import (
 
 router = APIRouter()
 
-PERMIT_PAYMENT_TYPES = {"permit_purchase", "lottery_permit", "standalone_permit_purchase"}
+PERMIT_PAYMENT_TYPES = {
+    "permit_purchase",
+    "lottery_permit",
+    "lottery_v2_permit",
+    "standalone_permit_purchase",
+}
 
 
 def _build_gl_string(fund: str, org: str, account: str, activity: str) -> str:
@@ -787,6 +792,84 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
         payer_email=email or None,
         plate=plate or None,
         description=f"Lottery Permit ({permit_type_code}) — {plate}" if plate else f"Lottery Permit ({permit_type_code})",
+    )
+    db.add(payment)
+
+    app.status = "accepted"
+    await db.flush()
+    return True
+
+
+async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSession) -> bool:
+    """Handle payment for a Lottery V2 (waterfall) winning application."""
+    from ..models.lottery_v2 import LotteryV2Application
+    from ..models.permit_type import PermitType as PT
+
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return True
+
+    app_id = metadata.get("application_id")
+    if not app_id:
+        return False
+
+    app = await db.get(LotteryV2Application, uuid.UUID(app_id))
+    if not app or app.status != "selected":
+        return False
+
+    permit_type_code = metadata.get("permit_type_code", "")
+    student_name = metadata.get("student_name", "")
+    plate = metadata.get("plate", "")
+    valid_days = int(metadata.get("valid_days", "365"))
+    email = metadata.get("email", "") or metadata.get("student_email", "")
+
+    lot_assignment = metadata.get("assigned_lot") or ""
+    if not lot_assignment:
+        permit_type_id = metadata.get("permit_type_id")
+        if permit_type_id:
+            pt = await db.get(PT, uuid.UUID(permit_type_id))
+            if pt and pt.lot_assignments:
+                lot_assignment = ",".join(pt.lot_assignments)
+        elif app.assigned_permit_type_id:
+            pt = await db.get(PT, app.assigned_permit_type_id)
+            if pt:
+                permit_type_code = permit_type_code or pt.code
+                if pt.lot_assignments:
+                    lot_assignment = app.assigned_lot or ",".join(pt.lot_assignments)
+
+    if app.assigned_lot:
+        lot_assignment = app.assigned_lot
+
+    new_permit = Permit(
+        permit_number=await next_permit_number(db),
+        name=student_name or app.student_name,
+        email=email or app.student_email or None,
+        plates=[plate or app.plate],
+        permit_type=permit_type_code,
+        lot_assignment=lot_assignment,
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=valid_days),
+        status="active",
+    )
+    db.add(new_permit)
+
+    payment = Payment(
+        amount=Decimal(session["amount_total"]) / 100,
+        method="online_permit_purchase",
+        stripe_payment_id=stripe_pi,
+        payment_type="lottery_v2_permit",
+        payer_name=(student_name or app.student_name) or None,
+        payer_email=(email or app.student_email) or None,
+        plate=(plate or app.plate) or None,
+        description=(
+            f"Lottery V2 Permit ({permit_type_code}) — {plate or app.plate}"
+            if (plate or app.plate)
+            else f"Lottery V2 Permit ({permit_type_code})"
+        ),
     )
     db.add(payment)
 
