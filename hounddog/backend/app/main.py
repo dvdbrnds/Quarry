@@ -382,6 +382,51 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS last_plate_change TIMESTAMPTZ",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT FALSE",
             "UPDATE permit_types SET allow_multiple = TRUE WHERE code = 'faculty_staff' AND allow_multiple = FALSE",
+            # 2025 planning spreadsheet: update tier caps and lot assignments
+            "UPDATE permit_types SET max_capacity = 264, lot_assignments = '{X,A,F,H,J,M,N,O,R,S}' WHERE code = 'commuter_undergrad'",
+            "UPDATE permit_types SET lot_assignments = '{W,A,F,H,J,M,N,O,R,S}' WHERE code = 'commuter_grad'",
+            "UPDATE permit_types SET max_capacity = 200, lot_assignments = '{\"Main St\",\"Iron St.\",\"Monocacy St.\",\"Lenox Ave\",\"W. Greenwich St.\",\"Lorain Ave.\",\"W. Elizabeth\",\"W. Locust St\"}' WHERE code = 'premium_commuter'",
+            "UPDATE permit_types SET max_capacity = 58 WHERE code = 'north_premium_resident'",
+            "UPDATE permit_types SET max_capacity = 218 WHERE code = 'north_guaranteed_resident'",
+            "UPDATE permit_types SET max_capacity = 40 WHERE code = 'south_premium_resident'",
+            "UPDATE permit_types SET max_capacity = 44, lot_assignments = '{U}' WHERE code = 'south_guaranteed_resident'",
+            "UPDATE permit_types SET max_capacity = 100 WHERE code = 'south_standalone'",
+            "UPDATE permit_types SET lot_assignments = '{A,F,H,J,M,N,O,R,S,U,W}' WHERE code = 'faculty_staff'",
+            # 2025 planning spreadsheet: update lot spot counts
+            "UPDATE parking_lots SET total_spaces = 103 WHERE name = 'A'",
+            "UPDATE parking_lots SET total_spaces = 95 WHERE name = 'B'",
+            "UPDATE parking_lots SET total_spaces = 22 WHERE name = 'C'",
+            "UPDATE parking_lots SET total_spaces = 12 WHERE name = 'D'",
+            "UPDATE parking_lots SET total_spaces = 57 WHERE name = 'F'",
+            "UPDATE parking_lots SET total_spaces = 22 WHERE name = 'G'",
+            "UPDATE parking_lots SET total_spaces = 19 WHERE name = 'H'",
+            "UPDATE parking_lots SET total_spaces = 22 WHERE name = 'I'",
+            "UPDATE parking_lots SET total_spaces = 18 WHERE name = 'M'",
+            "UPDATE parking_lots SET total_spaces = 20 WHERE name = 'N'",
+            "UPDATE parking_lots SET total_spaces = 16 WHERE name = 'O'",
+            "UPDATE parking_lots SET total_spaces = 18 WHERE name = 'P'",
+            "UPDATE parking_lots SET total_spaces = 42, campus = 'north' WHERE name = 'Q'",
+            "UPDATE parking_lots SET total_spaces = 22 WHERE name = 'R'",
+            "UPDATE parking_lots SET total_spaces = 26 WHERE name = 'S'",
+            "UPDATE parking_lots SET total_spaces = 49 WHERE name = 'T'",
+            "UPDATE parking_lots SET total_spaces = 88 WHERE name = 'U'",
+            "UPDATE parking_lots SET total_spaces = 112 WHERE name = 'W'",
+            "UPDATE parking_lots SET total_spaces = 264 WHERE name = 'X'",
+            "UPDATE parking_lots SET total_spaces = 40 WHERE name = 'Z'",
+            "UPDATE parking_lots SET total_spaces = 36 WHERE name = 'W. Laurel St'",
+            "UPDATE parking_lots SET total_spaces = 50 WHERE name = 'Lehigh St'",
+            "UPDATE parking_lots SET total_spaces = 100 WHERE name = 'Spring St'",
+            # Create Lot J if it doesn't exist (F/S primary, commuter 4p-6a secondary)
+            """INSERT INTO parking_lots (id, name, total_spaces, designation_code, designation_label, lot_type, campus)
+               SELECT gen_random_uuid(), 'J', 18, 'FSC', 'Faculty/Staff + Commuter (time-split)', 'lot', 'north'
+               WHERE NOT EXISTS (SELECT 1 FROM parking_lots WHERE name = 'J' AND deleted_at IS NULL)""",
+            # Create W. Locust St if it doesn't exist (street, F/S primary, commuter 4p-6a secondary)
+            """INSERT INTO parking_lots (id, name, total_spaces, designation_code, designation_label, lot_type, campus)
+               SELECT gen_random_uuid(), 'W. Locust St', 25, 'FSC', 'Faculty/Staff + Commuter (time-split)', 'street', 'north'
+               WHERE NOT EXISTS (SELECT 1 FROM parking_lots WHERE name = 'W. Locust St' AND deleted_at IS NULL)""",
+            # Update COMMUTER_EVENING_SCHEDULE on all FSC lots (change 07:00 to 06:00)
+            """UPDATE parking_lots SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
+               WHERE designation_code = 'FSC' AND access_schedule::text LIKE '%07:00%'""",
             ]
             for migration in migrations:
                 await conn.execute(text(migration))
@@ -474,16 +519,16 @@ async def lifespan(app: FastAPI):
             pt_count = await session.scalar(select(func.count()).select_from(PermitType))
             if pt_count == 0:
                 default_permits = [
-                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 249, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
-                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
-                    {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 35, "valid_days": 365, "lot_assignments": ["W. Laurel St"], "is_purchasable_online": True, "sort_order": 3},
-                    {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 57, "valid_days": 365, "lot_assignments": ["I", "W. Laurel St"], "is_purchasable_online": False, "sort_order": 4},
-                    {"code": "north_guaranteed_resident", "label": "North Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 208, "valid_days": 365, "lot_assignments": ["B", "C", "D", "G", "P", "T"], "is_purchasable_online": False, "sort_order": 5},
+                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 264, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "J", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
+                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "J", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
+                    {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 200, "valid_days": 365, "lot_assignments": ["Main St", "Iron St.", "Monocacy St.", "Lenox Ave", "W. Greenwich St.", "Lorain Ave.", "W. Elizabeth", "W. Locust St"], "is_purchasable_online": True, "sort_order": 3},
+                    {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 58, "valid_days": 365, "lot_assignments": ["I", "W. Laurel St"], "is_purchasable_online": False, "sort_order": 4},
+                    {"code": "north_guaranteed_resident", "label": "North Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 218, "valid_days": 365, "lot_assignments": ["B", "C", "D", "G", "P", "T"], "is_purchasable_online": False, "sort_order": 5},
                     {"code": "steel_field_resident", "label": "Steel Field Resident", "eligible": "Resident students", "price": 75, "max_capacity": 42, "valid_days": 365, "lot_assignments": ["Q"], "is_purchasable_online": True, "sort_order": 6},
-                    {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 37, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},
-                    {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 88, "valid_days": 365, "lot_assignments": ["U", "Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 8},
-                    {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 50, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 9},
-                    {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
+                    {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 40, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},
+                    {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 44, "valid_days": 365, "lot_assignments": ["U"], "is_purchasable_online": False, "sort_order": 8},
+                    {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 100, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 9},
+                    {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "J", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
                 ]
                 for row in default_permits:
                     session.add(PermitType(

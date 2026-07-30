@@ -42,7 +42,7 @@ COMMUTER_EVENING_SCHEDULE = [
         "label": "Year-Round",
         "rules": [
             {
-                "start": "07:00",
+                "start": "06:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": ["faculty_staff"],
@@ -50,7 +50,7 @@ COMMUTER_EVENING_SCHEDULE = [
             },
             {
                 "start": "16:00",
-                "end": "07:00",
+                "end": "06:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [
                     "faculty_staff",
