@@ -400,8 +400,14 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
       return;
     }
     await loadTiers(campus, classYear);
-    // Residents → lottery rank; commuters → pick & purchase (not a lottery)
-    setStep(campus === "commuter" ? "choose" : "rank");
+    if (campus === "commuter") {
+      setStep("choose");
+    } else if (cycle?.status !== "open") {
+      // Post-draw: if tiers are purchasable (undersubscribed), offer direct purchase
+      setStep("choose");
+    } else {
+      setStep("rank");
+    }
   }
 
   function moveTier(index: number, direction: -1 | 1) {
@@ -822,7 +828,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       </span>
                     </Checkbox>
                   </Form.Item>
-                  {!isCommuterPath && cycle?.status !== "open" && campus && (
+                  {!isCommuterPath && cycle?.status !== "open" && cycle?.status !== "drawn" && campus && (
                     <p className="text-sm text-amber-700 mb-3">
                       The resident lottery is not open right now. Check back when registration opens,
                       or choose Commuter if that applies to you.
@@ -836,10 +842,14 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       !classYear ||
                       !plate ||
                       !phone.trim() ||
-                      (!isCommuterPath && cycle?.status !== "open")
+                      (!isCommuterPath && cycle?.status !== "open" && cycle?.status !== "drawn")
                     }
                   >
-                    {isCommuterPath ? "Continue — choose a permit" : "Continue — rank tiers"}
+                    {isCommuterPath
+                      ? "Continue — choose a permit"
+                      : cycle?.status === "open"
+                        ? "Continue — rank tiers"
+                        : "Continue — available permits"}
                   </Button>
                 </Form>
               </Card>
@@ -863,12 +873,13 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                 }
               >
                 {ranked.length === 0 ? (
-                  <p className="text-gray-500">No commuter permits are available for your class year.</p>
+                  <p className="text-gray-500">No permits are available for your class year.</p>
                 ) : (
                   <>
                     <p className="text-sm text-gray-500 mb-4">
-                      Map colors: blue = full-time, amber = after 4 PM &amp; weekends, teal = street.
-                      Hover a permit to emphasize its lots. Purchase is not a lottery.
+                      {isCommuterPath
+                        ? "Map colors: blue = full-time, amber = after 4 PM & weekends, teal = street. Hover a permit to emphasize its lots."
+                        : "Spots remaining after the lottery draw. Purchase directly — first come, first served."}
                     </p>
                     <ul className="space-y-2 list-none p-0 m-0">
                       {ranked.map((tier, i) => {
@@ -1120,7 +1131,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
               </Card>
             )}
 
-            {!application && !isCommuterPath && step === "rank" && cycle && cycle.status !== "open" && (
+            {!application && !isCommuterPath && step === "rank" && cycle && cycle.status !== "open" && cycle.status !== "drawn" && (
               <Card>
                 <p className="text-gray-500 m-0">
                   Resident lottery applications are not open ({cycle.status}).

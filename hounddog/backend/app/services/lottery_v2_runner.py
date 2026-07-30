@@ -398,6 +398,21 @@ async def run_waterfall_draw(
         await _notify_selected(selected_for_notify, offer_expires)
         await _notify_waitlisted(waitlisted_for_notify)
 
+    # Undersubscribed tiers → open for direct purchase until full
+    for pt in pts:
+        tier = tiers.get(pt.id)
+        if not tier:
+            continue
+        # Spots remain after placing all applicants
+        if tier.remaining > 0 and not pt.is_purchasable_online:
+            pt.is_purchasable_online = True
+            pt.requires_lottery = False
+            logger.info(
+                "Tier %s has %d spots remaining after draw — enabled direct purchase",
+                pt.code, tier.remaining,
+            )
+    await db.flush()
+
     logger.info(
         "Lottery V2 draw complete for cycle %s: %d selected, %d waitlisted",
         cycle_id,
