@@ -69,6 +69,8 @@ class TierRead(BaseModel):
     lot_assignments: list[str]
     min_class_year: int | None
     campus: str
+    requires_lottery: bool = False
+    is_purchasable_online: bool = False
 
 
 class ApplicationSubmit(BaseModel):
@@ -169,7 +171,7 @@ async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> Applicati
 async def _eligible_tiers_for(
     db: AsyncSession,
     campus: str,
-    class_year: int,
+    class_year: int | None = None,
 ) -> list[TierRead]:
     codes = CAMPUS_TIER_CODES.get(campus, [])
     if not codes:
@@ -187,7 +189,8 @@ async def _eligible_tiers_for(
 
     out: list[TierRead] = []
     for pt in ordered:
-        if not class_year_eligible(pt, class_year):
+        # Skip class-year filter when year unknown (intake map preview shows full path)
+        if class_year is not None and not class_year_eligible(pt, class_year):
             continue
         active_count = (
             await db.execute(
@@ -212,6 +215,8 @@ async def _eligible_tiers_for(
                 lot_assignments=list(pt.lot_assignments or []),
                 min_class_year=pt.min_class_year,
                 campus=campus,
+                requires_lottery=bool(pt.requires_lottery),
+                is_purchasable_online=bool(pt.is_purchasable_online),
             )
         )
     return out
@@ -256,8 +261,8 @@ async def get_open_cycle(
 
 @router.get("/eligible-tiers", response_model=list[TierRead])
 async def eligible_tiers(
-    campus: str = Query(..., pattern="^(north|south)$"),
-    class_year: int = Query(..., ge=2000, le=2100),
+    campus: str = Query(..., pattern="^(north|south|commuter)$"),
+    class_year: int | None = Query(None, ge=2000, le=2100),
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(get_current_user),
 ):

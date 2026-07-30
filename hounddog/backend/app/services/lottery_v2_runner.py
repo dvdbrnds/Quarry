@@ -30,6 +30,7 @@ from app.services.lottery import distribute_capacity
 logger = logging.getLogger(__name__)
 
 # Campus → existing permit type codes (capacity/pricing/lots live on those rows)
+# Campus / path → existing permit type codes (capacity/pricing/lots live on those rows)
 CAMPUS_TIER_CODES: dict[str, list[str]] = {
     "north": [
         "north_premium_resident",
@@ -40,9 +41,18 @@ CAMPUS_TIER_CODES: dict[str, list[str]] = {
         "south_premium_resident",
         "south_guaranteed_resident",
     ],
+    # Commuter path is purchase (not lottery), but shares this intake workflow
+    "commuter": [
+        "premium_commuter",
+        "commuter_undergrad",
+        "commuter_grad",
+    ],
 }
 
 ALL_V2_TIER_CODES = [c for codes in CAMPUS_TIER_CODES.values() for c in codes]
+LOTTERY_TIER_CODES = [
+    c for path, codes in CAMPUS_TIER_CODES.items() if path != "commuter" for c in codes
+]
 
 
 @dataclass
@@ -295,7 +305,7 @@ async def run_waterfall_draw(
     pts = (
         await db.execute(
             select(PermitType).where(
-                PermitType.code.in_(ALL_V2_TIER_CODES),
+                PermitType.code.in_(LOTTERY_TIER_CODES),
                 PermitType.is_active.is_(True),
             )
         )
@@ -432,7 +442,7 @@ async def promote_from_waitlist(
     pts = (
         await db.execute(
             select(PermitType).where(
-                PermitType.code.in_(ALL_V2_TIER_CODES),
+                PermitType.code.in_(LOTTERY_TIER_CODES),
                 PermitType.is_active.is_(True),
             )
         )

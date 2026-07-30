@@ -13,6 +13,9 @@ const TIER_COLORS: Record<string, { fill: string; soft: string; border: string }
   north_guaranteed_resident: { fill: "#2563EB", soft: "#EFF6FF", border: "#1D4ED8" },
   south_guaranteed_resident: { fill: "#2563EB", soft: "#EFF6FF", border: "#1D4ED8" },
   steel_field_resident: { fill: "#0D9488", soft: "#F0FDFA", border: "#0F766E" },
+  premium_commuter: { fill: "#D97706", soft: "#FFFBEB", border: "#B45309" },
+  commuter_undergrad: { fill: "#2563EB", soft: "#EFF6FF", border: "#1D4ED8" },
+  commuter_grad: { fill: "#0D9488", soft: "#F0FDFA", border: "#0F766E" },
 };
 
 const FALLBACK_TIER_COLORS = [
@@ -46,6 +49,8 @@ interface Tier {
   lot_assignments: string[];
   min_class_year: number | null;
   campus: string;
+  requires_lottery?: boolean;
+  is_purchasable_online?: boolean;
 }
 
 interface Application {
@@ -137,8 +142,8 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [loading, setLoading] = useState(true);
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
-  const [step, setStep] = useState<"intake" | "rank" | "done">("intake");
-  const [campus, setCampus] = useState<"north" | "south" | null>(null);
+  const [step, setStep] = useState<"intake" | "rank" | "choose" | "done">("intake");
+  const [campus, setCampus] = useState<"north" | "south" | "commuter" | null>(null);
   const [classYear, setClassYear] = useState<number | null>(null);
   const [plate, setPlate] = useState("");
   const [plateState, setPlateState] = useState("PA");
@@ -158,15 +163,18 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     return name.replace(/^lot\s+/i, "").trim().toLowerCase();
   }
 
-  /** Lots belonging to the eligible V2 tiers only — not every campus lot (excludes commuter etc.) */
-  const eligibleTier = ranked.length > 0 ? ranked : tiers;
+  /** Lots belonging to the eligible path options only */
+  const eligibleTiers = ranked.length > 0 ? ranked : tiers;
+  const isCommuterPath = campus === "commuter";
+  const isStaffUser = user.role === "admin" || user.role === "staff";
+
   const eligibleLotNames = useMemo(() => {
     const names = new Set<string>();
-    for (const tier of eligibleTier) {
+    for (const tier of eligibleTiers) {
       for (const lot of tier.lot_assignments) names.add(lot);
     }
     return [...names];
-  }, [eligibleTier]);
+  }, [eligibleTiers]);
 
   const mapLots = useMemo(() => {
     if (eligibleLotNames.length === 0) return [] as Lot[];
@@ -177,33 +185,34 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   /** Lot assignment name → tier fill color (for map polygons) */
   const lotColors = useMemo(() => {
     const map: Record<string, string> = {};
-    eligibleTier.forEach((tier, i) => {
+    eligibleTiers.forEach((tier, i) => {
       const color = tierColor(tier, i).fill;
       for (const lot of tier.lot_assignments) {
-        // First tier wins if a lot somehow appears in multiple (shouldn't)
         if (!map[lot]) map[lot] = color;
       }
     });
     return map;
-  }, [eligibleTier]);
+  }, [eligibleTiers]);
 
   const mapLegend = useMemo(
     () =>
-      eligibleTier.map((tier, i) => ({
-        label: tier.label.replace(/\s+Resident$/i, ""),
+      eligibleTiers.map((tier, i) => ({
+        label: tier.label
+          .replace(/\s+Resident$/i, "")
+          .replace(/^Regular Commuter\s*/i, "")
+          .replace(/^Extended Premium Commuter$/i, "Premium Commuter"),
         color: tierColor(tier, i).fill,
       })),
-    [eligibleTier],
+    [eligibleTiers],
   );
 
-  async function loadTiers(c: "north" | "south", year: number) {
+  async function loadTiers(c: "north" | "south" | "commuter", year?: number | null) {
     const headers = await authHeaders();
-    const res = await fetch(
-      `/api/lottery-v2/eligible-tiers?campus=${c}&class_year=${year}`,
-      { headers },
-    );
+    const qs = new URLSearchParams({ campus: c });
+    if (year != null) qs.set("class_year", String(year));
+    const res = await fetch(`/api/lottery-v2/eligible-tiers?${qs}`, { headers });
     if (!res.ok) {
-      message.error("Could not load eligible tiers");
+      message.error("Could not load available permits");
       return;
     }
     const data: Tier[] = await res.json();
@@ -211,12 +220,12 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     setRanked(data);
   }
 
-  async function selectCampus(c: "north" | "south") {
+  async function selectCampus(c: "north" | "south" | "commuter") {
     setCampus(c);
     setFocusedLot(null);
     setHighlightedLots([]);
-    // Load campus V2 tiers for map (use class year when known; else permissive year to show all campus tiers)
-    await loadTiers(c, classYear ?? 2020);
+    setHoveredTierId(null);
+    await loadTiers(c, classYear);
   }
 
   const load = useCallback(async () => {
@@ -240,7 +249,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         setStep("done");
       } else {
         setApplication(null);
-        if (cycleData?.status === "open") setStep("intake");
+        setStep("intake");
       }
 
       if (profileRes.ok) {
@@ -268,15 +277,15 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("accepted")) {
+    if (params.get("accepted") || params.get("purchased")) {
       message.success("Payment received — your permit is being issued.");
       load();
     }
   }, [load, message]);
 
-  // Refresh eligible tiers (and map lots) when class year changes after campus is chosen
+  // Refresh eligible options when class year changes after a path is chosen
   useEffect(() => {
-    if (campus && classYear && step === "intake") {
+    if (campus && classYear && (step === "intake" || step === "choose")) {
       loadTiers(campus, classYear);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,11 +293,12 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
 
   async function continueToRank() {
     if (!campus || !classYear || !plate.trim()) {
-      message.warning("Campus, class year, and plate are required");
+      message.warning("Campus residence, class year, and plate are required");
       return;
     }
     await loadTiers(campus, classYear);
-    setStep("rank");
+    // Residents → lottery rank; commuters → pick & purchase (not a lottery)
+    setStep(campus === "commuter" ? "choose" : "rank");
   }
 
   function moveTier(index: number, direction: -1 | 1) {
@@ -297,6 +307,40 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     if (t < 0 || t >= next.length) return;
     [next[index], next[t]] = [next[t], next[index]];
     setRanked(next);
+  }
+
+  async function purchaseCommuterPermit(tier: Tier) {
+    if (!classYear || !plate.trim()) return;
+    setSubmitting(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/student/permits/purchase", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          permit_type_id: tier.id,
+          student_name: studentName,
+          plate: plate.trim().toUpperCase(),
+          plate_state: plateState.trim().toUpperCase(),
+          class_year: classYear,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Purchase failed");
+      }
+      const data = await res.json();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+      message.success("Permit purchased");
+      setStep("done");
+    } catch (e: any) {
+      message.error(e.message || "Purchase failed");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function submit() {
@@ -412,7 +456,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
         : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
-  const showTierColors = step === "rank";
+  const showTierColors = step === "rank" || step === "choose";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -424,7 +468,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
           <div>
             <p className="text-xs uppercase tracking-wider opacity-70">Staging</p>
             <h1 style={{ color: brand.accentColor }} className="text-xl font-bold m-0">
-              Parking Lottery V2
+              Parking Permits
             </h1>
           </div>
           <span className="text-xs opacity-70">{user.email}</span>
@@ -456,7 +500,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
               </Card>
             )}
 
-            {cycle && (
+            {cycle && !isCommuterPath && (
               <Card size="small">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -469,6 +513,17 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                     {cycle.status === "open" ? "Accepting applications" : cycle.status}
                   </Tag>
                 </div>
+              </Card>
+            )}
+
+            {isStaffUser && step === "intake" && (
+              <Card size="small" className="border-amber-200 bg-amber-50">
+                <p className="m-0 text-sm text-amber-900">
+                  Faculty/staff permits are registered separately.{" "}
+                  <a href="/employee-parking" className="underline font-medium">
+                    Go to employee parking
+                  </a>
+                </p>
               </Card>
             )}
 
@@ -546,10 +601,10 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
               </Card>
             )}
 
-            {!application && cycle?.status === "open" && step === "intake" && (
+            {!application && step === "intake" && (
               <Card title="1. About you">
                 <Form layout="vertical" onFinish={continueToRank}>
-                  <Form.Item label="Campus residence" required>
+                  <Form.Item label="Where do you park?" required>
                     <Radio.Group
                       value={campus}
                       onChange={(e) => selectCampus(e.target.value)}
@@ -558,6 +613,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       options={[
                         { label: "North Campus", value: "north" },
                         { label: "South Campus", value: "south" },
+                        { label: "Commuter", value: "commuter" },
                       ]}
                     />
                   </Form.Item>
@@ -591,10 +647,127 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       placeholder="PA"
                     />
                   </Form.Item>
-                  <Button type="primary" htmlType="submit" disabled={!campus || !classYear || !plate}>
-                    Continue — rank tiers
+                  {!isCommuterPath && cycle?.status !== "open" && campus && (
+                    <p className="text-sm text-amber-700 mb-3">
+                      The resident lottery is not open right now. Check back when registration opens,
+                      or choose Commuter if that applies to you.
+                    </p>
+                  )}
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    disabled={
+                      !campus ||
+                      !classYear ||
+                      !plate ||
+                      (!isCommuterPath && cycle?.status !== "open")
+                    }
+                  >
+                    {isCommuterPath ? "Continue — choose a permit" : "Continue — rank tiers"}
                   </Button>
                 </Form>
+              </Card>
+            )}
+
+            {!application && step === "choose" && (
+              <Card
+                title="2. Choose your permit"
+                extra={
+                  <Button
+                    type="link"
+                    onClick={() => {
+                      setStep("intake");
+                      setHighlightedLots([]);
+                      setHoveredTierId(null);
+                      setFocusedLot(null);
+                    }}
+                  >
+                    Back
+                  </Button>
+                }
+              >
+                {ranked.length === 0 ? (
+                  <p className="text-gray-500">No commuter permits are available for your class year.</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Hover a permit to highlight its lots (including street parking). Pick one to purchase —
+                      this is not a lottery.
+                    </p>
+                    <ul className="space-y-2 list-none p-0 m-0">
+                      {ranked.map((tier, i) => {
+                        const colors = tierColor(tier, i);
+                        const isHovered = hoveredTierId === tier.id;
+                        const soldOut = tier.remaining <= 0;
+                        return (
+                          <li
+                            key={tier.id}
+                            className="rounded-lg border px-3 py-3 transition-shadow hover:shadow-md"
+                            style={{
+                              borderColor: colors.border,
+                              borderLeftWidth: 4,
+                              background: isHovered ? colors.soft : "#fff",
+                            }}
+                            onMouseEnter={() => {
+                              setHoveredTierId(tier.id);
+                              setHighlightedLots(tier.lot_assignments);
+                              setFocusedLot(null);
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredTierId(null);
+                              setHighlightedLots([]);
+                              setFocusedLot(null);
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="m-0 font-medium flex items-center gap-2">
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+                                    style={{ background: colors.fill }}
+                                  />
+                                  {tier.label}
+                                </p>
+                                <p className="m-0 text-xs text-gray-500 mt-1">
+                                  ${tier.price} · {tier.remaining} of {tier.max_capacity} left
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
+                                  <span>Lots:</span>
+                                  {tier.lot_assignments.slice(0, 8).map((lot) => (
+                                    <Tag
+                                      key={lot}
+                                      className="m-0"
+                                      style={{
+                                        color: colors.border,
+                                        background: colors.soft,
+                                        borderColor: colors.fill,
+                                      }}
+                                    >
+                                      {lot}
+                                    </Tag>
+                                  ))}
+                                  {tier.lot_assignments.length > 8 && (
+                                    <span>+{tier.lot_assignments.length - 8} more</span>
+                                  )}
+                                </div>
+                              </div>
+                              <Button
+                                type="primary"
+                                size="small"
+                                loading={submitting}
+                                disabled={soldOut}
+                                onClick={() => purchaseCommuterPermit(tier)}
+                                style={{ background: soldOut ? undefined : colors.fill }}
+                              >
+                                {soldOut ? "Full" : "Buy"}
+                              </Button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
               </Card>
             )}
 
@@ -723,10 +896,10 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
               </Card>
             )}
 
-            {!application && cycle && cycle.status !== "open" && (
+            {!application && !isCommuterPath && step === "rank" && cycle && cycle.status !== "open" && (
               <Card>
                 <p className="text-gray-500 m-0">
-                  Applications are not open for this cycle ({cycle.status}).
+                  Resident lottery applications are not open ({cycle.status}).
                 </p>
               </Card>
             )}

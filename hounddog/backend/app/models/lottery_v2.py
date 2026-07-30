@@ -41,7 +41,7 @@ class LotteryV2Application(Base):
     student_email: Mapped[str] = mapped_column(String(256))
     student_name: Mapped[str] = mapped_column(String(256))
     class_year: Mapped[int] = mapped_column(Integer)
-    campus: Mapped[str] = mapped_column(String(16))  # north|south
+    campus: Mapped[str] = mapped_column(String(16))  # north|south|commuter
     plate: Mapped[str] = mapped_column(String(32))
     plate_state: Mapped[str] = mapped_column(String(2), default="")
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
