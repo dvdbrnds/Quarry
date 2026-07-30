@@ -102,6 +102,15 @@ function AdminShell({ user }: { user: AuthUser }) {
 
         <div className="ml-auto flex items-center gap-3">
           <a
+            href="/visitor"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs px-3 py-1 rounded-md font-medium transition-colors"
+            style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
+          >
+            Visitor Portal
+          </a>
+          <a
             href="/employee-parking"
             target="_blank"
             rel="noopener noreferrer"

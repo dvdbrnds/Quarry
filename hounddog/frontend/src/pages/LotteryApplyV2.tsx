@@ -321,7 +321,11 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     setRanked(data);
   }
 
-  async function selectCampus(c: "north" | "south" | "commuter") {
+  async function selectCampus(c: "north" | "south" | "commuter" | "visitor") {
+    if (c === "visitor") {
+      window.location.assign("/visitor");
+      return;
+    }
     setCampus(c);
     setFocusedLot(null);
     setHighlightedLots([]);
@@ -740,9 +744,24 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                         { label: "North Campus", value: "north" },
                         { label: "South Campus", value: "south" },
                         { label: "Commuter", value: "commuter" },
+                        { label: "Visitor", value: "visitor" },
                       ]}
                     />
                   </Form.Item>
+                  {campus === "visitor" && (
+                    <Alert
+                      type="info"
+                      showIcon
+                      className="mb-4"
+                      message="Visitor & vendor parking"
+                      description="Day guests and vendors register on the public visitor portal — no student lottery required."
+                      action={
+                        <Button size="small" type="primary" onClick={() => window.location.assign("/visitor")}>
+                          Open visitor portal
+                        </Button>
+                      }
+                    />
+                  )}
                   {isSouthPath && southExternalLots.length > 0 && (
                     <Alert
                       type="warning"
