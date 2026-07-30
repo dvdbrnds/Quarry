@@ -6,7 +6,7 @@ Isolated from the legacy per-tier lottery tables (permit_applications).
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey, Text, func
+from sqlalchemy import String, DateTime, Integer, Boolean, Float, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,9 @@ class LotteryV2Cycle(Base):
     offer_window_days: Mapped[int] = mapped_column(Integer, default=5)
     drawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     drawn_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # Auto-draw: whichever fires first — threshold or deadline
+    auto_draw_threshold: Mapped[float | None] = mapped_column(nullable=True)  # e.g. 1.10 = 110%
+    auto_draw_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

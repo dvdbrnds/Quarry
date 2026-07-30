@@ -261,6 +261,34 @@ async def _auto_send_renewal_emails():
             logger.info("Auto-sent %d renewal emails to faculty/staff", sent)
 
 
+async def _auto_draw_deadline():
+    """Run the waterfall draw if an open cycle's auto_draw_at deadline has passed."""
+    from ..models.lottery_v2 import LotteryV2Cycle
+    from .lottery_v2_runner import run_waterfall_draw
+
+    now = datetime.now(timezone.utc)
+    async with async_session() as db:
+        result = await db.execute(
+            select(LotteryV2Cycle).where(
+                LotteryV2Cycle.status == "open",
+                LotteryV2Cycle.auto_draw_at.isnot(None),
+                LotteryV2Cycle.auto_draw_at <= now,
+            )
+        )
+        cycles = result.scalars().all()
+        for cycle in cycles:
+            logger.info(
+                "Auto-draw deadline reached for cycle %s (deadline %s)",
+                cycle.id, cycle.auto_draw_at,
+            )
+            try:
+                await run_waterfall_draw(db, cycle.id, run_by="auto_draw_deadline")
+                await db.commit()
+            except Exception as e:
+                logger.error("Auto-draw deadline failed for cycle %s: %s", cycle.id, e)
+                await db.rollback()
+
+
 async def _expire_lottery_offers():
     """Expire overdue lottery offers and advance waitlisted applicants."""
     from datetime import timedelta
@@ -344,6 +372,11 @@ async def _run_loop():
             await _expire_lottery_offers()
         except Exception as e:
             logger.error("Scheduler tick (lottery offers) failed: %s", e, exc_info=True)
+
+        try:
+            await _auto_draw_deadline()
+        except Exception as e:
+            logger.error("Scheduler tick (lottery auto-draw) failed: %s", e, exc_info=True)
 
         try:
             await _auto_send_renewal_emails()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Button, Card, Collapse, Space, Statistic, Table, Tag, App as AntApp,
+  Alert, Button, Card, Collapse, Space, Statistic, Table, Tag, App as AntApp, InputNumber,
 } from "antd";
 import { authHeaders } from "../auth";
 
@@ -13,6 +13,8 @@ interface Cycle {
   offer_window_days: number;
   drawn_at: string | null;
   drawn_by: string | null;
+  auto_draw_threshold: number | null;
+  auto_draw_at: string | null;
   application_count: number;
 }
 
@@ -67,6 +69,8 @@ export default function LotteryV2Manager() {
   const [results, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [autoThreshold, setAutoThreshold] = useState<number | null>(110);
+  const [autoDays, setAutoDays] = useState<number | null>(5);
 
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
@@ -283,7 +287,12 @@ export default function LotteryV2Manager() {
             <Space wrap>
               <Button
                 disabled={busy || active.status === "open" || active.status === "drawn"}
-                onClick={() => postAction(`/api/lottery-v2/cycles/${active.id}/open`)}
+                onClick={() =>
+                  postAction(`/api/lottery-v2/cycles/${active.id}/open`, {
+                    auto_draw_threshold: autoThreshold ? autoThreshold / 100 : null,
+                    auto_draw_days: autoDays || null,
+                  })
+                }
               >
                 Open applications
               </Button>
@@ -301,6 +310,55 @@ export default function LotteryV2Manager() {
                 Run draw
               </Button>
             </Space>
+
+            {active.status !== "open" && active.status !== "drawn" && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                <h4 className="text-sm font-medium mb-2">Auto-draw (fires whichever comes first)</h4>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span>Capacity threshold:</span>
+                    <InputNumber
+                      min={100}
+                      max={300}
+                      step={5}
+                      value={autoThreshold}
+                      onChange={(v) => setAutoThreshold(v)}
+                      addonAfter="%"
+                      className="w-28"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <span>Deadline:</span>
+                    <InputNumber
+                      min={1}
+                      max={30}
+                      value={autoDays}
+                      onChange={(v) => setAutoDays(v)}
+                      addonAfter="days"
+                      className="w-28"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 mb-0">
+                  Draw runs automatically when applications reach the threshold OR the deadline passes — whichever is first.
+                  Set to blank to disable either trigger.
+                </p>
+              </div>
+            )}
+
+            {active.status === "open" && (active.auto_draw_threshold || active.auto_draw_at) && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-md text-sm">
+                <strong>Auto-draw active:</strong>{" "}
+                {active.auto_draw_threshold && (
+                  <span>triggers at {Math.round(active.auto_draw_threshold * 100)}% capacity</span>
+                )}
+                {active.auto_draw_threshold && active.auto_draw_at && <span> or </span>}
+                {active.auto_draw_at && (
+                  <span>deadline {new Date(active.auto_draw_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                )}
+              </div>
+            )}
+
             <Collapse
               className="mt-4"
               items={[

@@ -366,6 +366,9 @@ async def lifespan(app: FastAPI):
             "UPDATE lottery_v2_cycles SET name = 'Parking Lottery' WHERE name ILIKE '%staging%'",
             # SMS opt-in captured at lottery/commuter intake (Phase 23: expand to all AlertUs channels)
             "ALTER TABLE lottery_v2_applications ADD COLUMN IF NOT EXISTS sms_opt_in BOOLEAN DEFAULT false",
+            # Auto-draw: threshold (e.g. 1.10 = 110%) and deadline
+            "ALTER TABLE lottery_v2_cycles ADD COLUMN IF NOT EXISTS auto_draw_threshold DOUBLE PRECISION",
+            "ALTER TABLE lottery_v2_cycles ADD COLUMN IF NOT EXISTS auto_draw_at TIMESTAMPTZ",
             # Third-party South lots are sold off-platform (City of Bethlehem)
             "UPDATE permit_types SET is_purchasable_online = FALSE WHERE code = 'south_standalone'",
             # Eligible groups for role-based permit visibility

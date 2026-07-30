@@ -54,6 +54,8 @@ class CycleRead(BaseModel):
     offer_window_days: int
     drawn_at: datetime | None
     drawn_by: str | None
+    auto_draw_threshold: float | None = None
+    auto_draw_at: datetime | None = None
     application_count: int = 0
 
     class Config:
@@ -135,6 +137,8 @@ async def _cycle_to_read(db: AsyncSession, cycle: LotteryV2Cycle) -> CycleRead:
         offer_window_days=cycle.offer_window_days,
         drawn_at=cycle.drawn_at,
         drawn_by=cycle.drawn_by,
+        auto_draw_threshold=cycle.auto_draw_threshold,
+        auto_draw_at=cycle.auto_draw_at,
         application_count=count,
     )
 
@@ -168,6 +172,54 @@ async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> Applicati
         is_test_entry=app.is_test_entry,
         created_at=app.created_at,
     )
+
+
+async def _maybe_auto_draw(db: AsyncSession, cycle: LotteryV2Cycle) -> None:
+    """Fire the waterfall draw if the capacity threshold is met.
+
+    Called after each new application. Does nothing when threshold is unset or
+    already drawn.
+    """
+    if not cycle.auto_draw_threshold or cycle.status != "open":
+        return
+    app_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == cycle.id,
+                LotteryV2Application.status == "pending",
+            )
+        )
+    ).scalar() or 0
+
+    # Total capacity across all lottery tiers
+    from ..services.lottery_v2_runner import (
+        LOTTERY_TIER_CODES as _LTC,
+        build_tier_capacities,
+    )
+
+    pts = (
+        await db.execute(
+            select(PermitType).where(PermitType.code.in_(_LTC))
+        )
+    ).scalars().all()
+    tiers = await build_tier_capacities(db, list(pts))
+    total_capacity = sum(t.remaining for t in tiers.values())
+
+    if total_capacity <= 0:
+        return
+    if app_count < total_capacity * cycle.auto_draw_threshold:
+        return
+
+    logger.info(
+        "Auto-draw triggered for cycle %s: %d apps >= %d capacity * %.0f%%",
+        cycle.id, app_count, total_capacity, cycle.auto_draw_threshold * 100,
+    )
+    try:
+        await run_waterfall_draw(db, cycle.id, run_by="auto_draw")
+    except ValueError as e:
+        logger.warning("Auto-draw skipped: %s", e)
 
 
 async def _eligible_tiers_for(
@@ -344,6 +396,9 @@ async def submit_application(
         from .student_permits import _opt_in_alerts
 
         await _opt_in_alerts(db, name, user.email, phone)
+
+    # Check if auto-draw threshold is reached
+    await _maybe_auto_draw(db, cycle)
 
     return await _app_to_read(db, app)
 
@@ -581,12 +636,19 @@ async def create_cycle(
     return await _cycle_to_read(db, cycle)
 
 
+class OpenCycleRequest(BaseModel):
+    auto_draw_threshold: float | None = None  # e.g. 1.10 = draw at 110% capacity
+    auto_draw_days: int | None = None  # e.g. 5 = draw 5 days after open if not triggered sooner
+
+
 @router.post("/cycles/{cycle_id}/open", response_model=CycleRead)
 async def open_cycle(
     cycle_id: uuid.UUID,
+    data: OpenCycleRequest | None = None,
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
 ):
+    opts = data or OpenCycleRequest()
     cycle = await db.get(LotteryV2Cycle, cycle_id)
     if not cycle:
         raise HTTPException(404, "Cycle not found")
@@ -611,6 +673,10 @@ async def open_cycle(
     cycle.closes_at = None
     cycle.drawn_at = None
     cycle.drawn_by = None
+    cycle.auto_draw_threshold = opts.auto_draw_threshold
+    cycle.auto_draw_at = (
+        now + timedelta(days=opts.auto_draw_days) if opts.auto_draw_days else None
+    )
     await db.flush()
     return await _cycle_to_read(db, cycle)
 

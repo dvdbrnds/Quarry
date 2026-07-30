@@ -255,7 +255,10 @@ async def run_waterfall_draw(
             f"Cycle already drawn at {cycle.drawn_at}. Reset before re-running."
         )
     if cycle.status == "open":
-        raise ValueError("Close the application window before running the draw.")
+        # Auto-close when triggered by threshold or deadline
+        cycle.status = "closed"
+        cycle.closes_at = datetime.now(timezone.utc)
+        await db.flush()
 
     apps_result = await db.execute(
         select(LotteryV2Application).where(
