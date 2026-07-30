@@ -4,8 +4,9 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY frontend/ ./
-ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN npm run build
+# Skip tsc in-container (types checked in CI/local) to cut peak RAM; Vite alone still needs headroom.
+ENV NODE_OPTIONS="--max-old-space-size=1536"
+RUN npm run build:docker
 
 ## Stage 2: Python backend + nginx
 FROM python:3.12-slim

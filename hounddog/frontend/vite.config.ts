@@ -6,7 +6,11 @@ const apiTarget = process.env.VITE_API_TARGET || "http://localhost:8000";
 export default defineConfig({
   plugins: [react()],
   build: {
+    sourcemap: false,
+    reportCompressedSize: false,
     rollupOptions: {
+      // Cap parallelism so Coolify/small VPS builds don't OOM during transform
+      maxParallelFileOps: 2,
       output: {
         manualChunks: {
           antd: ["antd", "@ant-design/icons", "dayjs"],
