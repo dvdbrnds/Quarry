@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
+
+/** Same threshold as live /parking — lots north of this lat are North Campus */
+const CAMPUS_LAT_THRESHOLD = 40.623;
 
 interface Cycle {
   id: string;
@@ -131,6 +134,39 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
+
+  /** Map lot name → campus using lot.campus or centroid latitude (same as live /parking) */
+  const lotCampusMap = useMemo(() => {
+    const m: Record<string, "north" | "south"> = {};
+    for (const lot of lots) {
+      const key = lot.name.replace(/^lot\s+/i, "").trim().toLowerCase();
+      if (lot.campus === "north" || lot.campus === "south") {
+        m[key] = lot.campus;
+        continue;
+      }
+      if (lot.boundary.length < 3) continue;
+      const avgLat = lot.boundary.reduce((s, c) => s + c.latitude, 0) / lot.boundary.length;
+      m[key] = avgLat >= CAMPUS_LAT_THRESHOLD ? "north" : "south";
+    }
+    return m;
+  }, [lots]);
+
+  const campusLotNames = useMemo(() => {
+    if (!campus) return [] as string[];
+    return lots
+      .filter((lot) => {
+        const key = lot.name.replace(/^lot\s+/i, "").trim().toLowerCase();
+        return lotCampusMap[key] === campus;
+      })
+      .map((lot) => lot.name.replace(/^lot\s+/i, "").trim());
+  }, [campus, lots, lotCampusMap]);
+
+  function selectCampus(c: "north" | "south") {
+    setCampus(c);
+    setFocusedLot(null);
+    // Clear tier hover so campus zoom takes effect immediately
+    setHighlightedLots([]);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,10 +351,13 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     : null;
 
   const showMap = Boolean(mapsApiKey && lots.length > 0);
+  // Prefer tier hover → else campus selection (zooms to all north/south lots) → assigned lot
   const mapHighlight =
-    application?.assigned_lot && step === "done"
-      ? [application.assigned_lot]
-      : highlightedLots;
+    highlightedLots.length > 0
+      ? highlightedLots
+      : application?.assigned_lot && step === "done"
+        ? [application.assigned_lot]
+        : campusLotNames;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -456,7 +495,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                   <Form.Item label="Campus residence" required>
                     <Radio.Group
                       value={campus}
-                      onChange={(e) => setCampus(e.target.value)}
+                      onChange={(e) => selectCampus(e.target.value)}
                       optionType="button"
                       buttonStyle="solid"
                       options={[
