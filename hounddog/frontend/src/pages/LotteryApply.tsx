@@ -59,6 +59,10 @@ export default function LotteryApply() {
         const authed = await isAuthenticated();
         if (!authed) { sessionStorage.setItem("quarry_return_path", "/parking"); await login(); return; }
         const u = await fetchCurrentUser();
+        if (u?.role === "admin" || u?.role === "staff") {
+          window.location.replace("/employee-parking");
+          return;
+        }
         setUser(u);
         setAuthState(u ? "ready" : "error");
       } catch { setAuthState("error"); }

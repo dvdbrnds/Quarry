@@ -55,6 +55,14 @@ def _extract_token(request: Request) -> str | None:
     return request.cookies.get("access_token")
 
 
+# Okta groups that identify faculty/staff for employee parking (not students)
+FACULTY_STAFF_OKTA_GROUPS = frozenset({
+    "_Bethlehem - All - Faculty",
+    "_Bethlehem - All - Staff",
+    "_MU - Faculty, Adjunct",
+})
+
+
 class OktaUser:
     def __init__(
         self,
@@ -82,13 +90,16 @@ class OktaUser:
 
     @property
     def is_staff(self) -> bool:
-        return self.is_admin or settings.staff_okta_groups in self.groups
+        """True for Quarry staff/admin or Moravian faculty/staff Okta groups."""
+        if self.is_admin or settings.staff_okta_groups in self.groups:
+            return True
+        return bool(set(self.groups) & FACULTY_STAFF_OKTA_GROUPS)
 
     @property
     def role(self) -> str:
         if self.is_admin:
             return "admin"
-        if settings.staff_okta_groups in self.groups:
+        if self.is_staff:
             return "staff"
         return "none"
 

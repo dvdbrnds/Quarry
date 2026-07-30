@@ -98,6 +98,11 @@ export default function LotteryApplyV2() {
           return;
         }
         const u = await fetchCurrentUser();
+        // Faculty/staff from Okta go straight to employee parking enrollment
+        if (u?.role === "admin" || u?.role === "staff") {
+          window.location.replace("/employee-parking");
+          return;
+        }
         setUser(u);
         setAuthState(u ? "ready" : "error");
       } catch {
@@ -166,7 +171,6 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   /** Lots belonging to the eligible path options only */
   const eligibleTiers = ranked.length > 0 ? ranked : tiers;
   const isCommuterPath = campus === "commuter";
-  const isStaffUser = user.role === "admin" || user.role === "staff";
 
   const eligibleLotNames = useMemo(() => {
     const names = new Set<string>();
@@ -513,17 +517,6 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                     {cycle.status === "open" ? "Accepting applications" : cycle.status}
                   </Tag>
                 </div>
-              </Card>
-            )}
-
-            {isStaffUser && step === "intake" && (
-              <Card size="small" className="border-amber-200 bg-amber-50">
-                <p className="m-0 text-sm text-amber-900">
-                  Faculty/staff permits are registered separately.{" "}
-                  <a href="/employee-parking" className="underline font-medium">
-                    Go to employee parking
-                  </a>
-                </p>
               </Card>
             )}
 
