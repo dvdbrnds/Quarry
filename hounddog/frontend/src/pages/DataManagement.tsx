@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Table, App, Typography, Switch, Select, TimePicker, InputNumber, Space, Tag, Popconfirm } from "antd";
-import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined } from "@ant-design/icons";
+import { Button, Card, Table, App, Typography, Switch, Select, TimePicker, InputNumber, Space, Tag, Popconfirm, Input, Tooltip } from "antd";
+import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined, CloudOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { api, BackupSchedule, BackupHistoryEntry } from "../api";
@@ -25,6 +25,9 @@ export default function DataManagement() {
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [history, setHistory] = useState<BackupHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [driveFolderId, setDriveFolderId] = useState("");
+  const [driveTestResult, setDriveTestResult] = useState<{ ok: boolean; folder_name?: string; error?: string } | null>(null);
+  const [driveTesting, setDriveTesting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,6 +46,7 @@ export default function DataManagement() {
     try {
       const data = await api.backup.schedule.get();
       setSchedule(data);
+      setDriveFolderId(data.google_drive_folder_id || "");
     } catch {
       // Schedule endpoint may not exist yet on older backends
     } finally {
@@ -73,6 +77,7 @@ export default function DataManagement() {
         frequency: schedule.frequency || "daily",
         time: schedule.time || "02:00",
         retention_days: schedule.retention_days || 30,
+        google_drive_folder_id: schedule.google_drive_folder_id || "",
       });
       setSchedule(updated);
       message.success(enabled ? "Scheduled backups enabled" : "Scheduled backups disabled");
@@ -92,6 +97,7 @@ export default function DataManagement() {
         frequency: patch.frequency ?? schedule.frequency ?? "daily",
         time: patch.time ?? schedule.time ?? "02:00",
         retention_days: patch.retention_days ?? schedule.retention_days ?? 30,
+        google_drive_folder_id: patch.google_drive_folder_id ?? schedule.google_drive_folder_id ?? "",
       });
       setSchedule(updated);
       message.success("Backup schedule updated");
@@ -100,6 +106,30 @@ export default function DataManagement() {
     } finally {
       setScheduleSaving(false);
     }
+  };
+
+  const handleTestDrive = async () => {
+    if (!driveFolderId.trim()) {
+      message.warning("Enter a Google Drive folder ID first");
+      return;
+    }
+    setDriveTesting(true);
+    setDriveTestResult(null);
+    try {
+      const result = await api.backup.testDrive(driveFolderId.trim());
+      setDriveTestResult(result);
+      message.success(`Connected to folder: ${result.folder_name}`);
+    } catch (e: any) {
+      setDriveTestResult({ ok: false, error: e.message || "Connection failed" });
+      message.error(e.message || "Google Drive test failed");
+    } finally {
+      setDriveTesting(false);
+    }
+  };
+
+  const handleSaveDriveFolder = async () => {
+    await handleScheduleSave({ google_drive_folder_id: driveFolderId.trim() });
+    setDriveTestResult(null);
   };
 
   const handleDeleteBackup = async (filename: string) => {
@@ -392,6 +422,54 @@ export default function DataManagement() {
                   addonAfter="days"
                   style={{ width: 140 }}
                 />
+              </div>
+
+              <div className="border-t pt-3 mt-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <CloudOutlined className="text-blue-500" />
+                  <span className="text-sm font-medium">Google Drive Upload</span>
+                  {schedule.last_drive_upload && (
+                    <Tag color="green" className="ml-auto">
+                      <CheckCircleOutlined className="mr-1" />
+                      Last upload {dayjs(schedule.last_drive_upload).fromNow()}
+                    </Tag>
+                  )}
+                </div>
+                <p className="text-xs text-ink-mute mb-2 mt-0">
+                  Paste a Google Drive folder ID to automatically upload each backup. Share the folder with your service account email.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Google Drive folder ID"
+                    value={driveFolderId}
+                    onChange={(e) => { setDriveFolderId(e.target.value); setDriveTestResult(null); }}
+                    style={{ flex: 1 }}
+                    disabled={scheduleSaving}
+                  />
+                  <Tooltip title="Test connection to this folder">
+                    <Button
+                      onClick={handleTestDrive}
+                      loading={driveTesting}
+                      disabled={!driveFolderId.trim()}
+                    >
+                      Test
+                    </Button>
+                  </Tooltip>
+                  <Button
+                    type="primary"
+                    onClick={handleSaveDriveFolder}
+                    disabled={scheduleSaving || driveFolderId === (schedule.google_drive_folder_id || "")}
+                  >
+                    Save
+                  </Button>
+                </div>
+                {driveTestResult && (
+                  <div className={`text-xs mt-1 ${driveTestResult.ok ? "text-green-600" : "text-red-500"}`}>
+                    {driveTestResult.ok
+                      ? `✓ Connected to "${driveTestResult.folder_name}"`
+                      : `✗ ${driveTestResult.error}`}
+                  </div>
+                )}
               </div>
 
               {schedule.last_run && (

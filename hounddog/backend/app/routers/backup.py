@@ -16,7 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text, inspect as sa_inspect
@@ -190,8 +190,10 @@ class BackupSchedule(BaseModel):
     frequency: str = "daily"  # daily | weekly | monthly
     time: str = "02:00"       # HH:MM in UTC
     retention_days: int = 30  # auto-delete after N days
+    google_drive_folder_id: str = ""  # Google Drive folder to upload backups to
     last_run: str | None = None
     next_run: str | None = None
+    last_drive_upload: str | None = None
 
 
 def _read_schedule() -> dict:
@@ -222,6 +224,8 @@ async def set_schedule(body: BackupSchedule):
     existing = _read_schedule()
     data["last_run"] = existing.get("last_run")
     data["next_run"] = existing.get("next_run")
+    data["last_drive_upload"] = existing.get("last_drive_upload")
+    data["last_drive_file_id"] = existing.get("last_drive_file_id")
     _write_schedule(data)
     return data
 
@@ -276,3 +280,21 @@ async def delete_backup_file(filename: str):
         raise HTTPException(404, "Backup file not found")
     path.unlink()
     return {"deleted": filename}
+
+
+@router.post("/test-drive")
+async def test_google_drive(
+    folder_id: str = Query(""),
+):
+    """Test Google Drive connectivity for the given folder ID."""
+    if not folder_id:
+        schedule = _read_schedule()
+        folder_id = schedule.get("google_drive_folder_id", "")
+    if not folder_id:
+        raise HTTPException(400, "No folder ID provided")
+
+    from ..services.google_drive import test_drive_connection
+    result = test_drive_connection(folder_id)
+    if not result["ok"]:
+        raise HTTPException(400, result["error"])
+    return result

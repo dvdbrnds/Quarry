@@ -152,6 +152,23 @@ async def process_scheduled_backups():
         config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
         _write_schedule(config)
 
+        # Upload to Google Drive if configured
+        drive_folder_id = config.get("google_drive_folder_id")
+        if drive_folder_id:
+            filepath = BACKUP_DIR / filename
+            try:
+                from .google_drive import upload_to_drive
+                file_id = upload_to_drive(filepath, drive_folder_id)
+                if file_id:
+                    config["last_drive_upload"] = now.isoformat()
+                    config["last_drive_file_id"] = file_id
+                    _write_schedule(config)
+                    logger.info("Backup uploaded to Google Drive: %s", file_id)
+                else:
+                    logger.warning("Google Drive upload returned no file ID")
+            except Exception as e:
+                logger.error("Google Drive upload failed (backup still saved locally): %s", e)
+
         _cleanup_old_backups(retention)
     except Exception as e:
         logger.error("Scheduled backup failed: %s", e, exc_info=True)

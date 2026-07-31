@@ -140,6 +140,9 @@ class Settings(BaseSettings):
     sis_subscriber_sync_url: str = ""
     sis_subscriber_sync_key: str = ""
 
+    # Google Drive Backup
+    google_drive_credentials_json: str = ""  # service account JSON (entire file contents or path)
+
     model_config = {"env_prefix": "", "env_file": ".env"}
 
 

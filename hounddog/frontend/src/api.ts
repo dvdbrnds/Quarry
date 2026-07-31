@@ -508,8 +508,10 @@ export interface BackupSchedule {
   frequency: string;
   time: string;
   retention_days: number;
+  google_drive_folder_id: string;
   last_run: string | null;
   next_run: string | null;
+  last_drive_upload: string | null;
 }
 
 export interface BackupScheduleInput {
@@ -517,6 +519,7 @@ export interface BackupScheduleInput {
   frequency: string;
   time: string;
   retention_days: number;
+  google_drive_folder_id?: string;
 }
 
 export interface BackupHistoryEntry {
@@ -868,6 +871,8 @@ export const api = {
       disable: () =>
         request<BackupSchedule>("/backup/schedule", { method: "DELETE" }),
     },
+    testDrive: (folderId: string) =>
+      request<{ ok: boolean; folder_name: string }>(`/backup/test-drive?folder_id=${encodeURIComponent(folderId)}`, { method: "POST" }),
     history: {
       list: () => request<BackupHistoryEntry[]>("/backup/history"),
       downloadUrl: (filename: string) => `${BASE}/backup/history/${filename}`,
