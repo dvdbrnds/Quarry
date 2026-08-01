@@ -744,6 +744,9 @@ async def lifespan(app: FastAPI):
     from .services.notification_health import check_notification_config
     check_notification_config()
 
+    from .services.env_preflight import run_preflight
+    run_preflight()
+
     yield
 
     stop_weather_monitor()
@@ -822,6 +825,14 @@ async def notification_health(user=Depends(auth.require_admin())):
         "config_warnings": check_notification_config(),
         **stats.summary(),
     }
+
+
+@app.get("/api/admin/preflight", tags=["admin"])
+async def preflight_check(user=Depends(auth.require_admin())):
+    from .services.env_preflight import run_preflight
+    results = run_preflight()
+    all_pass = all(r["status"] != "fail" for r in results)
+    return {"status": "pass" if all_pass else "fail", "checks": results}
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
