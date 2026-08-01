@@ -2,8 +2,8 @@
 Scheduled backup processor.
 
 Runs inside the existing closure_scheduler loop every 60s.
-Checks the on-disk schedule config and creates a JSON backup file when due.
-Also handles retention cleanup of old backup files.
+Checks the schedule config from the database (with disk fallback) and creates
+a JSON backup file when due. Also handles retention cleanup of old backup files.
 """
 
 import json
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sqlalchemy import text, inspect as sa_inspect
 
-from ..database import engine
+from ..database import engine, async_session
 
 logger = logging.getLogger("quarry.backup_scheduler")
 
@@ -41,7 +41,23 @@ def _serialise(value):
     return value
 
 
-def _read_schedule() -> dict:
+async def _read_schedule_from_db() -> dict | None:
+    """Try reading backup schedule from the app_config table."""
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
+            )
+            row = result.scalar()
+            if row:
+                return row if isinstance(row, dict) else json.loads(row)
+    except Exception:
+        pass
+    return None
+
+
+def _read_schedule_from_disk() -> dict:
+    """Fallback: read from disk file."""
     if SCHEDULE_FILE.exists():
         try:
             return json.loads(SCHEDULE_FILE.read_text())
@@ -50,7 +66,27 @@ def _read_schedule() -> dict:
     return {"enabled": False}
 
 
-def _write_schedule(data: dict):
+async def _read_schedule() -> dict:
+    """Read schedule from DB first, fall back to disk."""
+    db_config = await _read_schedule_from_db()
+    if db_config is not None:
+        return db_config
+    return _read_schedule_from_disk()
+
+
+async def _write_schedule(data: dict):
+    """Write schedule to both DB and disk."""
+    try:
+        value_str = json.dumps(data)
+        async with async_session() as db:
+            await db.execute(text("""
+                INSERT INTO app_config (key, value, updated_at)
+                VALUES ('backup_schedule', :val::jsonb, now())
+                ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
+            """), {"val": value_str})
+            await db.commit()
+    except Exception as e:
+        logger.warning("Failed to write schedule to DB: %s", e)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
 
@@ -119,7 +155,7 @@ def _cleanup_old_backups(retention_days: int):
 
 async def process_scheduled_backups():
     """Check if a scheduled backup is due and execute it."""
-    config = _read_schedule()
+    config = await _read_schedule()
     if not config.get("enabled"):
         return
 
@@ -140,7 +176,7 @@ async def process_scheduled_backups():
     else:
         next_run = _compute_next_run(frequency, time_str)
         config["next_run"] = next_run.isoformat()
-        _write_schedule(config)
+        await _write_schedule(config)
         return
 
     if now < next_run:
@@ -150,9 +186,8 @@ async def process_scheduled_backups():
         filename = await _create_backup_file()
         config["last_run"] = now.isoformat()
         config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
-        _write_schedule(config)
+        await _write_schedule(config)
 
-        # Upload to Google Drive if configured
         drive_folder_id = config.get("google_drive_folder_id")
         if drive_folder_id:
             filepath = BACKUP_DIR / filename
@@ -162,7 +197,7 @@ async def process_scheduled_backups():
                 if file_id:
                     config["last_drive_upload"] = now.isoformat()
                     config["last_drive_file_id"] = file_id
-                    _write_schedule(config)
+                    await _write_schedule(config)
                     logger.info("Backup uploaded to Google Drive: %s", file_id)
                 else:
                     logger.warning("Google Drive upload returned no file ID")

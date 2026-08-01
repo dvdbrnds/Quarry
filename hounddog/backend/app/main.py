@@ -423,6 +423,11 @@ async def lifespan(app: FastAPI):
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
                WHERE designation_code = 'FSC' AND access_schedule IS NOT NULL AND access_schedule::text LIKE '%07:00%'""",
+            """CREATE TABLE IF NOT EXISTS app_config (
+                key VARCHAR(128) PRIMARY KEY,
+                value JSONB NOT NULL DEFAULT '{}',
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
             ]
             for migration in migrations:
                 try:
@@ -747,6 +752,31 @@ async def lifespan(app: FastAPI):
 
     from .services.env_preflight import run_preflight
     run_preflight()
+
+    # Migrate any existing disk-based backup schedule into DB (one-time on first deploy)
+    try:
+        from .services.backup_scheduler import SCHEDULE_FILE
+        if SCHEDULE_FILE.exists():
+            import json as _json
+            _disk_schedule = _json.loads(SCHEDULE_FILE.read_text())
+            if _disk_schedule.get("enabled"):
+                from .database import async_session as _as
+                async with _as() as _db:
+                    from sqlalchemy import text as _text
+                    _existing = await _db.execute(
+                        _text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
+                    )
+                    if not _existing.scalar():
+                        _val = _json.dumps(_disk_schedule)
+                        await _db.execute(_text("""
+                            INSERT INTO app_config (key, value, updated_at)
+                            VALUES ('backup_schedule', :val::jsonb, now())
+                            ON CONFLICT (key) DO NOTHING
+                        """), {"val": _val})
+                        await _db.commit()
+                        logger.info("Migrated backup schedule from disk to DB")
+    except Exception as e:
+        logger.warning("Backup schedule disk->DB migration skipped: %s", e)
 
     yield
 

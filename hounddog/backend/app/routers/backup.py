@@ -197,7 +197,11 @@ class BackupSchedule(BaseModel):
 
 
 def _read_schedule() -> dict:
-    """Read the schedule JSON from disk, returning defaults if absent."""
+    """Read the schedule JSON from disk, returning defaults if absent.
+
+    DEPRECATED: new code should use _read_schedule_db / _write_schedule_db.
+    Kept as sync fallback only for the scheduler service.
+    """
     if SCHEDULE_FILE.exists():
         try:
             return json.loads(SCHEDULE_FILE.read_text())
@@ -207,35 +211,61 @@ def _read_schedule() -> dict:
 
 
 def _write_schedule(data: dict):
+    """Write schedule to disk (legacy). Also writes to DB for persistence."""
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
+
+
+async def _read_schedule_db(db: AsyncSession) -> dict:
+    """Read backup schedule from the app_config table (survives redeploys)."""
+    result = await db.execute(
+        text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
+    )
+    row = result.scalar()
+    if row:
+        return row if isinstance(row, dict) else json.loads(row)
+    return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
+
+
+async def _write_schedule_db(db: AsyncSession, data: dict):
+    """Persist backup schedule to both DB and disk (disk for scheduler reads)."""
+    import json as _json
+    value_str = _json.dumps(data)
+    await db.execute(text("""
+        INSERT INTO app_config (key, value, updated_at)
+        VALUES ('backup_schedule', :val::jsonb, now())
+        ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
+    """), {"val": value_str})
+    await db.commit()
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
 
 
 @router.get("/schedule")
-async def get_schedule():
+async def get_schedule(db: AsyncSession = Depends(get_db)):
     """Return the current scheduled backup configuration."""
-    return _read_schedule()
+    return await _read_schedule_db(db)
 
 
 @router.put("/schedule")
-async def set_schedule(body: BackupSchedule):
+async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db)):
     """Create or update the scheduled backup configuration."""
     data = body.model_dump()
-    existing = _read_schedule()
+    existing = await _read_schedule_db(db)
     data["last_run"] = existing.get("last_run")
     data["next_run"] = existing.get("next_run")
     data["last_drive_upload"] = existing.get("last_drive_upload")
     data["last_drive_file_id"] = existing.get("last_drive_file_id")
-    _write_schedule(data)
+    await _write_schedule_db(db, data)
     return data
 
 
 @router.delete("/schedule")
-async def disable_schedule():
+async def disable_schedule(db: AsyncSession = Depends(get_db)):
     """Disable scheduled backups."""
-    data = _read_schedule()
+    data = await _read_schedule_db(db)
     data["enabled"] = False
-    _write_schedule(data)
+    await _write_schedule_db(db, data)
     return data
 
 
@@ -285,10 +315,11 @@ async def delete_backup_file(filename: str):
 @router.post("/test-drive")
 async def test_google_drive(
     folder_id: str = Query(""),
+    db: AsyncSession = Depends(get_db),
 ):
     """Test Google Drive connectivity for the given folder ID."""
     if not folder_id:
-        schedule = _read_schedule()
+        schedule = await _read_schedule_db(db)
         folder_id = schedule.get("google_drive_folder_id", "")
     if not folder_id:
         raise HTTPException(400, "No folder ID provided")
