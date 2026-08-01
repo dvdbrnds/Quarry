@@ -151,7 +151,9 @@ function StaffPage({ user }: { user: AuthUser }) {
       okText: "Remove", okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const res = await fetch(`/api/staff/permits/${v.id}`, { method: "DELETE", headers: await authHeaders() });
+          const headers = await authHeaders();
+          headers["X-HTTP-Method-Override"] = "DELETE";
+          const res = await fetch(`/api/staff/permits/${v.id}`, { method: "POST", headers });
           if (!res.ok && res.status !== 204) { const b = await res.json(); throw new Error(b.detail || "Remove failed"); }
           message.success("Vehicle removed"); load();
         } catch (e: any) { message.error(e.message); }

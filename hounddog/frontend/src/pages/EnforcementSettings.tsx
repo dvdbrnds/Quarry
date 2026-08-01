@@ -61,7 +61,12 @@ export default function EnforcementSettings() {
   function handleDeleteSeason(id: string) {
     modal.confirm({
       title: "Delete this season?", okText: "Delete", okButtonProps: { danger: true },
-      onOk: async () => { await fetch(`/api/academic-calendar/${id}`, { method: "DELETE", headers: await authHeaders() }); message.success("Season deleted"); load(); },
+      onOk: async () => {
+        const headers = await authHeaders();
+        headers["X-HTTP-Method-Override"] = "DELETE";
+        await fetch(`/api/academic-calendar/${id}`, { method: "POST", headers });
+        message.success("Season deleted"); load();
+      },
     });
   }
 
