@@ -18,6 +18,7 @@ logger = logging.getLogger("quarry.scheduler")
 
 _task: asyncio.Task | None = None
 _last_renewal_check_date: date | None = None
+_reconciler_tick_count: int = 0
 
 
 async def _get_recipients_for_lot(lot_name: str, db) -> list[str]:
@@ -394,6 +395,19 @@ async def _run_loop():
             await process_scheduled_backups()
         except Exception as e:
             logger.error("Scheduler tick (scheduled backups) failed: %s", e, exc_info=True)
+
+        # Stripe permit reconciliation — every 5 minutes (every 5th tick)
+        global _reconciler_tick_count
+        _reconciler_tick_count += 1
+        if _reconciler_tick_count >= 5:
+            _reconciler_tick_count = 0
+            try:
+                from .stripe_reconciler import reconcile_stripe_permits
+                result = await reconcile_stripe_permits(lookback_hours=24)
+                if result.get("fulfilled", 0) > 0:
+                    logger.info("Stripe reconciler: %s", result)
+            except Exception as e:
+                logger.error("Scheduler tick (stripe reconciler) failed: %s", e, exc_info=True)
 
         await asyncio.sleep(60)
 

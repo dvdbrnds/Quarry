@@ -512,7 +512,10 @@ async def standalone_permit_purchase(
 
 @router.get("/verify-session")
 async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Public endpoint — verify a Stripe checkout session's payment status for the PaySuccess page."""
+    """Public endpoint — verify a Stripe checkout session's payment status.
+
+    Also triggers permit fulfillment if the session is paid but no permit exists yet.
+    """
     if not settings.stripe_secret_key:
         return {"status": "unknown", "payment_status": "unknown"}
 
@@ -527,6 +530,20 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
         ticket_id = metadata.get("ticket_id")
         payment_type = metadata.get("type", "ticket_payment")
 
+        # Trigger permit fulfillment for paid permit sessions
+        permit_fulfilled = False
+        if payment_status == "paid" and payment_type in ("direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"):
+            try:
+                from ..services.stripe_reconciler import _fulfill_session, _permit_exists_for_session
+                stripe_pi = data.get("payment_intent", "")
+                if not await _permit_exists_for_session(db, stripe_pi):
+                    result = await _fulfill_session(db, data)
+                    if result:
+                        await db.commit()
+                        permit_fulfilled = True
+            except Exception as e:
+                logger.warning("verify-session fulfillment failed (reconciler will retry): %s", e)
+
         ticket_plate = None
         if ticket_id:
             ticket = await db.get(Ticket, uuid.UUID(ticket_id))
@@ -539,6 +556,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
             "payment_type": payment_type,
             "ticket_id": ticket_id,
             "ticket_plate": ticket_plate,
+            "permit_fulfilled": permit_fulfilled,
         }
     except Exception as e:
         return {"status": "error", "payment_status": "unknown", "detail": str(e)}
@@ -1171,6 +1189,21 @@ async def stripe_backfill_emails(
         "errors": errors,
         "details": details,
     }
+
+
+@router.post("/reconcile-permits")
+async def reconcile_permits(
+    lookback_hours: int = Query(48, ge=1, le=168),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Manually trigger Stripe permit reconciliation.
+
+    Polls Stripe for paid checkout sessions in the last N hours and creates
+    permits for any that were paid but never fulfilled (e.g. student closed tab).
+    """
+    from ..services.stripe_reconciler import reconcile_stripe_permits
+    result = await reconcile_stripe_permits(lookback_hours=lookback_hours)
+    return result
 
 
 @router.post("/stripe-backfill-payments")

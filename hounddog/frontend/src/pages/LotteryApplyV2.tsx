@@ -381,8 +381,28 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("accepted") || params.get("purchased")) {
-      message.success("Payment received — your permit is being issued.");
-      load();
+      const sessionId = params.get("session_id");
+      if (sessionId) {
+        fetch(`/api/payments/verify-session?session_id=${encodeURIComponent(sessionId)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.permit_fulfilled) {
+              message.success("Payment confirmed — your permit has been issued!");
+            } else if (data.payment_status === "paid") {
+              message.success("Payment received — your permit is being issued.");
+            } else {
+              message.info("Payment is processing. Your permit will appear shortly.");
+            }
+            load();
+          })
+          .catch(() => {
+            message.success("Payment received — your permit is being issued.");
+            load();
+          });
+      } else {
+        message.success("Payment received — your permit is being issued.");
+        load();
+      }
     }
   }, [load, message]);
 

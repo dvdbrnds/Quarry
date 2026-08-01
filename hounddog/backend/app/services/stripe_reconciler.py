@@ -1,0 +1,208 @@
+"""
+Stripe permit fulfillment reconciler.
+
+Polls Stripe for completed checkout sessions of type direct_permit_purchase
+and lottery_v2_permit where no local Permit record exists yet. Creates the
+permit and payment records for any paid-but-unfulfilled sessions.
+
+Runs automatically in the scheduler loop every 5 minutes, and can also be
+triggered manually via the admin API.
+"""
+
+import logging
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..config import settings
+from ..database import async_session
+from ..models.payment import Payment
+from ..models.permit import Permit
+from ..models.permit_type import PermitType
+from ..services.permit_numbering import next_permit_number
+
+logger = logging.getLogger("quarry.stripe_reconciler")
+
+PERMIT_SESSION_TYPES = {"direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"}
+
+
+async def _permit_exists_for_session(db: AsyncSession, stripe_pi: str) -> bool:
+    """Check if we already created a permit for this Stripe payment intent."""
+    if not stripe_pi:
+        return False
+    result = await db.execute(
+        select(func.count()).select_from(Payment).where(
+            Payment.stripe_payment_id == stripe_pi,
+            Payment.payment_type.in_(PERMIT_SESSION_TYPES),
+        )
+    )
+    return (result.scalar() or 0) > 0
+
+
+async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
+    """Create a Permit + Payment from a paid Stripe checkout session.
+
+    Returns the permit_type_code on success, None if skipped.
+    """
+    metadata = session_data.get("metadata") or {}
+    payment_type = metadata.get("type", "")
+    if payment_type not in PERMIT_SESSION_TYPES:
+        return None
+
+    stripe_pi = session_data.get("payment_intent", "")
+    if await _permit_exists_for_session(db, stripe_pi):
+        return None
+
+    permit_type_code = metadata.get("permit_type_code", "")
+    student_name = metadata.get("student_name", "")
+    plate = metadata.get("plate", "")
+    email = metadata.get("email") or metadata.get("student_email") or session_data.get("customer_email") or ""
+    phone = metadata.get("phone", "") or ""
+    sms_opt_in = metadata.get("sms_opt_in") == "true"
+    valid_days = int(metadata.get("valid_days", "365"))
+
+    lot_assignment = metadata.get("assigned_lot") or metadata.get("lot_assignment") or ""
+    if not lot_assignment:
+        permit_type_id = metadata.get("permit_type_id")
+        if permit_type_id:
+            try:
+                pt = await db.get(PermitType, uuid.UUID(permit_type_id))
+                if pt and pt.lot_assignments:
+                    lot_assignment = ",".join(pt.lot_assignments)
+            except (ValueError, TypeError):
+                pass
+
+    if not lot_assignment:
+        lot_from_meta = metadata.get("lot_assignments", "")
+        if lot_from_meta:
+            lot_assignment = lot_from_meta
+
+    amount_total = session_data.get("amount_total", 0)
+
+    new_permit = Permit(
+        permit_number=await next_permit_number(db),
+        name=student_name,
+        email=email or None,
+        phone=phone,
+        sms_opt_in=sms_opt_in,
+        plates=[plate] if plate else [],
+        permit_type=permit_type_code,
+        lot_assignment=lot_assignment,
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=valid_days),
+        status="active",
+    )
+    db.add(new_permit)
+
+    payment = Payment(
+        amount=Decimal(amount_total) / 100 if amount_total else Decimal("0.00"),
+        method="online_permit_purchase",
+        stripe_payment_id=stripe_pi or None,
+        payment_type=payment_type,
+        payer_name=student_name or None,
+        payer_email=email or None,
+        plate=plate or None,
+        description=f"Permit ({permit_type_code}) — {plate}" if plate else f"Permit ({permit_type_code})",
+    )
+    db.add(payment)
+
+    # If this is a lottery_v2_permit, mark the application as accepted
+    if payment_type == "lottery_v2_permit":
+        app_id = metadata.get("application_id")
+        if app_id:
+            try:
+                from ..models.lottery_v2 import LotteryV2Application
+                app = await db.get(LotteryV2Application, uuid.UUID(app_id))
+                if app and app.status == "selected":
+                    app.status = "accepted"
+            except (ValueError, TypeError):
+                pass
+
+    await db.flush()
+    return permit_type_code
+
+
+async def reconcile_stripe_permits(lookback_hours: int = 48) -> dict:
+    """Poll Stripe for paid checkout sessions and fulfill any missing permits.
+
+    Returns a summary dict with counts.
+    """
+    if not settings.stripe_secret_key:
+        return {"error": "Stripe not configured", "fulfilled": 0, "already_fulfilled": 0}
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    created_after = int((datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).timestamp())
+    fulfilled = 0
+    already_fulfilled = 0
+    errors: list[str] = []
+
+    starting_after = None
+    pages_checked = 0
+
+    async with async_session() as db:
+        while pages_checked < 10:
+            params: dict = {
+                "limit": 100,
+                "status": "complete",
+                "created": {"gte": created_after},
+            }
+            if starting_after:
+                params["starting_after"] = starting_after
+
+            try:
+                page = stripe.checkout.Session.list(**params)
+            except Exception as e:
+                errors.append(f"Session.list failed: {e}")
+                break
+
+            if not page.data:
+                break
+
+            for sess in page.data:
+                sess_dict = sess.to_dict() if hasattr(sess, "to_dict") else dict(sess)
+                metadata = sess_dict.get("metadata") or {}
+                payment_type = metadata.get("type", "")
+
+                if payment_type not in PERMIT_SESSION_TYPES:
+                    continue
+
+                if sess_dict.get("payment_status") != "paid":
+                    continue
+
+                try:
+                    result = await _fulfill_session(db, sess_dict)
+                    if result:
+                        fulfilled += 1
+                        logger.info(
+                            "Reconciled permit: %s plate=%s pi=%s",
+                            result,
+                            metadata.get("plate", "?"),
+                            sess_dict.get("payment_intent", "?")[:16],
+                        )
+                    else:
+                        already_fulfilled += 1
+                except Exception as e:
+                    errors.append(f"Fulfill failed for {sess.id}: {e}")
+                    logger.error("Reconcile fulfill error for %s: %s", sess.id, e, exc_info=True)
+
+            if not page.has_more:
+                break
+            starting_after = page.data[-1].id
+            pages_checked += 1
+
+        if fulfilled > 0:
+            await db.commit()
+            logger.info("Stripe reconciliation complete: %d permits created", fulfilled)
+        else:
+            await db.rollback()
+
+    return {
+        "fulfilled": fulfilled,
+        "already_fulfilled": already_fulfilled,
+        "errors": errors,
+    }

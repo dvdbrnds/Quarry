@@ -610,7 +610,7 @@ async def direct_purchase(
                 "institution": settings.school_name or "moravian",
             },
         },
-        success_url=f"{base_url}/parking?purchased=true",
+        success_url=f"{base_url}/parking?purchased=true&session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}/parking",
         metadata={
             "type": "direct_permit_purchase",

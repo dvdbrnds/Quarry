@@ -571,7 +571,7 @@ async def accept_offer(
                 "institution": settings.school_name or "moravian",
             },
         },
-        success_url=f"{base_url}/parking?accepted={application_id}",
+        success_url=f"{base_url}/parking?accepted={application_id}&session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}/parking",
         metadata={
             "type": "lottery_v2_permit",
