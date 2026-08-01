@@ -96,28 +96,10 @@ async def _ticket_to_lookup(ticket: Ticket, db: AsyncSession) -> dict:
     return data
 
 
-@router.get("/lookup", response_model=TicketLookupList)
-async def lookup_by_plate(
-    plate: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """Public endpoint for the pay portal — search unpaid tickets by plate."""
-    normalized = plate.upper().strip()
-    if not normalized:
-        return TicketLookupList(tickets=[])
-
-    result = await db.execute(
-        select(Ticket)
-        .where(
-            Ticket.plate.ilike(f"%{normalized}%"),
-            Ticket.status.notin_(["paid", "voided", "resolved_permit"]),
-        )
-        .order_by(Ticket.issued_at.desc())
-        .limit(20)
-    )
-    tickets = result.scalars().all()
-    lookups = [await _ticket_to_lookup(t, db) for t in tickets]
-    return TicketLookupList(tickets=lookups)
+@router.get("/lookup")
+async def lookup_by_plate(plate: str = ""):
+    """Disabled — plate substring search removed for privacy. Use /lookup/{ticket_id} instead."""
+    raise HTTPException(410, "Plate lookup has been disabled. Use the QR code on your ticket or the direct link from your email.")
 
 
 @router.get("/lookup/{ticket_id}", response_model=TicketLookup)

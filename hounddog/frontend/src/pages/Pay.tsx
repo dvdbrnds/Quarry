@@ -25,7 +25,6 @@ export default function Pay() {
   const { message } = App.useApp();
   const brand = useBranding();
   const { ticketId: pathTicketId } = useParams<{ ticketId: string }>();
-  const [lookup, setLookup] = useState("");
   const [tickets, setTickets] = useState<TicketResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -61,7 +60,7 @@ export default function Pay() {
           return loadTicketById(id, attempt + 1);
         }
         setRetrying(false);
-        setError("Ticket not found. It may still be syncing \u2014 please try again in a minute, or search by plate number below.");
+        setError("Ticket not found. It may still be syncing \u2014 please try again in a minute.");
         return;
       }
       setRetrying(false);
@@ -74,20 +73,8 @@ export default function Pay() {
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       setRetrying(false);
-      setError("Unable to load ticket. Try searching by plate.");
+      setError("Unable to load ticket. Please try again.");
     } finally { setLoading(false); }
-  }
-
-  async function handleSearch() {
-    if (!lookup.trim()) return;
-    setLoading(true); setError(""); setTickets([]);
-    try {
-      const res = await fetch(`/api/payments/lookup?plate=${encodeURIComponent(lookup.trim())}`);
-      if (!res.ok) throw new Error("Search failed");
-      const data = await res.json();
-      if (data.tickets.length === 0) setError("No outstanding tickets found.");
-      setTickets(data.tickets);
-    } catch { setError("Unable to look up tickets."); } finally { setLoading(false); }
   }
 
   async function handlePay(ticketId: string) {
@@ -122,20 +109,22 @@ export default function Pay() {
     } catch (e: any) { setError(e.message); }
   }
 
+  const hasTicket = pathTicketId || new URLSearchParams(window.location.search).get("ticket");
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PublicPageNav subtitle="Pay a Ticket" />
       <div className="max-w-md mx-auto px-4 pt-10">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold" style={{ color: brand.primaryColor }}>Pay a Parking Ticket</h1>
-          <p className="text-ink-mute mt-2">Enter your license plate number to look up and pay outstanding fines.</p>
+          {!hasTicket && !loading && tickets.length === 0 && (
+            <p className="text-ink-mute mt-2">
+              Scan the QR code on your parking ticket, or use the link from your email to pay online.
+            </p>
+          )}
         </div>
 
-        <Space.Compact className="w-full mb-6">
-          <Input value={lookup} onChange={e => setLookup(e.target.value.toUpperCase())} placeholder="License Plate #"
-            className="font-mono text-lg text-center tracking-wider" size="large" onPressEnter={handleSearch} />
-          <Button type="primary" size="large" onClick={handleSearch} loading={loading}>Search</Button>
-        </Space.Compact>
+        {loading && <div className="text-center py-8"><Spin size="large" /></div>}
 
         {error && <Alert type={retrying ? "info" : "error"} message={error} className="mb-4" showIcon
           icon={retrying ? <Spin size="small" /> : undefined} />}
@@ -173,6 +162,13 @@ export default function Pay() {
             </Space>
           </Card>
         ))}
+
+        {!hasTicket && !loading && tickets.length === 0 && !error && (
+          <div className="text-center py-8 text-ink-mute">
+            <Empty description="No ticket loaded" />
+            <p className="mt-4 text-sm">To pay a ticket, scan the QR code printed on the citation or click the link in your notification email.</p>
+          </div>
+        )}
 
         <div className="text-center text-xs text-ink-mute mt-8">Payments processed securely via Stripe. &copy; {brand.schoolName || "Campus"} {brand.departmentName}</div>
 
