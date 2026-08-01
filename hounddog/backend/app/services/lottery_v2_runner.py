@@ -536,11 +536,12 @@ async def _notify_selected(
     selected: list[tuple[LotteryV2Application, PermitType]],
     offer_expires: datetime,
 ) -> None:
+    failed_count = 0
     for app, pt in selected:
         if not app.student_email or app.is_test_entry:
             continue
         try:
-            await send_lottery_selection_email(
+            sent = await send_lottery_selection_email(
                 recipient_email=app.student_email,
                 student_name=app.student_name,
                 permit_type_label=pt.label,
@@ -549,8 +550,21 @@ async def _notify_selected(
                 portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                 assigned_lot=app.assigned_lot,
             )
+            if not sent:
+                failed_count += 1
+                logger.error(
+                    "Lottery offer email FAILED for %s (%s) — student may miss their offer window",
+                    app.student_email, app.student_name,
+                )
         except Exception as e:
+            failed_count += 1
             logger.error("Failed to notify selected v2 applicant %s: %s", app.id, e)
+
+    if failed_count > 0:
+        logger.error(
+            "LOTTERY NOTIFICATION SUMMARY: %d/%d offer emails FAILED to send — check notification health",
+            failed_count, len([s for s in selected if s[0].student_email and not s[0].is_test_entry]),
+        )
 
 
 async def _notify_waitlisted(waitlisted: list[LotteryV2Application]) -> None:

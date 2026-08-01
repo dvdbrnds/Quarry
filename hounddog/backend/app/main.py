@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -741,6 +741,9 @@ async def lifespan(app: FastAPI):
     from .services.weather_monitor import start_weather_monitor, stop_weather_monitor
     start_weather_monitor()
 
+    from .services.notification_health import check_notification_config
+    check_notification_config()
+
     yield
 
     stop_weather_monitor()
@@ -810,6 +813,15 @@ app.include_router(branding.admin_router, prefix="/api/branding", tags=["brandin
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
 app.include_router(visitor_permits.router, prefix="/api/visitor/permits", tags=["visitor-permits"])
+
+
+@app.get("/api/admin/notification-health", tags=["admin"])
+async def notification_health(user=Depends(auth.require_admin())):
+    from .services.notification_health import stats, check_notification_config
+    return {
+        "config_warnings": check_notification_config(),
+        **stats.summary(),
+    }
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

@@ -23,11 +23,15 @@ def _get_client():
 def send_sms(to: str, body: str) -> bool:
     client = _get_client()
     if not client:
-        logger.warning("Twilio not configured -- SMS not sent to %s", to)
+        logger.error("Twilio not configured -- SMS not sent to %s", to)
+        from .notification_health import stats
+        stats.record_sms_failure(to, body[:50], "Twilio not configured")
         return False
 
     if not settings.twilio_from_number:
-        logger.warning("No Twilio from number configured -- SMS not sent")
+        logger.error("No Twilio from number configured -- SMS not sent to %s", to)
+        from .notification_health import stats
+        stats.record_sms_failure(to, body[:50], "No from number configured")
         return False
 
     try:
@@ -37,9 +41,13 @@ def send_sms(to: str, body: str) -> bool:
             to=to,
         )
         logger.info("SMS sent to %s", to)
+        from .notification_health import stats
+        stats.record_sms_success(to)
         return True
     except Exception as e:
         logger.error("SMS send failed to %s: %s", to, e, exc_info=True)
+        from .notification_health import stats
+        stats.record_sms_failure(to, body[:50], str(e))
         return False
 
 

@@ -148,7 +148,10 @@ async def send_email(
     from_override: str | None = None,
 ) -> bool:
     if not settings.smtp_host:
-        logger.warning("SMTP not configured -- email not sent: %s", subject)
+        logger.error("SMTP not configured -- email not sent to %s: %s", ", ".join(to), subject)
+        from .notification_health import stats
+        for r in to:
+            stats.record_email_failure(r, subject, "SMTP not configured")
         return False
 
     if not to:
@@ -157,7 +160,10 @@ async def send_email(
 
     from_addr = from_override or settings.smtp_from_address
     if not from_addr:
-        logger.warning("No from address configured -- email not sent")
+        logger.error("No from address configured -- email not sent: %s", subject)
+        from .notification_health import stats
+        for r in to:
+            stats.record_email_failure(r, subject, "No from address configured")
         return False
 
     branding = await _load_branding()
@@ -193,9 +199,15 @@ async def send_email(
             start_tls=not settings.smtp_use_tls,
         )
         logger.info("Email sent to %d recipients: %s", len(to), subject)
+        from .notification_health import stats
+        for r in to:
+            stats.record_email_success(r, subject)
         return True
     except Exception as e:
-        logger.error("Email send failed: %s", e, exc_info=True)
+        logger.error("Email send failed to %s: %s", ", ".join(to), e, exc_info=True)
+        from .notification_health import stats
+        for r in to:
+            stats.record_email_failure(r, subject, str(e))
         return False
 
 
