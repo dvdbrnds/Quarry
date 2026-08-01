@@ -97,8 +97,19 @@ export default function ViolationTypes() {
     modal.confirm({
       title: "Deactivate this violation type?", okText: "Deactivate", okButtonProps: { danger: true },
       onOk: async () => {
-        await fetch(`/api/violation-types/${id}`, { method: "DELETE", headers: await authHeaders() });
-        message.success("Violation type deactivated"); load();
+        const headers = await authHeaders();
+        const res = await fetch(`/api/violation-types/${id}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ is_active: false }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          message.error((err as any).detail || "Failed to deactivate");
+          throw new Error("Deactivate failed");
+        }
+        message.success("Violation type deactivated");
+        await load();
       },
     });
   }
