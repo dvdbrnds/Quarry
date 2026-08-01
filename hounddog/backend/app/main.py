@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth.okta import require_admin
 from .config import settings
+from .database import get_db
 from .routers import (
     academic_calendar,
     alerts,
@@ -428,6 +430,8 @@ async def lifespan(app: FastAPI):
                 value JSONB NOT NULL DEFAULT '{}',
                 updated_at TIMESTAMPTZ DEFAULT now()
             )""",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS photo_data BYTEA",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS photo_mime VARCHAR(64)",
             ]
             for migration in migrations:
                 try:
@@ -864,6 +868,49 @@ async def preflight_check(user=Depends(require_admin())):
     results = run_preflight()
     all_pass = all(r["status"] != "fail" for r in results)
     return {"status": "pass" if all_pass else "fail", "checks": results}
+
+
+@app.post("/api/admin/migrate-photos", tags=["admin"])
+async def migrate_photos_to_db(user=Depends(require_admin()), db: AsyncSession = Depends(get_db)):
+    """One-time migration: copy any disk-based ticket photos into the database."""
+    import os
+    from sqlalchemy import select as _select
+    from .models.ticket import Ticket
+
+    upload_dir = os.path.join(os.path.dirname(__file__), "..", "uploads", "photos")
+    if not os.path.isdir(upload_dir):
+        return {"migrated": 0, "skipped": 0, "errors": 0}
+
+    result = await db.execute(
+        _select(Ticket).where(
+            Ticket.photo_url.ilike("%/uploads/photos/%"),
+            Ticket.photo_data.is_(None),
+        )
+    )
+    tickets = result.scalars().all()
+
+    migrated = 0
+    skipped = 0
+    errors = 0
+    for ticket in tickets:
+        filename = ticket.photo_url.split("/uploads/photos/")[-1]
+        filepath = os.path.join(upload_dir, filename)
+        if not os.path.isfile(filepath):
+            skipped += 1
+            continue
+        try:
+            with open(filepath, "rb") as f:
+                ticket.photo_data = f.read()
+            ticket.photo_mime = "image/jpeg"
+            ticket.photo_url = f"/api/tickets/{ticket.id}/photo"
+            migrated += 1
+        except Exception:
+            errors += 1
+
+    if migrated > 0:
+        await db.commit()
+    return {"migrated": migrated, "skipped": skipped, "errors": errors}
+
 
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")

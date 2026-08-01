@@ -526,9 +526,6 @@ async def upload_photo(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    import os
-    import re
-
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
@@ -541,15 +538,43 @@ async def upload_photo(
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(413, "File too large. Maximum size is 10MB.")
 
-    upload_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "photos")
-    os.makedirs(upload_dir, exist_ok=True)
-
-    safe_name = re.sub(r'[^\w\-.]', '_', os.path.basename(file.filename or "photo.jpg"))
-    filename = f"{ticket_id}_{safe_name}"
-    filepath = os.path.join(upload_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(contents)
-
-    ticket.photo_url = f"/uploads/photos/{filename}"
+    ticket.photo_data = contents
+    ticket.photo_mime = file.content_type
+    ticket.photo_url = f"/api/tickets/{ticket_id}/photo"
     await db.flush()
     return {"photo_url": ticket.photo_url}
+
+
+@router.get("/{ticket_id}/photo")
+async def serve_photo(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy.orm import undefer
+    from sqlalchemy import select as _select
+    result = await db.execute(
+        _select(Ticket).where(Ticket.id == ticket_id).options(undefer(Ticket.photo_data))
+    )
+    ticket = result.scalar()
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+
+    if ticket.photo_data:
+        from fastapi.responses import Response
+        return Response(
+            content=ticket.photo_data,
+            media_type=ticket.photo_mime or "image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    # Legacy fallback: serve from disk if photo_url points to old /uploads/ path
+    if ticket.photo_url and "/uploads/photos/" in ticket.photo_url:
+        import os
+        filename = ticket.photo_url.split("/uploads/photos/")[-1]
+        upload_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "photos")
+        filepath = os.path.join(upload_dir, filename)
+        if os.path.isfile(filepath):
+            from fastapi.responses import FileResponse
+            return FileResponse(filepath, media_type="image/jpeg")
+
+    raise HTTPException(404, "No photo found")

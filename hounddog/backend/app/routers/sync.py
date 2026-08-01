@@ -470,16 +470,13 @@ async def _upload_ticket_impl(
                 else:
                     fine_amount = vtype.fine_first
 
-    # Handle photo upload
+    # Handle photo upload — store in DB
     photo_url = None
+    photo_data = None
+    photo_mime = None
     if ticket.photo_base64:
-        upload_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "photos")
-        os.makedirs(upload_dir, exist_ok=True)
-        filename = f"{uuid_mod.uuid4()}.jpg"
-        filepath = os.path.join(upload_dir, filename)
-        with open(filepath, "wb") as f:
-            f.write(base64.b64decode(ticket.photo_base64))
-        photo_url = f"/uploads/photos/{filename}"
+        photo_data = base64.b64decode(ticket.photo_base64)
+        photo_mime = "image/jpeg"
 
     officer_id = ticket.officer_email or ticket.officer_name or device.name
 
@@ -511,6 +508,8 @@ async def _upload_ticket_impl(
         violation_type_id=violation_type_id,
         fine_amount=fine_amount,
         photo_url=photo_url,
+        photo_data=photo_data,
+        photo_mime=photo_mime,
         officer_id=officer_id,
         officer_name=ticket.officer_name,
         officer_email=ticket.officer_email,
@@ -533,6 +532,10 @@ async def _upload_ticket_impl(
     db.add(new_ticket)
     await db.flush()
     await db.refresh(new_ticket)
+
+    if photo_data and not new_ticket.photo_url:
+        new_ticket.photo_url = f"/api/tickets/{new_ticket.id}/photo"
+        await db.flush()
 
     payment_url = f"{settings.student_facing_url}/pay?ticket={new_ticket.id}"
 

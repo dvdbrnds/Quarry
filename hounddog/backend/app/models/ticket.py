@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import String, DateTime, Float, Integer, ForeignKey, Numeric, Text, func
+from sqlalchemy import String, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,8 @@ class Ticket(Base):
     )
     fine_amount: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("50.00"))
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    photo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    photo_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
     officer_id: Mapped[str] = mapped_column(String(128), default="")
     officer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     officer_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
