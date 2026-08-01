@@ -345,6 +345,34 @@ async def send_renewal_email(
     return await send_email([recipient_email], subject, body_html, body_text)
 
 
+async def send_permit_confirmation_email(
+    recipient_email: str,
+    student_name: str,
+    permit_type_label: str,
+    permit_number: str,
+    plate: str,
+    lot_assignment: str,
+    start_date: str,
+    end_date: str,
+) -> bool:
+    """Send a permit-issued confirmation email after successful purchase."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    portal_url = settings.student_facing_url.rstrip("/") + "/parking"
+    subject = f"Parking Permit Issued — {permit_type_label}"
+
+    from .email_templates import render_permit_confirmation_email
+    body_html, body_text = render_permit_confirmation_email(
+        student_name, permit_type_label, permit_number, plate, lot_assignment,
+        start_date, end_date, portal_url,
+        school_name=school,
+        primary=b["primary_color"], accent=b["accent_color"],
+        brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
+    )
+    return await send_email([recipient_email], subject, body_html, body_text)
+
+
 async def send_waitlist_position_update_email(
     recipient_email: str,
     student_name: str,

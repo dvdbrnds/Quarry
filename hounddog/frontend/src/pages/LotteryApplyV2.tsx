@@ -196,6 +196,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const [submitting, setSubmitting] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [lots, setLots] = useState<Lot[]>([]);
+  const [myPermits, setMyPermits] = useState<any[]>([]);
   const [highlightedLots, setHighlightedLots] = useState<string[]>([]);
   const [hoveredTierId, setHoveredTierId] = useState<string | null>(null);
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
@@ -335,20 +336,27 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     setLoading(true);
     try {
       const headers = await authHeaders();
-      const [cycleRes, appRes, profileRes, lotsRes] = await Promise.all([
+      const [cycleRes, appRes, profileRes, lotsRes, permitsRes] = await Promise.all([
         fetch("/api/lottery-v2/cycle", { headers }),
         fetch("/api/lottery-v2/applications/me", { headers }),
         fetch("/api/auth/profile", { headers }),
         fetch("/api/lots", { headers }),
+        fetch("/api/student/permits/my-permits", { headers }),
       ]);
 
       const cycleData: Cycle | null = cycleRes.ok ? await cycleRes.json() : null;
       setCycle(cycleData);
 
+      const permits = permitsRes.ok ? await permitsRes.json() : [];
+      setMyPermits(permits);
+
       const appBody = appRes.ok ? await appRes.json() : null;
       // Only lock into results if the app belongs to the cycle currently shown
       if (appBody && cycleData && appBody.cycle_id === cycleData.id) {
         setApplication(appBody);
+        setStep("done");
+      } else if (permits.length > 0) {
+        setApplication(null);
         setStep("done");
       } else {
         setApplication(null);
@@ -754,6 +762,51 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
                       You're entered. Results appear here after the draw runs.
                     </p>
                   )}
+                </div>
+              </Card>
+            )}
+
+            {!application && myPermits.length > 0 && step === "done" && (
+              <Card>
+                <div className="space-y-4">
+                  <h2 className="text-lg font-semibold m-0">Your Parking Permit{myPermits.length > 1 ? "s" : ""}</h2>
+                  {myPermits.map((permit) => (
+                    <div key={permit.id} className="rounded-lg bg-green-50 border border-green-200 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-green-900">{permit.permit_type}</span>
+                        <Tag color="green">Active</Tag>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-2 text-sm m-0">
+                        {permit.permit_number && (
+                          <div>
+                            <dt className="text-gray-500">Permit #</dt>
+                            <dd className="font-mono font-medium m-0">{permit.permit_number}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt className="text-gray-500">Vehicle</dt>
+                          <dd className="font-mono font-medium m-0">{permit.plates?.join(", ") || "—"}</dd>
+                        </div>
+                        {permit.lot_assignment && (
+                          <div>
+                            <dt className="text-gray-500">Lot(s)</dt>
+                            <dd className="font-medium m-0">{permit.lot_assignment}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt className="text-gray-500">Valid through</dt>
+                          <dd className="font-medium m-0">
+                            {permit.end_date ? new Date(permit.end_date).toLocaleDateString() : "—"}
+                          </dd>
+                        </div>
+                      </dl>
+                      {permit.can_swap && (
+                        <p className="text-xs text-gray-500 mt-2 mb-0">
+                          Need to change your vehicle? Contact parking services.
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </Card>
             )}

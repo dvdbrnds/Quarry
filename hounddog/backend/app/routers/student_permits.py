@@ -361,6 +361,42 @@ async def my_applications(
     return out
 
 
+@router.get("/my-permits")
+async def my_permits(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Return the current student's active permits (for display after purchase)."""
+    from sqlalchemy import or_
+    result = await db.execute(
+        select(Permit).where(
+            or_(Permit.student_id == user.sub, Permit.email == user.email),
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+        ).order_by(Permit.created_at.desc())
+    )
+    permits = result.scalars().all()
+    out = []
+    for p in permits:
+        now = datetime.now(timezone.utc)
+        lpc = p.last_plate_change
+        next_swap = (lpc + timedelta(days=7)) if lpc else None
+        out.append({
+            "id": str(p.id),
+            "permit_number": p.permit_number,
+            "permit_type": p.permit_type,
+            "name": p.name,
+            "plates": p.plates,
+            "lot_assignment": p.lot_assignment,
+            "start_date": p.start_date.isoformat() if p.start_date else None,
+            "end_date": p.end_date.isoformat() if p.end_date else None,
+            "status": p.status,
+            "can_swap": next_swap is None or now >= next_swap,
+            "next_swap_available": next_swap.isoformat() if next_swap else None,
+        })
+    return out
+
+
 @router.post("/{application_id}/accept")
 async def accept_offer(
     application_id: uuid.UUID,
@@ -616,7 +652,9 @@ async def direct_purchase(
             "type": "direct_permit_purchase",
             "permit_type_id": str(pt.id),
             "permit_type_code": pt.code,
+            "permit_type_label": pt.label,
             "student_name": data.student_name,
+            "student_id": user.sub,
             "plate": data.plate.upper().strip(),
             "email": user.email,
             "valid_days": str(pt.valid_days),

@@ -390,6 +390,73 @@ def render_lottery_selection_email(
 
 
 # ---------------------------------------------------------------------------
+# Permit Confirmation (post-purchase)
+# ---------------------------------------------------------------------------
+
+def render_permit_confirmation_email(
+    student_name: str,
+    permit_type_label: str,
+    permit_number: str,
+    plate: str,
+    lot_assignment: str,
+    start_date: str,
+    end_date: str,
+    portal_url: str,
+    *,
+    school_name: str = "",
+    primary: str = "",
+    accent: str = "",
+    brand_name: str | None = None,
+    has_logo: bool = False,
+    department_name: str = "Parking Authority",
+) -> tuple[str, str]:
+    primary = primary or settings.brand_primary_color or "#1a2744"
+    school = school_name or "Campus"
+    first_name = student_name.split()[0] if student_name else "Student"
+
+    rows: list[tuple[str, str, str]] = [
+        ("Permit", f"{permit_type_label} ({permit_number})", "font-weight:600;"),
+        ("Vehicle", plate, "font-weight:600;font-family:monospace;"),
+    ]
+    if lot_assignment:
+        rows.append(("Lot(s)", lot_assignment, "font-weight:600;"))
+    rows.append(("Valid", f"{start_date} — {end_date}", ""))
+
+    inner = (
+        _heading(f"Permit Issued, {first_name}!", primary)
+        + f'<p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 20px;">'
+        f'Your <strong>{permit_type_label}</strong> parking permit is now active.</p>'
+        + _detail_table("Your Permit", rows)
+        + f'<p style="color:#333;font-size:14px;line-height:1.6;margin:0 0 24px;">'
+        f'Your vehicle is now registered in the system. Park in your assigned lot(s) and '
+        f'display your plate clearly. You can manage your permit (including vehicle changes) '
+        f'from the student portal.</p>'
+        + _cta_button(portal_url, "View My Permit", primary)
+        + _small("Keep this email for your records.")
+    )
+    html = render_email(
+        f"Permit Issued, {first_name}!", inner,
+        school_name=school, primary=primary, accent=accent,
+        brand_name=brand_name, has_logo=has_logo,
+    )
+
+    plain = (
+        f"PERMIT ISSUED — {first_name}\n\n"
+        f"Your {permit_type_label} parking permit is now active.\n\n"
+        f"Permit: {permit_type_label} ({permit_number})\n"
+        f"Vehicle: {plate}\n"
+    )
+    if lot_assignment:
+        plain += f"Lot(s): {lot_assignment}\n"
+    plain += (
+        f"Valid: {start_date} — {end_date}\n\n"
+        f"View your permit: {portal_url}\n\n"
+        f"{school} {department_name}"
+    )
+    return html, plain
+
+
+# ---------------------------------------------------------------------------
 # Renewal
 # ---------------------------------------------------------------------------
 

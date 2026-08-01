@@ -59,6 +59,7 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
 
     permit_type_code = metadata.get("permit_type_code", "")
     student_name = metadata.get("student_name", "")
+    student_id = metadata.get("student_id", "")
     plate = metadata.get("plate", "")
     email = metadata.get("email") or metadata.get("student_email") or session_data.get("customer_email") or ""
     phone = metadata.get("phone", "") or ""
@@ -85,6 +86,7 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
 
     new_permit = Permit(
         permit_number=await next_permit_number(db),
+        student_id=student_id,
         name=student_name,
         email=email or None,
         phone=phone,
@@ -122,6 +124,25 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
                 pass
 
     await db.flush()
+
+    # Send confirmation email (best-effort, don't fail fulfillment)
+    if email:
+        try:
+            from .email import send_permit_confirmation_email
+            permit_label = metadata.get("permit_type_label", permit_type_code)
+            await send_permit_confirmation_email(
+                recipient_email=email,
+                student_name=student_name,
+                permit_type_label=permit_label,
+                permit_number=new_permit.permit_number or "",
+                plate=plate,
+                lot_assignment=lot_assignment,
+                start_date=new_permit.start_date.strftime("%B %d, %Y"),
+                end_date=new_permit.end_date.strftime("%B %d, %Y"),
+            )
+        except Exception as e:
+            logger.warning("Permit confirmation email failed for %s: %s", email, e)
+
     return permit_type_code
 
 
