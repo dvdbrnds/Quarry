@@ -8,7 +8,8 @@ import asyncio
 import logging
 import uuid as _uuid
 
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, cast
+from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.alert_log import AlertLog
@@ -43,7 +44,7 @@ async def _get_subscribers(
         )
         if not is_emergency:
             q = q.where(
-                AlertSubscriber.categories.op("@>")(f'["{alert.category}"]'),
+                cast(AlertSubscriber.categories, PG_JSONB).op("@>")(cast(f'["{alert.category}"]', PG_JSONB)),
             )
         q = q.distinct()
     elif is_emergency:
@@ -55,7 +56,7 @@ async def _get_subscribers(
         )
     else:
         q = select(AlertSubscriber).where(
-            AlertSubscriber.categories.op("@>")(f'["{alert.category}"]'),
+            cast(AlertSubscriber.categories, PG_JSONB).op("@>")(cast(f'["{alert.category}"]', PG_JSONB)),
             or_(
                 AlertSubscriber.email.isnot(None),
                 AlertSubscriber.phone.isnot(None),

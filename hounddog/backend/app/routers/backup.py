@@ -218,12 +218,15 @@ def _write_schedule(data: dict):
 
 async def _read_schedule_db(db: AsyncSession) -> dict:
     """Read backup schedule from the app_config table (survives redeploys)."""
-    result = await db.execute(
-        text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
-    )
-    row = result.scalar()
-    if row:
-        return row if isinstance(row, dict) else json.loads(row)
+    try:
+        result = await db.execute(
+            text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
+        )
+        row = result.scalar()
+        if row:
+            return row if isinstance(row, dict) else json.loads(row)
+    except Exception:
+        pass
     return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
 
 
@@ -236,7 +239,6 @@ async def _write_schedule_db(db: AsyncSession, data: dict):
         VALUES ('backup_schedule', :val::jsonb, now())
         ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
     """), {"val": value_str})
-    await db.commit()
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
 

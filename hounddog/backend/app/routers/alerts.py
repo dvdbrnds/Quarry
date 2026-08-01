@@ -5,7 +5,8 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast
+from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import get_current_user, OktaUser, require_role
@@ -227,12 +228,12 @@ async def preview_send(
         email_q = select(func.count()).select_from(AlertSubscriber).where(
             AlertSubscriber.email.isnot(None),
             AlertSubscriber.email_enabled.is_(True),
-            AlertSubscriber.categories.op("@>")(f'["{category}"]'),
+            cast(AlertSubscriber.categories, PG_JSONB).op("@>")(cast(f'["{category}"]', PG_JSONB)),
         )
         sms_q = select(func.count()).select_from(AlertSubscriber).where(
             AlertSubscriber.phone.isnot(None),
             AlertSubscriber.sms_enabled.is_(True),
-            AlertSubscriber.categories.op("@>")(f'["{category}"]'),
+            cast(AlertSubscriber.categories, PG_JSONB).op("@>")(cast(f'["{category}"]', PG_JSONB)),
         )
 
     email_count = await db.scalar(email_q) or 0
@@ -936,7 +937,7 @@ async def list_subscribers(
         )
 
     if category:
-        q = q.where(AlertSubscriber.categories.op("@>")(f'["{category}"]'))
+        q = q.where(cast(AlertSubscriber.categories, PG_JSONB).op("@>")(cast(f'["{category}"]', PG_JSONB)))
 
     result = await db.execute(q)
     return result.scalars().all()
