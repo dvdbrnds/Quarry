@@ -114,6 +114,27 @@ export default function ViolationTypes() {
     });
   }
 
+  function handleDelete(id: string, label: string) {
+    modal.confirm({
+      title: `Permanently delete "${label}"?`,
+      content: "This cannot be undone. Only delete violation types that have never been used on a ticket.",
+      okText: "Delete Forever",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const headers = await authHeaders();
+        headers["X-HTTP-Method-Override"] = "DELETE";
+        const res = await fetch(`/api/violation-types/${id}`, { method: "POST", headers });
+        if (!res.ok && res.status !== 204) {
+          const err = await res.json().catch(() => ({}));
+          message.error((err as any).detail || "Failed to delete");
+          throw new Error("Delete failed");
+        }
+        message.success("Violation type deleted");
+        await load();
+      },
+    });
+  }
+
   const columns: ColumnsType<ViolationType> = [
     { title: "#", dataIndex: "sort_order", key: "sort_order", width: 50 },
     { title: "Code", dataIndex: "code", key: "code", render: (v) => <span className="font-mono text-xs">{v}</span> },
@@ -129,6 +150,7 @@ export default function ViolationTypes() {
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(vt); setCreating(false); }}>Edit</Button>
           {vt.is_active && <Button type="link" size="small" danger onClick={() => handleDeactivate(vt.id)}>Deactivate</Button>}
+          {!vt.is_active && <Button type="link" size="small" danger onClick={() => handleDelete(vt.id, vt.label)}>Delete</Button>}
         </Space>
       ),
     },
