@@ -1,9 +1,9 @@
 """
-Stripe permit fulfillment reconciler.
+Stripe payment fulfillment reconciler.
 
-Polls Stripe for completed checkout sessions of type direct_permit_purchase
-and lottery_v2_permit where no local Permit record exists yet. Creates the
-permit and payment records for any paid-but-unfulfilled sessions.
+Polls Stripe for completed checkout sessions (permits AND tickets) where
+no corresponding fulfilled record exists in our DB. Creates the permit/payment
+records for any paid-but-unfulfilled sessions.
 
 Runs automatically in the scheduler loop every 5 minutes, and can also be
 triggered manually via the admin API.
@@ -27,6 +27,7 @@ from ..services.permit_numbering import next_permit_number
 logger = logging.getLogger("quarry.stripe_reconciler")
 
 PERMIT_SESSION_TYPES = {"direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"}
+ALL_RECONCILABLE_TYPES = PERMIT_SESSION_TYPES | {"ticket_payment"}
 
 
 async def _permit_exists_for_session(db: AsyncSession, stripe_pi: str) -> bool:
@@ -109,7 +110,6 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
     )
     db.add(payment)
 
-    # If this is a lottery_v2_permit, mark the application as accepted
     if payment_type == "lottery_v2_permit":
         app_id = metadata.get("application_id")
         if app_id:
@@ -125,19 +125,70 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
     return permit_type_code
 
 
-async def reconcile_stripe_permits(lookback_hours: int = 48) -> dict:
-    """Poll Stripe for paid checkout sessions and fulfill any missing permits.
+async def _fulfill_ticket_payment(db: AsyncSession, session_data: dict) -> bool:
+    """Mark a ticket as paid from a Stripe checkout session.
+
+    Returns True on success, False if skipped (already fulfilled or invalid).
+    """
+    metadata = session_data.get("metadata") or {}
+    ticket_id = metadata.get("ticket_id")
+    if not ticket_id:
+        return False
+
+    stripe_pi = session_data.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return False
+
+    from ..models.ticket import Ticket
+    try:
+        ticket = await db.get(Ticket, uuid.UUID(ticket_id))
+    except (ValueError, TypeError):
+        return False
+    if not ticket:
+        return False
+    if ticket.status in ("paid", "voided", "resolved_permit"):
+        return False
+
+    ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
+    payer_name = metadata.get("payer_name", "") or ""
+    payer_email = session_data.get("customer_email", "") or ""
+    amount_total = session_data.get("amount_total", 0)
+
+    payment = Payment(
+        ticket_id=ticket.id,
+        amount=Decimal(amount_total) / 100 if amount_total else Decimal("0.00"),
+        method="online_card",
+        stripe_payment_id=stripe_pi or None,
+        payment_type="ticket_payment",
+        payer_name=payer_name or None,
+        payer_email=payer_email or None,
+        plate=ticket.plate,
+        description=f"Citation #{ticket_ref} — {ticket.plate}",
+    )
+    db.add(payment)
+    ticket.status = "paid"
+    await db.flush()
+    return True
+
+
+async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
+    """Poll Stripe for paid checkout sessions and fulfill any missing permits/tickets.
 
     Returns a summary dict with counts.
     """
     if not settings.stripe_secret_key:
-        return {"error": "Stripe not configured", "fulfilled": 0, "already_fulfilled": 0}
+        return {"error": "Stripe not configured", "fulfilled": 0, "already_fulfilled": 0, "tickets_fulfilled": 0}
 
     import stripe
     stripe.api_key = settings.stripe_secret_key
 
     created_after = int((datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).timestamp())
     fulfilled = 0
+    tickets_fulfilled = 0
     already_fulfilled = 0
     errors: list[str] = []
 
@@ -168,24 +219,36 @@ async def reconcile_stripe_permits(lookback_hours: int = 48) -> dict:
                 metadata = sess_dict.get("metadata") or {}
                 payment_type = metadata.get("type", "")
 
-                if payment_type not in PERMIT_SESSION_TYPES:
+                if payment_type not in ALL_RECONCILABLE_TYPES:
                     continue
 
                 if sess_dict.get("payment_status") != "paid":
                     continue
 
                 try:
-                    result = await _fulfill_session(db, sess_dict)
-                    if result:
-                        fulfilled += 1
-                        logger.info(
-                            "Reconciled permit: %s plate=%s pi=%s",
-                            result,
-                            metadata.get("plate", "?"),
-                            sess_dict.get("payment_intent", "?")[:16],
-                        )
-                    else:
-                        already_fulfilled += 1
+                    if payment_type in PERMIT_SESSION_TYPES:
+                        result = await _fulfill_session(db, sess_dict)
+                        if result:
+                            fulfilled += 1
+                            logger.info(
+                                "Reconciled permit: %s plate=%s pi=%s",
+                                result,
+                                metadata.get("plate", "?"),
+                                sess_dict.get("payment_intent", "?")[:16],
+                            )
+                        else:
+                            already_fulfilled += 1
+                    elif payment_type == "ticket_payment":
+                        result = await _fulfill_ticket_payment(db, sess_dict)
+                        if result:
+                            tickets_fulfilled += 1
+                            logger.info(
+                                "Reconciled ticket payment: ticket=%s pi=%s",
+                                metadata.get("ticket_id", "?"),
+                                sess_dict.get("payment_intent", "?")[:16],
+                            )
+                        else:
+                            already_fulfilled += 1
                 except Exception as e:
                     errors.append(f"Fulfill failed for {sess.id}: {e}")
                     logger.error("Reconcile fulfill error for %s: %s", sess.id, e, exc_info=True)
@@ -195,14 +258,19 @@ async def reconcile_stripe_permits(lookback_hours: int = 48) -> dict:
             starting_after = page.data[-1].id
             pages_checked += 1
 
-        if fulfilled > 0:
+        if fulfilled > 0 or tickets_fulfilled > 0:
             await db.commit()
-            logger.info("Stripe reconciliation complete: %d permits created", fulfilled)
+            logger.info("Stripe reconciliation complete: %d permits, %d tickets fulfilled", fulfilled, tickets_fulfilled)
         else:
             await db.rollback()
 
     return {
         "fulfilled": fulfilled,
+        "tickets_fulfilled": tickets_fulfilled,
         "already_fulfilled": already_fulfilled,
         "errors": errors,
     }
+
+
+# Keep old name as alias for backward compat with scheduler
+reconcile_stripe_permits = reconcile_stripe_payments

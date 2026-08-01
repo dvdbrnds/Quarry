@@ -532,6 +532,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
 
         # Trigger permit fulfillment for paid permit sessions
         permit_fulfilled = False
+        ticket_fulfilled = False
         if payment_status == "paid" and payment_type in ("direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"):
             try:
                 from ..services.stripe_reconciler import _fulfill_session, _permit_exists_for_session
@@ -543,6 +544,24 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
                         permit_fulfilled = True
             except Exception as e:
                 logger.warning("verify-session fulfillment failed (reconciler will retry): %s", e)
+
+        # Trigger ticket fulfillment for paid ticket sessions
+        if payment_status == "paid" and payment_type == "ticket_payment" and ticket_id:
+            try:
+                stripe_pi = data.get("payment_intent", "")
+                already_paid = False
+                if stripe_pi:
+                    existing = await db.execute(
+                        select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+                    )
+                    already_paid = existing.scalar() is not None
+                if not already_paid:
+                    success = await _handle_ticket_payment(data, metadata, db)
+                    if success:
+                        await db.commit()
+                        ticket_fulfilled = True
+            except Exception as e:
+                logger.warning("verify-session ticket fulfillment failed (reconciler will retry): %s", e)
 
         ticket_plate = None
         if ticket_id:
@@ -557,6 +576,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
             "ticket_id": ticket_id,
             "ticket_plate": ticket_plate,
             "permit_fulfilled": permit_fulfilled,
+            "ticket_fulfilled": ticket_fulfilled,
         }
     except Exception as e:
         return {"status": "error", "payment_status": "unknown", "detail": str(e)}
