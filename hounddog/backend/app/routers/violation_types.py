@@ -71,6 +71,7 @@ async def update_violation_type(
 @router.delete("/{vtype_id}", status_code=204)
 async def deactivate_or_delete_violation_type(
     vtype_id: uuid.UUID,
+    force: bool = Query(False, description="Force delete even if tickets reference this type"),
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
 ):
@@ -83,7 +84,7 @@ async def deactivate_or_delete_violation_type(
         ticket_count = (await db.execute(
             select(Ticket).where(Ticket.violation_type == vtype.code).limit(1)
         )).scalar()
-        if ticket_count:
+        if ticket_count and not force:
             raise HTTPException(400, "Cannot delete — this violation type has been used on existing tickets. You can only deactivate it.")
         await db.delete(vtype)
     else:

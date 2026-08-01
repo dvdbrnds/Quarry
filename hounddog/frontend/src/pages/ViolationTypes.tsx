@@ -114,19 +114,28 @@ export default function ViolationTypes() {
     });
   }
 
-  function handleDelete(id: string, label: string) {
+  function handleDelete(id: string, label: string, force = false) {
     modal.confirm({
-      title: `Permanently delete "${label}"?`,
-      content: "This cannot be undone. Only delete violation types that have never been used on a ticket.",
-      okText: "Delete Forever",
+      title: force ? `FORCE delete "${label}" and orphan its tickets?` : `Permanently delete "${label}"?`,
+      content: force
+        ? "This will delete the violation type even though tickets reference it. Those tickets will keep their violation code as text but the type definition will be gone."
+        : "This cannot be undone. Only delete violation types that have never been used on a ticket.",
+      okText: force ? "Force Delete" : "Delete Forever",
       okButtonProps: { danger: true },
       onOk: async () => {
         const headers = await authHeaders();
         headers["X-HTTP-Method-Override"] = "DELETE";
-        const res = await fetch(`/api/violation-types/${id}`, { method: "POST", headers });
+        const url = `/api/violation-types/${id}${force ? "?force=true" : ""}`;
+        const res = await fetch(url, { method: "POST", headers });
         if (!res.ok && res.status !== 204) {
           const err = await res.json().catch(() => ({}));
-          message.error((err as any).detail || "Failed to delete");
+          const detail = (err as any).detail || "Failed to delete";
+          if (!force && detail.includes("existing tickets")) {
+            message.warning(detail);
+            handleDelete(id, label, true);
+            return;
+          }
+          message.error(detail);
           throw new Error("Delete failed");
         }
         message.success("Violation type deleted");
