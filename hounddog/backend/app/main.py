@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .auth.okta import require_admin
 from .config import settings
 from .routers import (
     academic_calendar,
@@ -819,7 +820,7 @@ app.include_router(visitor_permits.router, prefix="/api/visitor/permits", tags=[
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])
-async def notification_health(user=Depends(auth.require_admin())):
+async def notification_health(user=Depends(require_admin())):
     from .services.notification_health import stats, check_notification_config
     return {
         "config_warnings": check_notification_config(),
@@ -828,7 +829,7 @@ async def notification_health(user=Depends(auth.require_admin())):
 
 
 @app.get("/api/admin/preflight", tags=["admin"])
-async def preflight_check(user=Depends(auth.require_admin())):
+async def preflight_check(user=Depends(require_admin())):
     from .services.env_preflight import run_preflight
     results = run_preflight()
     all_pass = all(r["status"] != "fail" for r in results)
