@@ -376,6 +376,17 @@ async def my_permits(
         ).order_by(Permit.created_at.desc())
     )
     permits = result.scalars().all()
+
+    # Look up labels for permit type codes
+    all_codes = list({p.permit_type for p in permits if p.permit_type})
+    label_map: dict[str, str] = {}
+    if all_codes:
+        pt_result = await db.execute(
+            select(PermitType.code, PermitType.label).where(PermitType.code.in_(all_codes))
+        )
+        for row in pt_result:
+            label_map[row.code] = row.label
+
     out = []
     for p in permits:
         now = datetime.now(timezone.utc)
@@ -385,6 +396,7 @@ async def my_permits(
             "id": str(p.id),
             "permit_number": p.permit_number,
             "permit_type": p.permit_type,
+            "permit_type_label": label_map.get(p.permit_type, p.permit_type),
             "name": p.name,
             "plates": p.plates,
             "lot_assignment": p.lot_assignment,

@@ -355,9 +355,6 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
       if (appBody && cycleData && appBody.cycle_id === cycleData.id) {
         setApplication(appBody);
         setStep("done");
-      } else if (permits.length > 0) {
-        setApplication(null);
-        setStep("done");
       } else {
         setApplication(null);
         setStep("intake");
@@ -766,14 +763,14 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
               </Card>
             )}
 
-            {!application && myPermits.length > 0 && step === "done" && (
+            {!application && myPermits.length > 0 && (
               <Card>
                 <div className="space-y-4">
                   <h2 className="text-lg font-semibold m-0">Your Parking Permit{myPermits.length > 1 ? "s" : ""}</h2>
                   {myPermits.map((permit) => (
                     <div key={permit.id} className="rounded-lg bg-green-50 border border-green-200 p-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-green-900">{permit.permit_type}</span>
+                        <span className="font-semibold text-green-900">{permit.permit_type_label || permit.permit_type}</span>
                         <Tag color="green">Active</Tag>
                       </div>
                       <dl className="grid grid-cols-2 gap-2 text-sm m-0">
