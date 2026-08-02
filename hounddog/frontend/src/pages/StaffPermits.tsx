@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbox, Descriptions } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
-import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
+import StudentLotMap from "../components/StudentLotMap";
+import type { Lot } from "../api";
 
 interface StaffPermitType {
   id: string; code: string; label: string; eligible: string;
@@ -108,6 +110,9 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
   const [vehicles, setVehicles] = useState<RegisteredVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [mapsApiKey, setMapsApiKey] = useState("");
+  const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
 
   const renewToken = new URLSearchParams(window.location.search).get("renew");
   const [renewalInfo, setRenewalInfo] = useState<RenewalInfo | null>(null);
@@ -121,20 +126,30 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
   const load = useCallback(async () => {
     try {
       const headers = await authHeadersAs(impersonateEmail);
-      const [avRes, myRes] = await Promise.all([
+      const [avRes, myRes, lotsRes] = await Promise.all([
         fetch("/api/staff/permits/available", { headers }),
         fetch("/api/staff/permits/my-vehicles", { headers }),
+        fetch("/api/lots", { headers }),
       ]);
       if (avRes.ok) {
         const types: StaffPermitType[] = await avRes.json();
         setPermitType(types[0] || null);
       }
       if (myRes.ok) setVehicles(await myRes.json());
+      if (lotsRes.ok) setLots(await lotsRes.json());
     } catch { message.error("Failed to load data"); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    loadConfig().then((cfg) => {
+      setMapsApiKey(cfg.google_maps_api_key || "");
+      if (cfg.campus_lat && cfg.campus_lng) {
+        setCampusCenter({ lat: cfg.campus_lat, lng: cfg.campus_lng });
+      }
+    });
+  }, [load]);
 
   useEffect(() => {
     if (!renewToken) return;
@@ -228,6 +243,16 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
           <div className="flex justify-center py-20"><Spin size="large" /></div>
         ) : (
           <div className="space-y-8">
+            {mapsApiKey && lots.length > 0 && permitType && (
+              <div className="h-[300px] rounded-xl overflow-hidden shadow">
+                <StudentLotMap
+                  apiKey={mapsApiKey}
+                  lots={lots.filter(l => permitType.lot_assignments.some(a => l.name.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(l.name.replace(/^Lot\s+/i, "").trim().toLowerCase())))}
+                  highlightedLots={permitType.lot_assignments}
+                  defaultCenter={campusCenter}
+                />
+              </div>
+            )}
             {/* Renewal card (from email link) */}
             {renewalSuccess && (
               <Alert
