@@ -719,7 +719,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             {!cycle && (
               <Card>
                 <p className="text-gray-500 m-0">
-                  No lottery cycle is available right now. Check back when registration opens.
+                  No lottery cycle is available right now. The residential parking lottery runs
+                  during the summer, before the start of the school year. Check back when
+                  registration opens.
                 </p>
               </Card>
             )}
@@ -737,6 +739,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     {cycle.status === "open" ? "Accepting applications" : cycle.status}
                   </Tag>
                 </div>
+                <p className="text-xs text-gray-500 mt-2 mb-0">
+                  The residential parking lottery runs during the summer, before the start of
+                  the school year.{cycle.status !== "open" ? " Check back when registration opens." : ""}
+                </p>
               </Card>
             )}
 
