@@ -217,7 +217,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
   const [step, setStep] = useState<"intake" | "rank" | "choose" | "done">("intake");
-  const [campus, setCampus] = useState<"north" | "south" | "commuter" | null>(null);
+  const [campus, setCampus] = useState<"north" | "south" | "commuter" | null>("north");
   const [classYear, setClassYear] = useState<number | null>(null);
   const [plate, setPlate] = useState("");
   const [plateState, setPlateState] = useState("PA");
@@ -408,6 +408,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
   useEffect(() => {
     load();
+    loadTiers("north");
     loadConfig().then((cfg) => {
       setMapsApiKey(cfg.google_maps_api_key || "");
       if (cfg.campus_lat && cfg.campus_lng) {
