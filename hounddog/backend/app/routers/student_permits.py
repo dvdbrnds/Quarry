@@ -554,11 +554,6 @@ async def direct_purchase(
     if not pt.is_purchasable_online or pt.requires_lottery:
         raise HTTPException(400, "This permit type cannot be purchased directly")
 
-    if pt.eligible_groups:
-        user_groups = set(user.groups)
-        if not user_groups & set(pt.eligible_groups):
-            raise HTTPException(403, "You are not eligible for this permit type")
-
     active_count = (await db.execute(
         select(func.count()).select_from(Permit).where(
             Permit.permit_type == pt.code,
