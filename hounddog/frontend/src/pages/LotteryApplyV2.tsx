@@ -148,6 +148,11 @@ export default function LotteryApplyV2() {
           );
           if (lookupRes.ok) {
             const target = await lookupRes.json();
+            // Staff/faculty → redirect to employee parking (preserving impersonation)
+            if (target.role === "staff") {
+              window.location.replace(`/employee-parking?impersonate=${encodeURIComponent(impEmail)}`);
+              return;
+            }
             setUser({
               sub: target.sub,
               email: target.email,
