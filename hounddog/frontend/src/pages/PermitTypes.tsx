@@ -241,7 +241,7 @@ export default function PermitTypes() {
   function handleDeactivate(pt: PermitTypeRow) {
     modal.confirm({
       title: `Deactivate "${pt.label}"?`,
-      content: "This will hide the permit type from students, stop new purchases, and remove it from lottery. Existing permits are not affected. You can reactivate it later.",
+      content: "This will hide the permit type from students and stop new purchases. Existing permits are not affected. You can reactivate it later.",
       okText: "Deactivate Permit Type", okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -307,30 +307,6 @@ export default function PermitTypes() {
       message.success(enable ? "Purchasing enabled" : "Purchasing disabled");
       load();
     } catch (e: any) { message.error(e.message); }
-  }
-
-  async function handleToggleLottery(pt: PermitTypeRow) {
-    const enable = !pt.requires_lottery;
-    const verb = enable ? "Enable" : "Disable";
-    modal.confirm({
-      title: `${verb} lottery for "${pt.label}"?`,
-      content: enable
-        ? "This permit type will be included in the next lottery draw. It remains active either way."
-        : "This permit type will be excluded from lottery draws. It stays active and existing permits are unaffected.",
-      okText: `${verb} Lottery`,
-      okButtonProps: enable ? undefined : { danger: true },
-      onOk: async () => {
-        try {
-          const res = await fetch(`/api/permit-types/${pt.id}`, {
-            method: "PUT", headers: await authHeaders(),
-            body: JSON.stringify({ requires_lottery: enable }),
-          });
-          if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).detail || `Failed (${res.status})`); }
-          message.success(enable ? "Lottery enabled for this tier" : "Lottery disabled for this tier");
-          load();
-        } catch (e: any) { message.error(e.message); }
-      },
-    });
   }
 
   const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad"]);
@@ -407,12 +383,8 @@ export default function PermitTypes() {
         if (LOTTERY_TIER_CODES.has(pt.code)) {
           return (
             <div>
-              <Tag color={pt.requires_lottery ? "purple" : "default"}>
-                {pt.requires_lottery ? "Lottery tier" : "Lottery disabled"}
-              </Tag>
-              <div className="text-[10px] text-ink-mute mt-0.5">
-                {pt.requires_lottery ? "Included in draws" : "Excluded from draws"}
-              </div>
+              <Tag color="purple">Lottery tier</Tag>
+              <div className="text-[10px] text-ink-mute mt-0.5">Managed on Lottery tab</div>
             </div>
           );
         }
@@ -465,12 +437,6 @@ export default function PermitTypes() {
             <Button type="link" size="small" onClick={() => handleTogglePurchasing(pt)}
               style={pt.is_purchasable_online ? undefined : { color: "#16a34a" }}>
               {pt.is_purchasable_online ? "Disable Purchasing" : "Enable Purchasing"}
-            </Button>
-          )}
-          {pt.is_active && LOTTERY_TIER_CODES.has(pt.code) && (
-            <Button type="link" size="small" onClick={() => handleToggleLottery(pt)}
-              style={pt.requires_lottery ? { color: "#dc2626" } : { color: "#7c3aed" }}>
-              {pt.requires_lottery ? "Disable Lottery" : "Enable Lottery"}
             </Button>
           )}
           {pt.is_active
