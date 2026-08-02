@@ -239,6 +239,43 @@ export default function DataManagement() {
   };
 
   const ticketCount = tables["tickets"] ?? 0;
+  const permitCount = tables["permits"] ?? 0;
+  const appCount = tables["permit_applications"] ?? 0;
+
+  const handleClearPermits = () => {
+    modal.confirm({
+      title: "Clear All Permits",
+      icon: <WarningOutlined style={{ color: "#ff4d4f" }} />,
+      content: (
+        <div>
+          <p style={{ fontWeight: 600, color: "#ff4d4f" }}>
+            This will permanently delete all {permitCount.toLocaleString()} permits, {appCount.toLocaleString()} applications, and their associated payment records.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            This is intended for clearing legacy/test data before going live. This action cannot be undone.
+          </p>
+        </div>
+      ),
+      okText: `Delete All Permits`,
+      okType: "danger",
+      cancelText: "Cancel",
+      width: 480,
+      onOk: async () => {
+        setClearing(true);
+        try {
+          const result = await api.backup.clearPermits();
+          message.success(
+            `Cleared ${result.permits_deleted.toLocaleString()} permits, ${result.applications_deleted.toLocaleString()} applications, ${result.payments_deleted.toLocaleString()} payments`
+          );
+          load();
+        } catch (e: any) {
+          message.error(e.message || "Failed to clear permits");
+        } finally {
+          setClearing(false);
+        }
+      },
+    });
+  };
 
   const handleClearTickets = () => {
     modal.confirm({
@@ -331,6 +368,26 @@ export default function DataManagement() {
             size="large"
           >
             Upload & Restore
+          </Button>
+        </Card>
+
+        <Card style={{ flex: 1, minWidth: 280 }}>
+          <Title level={5} style={{ marginTop: 0 }}>
+            <DeleteOutlined style={{ marginRight: 8 }} />
+            Clear All Permits
+          </Title>
+          <p className="text-ink-mute text-sm mb-4">
+            Delete all {permitCount.toLocaleString()} permits, {appCount.toLocaleString()} applications, and related payments. Use before going live.
+          </p>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={handleClearPermits}
+            loading={clearing}
+            disabled={permitCount === 0}
+            size="large"
+          >
+            Clear All Permits
           </Button>
         </Card>
 

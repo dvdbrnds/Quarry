@@ -181,6 +181,42 @@ async def clear_tickets(
     return {"deleted": count}
 
 
+@router.delete("/clear-permits")
+async def clear_permits(
+    _admin: OktaUser = Depends(require_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all permits, permit applications, lottery applications, and permit-related payments."""
+    permits_row = await db.execute(text('SELECT count(*) FROM "permits"'))
+    permits_count = permits_row.scalar() or 0
+
+    apps_row = await db.execute(text('SELECT count(*) FROM "permit_applications"'))
+    apps_count = apps_row.scalar() or 0
+
+    lottery_apps_row = await db.execute(text('SELECT count(*) FROM "lottery_v2_applications"'))
+    lottery_apps_count = lottery_apps_row.scalar() or 0
+
+    payments_row = await db.execute(text(
+        "SELECT count(*) FROM payments WHERE payment_type IN "
+        "('direct_permit_purchase', 'lottery_permit', 'lottery_v2_permit', 'standalone_permit_purchase', 'fee_exempt')"
+    ))
+    payments_count = payments_row.scalar() or 0
+
+    await db.execute(text('TRUNCATE TABLE "permit_applications" CASCADE'))
+    await db.execute(text('TRUNCATE TABLE "lottery_v2_applications" CASCADE'))
+    await db.execute(text('TRUNCATE TABLE "permits" CASCADE'))
+    await db.execute(text(
+        "DELETE FROM payments WHERE payment_type IN "
+        "('direct_permit_purchase', 'lottery_permit', 'lottery_v2_permit', 'standalone_permit_purchase', 'fee_exempt')"
+    ))
+
+    return {
+        "permits_deleted": permits_count,
+        "applications_deleted": apps_count + lottery_apps_count,
+        "payments_deleted": payments_count,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Scheduled backup configuration & history
 # ---------------------------------------------------------------------------

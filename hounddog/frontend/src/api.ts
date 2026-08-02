@@ -864,6 +864,10 @@ export const api = {
     },
     clearTickets: () =>
       request<{ deleted: number }>("/backup/clear-tickets", { method: "DELETE" }),
+    clearPermits: () =>
+      request<{ permits_deleted: number; applications_deleted: number; payments_deleted: number }>(
+        "/backup/clear-permits", { method: "DELETE" }
+      ),
     schedule: {
       get: () => request<BackupSchedule>("/backup/schedule"),
       set: (data: BackupScheduleInput) =>
