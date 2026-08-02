@@ -432,6 +432,8 @@ async def lifespan(app: FastAPI):
             )""",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS photo_data BYTEA",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS photo_mime VARCHAR(64)",
+            # Restrict commuter permits to verified commuter students (SIS-synced group)
+            """UPDATE permit_types SET eligible_groups = '{"Commuter Students"}' WHERE code IN ('commuter_undergrad', 'commuter_grad', 'premium_commuter') AND (eligible_groups IS NULL OR eligible_groups = '{}')""",
             ]
             for migration in migrations:
                 try:
@@ -531,9 +533,9 @@ async def lifespan(app: FastAPI):
             pt_count = await session.scalar(select(func.count()).select_from(PermitType))
             if pt_count == 0:
                 default_permits = [
-                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 264, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
-                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
-                    {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 200, "valid_days": 365, "lot_assignments": ["Main St", "Iron St.", "Monocacy St.", "Lenox Ave", "W. Greenwich St.", "Lorain Ave.", "W. Elizabeth", "W. Locust St"], "is_purchasable_online": True, "sort_order": 3},
+                    {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 264, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1, "eligible_groups": ["Commuter Students"]},
+                    {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2, "eligible_groups": ["Commuter Students"]},
+                    {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 200, "valid_days": 365, "lot_assignments": ["Main St", "Iron St.", "Monocacy St.", "Lenox Ave", "W. Greenwich St.", "Lorain Ave.", "W. Elizabeth", "W. Locust St"], "is_purchasable_online": True, "sort_order": 3, "eligible_groups": ["Commuter Students"]},
                     {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 58, "valid_days": 365, "lot_assignments": ["I", "W. Laurel St"], "is_purchasable_online": False, "sort_order": 4},
                     {"code": "north_guaranteed_resident", "label": "North Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 218, "valid_days": 365, "lot_assignments": ["B", "C", "D", "G", "P", "T"], "is_purchasable_online": False, "sort_order": 5},
                     {"code": "steel_field_resident", "label": "Steel Field Resident", "eligible": "Resident students", "price": 75, "max_capacity": 42, "valid_days": 365, "lot_assignments": ["Q"], "is_purchasable_online": True, "sort_order": 6},
