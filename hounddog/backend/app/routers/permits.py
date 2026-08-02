@@ -806,3 +806,106 @@ async def verify_permit_lottery(
 
     verification = await verify_lottery(db, permit_type_id, seed)
     return verification
+
+
+@router.get("/live-status")
+async def live_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: OktaUser = Depends(get_current_user),
+):
+    """Real-time permit subscription status for admin monitoring."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Permit type capacity stats
+    pts = (await db.execute(
+        select(PermitType)
+        .where(PermitType.is_active.is_(True))
+        .order_by(PermitType.sort_order)
+    )).scalars().all()
+
+    type_stats = []
+    for pt in pts:
+        active_count = (await db.execute(
+            select(func.count()).select_from(Permit).where(
+                Permit.permit_type == pt.code,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            )
+        )).scalar() or 0
+        remaining = max(0, pt.max_capacity - active_count)
+        pct = round((active_count / pt.max_capacity * 100), 1) if pt.max_capacity > 0 else 0
+        type_stats.append({
+            "id": str(pt.id),
+            "code": pt.code,
+            "label": pt.label,
+            "max_capacity": pt.max_capacity,
+            "active_count": active_count,
+            "remaining": remaining,
+            "pct": pct,
+            "is_purchasable_online": pt.is_purchasable_online,
+            "requires_lottery": pt.requires_lottery,
+        })
+
+    # Open lottery cycle info
+    from ..models.lottery_v2 import LotteryV2Cycle, LotteryV2Application
+    cycle_result = await db.execute(
+        select(LotteryV2Cycle)
+        .where(LotteryV2Cycle.status.in_(["open", "drawn", "closed"]))
+        .order_by(LotteryV2Cycle.created_at.desc())
+        .limit(1)
+    )
+    cycle = cycle_result.scalar_one_or_none()
+    lottery_cycle = None
+    if cycle:
+        app_count = (await db.execute(
+            select(func.count()).select_from(LotteryV2Application)
+            .where(LotteryV2Application.cycle_id == cycle.id)
+        )).scalar() or 0
+        lottery_cycle = {
+            "id": str(cycle.id),
+            "name": cycle.name,
+            "status": cycle.status,
+            "application_count": app_count,
+            "auto_draw_threshold": cycle.auto_draw_threshold,
+        }
+
+    # Recent permits (last 24 hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_result = await db.execute(
+        select(Permit)
+        .where(Permit.created_at >= cutoff, Permit.deleted_at.is_(None))
+        .order_by(Permit.created_at.desc())
+        .limit(20)
+    )
+    recent_permits = recent_result.scalars().all()
+
+    # Build label lookup
+    codes = list({p.permit_type for p in recent_permits if p.permit_type})
+    label_map: dict[str, str] = {}
+    if codes:
+        pt_rows = await db.execute(
+            select(PermitType.code, PermitType.label).where(PermitType.code.in_(codes))
+        )
+        for row in pt_rows:
+            label_map[row.code] = row.label
+
+    recent_list = []
+    for p in recent_permits:
+        recent_list.append({
+            "id": str(p.id),
+            "permit_number": p.permit_number,
+            "name": p.name,
+            "email": p.email,
+            "plate": p.plates[0] if p.plates else "",
+            "permit_type": p.permit_type,
+            "permit_type_label": label_map.get(p.permit_type or "", p.permit_type or ""),
+            "lot_assignment": p.lot_assignment,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+
+    return {
+        "permit_types": type_stats,
+        "lottery_cycle": lottery_cycle,
+        "recent_permits": recent_list,
+    }

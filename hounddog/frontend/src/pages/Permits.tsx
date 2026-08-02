@@ -11,6 +11,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import PermitTypes from "./PermitTypes";
 import LotteryV2Manager from "./LotteryV2Manager";
+import LiveMonitor from "./LiveMonitor";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -161,7 +162,9 @@ export default function Permits() {
       ? "lottery"
       : location.hash === "#types" || location.search.includes("lottery=")
         ? "types"
-        : "permits";
+        : location.hash === "#live"
+          ? "live"
+          : "permits";
   const [tab, setTab] = useState(initTab);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
@@ -402,7 +405,7 @@ export default function Permits() {
         activeKey={tab}
         onChange={(key) => {
           setTab(key);
-          window.location.hash = key === "permits" ? "" : key === "lottery" ? "lottery" : "types";
+          window.location.hash = key === "permits" ? "" : key === "lottery" ? "lottery" : key === "live" ? "live" : "types";
         }}
         items={[
           {
@@ -595,6 +598,11 @@ export default function Permits() {
             key: "lottery",
             label: "Lottery",
             children: <LotteryV2Manager />,
+          },
+          {
+            key: "live",
+            label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
+            children: <LiveMonitor />,
           },
         ]}
       />
