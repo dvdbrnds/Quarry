@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_admin
@@ -880,6 +880,35 @@ async def seed_test_data(
 
     await db.flush()
     return {"seeded": created, "cycle_id": str(cycle_id)}
+
+
+@router.post("/cycles/{cycle_id}/purge-test")
+async def purge_test_data(
+    cycle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Remove all test entries from a cycle."""
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+
+    result = await db.execute(
+        select(func.count()).select_from(LotteryV2Application).where(
+            LotteryV2Application.cycle_id == cycle_id,
+            LotteryV2Application.is_test_entry.is_(True),
+        )
+    )
+    count = result.scalar() or 0
+
+    await db.execute(
+        delete(LotteryV2Application).where(
+            LotteryV2Application.cycle_id == cycle_id,
+            LotteryV2Application.is_test_entry.is_(True),
+        )
+    )
+    await db.flush()
+    return {"purged": count, "cycle_id": str(cycle_id)}
 
 
 @router.get("/cycles/{cycle_id}/applications", response_model=list[ApplicationRead])

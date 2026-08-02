@@ -378,6 +378,24 @@ export default function LotteryV2Manager() {
                       </Button>
                       <Button
                         danger
+                        disabled={busy}
+                        onClick={() => {
+                          modal.confirm({
+                            title: "Remove all test data?",
+                            content: "This will permanently delete all test entries from this cycle.",
+                            okText: "Remove",
+                            okButtonProps: { danger: true },
+                            onOk: async () => {
+                              const data = await postAction(`/api/lottery-v2/cycles/${active.id}/purge-test`);
+                              if (data) message.success(`Removed ${data.purged} test entries`);
+                            },
+                          });
+                        }}
+                      >
+                        Remove test data
+                      </Button>
+                      <Button
+                        danger
                         disabled={busy || active.status !== "drawn"}
                         onClick={() => {
                           modal.confirm({
