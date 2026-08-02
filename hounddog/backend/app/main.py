@@ -916,6 +916,7 @@ async def migrate_photos_to_db(user=Depends(require_admin()), db: AsyncSession =
 async def impersonate_lookup(email: str, user=Depends(require_admin()), db: AsyncSession = Depends(get_db)):
     """Look up a user's identity by email for impersonation purposes."""
     from sqlalchemy import text
+    import httpx
 
     if not email or not email.strip():
         from fastapi import HTTPException as _HTTPException
@@ -923,45 +924,79 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
 
     email = email.strip().lower()
 
-    # Check permit_applications first (richest data source)
-    app_result = await db.execute(text("""
-        SELECT student_sub, student_name, student_email, class_year, okta_metadata
-        FROM permit_applications
-        WHERE LOWER(student_email) = :email
-        ORDER BY created_at DESC LIMIT 1
-    """), {"email": email})
-    app_row = app_result.mappings().first()
-
-    # Also check permits
-    perm_result = await db.execute(text("""
-        SELECT student_id as sub, name, email
-        FROM permits
-        WHERE LOWER(email) = :email AND deleted_at IS NULL
-        ORDER BY created_at DESC LIMIT 1
-    """), {"email": email})
-    perm_row = perm_result.mappings().first()
-
-    if not app_row and not perm_row:
-        from fastapi import HTTPException as _HTTPException
-        raise _HTTPException(404, f"No user found with email: {email}")
-
-    # Build response from best available data
     sub = ""
     name = email
     groups: list[str] = []
     class_year = None
-    role = "student"
 
-    if app_row:
-        sub = app_row["student_sub"] or ""
-        name = app_row["student_name"] or email
-        class_year = app_row["class_year"]
-        metadata = app_row["okta_metadata"] or {}
-        if isinstance(metadata, dict):
-            groups = metadata.get("groups", [])
-    elif perm_row:
-        sub = perm_row["sub"] or ""
-        name = perm_row["name"] or email
+    # Primary source: Okta API
+    if settings.okta_domain and settings.okta_api_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                user_res = await client.get(
+                    f"https://{settings.okta_domain}/api/v1/users/{email}",
+                    headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                    timeout=10,
+                )
+                if user_res.status_code == 200:
+                    okta_user = user_res.json()
+                    sub = okta_user.get("id", "")
+                    profile = okta_user.get("profile", {})
+                    name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip() or email
+
+                    groups_res = await client.get(
+                        f"https://{settings.okta_domain}/api/v1/users/{okta_user['id']}/groups",
+                        headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                        timeout=10,
+                    )
+                    if groups_res.status_code == 200:
+                        groups = [
+                            g["profile"]["name"]
+                            for g in groups_res.json()
+                            if g.get("profile", {}).get("name")
+                        ]
+
+                    cy = profile.get(settings.okta_class_year_claim)
+                    if cy:
+                        try:
+                            class_year = int(cy)
+                        except (ValueError, TypeError):
+                            pass
+        except Exception:
+            pass
+
+    # Fallback to DB if Okta didn't find them
+    if not sub:
+        app_result = await db.execute(text("""
+            SELECT student_sub, student_name, student_email, class_year, okta_metadata
+            FROM permit_applications
+            WHERE LOWER(student_email) = :email
+            ORDER BY created_at DESC LIMIT 1
+        """), {"email": email})
+        app_row = app_result.mappings().first()
+
+        perm_result = await db.execute(text("""
+            SELECT student_id as sub, name, email
+            FROM permits
+            WHERE LOWER(email) = :email AND deleted_at IS NULL
+            ORDER BY created_at DESC LIMIT 1
+        """), {"email": email})
+        perm_row = perm_result.mappings().first()
+
+        if not app_row and not perm_row:
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(404, f"No user found with email: {email}")
+
+        if app_row:
+            sub = app_row["student_sub"] or ""
+            name = app_row["student_name"] or email
+            class_year = app_row["class_year"]
+            metadata = app_row["okta_metadata"] or {}
+            if isinstance(metadata, dict) and not groups:
+                groups = metadata.get("groups", [])
+        elif perm_row:
+            sub = perm_row["sub"] or ""
+            name = perm_row["name"] or email
 
     # Determine role from groups
     from .auth.okta import OktaUser

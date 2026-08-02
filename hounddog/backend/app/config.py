@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     okta_client_id: str = ""
     okta_client_secret: str = ""
     okta_audience: str = ""
+    okta_api_token: str = ""
 
     # Okta role mapping
     admin_okta_groups: str = "Quarry-Admin"

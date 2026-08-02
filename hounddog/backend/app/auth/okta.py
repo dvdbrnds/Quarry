@@ -287,58 +287,85 @@ async def get_current_user_or_impersonated(request: Request) -> OktaUser:
     from ..database import async_session
     from sqlalchemy import select, text
 
-    async with async_session() as db:
-        # Try to find identity from permits or applications
-        row = await db.execute(text("""
-            SELECT COALESCE(p.student_id, '') as sub,
-                   COALESCE(p.name, '') as name,
-                   COALESCE(p.email, '') as email
-            FROM permits p
-            WHERE LOWER(p.email) = LOWER(:email) AND p.deleted_at IS NULL
-            ORDER BY p.created_at DESC LIMIT 1
-        """), {"email": impersonate_email})
-        permit_row = row.mappings().first()
-
-        # Also try lottery applications for more data
-        app_row_result = await db.execute(text("""
-            SELECT student_sub, student_name, student_email, class_year, okta_metadata
-            FROM permit_applications
-            WHERE LOWER(student_email) = LOWER(:email)
-            ORDER BY created_at DESC LIMIT 1
-        """), {"email": impersonate_email})
-        app_row = app_row_result.mappings().first()
-
-        # Also check alert_subscribers for group info
-        sub_result = await db.execute(text("""
-            SELECT categories FROM alert_subscribers
-            WHERE LOWER(email) = LOWER(:email) LIMIT 1
-        """), {"email": impersonate_email})
-        sub_row = sub_result.mappings().first()
-
-    # Build the synthetic user
     target_sub = ""
     target_name = impersonate_email
     target_groups: list[str] = []
     target_class_year: int | None = None
 
-    if app_row:
-        target_sub = app_row["student_sub"] or ""
-        target_name = app_row["student_name"] or impersonate_email
-        target_class_year = app_row["class_year"]
-        metadata = app_row["okta_metadata"] or {}
-        if isinstance(metadata, dict):
-            target_groups = metadata.get("groups", [])
-    elif permit_row:
-        target_sub = permit_row["sub"] or ""
-        target_name = permit_row["name"] or impersonate_email
+    # Fetch groups and profile from Okta (authoritative source)
+    if settings.okta_domain and settings.okta_api_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                # Look up user by email (login)
+                user_res = await client.get(
+                    f"https://{settings.okta_domain}/api/v1/users/{impersonate_email}",
+                    headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                    timeout=10,
+                )
+                if user_res.status_code == 200:
+                    okta_user = user_res.json()
+                    target_sub = okta_user.get("id", "")
+                    profile = okta_user.get("profile", {})
+                    target_name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip() or impersonate_email
 
-    # If no groups found from metadata, check if they're in faculty/staff groups
-    if not target_groups:
-        # Check if the email matches a known faculty/staff pattern
-        if sub_row:
-            pass  # categories don't tell us Okta groups
+                    # Fetch groups
+                    groups_res = await client.get(
+                        f"https://{settings.okta_domain}/api/v1/users/{okta_user['id']}/groups",
+                        headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                        timeout=10,
+                    )
+                    if groups_res.status_code == 200:
+                        target_groups = [
+                            g["profile"]["name"]
+                            for g in groups_res.json()
+                            if g.get("profile", {}).get("name")
+                        ]
 
-    log.info("Admin %s impersonating %s (sub=%s)", user.email, impersonate_email, target_sub)
+                    # Class year from custom claim if available
+                    cy = profile.get(settings.okta_class_year_claim)
+                    if cy:
+                        try:
+                            target_class_year = int(cy)
+                        except (ValueError, TypeError):
+                            pass
+                else:
+                    log.warning("Okta user lookup failed for %s: %d", impersonate_email, user_res.status_code)
+        except Exception as e:
+            log.warning("Okta API call failed during impersonation: %s", e)
+
+    # Fallback to DB if Okta didn't return data
+    if not target_sub:
+        async with async_session() as db:
+            app_row_result = await db.execute(text("""
+                SELECT student_sub, student_name, student_email, class_year, okta_metadata
+                FROM permit_applications
+                WHERE LOWER(student_email) = LOWER(:email)
+                ORDER BY created_at DESC LIMIT 1
+            """), {"email": impersonate_email})
+            app_row = app_row_result.mappings().first()
+
+            perm_result = await db.execute(text("""
+                SELECT COALESCE(p.student_id, '') as sub,
+                       COALESCE(p.name, '') as name,
+                       COALESCE(p.email, '') as email
+                FROM permits p
+                WHERE LOWER(p.email) = LOWER(:email) AND p.deleted_at IS NULL
+                ORDER BY p.created_at DESC LIMIT 1
+            """), {"email": impersonate_email})
+            permit_row = perm_result.mappings().first()
+
+        if app_row:
+            target_sub = app_row["student_sub"] or ""
+            target_name = app_row["student_name"] or impersonate_email
+            target_class_year = app_row["class_year"]
+            metadata = app_row["okta_metadata"] or {}
+            if isinstance(metadata, dict) and not target_groups:
+                target_groups = metadata.get("groups", [])
+        elif permit_row:
+            target_sub = permit_row["sub"] or ""
+            target_name = permit_row["name"] or impersonate_email
+
+    log.info("Admin %s impersonating %s (sub=%s, groups=%s)", user.email, impersonate_email, target_sub, target_groups)
 
     parts = target_name.split(" ", 1)
     given = parts[0] if parts else ""

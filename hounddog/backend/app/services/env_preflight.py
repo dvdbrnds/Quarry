@@ -127,6 +127,10 @@ def run_preflight() -> list[dict]:
             check("OKTA_CLIENT_ID", "fail", "Domain set but client ID missing")
         else:
             check("OKTA_CLIENT_ID", "pass", "Set")
+        if not settings.okta_api_token:
+            check("OKTA_API_TOKEN", "warn", "Not set — admin impersonation will fall back to DB lookup")
+        else:
+            check("OKTA_API_TOKEN", "pass", "Set")
 
     # --- Log summary ---
     fails = [r for r in results if r["status"] == "fail"]
