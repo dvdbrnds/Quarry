@@ -271,3 +271,85 @@ def require_admin():
             raise HTTPException(403, "Admin access required")
         return user
     return dependency
+
+
+async def get_current_user_or_impersonated(request: Request) -> OktaUser:
+    """Return the current user, or a synthetic impersonated user if admin provides X-Impersonate header."""
+    user = await get_current_user(request)
+
+    impersonate_email = request.headers.get("X-Impersonate", "").strip()
+    if not impersonate_email:
+        return user
+
+    if not user.is_admin:
+        raise HTTPException(403, "Only admins can impersonate")
+
+    from ..database import async_session
+    from sqlalchemy import select, text
+
+    async with async_session() as db:
+        # Try to find identity from permits or applications
+        row = await db.execute(text("""
+            SELECT COALESCE(p.student_id, '') as sub,
+                   COALESCE(p.name, '') as name,
+                   COALESCE(p.email, '') as email
+            FROM permits p
+            WHERE LOWER(p.email) = LOWER(:email) AND p.deleted_at IS NULL
+            ORDER BY p.created_at DESC LIMIT 1
+        """), {"email": impersonate_email})
+        permit_row = row.mappings().first()
+
+        # Also try lottery applications for more data
+        app_row_result = await db.execute(text("""
+            SELECT student_sub, student_name, student_email, class_year, okta_metadata
+            FROM permit_applications
+            WHERE LOWER(student_email) = LOWER(:email)
+            ORDER BY created_at DESC LIMIT 1
+        """), {"email": impersonate_email})
+        app_row = app_row_result.mappings().first()
+
+        # Also check alert_subscribers for group info
+        sub_result = await db.execute(text("""
+            SELECT categories FROM alert_subscribers
+            WHERE LOWER(email) = LOWER(:email) LIMIT 1
+        """), {"email": impersonate_email})
+        sub_row = sub_result.mappings().first()
+
+    # Build the synthetic user
+    target_sub = ""
+    target_name = impersonate_email
+    target_groups: list[str] = []
+    target_class_year: int | None = None
+
+    if app_row:
+        target_sub = app_row["student_sub"] or ""
+        target_name = app_row["student_name"] or impersonate_email
+        target_class_year = app_row["class_year"]
+        metadata = app_row["okta_metadata"] or {}
+        if isinstance(metadata, dict):
+            target_groups = metadata.get("groups", [])
+    elif permit_row:
+        target_sub = permit_row["sub"] or ""
+        target_name = permit_row["name"] or impersonate_email
+
+    # If no groups found from metadata, check if they're in faculty/staff groups
+    if not target_groups:
+        # Check if the email matches a known faculty/staff pattern
+        if sub_row:
+            pass  # categories don't tell us Okta groups
+
+    log.info("Admin %s impersonating %s (sub=%s)", user.email, impersonate_email, target_sub)
+
+    parts = target_name.split(" ", 1)
+    given = parts[0] if parts else ""
+    family = parts[1] if len(parts) > 1 else ""
+
+    return OktaUser(
+        sub=target_sub or f"impersonated:{impersonate_email}",
+        email=impersonate_email,
+        groups=target_groups,
+        given_name=given,
+        family_name=family,
+        display_name=target_name,
+        class_year=target_class_year,
+    )

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space, Alert, Modal, Checkbox } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
-import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
@@ -122,6 +122,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
 export default function LotteryApplyV2() {
   const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [impersonateEmail, setImpersonateEmail] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -134,6 +135,33 @@ export default function LotteryApplyV2() {
           return;
         }
         const u = await fetchCurrentUser();
+
+        // Check for impersonation param (admin only)
+        const impEmail = getImpersonateEmail();
+        if (impEmail && u?.role === "admin") {
+          setImpersonateEmail(impEmail);
+          // Fetch the impersonated user's identity
+          const headers = await authHeaders();
+          const lookupRes = await fetch(
+            `/api/admin/impersonate-lookup?email=${encodeURIComponent(impEmail)}`,
+            { headers },
+          );
+          if (lookupRes.ok) {
+            const target = await lookupRes.json();
+            setUser({
+              sub: target.sub,
+              email: target.email,
+              role: target.role,
+              groups: target.groups || [],
+            });
+          } else {
+            // Fallback: show as that user with minimal info
+            setUser({ sub: `impersonated:${impEmail}`, email: impEmail, role: "student", groups: [] });
+          }
+          setAuthState("ready");
+          return;
+        }
+
         // Faculty/staff (not Quarry admins) go to employee parking enrollment
         if (u?.role === "staff") {
           window.location.replace("/employee-parking");
@@ -172,12 +200,12 @@ export default function LotteryApplyV2() {
 
   return (
     <AntApp>
-      <LotteryV2Page user={user} />
+      <LotteryV2Page user={user} impersonateEmail={impersonateEmail} />
     </AntApp>
   );
 }
 
-function LotteryV2Page({ user }: { user: AuthUser }) {
+function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonateEmail?: string | null }) {
   const brand = useBranding();
   const { message, modal } = AntApp.useApp();
   const [loading, setLoading] = useState(true);
@@ -311,7 +339,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   }, [mapLots]);
 
   async function loadTiers(c: "north" | "south" | "commuter", year?: number | null) {
-    const headers = await authHeaders();
+    const headers = await authHeadersAs(impersonateEmail);
     const qs = new URLSearchParams({ campus: c });
     if (year != null) qs.set("class_year", String(year));
     const res = await fetch(`/api/lottery-v2/eligible-tiers?${qs}`, { headers });
@@ -335,7 +363,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(impersonateEmail);
       const [cycleRes, appRes, profileRes, lotsRes, permitsRes] = await Promise.all([
         fetch("/api/lottery-v2/cycle", { headers }),
         fetch("/api/lottery-v2/applications/me", { headers }),
@@ -447,7 +475,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     if (!classYear || !plate.trim() || !phone.trim()) return;
     setSubmitting(true);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(impersonateEmail);
       const res = await fetch("/api/student/permits/purchase", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
@@ -483,7 +511,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     if (!campus || !classYear || ranked.length === 0) return;
     setSubmitting(true);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(impersonateEmail);
       const res = await fetch("/api/lottery-v2/applications", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
@@ -517,7 +545,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
     if (!application) return;
     setAccepting(true);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(impersonateEmail);
       const res = await fetch(`/api/lottery-v2/applications/${application.id}/accept`, {
         method: "POST",
         headers,
@@ -548,7 +576,7 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
       okText: "Decline",
       okButtonProps: { danger: true },
       onOk: async () => {
-        const headers = await authHeaders();
+        const headers = await authHeadersAs(impersonateEmail);
         const res = await fetch(`/api/lottery-v2/applications/${application.id}/decline`, {
           method: "POST",
           headers,
@@ -646,6 +674,24 @@ function LotteryV2Page({ user }: { user: AuthUser }) {
           <span className="text-xs opacity-70">{user.email}</span>
         </div>
       </header>
+
+      {impersonateEmail && (
+        <div style={{ background: "#FEF3C7", borderBottom: "2px solid #F59E0B", padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 600, color: "#92400E" }}>
+            Viewing as: {impersonateEmail} ({user.role})
+          </span>
+          <Button
+            size="small"
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("impersonate");
+              window.location.href = url.toString();
+            }}
+          >
+            Exit Impersonation
+          </Button>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className={`grid grid-cols-1 gap-6 ${showMap ? "lg:grid-cols-3" : ""}`}>

@@ -113,6 +113,19 @@ export async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+export async function authHeadersAs(impersonateEmail?: string | null): Promise<Record<string, string>> {
+  const headers = await authHeaders();
+  if (impersonateEmail) {
+    headers["X-Impersonate"] = impersonateEmail;
+  }
+  return headers;
+}
+
+export function getImpersonateEmail(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("impersonate");
+}
+
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   const token = await getAccessToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

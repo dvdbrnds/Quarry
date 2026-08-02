@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, require_role
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_role
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -79,7 +79,7 @@ async def available_staff_permits(db: AsyncSession = Depends(get_db)):
 async def enroll_vehicle(
     data: VehicleEnroll,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Register a vehicle — creates a permit immediately (no lottery, no cost)."""
     pt_result = await db.execute(
@@ -146,7 +146,7 @@ async def enroll_vehicle(
 @router.get("/my-vehicles", response_model=list[VehicleRead])
 async def my_vehicles(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """List all of the current user's permits (including legacy/imported)."""
     from sqlalchemy import or_

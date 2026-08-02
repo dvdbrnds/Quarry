@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated
 from ..config import settings
 from ..database import get_db
 from ..models.alert_subscriber import AlertSubscriber
@@ -106,7 +106,7 @@ def _build_lot_details(
 @router.get("/available", response_model=list[AvailablePermitType])
 async def available_permit_types(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """List permit types currently open for application or direct purchase."""
     now = datetime.now(timezone.utc)
@@ -299,7 +299,7 @@ async def submit_application(
 @router.get("/my-applications", response_model=list[ApplicationWithType])
 async def my_applications(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """List the current student's own applications."""
     result = await db.execute(
@@ -364,7 +364,7 @@ async def my_applications(
 @router.get("/my-permits")
 async def my_permits(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Return the current student's active permits (for display after purchase)."""
     from sqlalchemy import or_
@@ -545,7 +545,7 @@ async def accept_offer(
 async def direct_purchase(
     data: DirectPurchaseRequest,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Buy an always-available permit directly via Stripe (no lottery)."""
     pt = await db.get(PermitType, data.permit_type_id)

@@ -79,6 +79,15 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
 
 function AdminShell({ user }: { user: AuthUser }) {
   const brand = useBranding();
+  const [impersonateInput, setImpersonateInput] = useState("");
+
+  function handleImpersonate() {
+    const email = impersonateInput.trim();
+    if (!email) return;
+    // Open the appropriate page depending on likely role
+    window.open(`/parking?impersonate=${encodeURIComponent(email)}`, "_blank");
+  }
+
   return (
     <div className="min-h-screen">
       <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
@@ -118,6 +127,24 @@ function AdminShell({ user }: { user: AuthUser }) {
           >
             My Permit
           </a>
+          <div className="flex items-center gap-1">
+            <input
+              type="email"
+              placeholder="View as user..."
+              value={impersonateInput}
+              onChange={(e) => setImpersonateInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleImpersonate(); }}
+              className="text-xs px-2 py-1 rounded-md w-36 bg-white/10 border border-white/20 text-bone placeholder-bone/40 focus:outline-none focus:border-white/50"
+            />
+            <button
+              onClick={handleImpersonate}
+              disabled={!impersonateInput.trim()}
+              className="text-xs px-2 py-1 rounded-md font-medium transition-colors disabled:opacity-30"
+              style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
+            >
+              Go
+            </button>
+          </div>
           <span className="text-xs text-bone/70">{user.email}</span>
           <span
             style={{ background: `${brand.accentColor}33`, color: brand.accentColor }}

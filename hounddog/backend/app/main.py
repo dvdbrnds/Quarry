@@ -912,6 +912,80 @@ async def migrate_photos_to_db(user=Depends(require_admin()), db: AsyncSession =
     return {"migrated": migrated, "skipped": skipped, "errors": errors}
 
 
+@app.get("/api/admin/impersonate-lookup", tags=["admin"])
+async def impersonate_lookup(email: str, user=Depends(require_admin()), db: AsyncSession = Depends(get_db)):
+    """Look up a user's identity by email for impersonation purposes."""
+    from sqlalchemy import text
+
+    if not email or not email.strip():
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(400, "email parameter required")
+
+    email = email.strip().lower()
+
+    # Check permit_applications first (richest data source)
+    app_result = await db.execute(text("""
+        SELECT student_sub, student_name, student_email, class_year, okta_metadata
+        FROM permit_applications
+        WHERE LOWER(student_email) = :email
+        ORDER BY created_at DESC LIMIT 1
+    """), {"email": email})
+    app_row = app_result.mappings().first()
+
+    # Also check permits
+    perm_result = await db.execute(text("""
+        SELECT student_id as sub, name, email
+        FROM permits
+        WHERE LOWER(email) = :email AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1
+    """), {"email": email})
+    perm_row = perm_result.mappings().first()
+
+    if not app_row and not perm_row:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(404, f"No user found with email: {email}")
+
+    # Build response from best available data
+    sub = ""
+    name = email
+    groups: list[str] = []
+    class_year = None
+    role = "student"
+
+    if app_row:
+        sub = app_row["student_sub"] or ""
+        name = app_row["student_name"] or email
+        class_year = app_row["class_year"]
+        metadata = app_row["okta_metadata"] or {}
+        if isinstance(metadata, dict):
+            groups = metadata.get("groups", [])
+    elif perm_row:
+        sub = perm_row["sub"] or ""
+        name = perm_row["name"] or email
+
+    # Determine role from groups
+    from .auth.okta import OktaUser
+    temp_user = OktaUser(
+        sub=sub or f"impersonated:{email}",
+        email=email,
+        groups=groups,
+        given_name=name.split(" ", 1)[0],
+        family_name=name.split(" ", 1)[1] if " " in name else "",
+        display_name=name,
+        class_year=class_year,
+    )
+    role = temp_user.role if temp_user.role != "none" else "student"
+
+    return {
+        "sub": sub or f"impersonated:{email}",
+        "email": email,
+        "name": name,
+        "groups": groups,
+        "role": role,
+        "class_year": class_year,
+    }
+
+
 import os as _os
 _upload_dir = _os.path.join(_os.path.dirname(__file__), "..", "uploads")
 _os.makedirs(_upload_dir, exist_ok=True)

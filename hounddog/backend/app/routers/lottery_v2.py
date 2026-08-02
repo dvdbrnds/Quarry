@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.lottery_v2 import LotteryV2Application, LotteryV2AuditLog, LotteryV2Cycle
@@ -292,7 +292,7 @@ async def _eligible_tiers_for(
 @router.get("/cycle", response_model=CycleRead)
 async def get_open_cycle(
     db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(get_current_user),
+    _user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Return the current open (or most recent drawn) cycle for students."""
     now = datetime.now(timezone.utc)
@@ -328,7 +328,7 @@ async def eligible_tiers(
     campus: str = Query(..., pattern="^(north|south|commuter)$"),
     class_year: int | None = Query(None, ge=2000, le=2100),
     db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(get_current_user),
+    _user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     return await _eligible_tiers_for(db, campus, class_year)
 
@@ -337,7 +337,7 @@ async def eligible_tiers(
 async def submit_application(
     data: ApplicationSubmit,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     cycle = (
         await db.execute(
@@ -416,7 +416,7 @@ async def submit_application(
 @router.get("/applications/me", response_model=ApplicationRead | None)
 async def my_application(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Return this student's application for the current cycle only.
 

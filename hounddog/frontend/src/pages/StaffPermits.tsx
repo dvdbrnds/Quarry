@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbox, Descriptions } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
-import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 
 interface StaffPermitType {
@@ -24,6 +24,7 @@ interface RenewalInfo {
 export default function StaffPermits() {
   const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [impersonateEmail, setImpersonateEmail] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -32,6 +33,26 @@ export default function StaffPermits() {
         const authed = await isAuthenticated();
         if (!authed) { sessionStorage.setItem("quarry_return_path", window.location.pathname + window.location.search); await login(); return; }
         const u = await fetchCurrentUser();
+
+        // Check for impersonation param (admin only)
+        const impEmail = getImpersonateEmail();
+        if (impEmail && u?.role === "admin") {
+          setImpersonateEmail(impEmail);
+          const headers = await authHeaders();
+          const lookupRes = await fetch(
+            `/api/admin/impersonate-lookup?email=${encodeURIComponent(impEmail)}`,
+            { headers },
+          );
+          if (lookupRes.ok) {
+            const target = await lookupRes.json();
+            setUser({ sub: target.sub, email: target.email, role: target.role, groups: target.groups || [] });
+          } else {
+            setUser({ sub: `impersonated:${impEmail}`, email: impEmail, role: "staff", groups: [] });
+          }
+          setAuthState("ready");
+          return;
+        }
+
         setUser(u);
         setAuthState(u ? "ready" : "error");
       } catch { setAuthState("error"); }
@@ -61,7 +82,7 @@ export default function StaffPermits() {
     );
   }
 
-  if (user.role !== "admin" && user.role !== "staff") {
+  if (!impersonateEmail && user.role !== "admin" && user.role !== "staff") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Card className="max-w-md text-center">
@@ -75,12 +96,12 @@ export default function StaffPermits() {
 
   return (
     <App>
-      <StaffPage user={user} />
+      <StaffPage user={user} impersonateEmail={impersonateEmail} />
     </App>
   );
 }
 
-function StaffPage({ user }: { user: AuthUser }) {
+function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmail?: string | null }) {
   const brand = useBranding();
   const { modal, message } = App.useApp();
   const [permitType, setPermitType] = useState<StaffPermitType | null>(null);
@@ -99,7 +120,7 @@ function StaffPage({ user }: { user: AuthUser }) {
 
   const load = useCallback(async () => {
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(impersonateEmail);
       const [avRes, myRes] = await Promise.all([
         fetch("/api/staff/permits/available", { headers }),
         fetch("/api/staff/permits/my-vehicles", { headers }),
@@ -151,7 +172,7 @@ function StaffPage({ user }: { user: AuthUser }) {
       okText: "Remove", okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const headers = await authHeaders();
+          const headers = await authHeadersAs(impersonateEmail);
           headers["X-HTTP-Method-Override"] = "DELETE";
           const res = await fetch(`/api/staff/permits/${v.id}`, { method: "POST", headers });
           if (!res.ok && res.status !== 204) { const b = await res.json(); throw new Error(b.detail || "Remove failed"); }
@@ -183,6 +204,24 @@ function StaffPage({ user }: { user: AuthUser }) {
           </div>
         </div>
       </nav>
+
+      {impersonateEmail && (
+        <div style={{ background: "#FEF3C7", borderBottom: "2px solid #F59E0B", padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 600, color: "#92400E" }}>
+            Viewing as: {impersonateEmail} ({user.role})
+          </span>
+          <Button
+            size="small"
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("impersonate");
+              window.location.href = url.toString();
+            }}
+          >
+            Exit Impersonation
+          </Button>
+        </div>
+      )}
 
       <main className="max-w-3xl mx-auto px-6 py-10">
         {loading || renewalLoading ? (
@@ -365,13 +404,14 @@ function StaffPage({ user }: { user: AuthUser }) {
         onClose={() => setEnrolling(false)}
         onSuccess={() => { setEnrolling(false); message.success("Vehicle registered successfully!"); load(); }}
         onError={msg => { message.error(msg); setEnrolling(false); }}
+        impersonateEmail={impersonateEmail}
       />
     </div>
   );
 }
 
-function EnrollModal({ open, onClose, onSuccess, onError }: {
-  open: boolean; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void;
+function EnrollModal({ open, onClose, onSuccess, onError, impersonateEmail }: {
+  open: boolean; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void; impersonateEmail?: string | null;
 }) {
   const brand = useBranding();
   const [form] = Form.useForm();
@@ -386,7 +426,7 @@ function EnrollModal({ open, onClose, onSuccess, onError }: {
       setProfileLoading(true);
       (async () => {
         try {
-          const res = await fetch("/api/auth/profile", { headers: await authHeaders() });
+          const res = await fetch("/api/auth/profile", { headers: await authHeadersAs(impersonateEmail) });
           if (res.ok) {
             const p = await res.json();
             if (p.display_name) {
@@ -404,7 +444,7 @@ function EnrollModal({ open, onClose, onSuccess, onError }: {
     setSubmitting(true);
     try {
       const res = await fetch("/api/staff/permits/enroll", {
-        method: "POST", headers: await authHeaders(),
+        method: "POST", headers: await authHeadersAs(impersonateEmail),
         body: JSON.stringify({
           name: values.name.trim(),
           plate: values.plate.toUpperCase().trim(),
