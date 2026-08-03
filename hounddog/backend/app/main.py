@@ -850,7 +850,7 @@ async def lifespan(app: FastAPI):
                         _val = _json.dumps(_disk_schedule)
                         await _db.execute(_text("""
                             INSERT INTO app_config (key, value, updated_at)
-                            VALUES ('backup_schedule', :val::jsonb, now())
+                            VALUES ('backup_schedule', CAST(:val AS jsonb), now())
                             ON CONFLICT (key) DO NOTHING
                         """), {"val": _val})
                         await _db.commit()

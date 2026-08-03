@@ -274,8 +274,8 @@ async def _write_schedule_db(db: AsyncSession, data: dict):
     async with db.begin_nested():
         await db.execute(text("""
             INSERT INTO app_config (key, value, updated_at)
-            VALUES ('backup_schedule', :val::jsonb, now())
-            ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
+            VALUES ('backup_schedule', CAST(:val AS jsonb), now())
+            ON CONFLICT (key) DO UPDATE SET value = CAST(:val AS jsonb), updated_at = now()
         """), {"val": value_str})
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
