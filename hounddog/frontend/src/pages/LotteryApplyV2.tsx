@@ -749,7 +749,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   {commuterTiers.map((tier) => (
                     <div
                       key={tier.id}
-                      className="flex items-center justify-between border rounded-lg px-4 py-3"
+                      className="flex items-center justify-between border rounded-lg px-4 py-3 transition-shadow hover:shadow-md cursor-pointer"
+                      onMouseEnter={() => setHighlightedLots(tier.lot_assignments)}
+                      onMouseLeave={() => setHighlightedLots([])}
                     >
                       <div>
                         <div className="font-medium">{tier.label}</div>
