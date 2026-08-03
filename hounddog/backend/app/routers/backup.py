@@ -275,8 +275,11 @@ async def _write_schedule_db(db: AsyncSession, data: dict):
         VALUES ('backup_schedule', :val::jsonb, now())
         ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
     """), {"val": value_str})
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
+    except Exception as e:
+        logger.warning("Failed to write schedule to disk (DB persisted): %s", e)
 
 
 @router.get("/schedule")
@@ -285,7 +288,7 @@ async def get_schedule(db: AsyncSession = Depends(get_db)):
     return await _read_schedule_db(db)
 
 
-@router.put("/schedule")
+@router.post("/schedule")
 async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db)):
     """Create or update the scheduled backup configuration."""
     data = body.model_dump()
@@ -298,7 +301,7 @@ async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db))
     return data
 
 
-@router.delete("/schedule")
+@router.post("/schedule/disable")
 async def disable_schedule(db: AsyncSession = Depends(get_db)):
     """Disable scheduled backups."""
     data = await _read_schedule_db(db)

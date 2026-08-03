@@ -879,9 +879,9 @@ export const api = {
     schedule: {
       get: () => request<BackupSchedule>("/backup/schedule"),
       set: (data: BackupScheduleInput) =>
-        request<BackupSchedule>("/backup/schedule", { method: "PUT", body: JSON.stringify(data) }),
+        request<BackupSchedule>("/backup/schedule", { method: "POST", body: JSON.stringify(data) }),
       disable: () =>
-        request<BackupSchedule>("/backup/schedule", { method: "DELETE" }),
+        request<BackupSchedule>("/backup/schedule/disable", { method: "POST" }),
     },
     testDrive: (folderId: string) =>
       request<{ ok: boolean; folder_name: string }>(`/backup/test-drive?folder_id=${encodeURIComponent(folderId)}`, { method: "POST" }),
