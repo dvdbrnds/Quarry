@@ -134,8 +134,8 @@ export default function CouponManager() {
 
   async function handleDelete(coupon: Coupon) {
     try {
-      const res = await fetch(`/api/coupons/${coupon.id}`, {
-        method: "DELETE",
+      const res = await fetch(`/api/coupons/${coupon.id}/delete`, {
+        method: "POST",
         headers: await authHeaders(),
       });
       if (!res.ok) throw new Error("Failed to delete");

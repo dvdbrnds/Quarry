@@ -178,7 +178,7 @@ async def update_coupon(
     return _to_read(coupon)
 
 
-@admin_router.delete("/{coupon_id}", status_code=204)
+@admin_router.post("/{coupon_id}/delete", status_code=204)
 async def delete_coupon(coupon_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     coupon = await db.get(Coupon, coupon_id)
     if not coupon:
