@@ -920,9 +920,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             )}
 
             {!application && step === "intake" && (cycle || isCommuterPath) && (
-              <Card title={!cycle && isCommuterPath ? "Commuter Permit — Your Info" : "1. About you"}>
+              <Card title={isCommuterPath ? "Commuter Permit — Your Info" : "1. About you"}>
                 <Form layout="vertical" onFinish={continueToRank}>
-                  {cycle && (
+                  {cycle && !isCommuterPath && (
                   <Form.Item label="Where do you park?" required>
                     <Radio.Group
                       value={campus}
