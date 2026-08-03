@@ -343,10 +343,11 @@ async def submit_application(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
+    # Accept applications on open cycles, or as waitlist entries on drawn cycles
     cycle = (
         await db.execute(
             select(LotteryV2Cycle)
-            .where(LotteryV2Cycle.status == "open")
+            .where(LotteryV2Cycle.status.in_(["open", "drawn"]))
             .order_by(LotteryV2Cycle.created_at.desc())
             .limit(1)
         )
@@ -355,10 +356,11 @@ async def submit_application(
         raise HTTPException(400, "No open lottery cycle — applications are closed")
 
     now = datetime.now(timezone.utc)
-    if cycle.opens_at and cycle.opens_at > now:
-        raise HTTPException(400, "Application window has not opened yet")
-    if cycle.closes_at and cycle.closes_at < now:
-        raise HTTPException(400, "Application window has closed")
+    if cycle.status == "open":
+        if cycle.opens_at and cycle.opens_at > now:
+            raise HTTPException(400, "Application window has not opened yet")
+        if cycle.closes_at and cycle.closes_at < now:
+            raise HTTPException(400, "Application window has closed")
 
     existing = (
         await db.execute(
@@ -402,6 +404,19 @@ async def submit_application(
         status="pending",
         is_test_entry=False,
     )
+
+    # If the draw already happened, place directly on the waitlist
+    if cycle.status == "drawn":
+        max_pos = (
+            await db.execute(
+                select(func.max(LotteryV2Application.waitlist_position)).where(
+                    LotteryV2Application.cycle_id == cycle.id
+                )
+            )
+        ).scalar() or 0
+        app.status = "waitlisted"
+        app.waitlist_position = max_pos + 1
+
     db.add(app)
     await db.flush()
 

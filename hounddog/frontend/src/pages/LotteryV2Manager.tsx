@@ -69,8 +69,8 @@ export default function LotteryV2Manager() {
   const [results, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [autoThreshold, setAutoThreshold] = useState<number | null>(110);
-  const [autoDays, setAutoDays] = useState<number | null>(5);
+  const [autoThreshold, setAutoThreshold] = useState<number | null>(100);
+  const [autoDays, setAutoDays] = useState<number | null>(3);
 
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
