@@ -731,7 +731,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
           <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
             {!cycle && step === "intake" && !isCommuterPath && (
-              <>
               <Card>
                 <p className="text-gray-500 m-0">
                   No lottery cycle is available right now. The residential parking lottery runs
@@ -739,44 +738,44 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   registration opens.
                 </p>
               </Card>
-              {commuterTiers.length > 0 && (
-                <Card title="Commuter Permits">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Commuter parking permits are available for direct purchase — no lottery required.
-                  </p>
-                  <div className="space-y-3">
-                    {commuterTiers.map((tier) => (
-                      <div
-                        key={tier.id}
-                        className="flex items-center justify-between border rounded-lg px-4 py-3"
-                      >
-                        <div>
-                          <div className="font-medium">{tier.label}</div>
-                          <div className="text-xs text-gray-500">
-                            {tier.remaining} of {tier.max_capacity} spots remaining
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold text-brand-primary">${Number(tier.price).toFixed(0)}</div>
-                          {tier.remaining > 0 ? (
-                            <Button
-                              type="primary"
-                              size="small"
-                              className="mt-1"
-                              onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked(commuterTiers); setStep("intake"); }}
-                            >
-                              Buy Now
-                            </Button>
-                          ) : (
-                            <Tag color="red" className="mt-1">Full</Tag>
-                          )}
+            )}
+
+            {step === "intake" && !isCommuterPath && commuterTiers.length > 0 && (
+              <Card title="Commuter Permits">
+                <p className="text-sm text-gray-500 mb-4">
+                  Commuter parking permits are available for direct purchase — no lottery required.
+                </p>
+                <div className="space-y-3">
+                  {commuterTiers.map((tier) => (
+                    <div
+                      key={tier.id}
+                      className="flex items-center justify-between border rounded-lg px-4 py-3"
+                    >
+                      <div>
+                        <div className="font-medium">{tier.label}</div>
+                        <div className="text-xs text-gray-500">
+                          {tier.remaining} of {tier.max_capacity} spots remaining
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-              </>
+                      <div className="text-right">
+                        <div className="font-bold text-brand-primary">${Number(tier.price).toFixed(0)}</div>
+                        {tier.remaining > 0 ? (
+                          <Button
+                            type="primary"
+                            size="small"
+                            className="mt-1"
+                            onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked(commuterTiers); setStep("intake"); }}
+                          >
+                            Buy Now
+                          </Button>
+                        ) : (
+                          <Tag color="red" className="mt-1">Full</Tag>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
             )}
 
             {cycle && !isCommuterPath && (
@@ -931,7 +930,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       options={[
                         { label: "North Campus", value: "north" },
                         { label: "South Campus", value: "south" },
-                        { label: "Commuter", value: "commuter" },
                       ]}
                     />
                   </Form.Item>
@@ -1011,8 +1009,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   </Form.Item>
                   {!isCommuterPath && cycle?.status !== "open" && cycle?.status !== "drawn" && campus && (
                     <p className="text-sm text-amber-700 mb-3">
-                      The resident lottery is not open right now. Check back when registration opens,
-                      or choose Commuter if that applies to you.
+                      The resident lottery is not open right now. Check back when registration opens.
+                      Commuter permits can be purchased separately below.
                     </p>
                   )}
                   <Button
