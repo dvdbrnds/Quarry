@@ -632,12 +632,13 @@ export default function Permits() {
                     placeholder="All Lots" allowClear style={{ width: 140 }}
                     options={lots.map(l => ({ label: l.name, value: l.name }))}
                   />
-                  <Checkbox
+                  {/* "5 years or younger" filter — hidden for now, re-enable for legacy data customers */}
+                  {false && <Checkbox
                     checked={recentOnly}
                     onChange={e => { setRecentOnly(e.target.checked); setPage(1); }}
                   >
                     5 years or younger
-                  </Checkbox>
+                  </Checkbox>}
                   {(filterStatus || filterType || filterLot || recentOnly) && (
                     <Button type="link" danger size="small"
                       onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setRecentOnly(false); setPage(1); }}>
