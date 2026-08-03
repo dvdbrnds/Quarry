@@ -247,7 +247,10 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
               <div className="h-[300px] rounded-xl overflow-hidden shadow">
                 <StudentLotMap
                   apiKey={mapsApiKey}
-                  lots={lots.filter(l => permitType.lot_assignments.some(a => l.name.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(l.name.replace(/^Lot\s+/i, "").trim().toLowerCase())))}
+                  lots={lots.filter(l => {
+                    const lotKey = l.name.replace(/^Lot\s+/i, "").trim().toLowerCase();
+                    return permitType.lot_assignments.some(a => a.toLowerCase() === lotKey || a.toLowerCase() === l.name.toLowerCase());
+                  })}
                   highlightedLots={permitType.lot_assignments}
                   defaultCenter={campusCenter}
                 />
