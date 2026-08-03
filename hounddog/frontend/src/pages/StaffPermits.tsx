@@ -257,7 +257,7 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
               </div>
             )}
 
-            <div className={`space-y-8 ${mapsApiKey && lots.length > 0 && permitType ? "lg:col-span-2" : ""}`}>
+            <div className={`space-y-8 ${mapsApiKey && lots.length > 0 && permitType ? "lg:col-span-1" : ""}`}>
             {/* Renewal card (from email link) */}
             {renewalSuccess && (
               <Alert
@@ -428,8 +428,8 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
             </div>
 
             {mapsApiKey && lots.length > 0 && permitType && (
-              <div className="hidden lg:block lg:col-span-1">
-                <div className="sticky top-6 h-[calc(100vh-6rem)] rounded-xl overflow-hidden shadow">
+              <div className="hidden lg:block lg:col-span-2 min-w-0">
+                <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
                   <StudentLotMap
                     apiKey={mapsApiKey}
                     lots={lots.filter(l => {
