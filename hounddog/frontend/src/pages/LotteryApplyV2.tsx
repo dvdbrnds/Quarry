@@ -694,7 +694,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         className="text-white px-6 py-4 shadow"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-3">
+            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
             <h1 style={{ color: brand.accentColor }} className="text-xl font-bold m-0">
               Parking Permits
             </h1>
