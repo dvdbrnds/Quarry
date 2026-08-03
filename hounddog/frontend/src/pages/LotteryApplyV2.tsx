@@ -900,7 +900,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                       {/* Coupon code input for lottery accept */}
                       <div className="p-2 bg-white rounded border border-dashed border-gray-300">
-                        <p className="text-xs font-medium text-gray-600 mb-1">Have a coupon code?</p>
+                        <p className="text-xs font-medium text-gray-600 mb-0.5">Program discount</p>
+                        <p className="text-xs text-gray-500 mb-2">Some specialty programs subsidize parking. Your program director will have provided you with a code if applicable.</p>
                         <div className="flex gap-2">
                           <input
                             type="text"
@@ -1151,7 +1152,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                     {/* Coupon code input */}
                     <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                      <p className="text-xs font-medium text-gray-600 mb-2">Have a coupon code?</p>
+                      <p className="text-sm font-medium text-gray-600 mb-0.5">Program discount</p>
+                      <p className="text-xs text-gray-500 mb-3">Some specialty programs subsidize parking. Your program director will have provided you with a code if applicable.</p>
                       <div className="flex gap-2">
                         <input
                           type="text"
