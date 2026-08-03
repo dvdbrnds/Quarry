@@ -25,30 +25,64 @@ interface MyTicketsResponse {
   appeal_window_days: number;
 }
 
+type Mode = "choose" | "student" | "guest";
+
 export default function Appeals() {
   const { message } = AntApp.useApp();
   const brand = useBranding();
-  const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
+  const [mode, setMode] = useState<Mode>("choose");
+  const [authState, setAuthState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [appealWindowDays, setAppealWindowDays] = useState(5);
   const [loading, setLoading] = useState(false);
   const [appealTicket, setAppealTicket] = useState<TicketSummary | null>(null);
 
+  // Guest lookup state
+  const [lookupId, setLookupId] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState("");
+
+  // Check for direct ticket link (e.g., /appeals?ticket=uuid)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ticketParam = params.get("ticket");
+    if (ticketParam) {
+      setMode("guest");
+      setLookupId(ticketParam);
+      lookupTicket(ticketParam);
+    }
+  }, []);
+
+  async function handleStudentLogin() {
+    setAuthState("loading");
+    try {
+      await initAuth();
+      const authed = await isAuthenticated();
+      if (!authed) {
+        sessionStorage.setItem("quarry_return_path", "/appeals");
+        await login();
+        return;
+      }
+      setAuthState("ready");
+      setMode("student");
+      loadTickets();
+    } catch {
+      setAuthState("error");
+    }
+  }
+
+  // Auto-login if returning from Okta redirect
   useEffect(() => {
     (async () => {
       try {
         await initAuth();
         const authed = await isAuthenticated();
-        if (!authed) {
-          sessionStorage.setItem("quarry_return_path", "/appeals");
-          await login();
-          return;
+        if (authed && mode === "choose") {
+          setAuthState("ready");
+          setMode("student");
+          loadTickets();
         }
-        setAuthState("ready");
-        loadTickets();
-      } catch {
-        setAuthState("error");
-      }
+      } catch { /* not logged in, that's fine */ }
     })();
   }, []);
 
@@ -68,23 +102,27 @@ export default function Appeals() {
     }
   }
 
-  if (authState === "loading") {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Spin size="large" />
-      </div>
-    );
-  }
-
-  if (authState === "error") {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <PublicPageNav subtitle="Citation Appeals" />
-        <div className="max-w-2xl mx-auto px-4 pt-10">
-          <Alert type="error" message="Authentication failed. Please try again." showIcon />
-        </div>
-      </div>
-    );
+  async function lookupTicket(id?: string) {
+    const ticketId = id || lookupId.trim();
+    if (!ticketId) return;
+    setLookupLoading(true);
+    setLookupError("");
+    setTickets([]);
+    try {
+      const res = await fetch(`/api/appeals/lookup/${encodeURIComponent(ticketId)}`);
+      if (res.status === 404) {
+        setLookupError("Ticket not found. Please check the ticket ID and try again.");
+        return;
+      }
+      if (!res.ok) throw new Error("Lookup failed");
+      const data = await res.json();
+      setTickets([data.ticket]);
+      setAppealWindowDays(data.appeal_window_days);
+    } catch {
+      setLookupError("Unable to look up this ticket. Please try again.");
+    } finally {
+      setLookupLoading(false);
+    }
   }
 
   function statusTag(t: TicketSummary) {
@@ -119,13 +157,82 @@ export default function Appeals() {
           </p>
         </div>
 
+        {/* Mode selection — shown when not yet chosen */}
+        {mode === "choose" && (
+          <div className="space-y-4">
+            <Card hoverable onClick={handleStudentLogin} className="cursor-pointer">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl" style={{ background: `${brand.primaryColor}15`, color: brand.primaryColor }}>
+                  🎓
+                </div>
+                <div>
+                  <div className="font-semibold text-base">Moravian Student, Staff, or Faculty</div>
+                  <div className="text-sm text-gray-500">Sign in with your university account to view all your citations</div>
+                </div>
+              </div>
+            </Card>
+            <Card hoverable onClick={() => setMode("guest")} className="cursor-pointer">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl" style={{ background: `${brand.primaryColor}15`, color: brand.primaryColor }}>
+                  🚗
+                </div>
+                <div>
+                  <div className="font-semibold text-base">Community Member or Visitor</div>
+                  <div className="text-sm text-gray-500">Look up a specific citation using the ticket ID from your notice</div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Student auth loading */}
+        {authState === "loading" && (
+          <div className="text-center py-12">
+            <Spin size="large" />
+            <p className="text-gray-500 mt-4">Signing in...</p>
+          </div>
+        )}
+
+        {authState === "error" && (
+          <Alert type="error" message="Authentication failed. Please try again." showIcon className="mb-4" />
+        )}
+
+        {/* Guest lookup form */}
+        {mode === "guest" && tickets.length === 0 && (
+          <Card>
+            <p className="text-sm text-gray-600 mb-4">
+              Enter the ticket ID from your citation notice, email, or the QR code on your ticket.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Ticket ID"
+                value={lookupId}
+                onChange={(e) => setLookupId(e.target.value)}
+                onPressEnter={() => lookupTicket()}
+                className="font-mono"
+              />
+              <Button type="primary" onClick={() => lookupTicket()} loading={lookupLoading}>
+                Look Up
+              </Button>
+            </div>
+            {lookupError && <Alert type="error" message={lookupError} className="mt-3" showIcon />}
+            <p className="text-xs text-gray-400 mt-4 mb-0">
+              Don't have your ticket ID? Contact the parking office for assistance.
+            </p>
+            <Button type="link" size="small" className="px-0 mt-2" onClick={() => { setMode("choose"); setLookupError(""); }}>
+              &larr; Back
+            </Button>
+          </Card>
+        )}
+
+        {/* Ticket list (shared between student and guest modes) */}
         {loading && (
           <div className="text-center py-12">
             <Spin size="large" />
           </div>
         )}
 
-        {!loading && tickets.length === 0 && (
+        {!loading && mode === "student" && tickets.length === 0 && authState === "ready" && (
           <Card>
             <Empty
               description={
@@ -143,6 +250,11 @@ export default function Appeals() {
 
         {!loading && tickets.length > 0 && (
           <div className="space-y-3">
+            {mode === "guest" && (
+              <Button type="link" size="small" className="px-0 mb-2" onClick={() => { setMode("choose"); setTickets([]); setLookupId(""); }}>
+                &larr; Back
+              </Button>
+            )}
             {tickets.map((t) => (
               <Card key={t.id} size="small">
                 <div className="flex justify-between items-start gap-4">
@@ -213,10 +325,12 @@ export default function Appeals() {
 
       <AppealModal
         ticket={appealTicket}
+        isGuest={mode === "guest"}
         onClose={() => setAppealTicket(null)}
         onSuccess={() => {
           setAppealTicket(null);
-          loadTickets();
+          if (mode === "student") loadTickets();
+          else if (mode === "guest" && lookupId) lookupTicket();
         }}
       />
     </div>
@@ -225,10 +339,12 @@ export default function Appeals() {
 
 function AppealModal({
   ticket,
+  isGuest,
   onClose,
   onSuccess,
 }: {
   ticket: TicketSummary | null;
+  isGuest: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -237,16 +353,31 @@ function AppealModal({
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
-  async function handleFinish(values: { explanation: string }) {
+  async function handleFinish(values: { explanation: string; name?: string; email?: string; phone?: string }) {
     if (!ticket) return;
     setSubmitting(true);
     try {
-      const headers = await authHeaders();
-      const res = await fetch("/api/appeals/submit", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ ticket_id: ticket.id, explanation: values.explanation }),
-      });
+      let res: Response;
+      if (isGuest) {
+        res = await fetch("/api/appeals/public-submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticket_id: ticket.id,
+            explanation: values.explanation,
+            name: values.name,
+            email: values.email,
+            phone: values.phone || "",
+          }),
+        });
+      } else {
+        const headers = await authHeaders();
+        res = await fetch("/api/appeals/submit", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ ticket_id: ticket.id, explanation: values.explanation }),
+        });
+      }
       if (!res.ok) {
         const body = await res.json();
         throw new Error(body.detail || "Failed to submit appeal");
@@ -297,6 +428,19 @@ function AppealModal({
           />
 
           <Form form={form} layout="vertical" onFinish={handleFinish}>
+            {isGuest && (
+              <>
+                <Form.Item name="name" label="Your Name" rules={[{ required: true, message: "Name is required" }]}>
+                  <Input placeholder="Full name" />
+                </Form.Item>
+                <Form.Item name="email" label="Email" rules={[{ required: true, type: "email", message: "Valid email is required" }]}>
+                  <Input placeholder="you@email.com" />
+                </Form.Item>
+                <Form.Item name="phone" label="Phone (optional)">
+                  <Input placeholder="(555) 555-5555" />
+                </Form.Item>
+              </>
+            )}
             <Form.Item
               name="explanation"
               label="Why should this citation be reconsidered?"

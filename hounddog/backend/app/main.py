@@ -907,6 +907,7 @@ app.include_router(sync.diagnostic_router, prefix="/api/sync", tags=["sync-diagn
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
 app.include_router(appeals.router, prefix="/api/appeals", tags=["appeals"])
+app.include_router(appeals.public_router, prefix="/api/appeals", tags=["appeals-public"])
 app.include_router(violation_types.router, prefix="/api/violation-types", tags=["violation-types"])
 app.include_router(permit_types.router, prefix="/api/permit-types", tags=["permit-types"])
 app.include_router(academic_calendar.router, prefix="/api/academic-calendar", tags=["academic-calendar"])
