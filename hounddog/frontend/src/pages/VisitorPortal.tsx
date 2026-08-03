@@ -19,7 +19,7 @@ import StudentLotMap from "../components/StudentLotMap";
 import { loadConfig } from "../auth";
 import type { Lot } from "../api";
 
-type Duration = "single_day" | "multi_day" | "long_term_30" | "long_term_60" | "long_term_90";
+type Duration = "single_day" | "multi_day" | "long_term_30" | "long_term_60" | "long_term_90" | "semester";
 type Step = "intake" | "choose" | "details" | "done";
 
 interface PermitOption {
@@ -97,6 +97,14 @@ const PERMIT_OPTIONS: PermitOption[] = [
     description: "Ongoing work or extended stay. A campus sponsor must approve.",
     moreThanOneDay: true,
     duration: "long_term_90",
+  },
+  {
+    id: "semester",
+    label: "Semester (contracted staff)",
+    description:
+      "For contracted employees without a Moravian account (e.g., Standardized Patients). A department sponsor must approve.",
+    moreThanOneDay: true,
+    duration: "semester",
   },
 ];
 
@@ -559,6 +567,7 @@ function MultiDayDetails({
   brand: { primaryColor: string };
 }) {
   const needsEndDate = option.duration === "multi_day";
+  const isSemester = option.duration === "semester";
 
   return (
     <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ start_date: dayjs() }}>
@@ -567,10 +576,14 @@ function MultiDayDetails({
         showIcon
         className="mb-4"
         message="Campus sponsor required"
-        description="Parking for more than one day needs approval from a Moravian staff or faculty sponsor, whether you are a guest or a vendor."
+        description={
+          isSemester
+            ? "Semester parking for contracted staff needs approval from a department supervisor."
+            : "Parking for more than one day needs approval from a Moravian staff or faculty sponsor, whether you are a guest or a vendor."
+        }
       />
-      <Form.Item name="company_name" label="Company or organization (optional)">
-        <Input placeholder="ABC Plumbing, or leave blank if visiting as a guest" />
+      <Form.Item name="company_name" label={isSemester ? "Department / program" : "Company or organization (optional)"}>
+        <Input placeholder={isSemester ? "Sim Center, Nursing, etc." : "ABC Plumbing, or leave blank if visiting as a guest"} />
       </Form.Item>
       <Form.Item name="email" label="Your email">
         <Input type="email" placeholder="you@example.com" />
@@ -621,10 +634,10 @@ function MultiDayDetails({
         </Form.Item>
       </div>
 
-      <Form.Item name="work_description" label="Reason for extended parking">
+      <Form.Item name="work_description" label={isSemester ? "Role / reason for parking" : "Reason for extended parking"}>
         <Input.TextArea
           rows={3}
-          placeholder="Multi-day visit, contracted project, conference, etc."
+          placeholder={isSemester ? "Standardized Patient, contracted instructor, etc." : "Multi-day visit, contracted project, conference, etc."}
         />
       </Form.Item>
 

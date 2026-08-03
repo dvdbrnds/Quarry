@@ -36,7 +36,7 @@ class VisitorPermitCreate(BaseModel):
     visiting_event: str = ""
     # Vendor fields
     company_name: str = ""
-    duration: str = "single_day"  # "single_day", "multi_day", "long_term_30", "long_term_60", "long_term_90"
+    duration: str = "single_day"  # "single_day", "multi_day", "long_term_30", "long_term_60", "long_term_90", "semester"
     start_date: date | None = None
     end_date: date | None = None
     sponsor_name: str = ""
@@ -118,7 +118,7 @@ async def get_visitor_permit_status(permit_id: uuid.UUID, db: AsyncSession = Dep
     permit = await db.get(Permit, permit_id)
     if not permit or permit.deleted_at:
         raise HTTPException(404, "Permit not found")
-    if permit.permit_type not in ("visitor_day", "visitor_vendor", "visitor_vendor_longterm"):
+    if permit.permit_type not in ("visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"):
         raise HTTPException(404, "Permit not found")
 
     return VisitorPermitStatus(
@@ -241,7 +241,7 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         raise HTTPException(400, "Sponsor email is required for vendor permits")
 
     start = data.start_date or date.today()
-    is_long_term = data.duration in ("multi_day", "long_term_30", "long_term_60", "long_term_90")
+    is_long_term = data.duration in ("multi_day", "long_term_30", "long_term_60", "long_term_90", "semester")
 
     if data.duration == "single_day":
         end = start
@@ -253,10 +253,14 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         end = start + timedelta(days=60)
     elif data.duration == "long_term_90":
         end = start + timedelta(days=90)
+    elif data.duration == "semester":
+        end = start + timedelta(days=120)
     else:
         end = start
 
-    permit_type = "visitor_vendor_longterm" if is_long_term else "visitor_vendor"
+    permit_type = "visitor_contracted_staff" if data.duration == "semester" else (
+        "visitor_vendor_longterm" if is_long_term else "visitor_vendor"
+    )
     status = "pending_approval" if is_long_term else "active"
 
     metadata_parts = [
