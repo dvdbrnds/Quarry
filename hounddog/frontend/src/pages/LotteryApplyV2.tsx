@@ -653,7 +653,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const showCommuterAccessColors = isCommuterPath && (step === "intake" || step === "choose");
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
-  const activeLotColors = showCommuterAccessColors
+  const baseActiveLotColors = showCommuterAccessColors
     ? commuterAccessColors
     : showSouthAccessColors && step === "intake"
       ? southIntakeColors
@@ -662,6 +662,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         : showTierColors
           ? lotColors
           : undefined;
+  // When actively hovering a card, drop lot colors so the map uses the high-contrast
+  // single-highlight mode (bright yellow highlighted lots, near-invisible others).
+  const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
   const activeLegend = showCommuterAccessColors
     ? commuterAccessLegend
     : showSouthAccessColors && step === "intake"
