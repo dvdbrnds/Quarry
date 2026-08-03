@@ -102,13 +102,13 @@ def _validate_coupon(coupon: Coupon, permit_type_code: str) -> str | None:
 
 # ── Admin endpoints ──────────────────────────────────────────────────────────
 
-@admin_router.get("/", response_model=list[CouponRead])
+@admin_router.get("", response_model=list[CouponRead])
 async def list_coupons(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Coupon).order_by(Coupon.created_at.desc()))
     return [_to_read(c) for c in result.scalars().all()]
 
 
-@admin_router.post("/", response_model=CouponRead, status_code=201)
+@admin_router.post("", response_model=CouponRead, status_code=201)
 async def create_coupon(data: CouponCreate, db: AsyncSession = Depends(get_db)):
     if data.discount_type not in ("percent", "flat", "full"):
         raise HTTPException(400, "discount_type must be 'percent', 'flat', or 'full'")
