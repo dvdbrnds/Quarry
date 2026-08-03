@@ -484,6 +484,30 @@ async def lifespan(app: FastAPI):
                 used_at TIMESTAMPTZ DEFAULT now()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon_id ON coupon_usages(coupon_id)",
+            # Stripe transaction cache for fast Finance page loads
+            """CREATE TABLE IF NOT EXISTS stripe_transaction_cache (
+                id VARCHAR(256) PRIMARY KEY,
+                source VARCHAR(32) DEFAULT 'charge',
+                amount NUMERIC(10,2) DEFAULT 0,
+                amount_refunded NUMERIC(10,2) DEFAULT 0,
+                net NUMERIC(10,2) DEFAULT 0,
+                fee NUMERIC(10,2) DEFAULT 0,
+                currency VARCHAR(8) DEFAULT 'usd',
+                status VARCHAR(32) DEFAULT 'succeeded',
+                description TEXT,
+                customer_email VARCHAR(256),
+                customer_name VARCHAR(256),
+                receipt_url VARCHAR(512),
+                payment_method_type VARCHAR(64),
+                payment_method_last4 VARCHAR(8),
+                payment_method_brand VARCHAR(64),
+                metadata_json JSONB,
+                created_at TIMESTAMPTZ NOT NULL,
+                livemode BOOLEAN DEFAULT false,
+                cached_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_stripe_cache_created ON stripe_transaction_cache(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_stripe_cache_status ON stripe_transaction_cache(status)",
             ]
             for migration in migrations:
                 try:

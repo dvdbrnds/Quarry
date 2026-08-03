@@ -215,11 +215,14 @@ export default function Finance() {
     } catch { /* ignore */ }
   }, [listPage, filterType, filterMethod, filterDateFrom, filterDateTo]);
 
-  const loadStripe = useCallback(async () => {
+  const loadStripe = useCallback(async (refresh = false) => {
     setStripeLoading(true);
     setStripeError(null);
     try {
-      const res = await fetch("/api/payments/stripe-transactions?limit=100", { headers: await authHeaders() });
+      const url = refresh
+        ? "/api/payments/stripe-transactions?refresh=true"
+        : "/api/payments/stripe-transactions";
+      const res = await fetch(url, { headers: await authHeaders() });
       if (res.ok) {
         setStripe(await res.json());
       } else {
@@ -480,7 +483,8 @@ export default function Finance() {
                   <Space>
                     <Button size="small" onClick={handleBackfillEmails} loading={backfillRunning}>Backfill Emails</Button>
                     <Button size="small" onClick={runStripeDebug} loading={debugLoading}>Diagnose Connection</Button>
-                    <Button size="small" onClick={loadStripe} loading={stripeLoading}>Refresh</Button>
+                    <Button size="small" onClick={() => loadStripe(false)} loading={stripeLoading}>Refresh</Button>
+                    <Button size="small" onClick={() => loadStripe(true)} loading={stripeLoading}>Full Sync</Button>
                   </Space>
                 </div>
                 {stripeDebug && (

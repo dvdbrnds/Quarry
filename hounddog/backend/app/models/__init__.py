@@ -23,6 +23,7 @@ from .permit_application import PermitApplication
 from .renewal_token import RenewalToken
 from .resident_plate import ResidentPlate
 from .signage_screen import SignageScreen
+from .stripe_cache import StripeTransactionCache
 from .permit_type import PermitType
 from .subscriber_group import SubscriberGroup, subscriber_group_members
 from .ticket import Ticket
@@ -53,6 +54,7 @@ __all__ = [
     "ParkingSpot",
     "Payment",
     "SignageScreen",
+    "StripeTransactionCache",
     "Permit",
     "PermitApplication",
     "PermitType",

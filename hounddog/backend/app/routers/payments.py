@@ -1530,10 +1530,17 @@ def _session_to_txn(sess) -> StripeTransaction:
 @router.get("/stripe-transactions")
 async def stripe_transactions(
     limit: int = Query(50, ge=1, le=100),
+    refresh: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(require_admin()),
 ):
-    """Pull transactions from all Stripe APIs — Charges, PaymentIntents, and Checkout Sessions."""
+    """
+    Serve Stripe transactions from a local cache. On each call, fetch only
+    new records from Stripe (created after the newest cached record) and
+    merge them into the cache. Pass ?refresh=true to force a full re-sync.
+    """
     import traceback
+    from ..models.stripe_cache import StripeTransactionCache
 
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured — STRIPE_SECRET_KEY is empty")
@@ -1541,88 +1548,164 @@ async def stripe_transactions(
     import stripe
     stripe.api_key = settings.stripe_secret_key
 
-    seen_ids: set[str] = set()
-    seen_pi_ids: set[str] = set()
-    transactions: list[dict] = []
-    overview = {
-        "total_volume": Decimal("0"), "total_fees": Decimal("0"),
-        "total_net": Decimal("0"), "total_refunded": Decimal("0"),
-        "successful_count": 0, "refunded_count": 0, "failed_count": 0,
-    }
-    has_more = False
     errors: list[str] = []
 
-    def add_txn(txn: StripeTransaction, include_in_list: bool = True):
-        if txn.id in seen_ids:
-            return
-        seen_ids.add(txn.id)
-        if txn.status == "succeeded":
-            overview["successful_count"] += 1
-            overview["total_volume"] += txn.amount
-            overview["total_fees"] += txn.fee
-            overview["total_net"] += txn.net
-        if txn.amount_refunded > 0:
-            overview["refunded_count"] += 1
-            overview["total_refunded"] += txn.amount_refunded
-        if txn.status == "failed":
-            overview["failed_count"] += 1
-        if include_in_list:
-            d = txn.model_dump()
-            d["created"] = d["created"].isoformat()
-            d["amount"] = str(d["amount"])
-            d["amount_refunded"] = str(d["amount_refunded"])
-            d["net"] = str(d["net"])
-            d["fee"] = str(d["fee"])
-            transactions.append(d)
+    # Determine the cutoff: fetch only records newer than our latest cached entry
+    latest_q = await db.execute(
+        select(func.max(StripeTransactionCache.created_at))
+    )
+    latest_cached = latest_q.scalar()
 
-    # --- Charges (canonical records — have fee, net, and full metadata) ---
-    # Paginate all charges for accurate totals
+    # If refresh requested or cache is empty, do a full sync
+    if refresh or latest_cached is None:
+        created_after = None
+    else:
+        import calendar
+        created_after = int(calendar.timegm(latest_cached.timetuple()))
+
+    # Fetch new records from Stripe and upsert into cache
+    new_count = 0
+    seen_pi_ids: set[str] = set()
+
+    def _cache_txn(txn: StripeTransaction):
+        nonlocal new_count
+        return StripeTransactionCache(
+            id=txn.id,
+            source=txn.source,
+            amount=txn.amount,
+            amount_refunded=txn.amount_refunded,
+            net=txn.net,
+            fee=txn.fee,
+            currency=txn.currency,
+            status=txn.status,
+            description=txn.description,
+            customer_email=txn.customer_email,
+            customer_name=txn.customer_name,
+            receipt_url=txn.receipt_url,
+            payment_method_type=txn.payment_method_type,
+            payment_method_last4=txn.payment_method_last4,
+            payment_method_brand=txn.payment_method_brand,
+            metadata_json=txn.metadata,
+            created_at=txn.created,
+            livemode=txn.livemode,
+        )
+
     try:
-        charges_iter = stripe.Charge.list(limit=100, expand=["data.balance_transaction"]).auto_paging_iter()
-        count = 0
+        params: dict = {"limit": 100, "expand": ["data.balance_transaction"]}
+        if created_after:
+            params["created"] = {"gt": created_after}
+        charges_iter = stripe.Charge.list(**params).auto_paging_iter()
         for ch in charges_iter:
             try:
-                count += 1
-                add_txn(_charge_to_txn(ch), include_in_list=(count <= limit))
+                txn = _charge_to_txn(ch)
                 pi_id = getattr(ch, "payment_intent", None)
                 if pi_id:
                     seen_pi_ids.add(pi_id)
+                existing = await db.get(StripeTransactionCache, txn.id)
+                if not existing:
+                    db.add(_cache_txn(txn))
+                    new_count += 1
+                else:
+                    existing.status = txn.status
+                    existing.amount_refunded = txn.amount_refunded
+                    existing.net = txn.net
+                    existing.fee = txn.fee
             except Exception as e:
                 errors.append(f"charge {ch.id}: {e}")
-        if count > limit:
-            has_more = True
     except Exception as e:
         errors.append(f"Charge.list failed: {e}\n{traceback.format_exc()}")
 
-    # --- PaymentIntents (skip if we already have the charge) ---
     try:
-        pis_iter = stripe.PaymentIntent.list(limit=100, expand=["data.latest_charge.balance_transaction"]).auto_paging_iter()
+        pi_params: dict = {"limit": 100, "expand": ["data.latest_charge.balance_transaction"]}
+        if created_after:
+            pi_params["created"] = {"gt": created_after}
+        pis_iter = stripe.PaymentIntent.list(**pi_params).auto_paging_iter()
         for pi in pis_iter:
             try:
                 if pi.id in seen_pi_ids:
                     continue
                 seen_pi_ids.add(pi.id)
-                add_txn(_pi_to_txn(pi))
+                txn = _pi_to_txn(pi)
+                existing = await db.get(StripeTransactionCache, txn.id)
+                if not existing:
+                    db.add(_cache_txn(txn))
+                    new_count += 1
+                else:
+                    existing.status = txn.status
+                    existing.amount_refunded = txn.amount_refunded
+                    existing.net = txn.net
+                    existing.fee = txn.fee
             except Exception as e:
                 errors.append(f"pi {pi.id}: {e}")
     except Exception as e:
         errors.append(f"PaymentIntent.list failed: {e}\n{traceback.format_exc()}")
 
-    # --- Checkout Sessions (skip if we already have the charge/PI) ---
     try:
-        sessions_iter = stripe.checkout.Session.list(limit=100).auto_paging_iter()
+        sess_params: dict = {"limit": 100}
+        if created_after:
+            sess_params["created"] = {"gt": created_after}
+        sessions_iter = stripe.checkout.Session.list(**sess_params).auto_paging_iter()
         for sess in sessions_iter:
             try:
                 sess_pi = getattr(sess, "payment_intent", None)
                 if sess_pi and sess_pi in seen_pi_ids:
                     continue
-                add_txn(_session_to_txn(sess))
+                txn = _session_to_txn(sess)
+                existing = await db.get(StripeTransactionCache, txn.id)
+                if not existing:
+                    db.add(_cache_txn(txn))
+                    new_count += 1
             except Exception as e:
                 errors.append(f"session {sess.id}: {e}")
     except Exception as e:
         errors.append(f"Session.list failed: {e}\n{traceback.format_exc()}")
 
-    transactions.sort(key=lambda t: t["created"], reverse=True)
+    await db.flush()
+
+    # Now serve from cache
+    all_q = await db.execute(
+        select(StripeTransactionCache).order_by(StripeTransactionCache.created_at.desc())
+    )
+    all_cached = all_q.scalars().all()
+
+    overview = {
+        "total_volume": Decimal("0"), "total_fees": Decimal("0"),
+        "total_net": Decimal("0"), "total_refunded": Decimal("0"),
+        "successful_count": 0, "refunded_count": 0, "failed_count": 0,
+    }
+    transactions: list[dict] = []
+    for row in all_cached:
+        if row.status == "succeeded":
+            overview["successful_count"] += 1
+            overview["total_volume"] += row.amount
+            overview["total_fees"] += row.fee
+            overview["total_net"] += row.net
+        if row.amount_refunded > 0:
+            overview["refunded_count"] += 1
+            overview["total_refunded"] += row.amount_refunded
+        if row.status == "failed":
+            overview["failed_count"] += 1
+
+        transactions.append({
+            "id": row.id,
+            "source": row.source,
+            "amount": str(row.amount),
+            "amount_refunded": str(row.amount_refunded),
+            "net": str(row.net),
+            "fee": str(row.fee),
+            "currency": row.currency,
+            "status": row.status,
+            "description": row.description,
+            "customer_email": row.customer_email,
+            "customer_name": row.customer_name,
+            "receipt_url": row.receipt_url,
+            "payment_method_type": row.payment_method_type,
+            "payment_method_last4": row.payment_method_last4,
+            "payment_method_brand": row.payment_method_brand,
+            "metadata": row.metadata_json or {},
+            "created": row.created_at.isoformat(),
+            "livemode": row.livemode,
+        })
 
     return {
         "overview": {
@@ -1635,8 +1718,9 @@ async def stripe_transactions(
             "failed_count": overview["failed_count"],
         },
         "transactions": transactions,
-        "has_more": has_more,
+        "has_more": False,
         "errors": errors,
+        "new_synced": new_count,
     }
 
 
