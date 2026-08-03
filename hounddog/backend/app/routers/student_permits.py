@@ -721,6 +721,8 @@ async def direct_purchase(
             description=f"Coupon {applied_coupon.code} ({applied_coupon.program_name}) — {pt.code} — {data.plate.upper().strip()}",
         ))
         applied_coupon.current_uses += 1
+        from .coupons import record_coupon_usage
+        await record_coupon_usage(db, applied_coupon, data.student_name, user.email, user.sub, pt.code, pt.price, Decimal("0.00"))
         await db.flush()
         return {"status": "issued", "fee_exempt": False, "coupon": True, "permit_type": pt.code}
 
@@ -802,6 +804,8 @@ async def direct_purchase(
     # Increment coupon usage now — Stripe will handle payment collection
     if applied_coupon:
         applied_coupon.current_uses += 1
+        from .coupons import record_coupon_usage
+        await record_coupon_usage(db, applied_coupon, data.student_name, user.email, user.sub, pt.code, pt.price, discounted_price)
         await db.flush()
 
     return {"checkout_url": session.url, "session_id": session.id}

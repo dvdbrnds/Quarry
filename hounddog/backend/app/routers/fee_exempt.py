@@ -31,6 +31,17 @@ class RosterEntry(BaseModel):
     created_at: str
 
 
+class RosterAddRequest(BaseModel):
+    student_id: str
+    email: str | None = None
+    first_name: str
+    last_name: str
+    reason: str = "Res Life Staff"
+    building: str | None = None
+    room: str | None = None
+    academic_year: str | None = "2026-2027"
+
+
 class RosterUploadResult(BaseModel):
     imported: int
     skipped: int
@@ -67,6 +78,36 @@ async def roster_count(db: AsyncSession = Depends(get_db)):
         select(func.count()).select_from(FeeExemptRoster)
     )).scalar() or 0
     return {"count": count}
+
+
+@router.post("/roster", response_model=RosterEntry, status_code=201)
+async def add_single_entry(data: RosterAddRequest, db: AsyncSession = Depends(get_db)):
+    """Add a single person to the fee-exempt roster."""
+    entry = FeeExemptRoster(
+        student_id=data.student_id.strip(),
+        email=data.email.strip() if data.email else None,
+        first_name=data.first_name.strip(),
+        last_name=data.last_name.strip(),
+        reason=data.reason,
+        building=data.building,
+        room=data.room,
+        academic_year=data.academic_year,
+    )
+    db.add(entry)
+    await db.flush()
+    await db.refresh(entry)
+    return RosterEntry(
+        id=str(entry.id),
+        student_id=entry.student_id,
+        email=entry.email,
+        first_name=entry.first_name,
+        last_name=entry.last_name,
+        reason=entry.reason,
+        building=entry.building,
+        room=entry.room,
+        academic_year=entry.academic_year,
+        created_at=entry.created_at.isoformat() if entry.created_at else "",
+    )
 
 
 @router.post("/roster/upload", response_model=RosterUploadResult)

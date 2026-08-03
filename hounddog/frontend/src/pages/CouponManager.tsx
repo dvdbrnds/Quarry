@@ -14,8 +14,9 @@ import {
   DatePicker,
   Switch,
   Popconfirm,
+  Divider,
 } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 import dayjs from "dayjs";
 
@@ -41,6 +42,20 @@ interface PermitType {
   is_active: boolean;
 }
 
+interface CouponUsageEntry {
+  id: string;
+  coupon_code: string;
+  program_name: string;
+  student_name: string;
+  student_email: string;
+  student_id: string;
+  permit_type_code: string;
+  original_price: number;
+  discount_amount: number;
+  final_price: number;
+  used_at: string;
+}
+
 export default function CouponManager() {
   const { message } = App.useApp();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -50,6 +65,8 @@ export default function CouponManager() {
   const [editing, setEditing] = useState<Coupon | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  const [usages, setUsages] = useState<CouponUsageEntry[]>([]);
+  const [usagesLoading, setUsagesLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +84,16 @@ export default function CouponManager() {
     }
   }, [message]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadUsages = useCallback(async () => {
+    setUsagesLoading(true);
+    try {
+      const res = await fetch("/api/coupons/usages", { headers: await authHeaders() });
+      if (res.ok) setUsages(await res.json());
+    } catch { /* silent */ }
+    finally { setUsagesLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); loadUsages(); }, [load, loadUsages]);
 
   function openCreate() {
     setEditing(null);
@@ -321,6 +347,71 @@ export default function CouponManager() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Divider />
+
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold m-0">Department Chargebacks</h3>
+          <p className="text-sm text-gray-500 m-0">
+            Coupon usage log — send to departments for reimbursement
+          </p>
+        </div>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={async () => {
+            const headers = await authHeaders();
+            const res = await fetch("/api/coupons/usages/export", { headers });
+            if (!res.ok) { message.error("Export failed"); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "coupon_chargebacks.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          disabled={usages.length === 0}
+        >
+          Export CSV
+        </Button>
+      </div>
+
+      <Table
+        dataSource={usages}
+        rowKey="id"
+        loading={usagesLoading}
+        size="small"
+        pagination={{ pageSize: 15, showSizeChanger: true }}
+        columns={[
+          {
+            title: "Date",
+            dataIndex: "used_at",
+            key: "used_at",
+            width: 130,
+            render: (v: string) => dayjs(v).format("MMM D, YYYY"),
+          },
+          { title: "Code", dataIndex: "coupon_code", key: "coupon_code", width: 130, render: (v: string) => <code>{v}</code> },
+          { title: "Program", dataIndex: "program_name", key: "program_name" },
+          { title: "Student", dataIndex: "student_name", key: "student_name" },
+          { title: "Email", dataIndex: "student_email", key: "student_email" },
+          { title: "Permit", dataIndex: "permit_type_code", key: "permit_type_code", width: 120 },
+          {
+            title: "Discount",
+            dataIndex: "discount_amount",
+            key: "discount_amount",
+            width: 100,
+            render: (v: number) => <span className="font-medium text-red-600">${v.toFixed(2)}</span>,
+          },
+          {
+            title: "Charged",
+            dataIndex: "final_price",
+            key: "final_price",
+            width: 90,
+            render: (v: number) => v > 0 ? `$${v.toFixed(2)}` : <Tag color="green">FREE</Tag>,
+          },
+        ]}
+      />
     </div>
   );
 }

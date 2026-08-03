@@ -467,6 +467,22 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code)",
             # Admin permit charge — link permit to Stripe session for payment
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS stripe_session_id VARCHAR(255)",
+            # Coupon usage tracking for department chargebacks
+            """CREATE TABLE IF NOT EXISTS coupon_usages (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                coupon_id UUID NOT NULL,
+                coupon_code VARCHAR(64) NOT NULL,
+                program_name VARCHAR(256) DEFAULT '',
+                student_name VARCHAR(256) DEFAULT '',
+                student_email VARCHAR(256) DEFAULT '',
+                student_id VARCHAR(64) DEFAULT '',
+                permit_type_code VARCHAR(64) DEFAULT '',
+                original_price NUMERIC(8,2) DEFAULT 0,
+                discount_amount NUMERIC(8,2) DEFAULT 0,
+                final_price NUMERIC(8,2) DEFAULT 0,
+                used_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon_id ON coupon_usages(coupon_id)",
             ]
             for migration in migrations:
                 try:

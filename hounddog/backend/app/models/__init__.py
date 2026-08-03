@@ -6,6 +6,7 @@ from .alert_subscriber import AlertSubscriber
 from .alert_template import AlertTemplate
 from .audit_log import AuditLog
 from .coupon import Coupon
+from .coupon_usage import CouponUsage
 from .device import Device
 from .enforcement_settings import EnforcementSettings
 from .fee_exempt_roster import FeeExemptRoster
@@ -37,6 +38,7 @@ __all__ = [
     "AlertTemplate",
     "AuditLog",
     "Coupon",
+    "CouponUsage",
     "Device",
     "EnforcementSettings",
     "FeeExemptRoster",

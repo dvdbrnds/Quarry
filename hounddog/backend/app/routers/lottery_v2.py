@@ -584,6 +584,8 @@ async def accept_offer(
             description=f"Coupon {applied_coupon.code} ({applied_coupon.program_name}) — {pt.code} — {app.plate}",
         ))
         applied_coupon.current_uses += 1
+        from .coupons import record_coupon_usage
+        await record_coupon_usage(db, applied_coupon, app.student_name, app.student_email, user.sub, pt.code, pt.price, Decimal("0.00"))
         app.status = "accepted"
         await db.flush()
         return {"status": "accepted", "fee_exempt": False, "coupon": True}
@@ -656,6 +658,8 @@ async def accept_offer(
 
     if applied_coupon:
         applied_coupon.current_uses += 1
+        from .coupons import record_coupon_usage
+        await record_coupon_usage(db, applied_coupon, app.student_name, app.student_email, user.sub, pt.code, pt.price, discounted_price)
         await db.flush()
 
     return {"checkout_url": session.url, "session_id": session.id}

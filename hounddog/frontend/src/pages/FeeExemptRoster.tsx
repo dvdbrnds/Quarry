@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Table, App, Upload, Tag, Space, Input, Popconfirm } from "antd";
-import { UploadOutlined, DeleteOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Table, App, Tag, Space, Input, Popconfirm, Modal, Form } from "antd";
+import { UploadOutlined, DeleteOutlined, SearchOutlined, PlusOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 
 interface RosterEntry {
@@ -22,6 +22,9 @@ export default function FeeExemptRoster() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addForm] = Form.useForm();
+  const [addingSingle, setAddingSingle] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -118,6 +121,39 @@ export default function FeeExemptRoster() {
     }
   }
 
+  async function handleAddSingle(values: any) {
+    setAddingSingle(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/admin/fee-exempt/roster", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_id: values.student_id,
+          email: values.email || null,
+          first_name: values.first_name,
+          last_name: values.last_name,
+          reason: values.reason || "Res Life Staff",
+          building: values.building || null,
+          room: values.room || null,
+          academic_year: "2026-2027",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to add");
+      }
+      message.success("Person added to exempt roster");
+      setAddModalOpen(false);
+      addForm.resetFields();
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setAddingSingle(false);
+    }
+  }
+
   const filtered = search
     ? entries.filter((e) =>
         `${e.first_name} ${e.last_name} ${e.student_id} ${e.email || ""}`
@@ -154,6 +190,12 @@ export default function FeeExemptRoster() {
               if (f) promptUpload(f);
             }}
           />
+          <Button
+            icon={<PlusOutlined />}
+            onClick={() => setAddModalOpen(true)}
+          >
+            Add Person
+          </Button>
           <Button
             type="primary"
             icon={<UploadOutlined />}
@@ -215,6 +257,43 @@ export default function FeeExemptRoster() {
         Upload an Excel (.xlsx) or CSV file with columns: Moravian ID, Last, First, Building, Room.
         Students on this list will receive permits at $0 when they go through the commuter permit purchase flow.
       </div>
+
+      <Modal
+        title="Add Person to Exempt Roster"
+        open={addModalOpen}
+        onCancel={() => { setAddModalOpen(false); addForm.resetFields(); }}
+        onOk={() => addForm.submit()}
+        confirmLoading={addingSingle}
+        okText="Add"
+      >
+        <Form form={addForm} layout="vertical" onFinish={handleAddSingle}>
+          <div className="grid grid-cols-2 gap-x-3">
+            <Form.Item name="first_name" label="First Name" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="last_name" label="Last Name" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+          </div>
+          <Form.Item name="student_id" label="Student / Moravian ID" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="email" label="Email">
+            <Input type="email" placeholder="student@moravian.edu" />
+          </Form.Item>
+          <div className="grid grid-cols-2 gap-x-3">
+            <Form.Item name="building" label="Building">
+              <Input />
+            </Form.Item>
+            <Form.Item name="room" label="Room">
+              <Input />
+            </Form.Item>
+          </div>
+          <Form.Item name="reason" label="Reason" initialValue="Res Life Staff">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

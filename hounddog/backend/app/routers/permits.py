@@ -359,6 +359,8 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
         )
         db.add(permit)
         applied_coupon.current_uses += 1
+        from .coupons import record_coupon_usage
+        await record_coupon_usage(db, applied_coupon, data.name, data.email, data.student_id, data.permit_type, pt.price, Decimal("0.00"))
         await db.flush()
         await db.refresh(permit)
         await _notify_permit_change("created", 1)
@@ -443,6 +445,8 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
     permit.stripe_session_id = session.id
     if applied_coupon:
         applied_coupon.current_uses += 1
+        from .coupons import record_coupon_usage
+        await record_coupon_usage(db, applied_coupon, data.name, data.email, data.student_id, data.permit_type, pt.price, discounted_price)
     await db.flush()
     await _notify_permit_change("created", 1)
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, get_current_user_or_impersonated, require_admin
 from ..database import get_db
 from ..models.coupon import Coupon
+from ..models.coupon_usage import CouponUsage
 
 router = APIRouter()
 
@@ -223,3 +224,106 @@ def _discount_description(coupon: Coupon) -> str:
         return f"{coupon.code}: {coupon.discount_value}% off ({coupon.program_name})"
     else:
         return f"{coupon.code}: ${coupon.discount_value} off ({coupon.program_name})"
+
+
+async def record_coupon_usage(
+    db: AsyncSession,
+    coupon: Coupon,
+    student_name: str,
+    student_email: str,
+    student_id: str,
+    permit_type_code: str,
+    original_price: Decimal,
+    final_price: Decimal,
+) -> None:
+    """Record a coupon usage for chargeback reporting."""
+    usage = CouponUsage(
+        coupon_id=coupon.id,
+        coupon_code=coupon.code,
+        program_name=coupon.program_name,
+        student_name=student_name,
+        student_email=student_email,
+        student_id=student_id,
+        permit_type_code=permit_type_code,
+        original_price=original_price,
+        discount_amount=original_price - final_price,
+        final_price=final_price,
+    )
+    db.add(usage)
+
+
+# ── Usage report endpoints ───────────────────────────────────────────────────
+
+class CouponUsageRead(BaseModel):
+    id: str
+    coupon_code: str
+    program_name: str
+    student_name: str
+    student_email: str
+    student_id: str
+    permit_type_code: str
+    original_price: Decimal
+    discount_amount: Decimal
+    final_price: Decimal
+    used_at: datetime
+
+
+@admin_router.get("/usages", response_model=list[CouponUsageRead])
+async def list_coupon_usages(db: AsyncSession = Depends(get_db)):
+    """List all coupon usages for chargeback reporting."""
+    result = await db.execute(select(CouponUsage).order_by(CouponUsage.used_at.desc()))
+    return [
+        CouponUsageRead(
+            id=str(u.id),
+            coupon_code=u.coupon_code,
+            program_name=u.program_name,
+            student_name=u.student_name,
+            student_email=u.student_email,
+            student_id=u.student_id,
+            permit_type_code=u.permit_type_code,
+            original_price=u.original_price,
+            discount_amount=u.discount_amount,
+            final_price=u.final_price,
+            used_at=u.used_at,
+        )
+        for u in result.scalars().all()
+    ]
+
+
+@admin_router.get("/usages/export")
+async def export_coupon_usages(db: AsyncSession = Depends(get_db)):
+    """Export coupon usages as CSV for department chargeback."""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    result = await db.execute(select(CouponUsage).order_by(CouponUsage.used_at.desc()))
+    usages = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Date", "Coupon Code", "Program/Department", "Student Name",
+        "Student Email", "Student ID", "Permit Type", "Original Price",
+        "Discount Amount", "Amount Charged",
+    ])
+    for u in usages:
+        writer.writerow([
+            u.used_at.strftime("%Y-%m-%d %H:%M") if u.used_at else "",
+            u.coupon_code,
+            u.program_name,
+            u.student_name,
+            u.student_email,
+            u.student_id,
+            u.permit_type_code,
+            f"{u.original_price:.2f}",
+            f"{u.discount_amount:.2f}",
+            f"{u.final_price:.2f}",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=coupon_chargebacks.csv"},
+    )
