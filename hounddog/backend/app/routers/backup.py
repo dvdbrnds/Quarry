@@ -255,14 +255,15 @@ def _write_schedule(data: dict):
 async def _read_schedule_db(db: AsyncSession) -> dict:
     """Read backup schedule from the app_config table (survives redeploys)."""
     try:
-        result = await db.execute(
-            text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
-        )
-        row = result.scalar()
-        if row:
-            return row if isinstance(row, dict) else json.loads(row)
-    except Exception:
-        pass
+        async with db.begin_nested():
+            result = await db.execute(
+                text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
+            )
+            row = result.scalar()
+            if row:
+                return row if isinstance(row, dict) else json.loads(row)
+    except Exception as e:
+        logger.warning("Failed to read schedule from DB: %s", e)
     return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
 
 
@@ -270,11 +271,12 @@ async def _write_schedule_db(db: AsyncSession, data: dict):
     """Persist backup schedule to both DB and disk (disk for scheduler reads)."""
     import json as _json
     value_str = _json.dumps(data)
-    await db.execute(text("""
-        INSERT INTO app_config (key, value, updated_at)
-        VALUES ('backup_schedule', :val::jsonb, now())
-        ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
-    """), {"val": value_str})
+    async with db.begin_nested():
+        await db.execute(text("""
+            INSERT INTO app_config (key, value, updated_at)
+            VALUES ('backup_schedule', :val::jsonb, now())
+            ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
+        """), {"val": value_str})
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
@@ -291,14 +293,22 @@ async def get_schedule(db: AsyncSession = Depends(get_db)):
 @router.post("/schedule")
 async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db)):
     """Create or update the scheduled backup configuration."""
-    data = body.model_dump()
-    existing = await _read_schedule_db(db)
-    data["last_run"] = existing.get("last_run")
-    data["next_run"] = existing.get("next_run")
-    data["last_drive_upload"] = existing.get("last_drive_upload")
-    data["last_drive_file_id"] = existing.get("last_drive_file_id")
-    await _write_schedule_db(db, data)
-    return data
+    try:
+        data = body.model_dump()
+        try:
+            existing = await _read_schedule_db(db)
+        except Exception:
+            existing = {}
+        data["last_run"] = existing.get("last_run")
+        data["next_run"] = existing.get("next_run")
+        data["last_drive_upload"] = existing.get("last_drive_upload")
+        data["last_drive_file_id"] = existing.get("last_drive_file_id")
+        await _write_schedule_db(db, data)
+        await db.flush()
+        return data
+    except Exception as e:
+        logger.exception("Failed to set backup schedule")
+        raise HTTPException(500, f"Failed to save schedule: {type(e).__name__}: {e}")
 
 
 @router.post("/schedule/disable")
