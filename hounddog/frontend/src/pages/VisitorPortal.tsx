@@ -19,7 +19,7 @@ import StudentLotMap from "../components/StudentLotMap";
 import { loadConfig } from "../auth";
 import type { Lot } from "../api";
 
-type Duration = "single_day" | "multi_day" | "long_term_30" | "long_term_60" | "long_term_90" | "semester";
+type Duration = "single_day" | "multi_day" | "semester";
 type Step = "intake" | "choose" | "details" | "done";
 
 interface PermitOption {
@@ -73,30 +73,9 @@ const PERMIT_OPTIONS: PermitOption[] = [
   {
     id: "multi_day",
     label: "Multiple days",
-    description: "Custom date range. A campus sponsor must approve your request.",
+    description: "Custom date range for visits, vendor work, or extended stays. A campus sponsor must approve your request.",
     moreThanOneDay: true,
     duration: "multi_day",
-  },
-  {
-    id: "long_term_30",
-    label: "Up to 30 days",
-    description: "Ongoing work or extended stay. A campus sponsor must approve.",
-    moreThanOneDay: true,
-    duration: "long_term_30",
-  },
-  {
-    id: "long_term_60",
-    label: "Up to 60 days",
-    description: "Ongoing work or extended stay. A campus sponsor must approve.",
-    moreThanOneDay: true,
-    duration: "long_term_60",
-  },
-  {
-    id: "long_term_90",
-    label: "Up to 90 days",
-    description: "Ongoing work or extended stay. A campus sponsor must approve.",
-    moreThanOneDay: true,
-    duration: "long_term_90",
   },
   {
     id: "semester",
