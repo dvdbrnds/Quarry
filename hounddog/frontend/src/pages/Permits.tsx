@@ -496,7 +496,7 @@ export default function Permits() {
     { title: "Name", dataIndex: "name", key: "name", sorter: true, render: (name) => <span className="font-medium">{name}</span> },
     { title: "Student ID", dataIndex: "student_id", key: "student_id", sorter: true, render: (v) => v || "—" },
     { title: "Plates", dataIndex: "plates", key: "plates", render: (plates: string[]) => <span className="font-mono text-xs">{plates.join(", ")}</span> },
-    { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true },
+    { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true, ellipsis: true, width: 150 },
     { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => {
       const pt = permitTypes.find(p => p.code === v);
       return <span className="capitalize">{pt?.label || v?.replace(/_/g, " ") || "—"}</span>;
@@ -516,7 +516,7 @@ export default function Permits() {
       ),
     },
     {
-      title: "Actions", key: "actions", width: 180,
+      title: "Actions", key: "actions", width: 200, fixed: "right",
       render: (_, p) => (
         <Space onClick={e => e.stopPropagation()}>
           <Tooltip title={p.email ? `Send renewal to ${p.email}` : "No email on file"}>
@@ -698,6 +698,7 @@ export default function Permits() {
                     current: page, total, pageSize: 50, onChange: setPage,
                     showSizeChanger: false, showTotal: t => `${t} permits`,
                   }}
+                  scroll={{ x: 1200 }}
                 />
 
                 <Modal open={showImport} title="Import Permits (CSV)" onCancel={() => setShowImport(false)}
