@@ -1,0 +1,324 @@
+import { useEffect, useState } from "react";
+import { Alert, Button, Card, Empty, Form, Input, Modal, Spin, Tag, App as AntApp } from "antd";
+import { initAuth, isAuthenticated, login, authHeaders } from "../auth";
+import { useBranding } from "../useBranding";
+import PublicPageNav from "../components/PublicPageNav";
+
+interface TicketSummary {
+  id: string;
+  ticket_number: string | null;
+  plate: string;
+  lot: string;
+  violation_type: string;
+  fine_amount: string;
+  status: string;
+  issued_at: string;
+  appeal_note: string | null;
+  appeal_decision: string | null;
+  appeal_decided_by: string | null;
+  can_appeal: boolean;
+  appeal_deadline: string | null;
+}
+
+interface MyTicketsResponse {
+  tickets: TicketSummary[];
+  appeal_window_days: number;
+}
+
+export default function Appeals() {
+  const { message } = AntApp.useApp();
+  const brand = useBranding();
+  const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
+  const [tickets, setTickets] = useState<TicketSummary[]>([]);
+  const [appealWindowDays, setAppealWindowDays] = useState(5);
+  const [loading, setLoading] = useState(false);
+  const [appealTicket, setAppealTicket] = useState<TicketSummary | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await initAuth();
+        const authed = await isAuthenticated();
+        if (!authed) {
+          sessionStorage.setItem("quarry_return_path", "/appeals");
+          await login();
+          return;
+        }
+        setAuthState("ready");
+        loadTickets();
+      } catch {
+        setAuthState("error");
+      }
+    })();
+  }, []);
+
+  async function loadTickets() {
+    setLoading(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/appeals/my-tickets", { headers });
+      if (!res.ok) throw new Error("Failed to load");
+      const data: MyTicketsResponse = await res.json();
+      setTickets(data.tickets);
+      setAppealWindowDays(data.appeal_window_days);
+    } catch {
+      message.error("Unable to load your citation history.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (authState === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (authState === "error") {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <PublicPageNav subtitle="Citation Appeals" />
+        <div className="max-w-2xl mx-auto px-4 pt-10">
+          <Alert type="error" message="Authentication failed. Please try again." showIcon />
+        </div>
+      </div>
+    );
+  }
+
+  function statusTag(t: TicketSummary) {
+    if (t.appeal_decision === "pending") return <Tag color="blue">Under Review</Tag>;
+    if (t.appeal_decision === "approved") return <Tag color="green">Appeal Approved</Tag>;
+    if (t.appeal_decision === "denied") return <Tag color="red">Appeal Denied</Tag>;
+    if (t.status === "paid") return <Tag color="default">Paid</Tag>;
+    if (t.status === "voided") return <Tag color="default">Voided</Tag>;
+    if (t.status === "resolved_permit") return <Tag color="default">Resolved</Tag>;
+    if (t.status === "overdue") return <Tag color="orange">Overdue</Tag>;
+    if (t.status === "escalated") return <Tag color="red">Escalated</Tag>;
+    return <Tag color="gold">Issued</Tag>;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <PublicPageNav subtitle="Citation Appeals" />
+      <div className="max-w-2xl mx-auto px-4 pt-8 pb-16">
+        <h1 className="text-2xl font-bold mb-2" style={{ color: brand.primaryColor }}>
+          Citation Appeals
+        </h1>
+
+        <div className="mb-6 p-4 rounded-lg border-l-4" style={{ borderColor: brand.primaryColor, background: `${brand.primaryColor}08` }}>
+          <p className="font-semibold text-gray-800 mb-2">
+            Appeals are accepted at the time a citation is issued, before any payment is made. Once
+            payment is processed, the citation is considered resolved and no refund will be issued.
+          </p>
+          <p className="text-sm text-gray-600 m-0">
+            We recognize that this process doesn't always go smoothly. If you believe a citation was
+            issued in error or there are extenuating circumstances, we encourage you to submit your
+            appeal. Our team will review each case individually.
+          </p>
+        </div>
+
+        {loading && (
+          <div className="text-center py-12">
+            <Spin size="large" />
+          </div>
+        )}
+
+        {!loading && tickets.length === 0 && (
+          <Card>
+            <Empty
+              description={
+                <div className="text-center">
+                  <p className="text-base text-gray-600">No citations on file</p>
+                  <p className="text-sm text-gray-500">
+                    This page displays your citation history and the status of any appeals.
+                    You currently have no citations associated with your account.
+                  </p>
+                </div>
+              }
+            />
+          </Card>
+        )}
+
+        {!loading && tickets.length > 0 && (
+          <div className="space-y-3">
+            {tickets.map((t) => (
+              <Card key={t.id} size="small">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-mono font-bold text-sm">{t.plate}</span>
+                      {t.ticket_number && (
+                        <span className="text-xs text-gray-500">#{t.ticket_number}</span>
+                      )}
+                      {statusTag(t)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
+                      {t.lot && <> &middot; {t.lot}</>}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Issued {new Date(t.issued_at).toLocaleDateString()}
+                    </div>
+
+                    {t.appeal_decision === "pending" && (
+                      <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded inline-block">
+                        Your appeal is under review.
+                      </div>
+                    )}
+                    {t.appeal_decision === "denied" && (
+                      <div className="mt-2 text-xs text-red-700 bg-red-50 px-2 py-1 rounded">
+                        Your appeal was denied. The citation stands.
+                      </div>
+                    )}
+                    {t.appeal_decision === "approved" && (
+                      <div className="mt-2 text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
+                        Your appeal was approved. This citation has been voided.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className="text-lg font-bold" style={{ color: brand.primaryColor }}>
+                      ${Number(t.fine_amount).toFixed(2)}
+                    </div>
+                    {t.can_appeal && (
+                      <Button
+                        type="primary"
+                        size="small"
+                        className="mt-2"
+                        onClick={() => setAppealTicket(t)}
+                      >
+                        Appeal
+                      </Button>
+                    )}
+                    {!t.can_appeal && !t.appeal_decision && t.status === "issued" && (
+                      <div className="text-xs text-gray-400 mt-2">
+                        Window closed
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <div className="text-center text-xs text-gray-400 mt-10">
+          Appeals must be submitted within {appealWindowDays} day(s) of citation issuance.
+          &copy; {brand.schoolName || "Campus"} {brand.departmentName}
+        </div>
+      </div>
+
+      <AppealModal
+        ticket={appealTicket}
+        onClose={() => setAppealTicket(null)}
+        onSuccess={() => {
+          setAppealTicket(null);
+          loadTickets();
+        }}
+      />
+    </div>
+  );
+}
+
+function AppealModal({
+  ticket,
+  onClose,
+  onSuccess,
+}: {
+  ticket: TicketSummary | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { message } = AntApp.useApp();
+  const brand = useBranding();
+  const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleFinish(values: { explanation: string }) {
+    if (!ticket) return;
+    setSubmitting(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/appeals/submit", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ticket_id: ticket.id, explanation: values.explanation }),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.detail || "Failed to submit appeal");
+      }
+      message.success("Your appeal has been submitted and is under review.");
+      onSuccess();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={!!ticket}
+      onCancel={onClose}
+      footer={null}
+      title="Submit Appeal"
+      destroyOnClose
+    >
+      {ticket && (
+        <>
+          <div className="mb-3 p-3 bg-gray-50 rounded border">
+            <div className="flex justify-between">
+              <div>
+                <span className="font-mono font-bold">{ticket.plate}</span>
+                {ticket.ticket_number && (
+                  <span className="text-gray-500 ml-2">#{ticket.ticket_number}</span>
+                )}
+              </div>
+              <span className="font-bold" style={{ color: brand.primaryColor }}>
+                ${Number(ticket.fine_amount).toFixed(2)}
+              </span>
+            </div>
+            <div className="text-sm text-gray-500 mt-1 capitalize">
+              {ticket.violation_type.replace(/_/g, " ")} &middot; {ticket.lot || "N/A"}
+              &middot; {new Date(ticket.issued_at).toLocaleDateString()}
+            </div>
+          </div>
+
+          <Alert
+            type="warning"
+            showIcon
+            className="mb-4"
+            message="Important"
+            description="By submitting this appeal, you affirm you have not yet paid this citation. Appeals submitted after payment will not be considered for refund."
+          />
+
+          <Form form={form} layout="vertical" onFinish={handleFinish}>
+            <Form.Item
+              name="explanation"
+              label="Why should this citation be reconsidered?"
+              rules={[
+                { required: true, message: "Please provide an explanation" },
+                { min: 20, message: "Please provide more detail (at least 20 characters)" },
+              ]}
+            >
+              <Input.TextArea
+                rows={5}
+                placeholder="Explain the circumstances. Include any relevant details such as permit numbers, events, or extenuating circumstances..."
+              />
+            </Form.Item>
+            <div className="flex justify-end gap-3">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button type="primary" htmlType="submit" loading={submitting}>
+                Submit Appeal
+              </Button>
+            </div>
+          </Form>
+        </>
+      )}
+    </Modal>
+  );
+}

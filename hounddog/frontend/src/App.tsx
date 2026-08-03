@@ -23,6 +23,7 @@ import StudentPermits from "./pages/StudentPermits";
 import StaffPermits from "./pages/StaffPermits";
 import LotteryApplyV2 from "./pages/LotteryApplyV2";
 import ParkingMap from "./pages/ParkingMap";
+import Appeals from "./pages/Appeals";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
@@ -228,6 +229,7 @@ export default function App() {
   const isEmployeeParkingRoute = location.pathname === "/employee-parking";
   const isParkingMapRoute = location.pathname === "/parking-map";
   const isVisitorRoute = location.pathname.startsWith("/visitor");
+  const isAppealsRoute = location.pathname === "/appeals";
   const isRootRoute = location.pathname === "/";
   const isAuthCallback = location.pathname === "/auth/callback";
 
@@ -321,6 +323,14 @@ export default function App() {
       <Routes>
         <Route path="/visitor" element={<VisitorPortal />} />
         <Route path="/visitor/approve/:token" element={<VisitorApproval />} />
+      </Routes>
+    );
+  }
+
+  if (isAppealsRoute) {
+    return (
+      <Routes>
+        <Route path="/appeals" element={<Appeals />} />
       </Routes>
     );
   }

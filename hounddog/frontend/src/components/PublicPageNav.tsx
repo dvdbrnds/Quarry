@@ -5,6 +5,7 @@ const PUBLIC_LINKS = [
   { to: "/parking", label: "Students" },
   { to: "/visitor", label: "Visitors" },
   { to: "/employee-parking", label: "Employees" },
+  { to: "/appeals", label: "Appeals" },
   { to: "/parking-map", label: "Map" },
 ] as const;
 
