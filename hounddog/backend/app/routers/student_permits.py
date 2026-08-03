@@ -610,6 +610,15 @@ async def direct_purchase(
     exempt_filters = [FeeExemptRoster.email == user.email]
     if user.sub:
         exempt_filters.append(FeeExemptRoster.student_id == user.sub)
+    # Check Okta profile fields that may contain the institutional student ID
+    profile = user.profile or {}
+    for field in ("employeeNumber", "employee_number", "studentId", "student_id",
+                  "altId", "moravianId", "preferred_username", "login", "uid"):
+        val = profile.get(field)
+        if val:
+            # Strip email suffix if present (e.g. "547305@moravian.edu" → "547305")
+            val_str = str(val).split("@")[0]
+            exempt_filters.append(FeeExemptRoster.student_id == val_str)
     if user_full_name:
         exempt_filters.append(
             func.lower(func.concat(FeeExemptRoster.first_name, ' ', FeeExemptRoster.last_name)) == user_full_name
