@@ -610,14 +610,26 @@ export default function Finance() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     <Card title="Revenue by Payment Method">
-                      {Object.entries(report.by_method).length === 0
-                        ? <Empty description="No payments yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                        : <div className="space-y-2">{Object.entries(report.by_method).map(([method, amount]) => (
-                            <div key={method} className="flex justify-between items-center">
-                              <span className="capitalize text-sm">{method.replace("_", " ")}</span>
-                              <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
-                            </div>
-                          ))}</div>}
+                      {(() => {
+                        const txns = stripe?.transactions || [];
+                        const byBrand: Record<string, number> = {};
+                        for (const t of txns) {
+                          if (t.status !== "succeeded") continue;
+                          const brand = t.payment_method_type === "link" ? "Link"
+                            : t.payment_method_type === "cashapp" ? "Cash App"
+                            : t.payment_method_brand ? t.payment_method_brand.charAt(0).toUpperCase() + t.payment_method_brand.slice(1)
+                            : t.payment_method_type || "Other";
+                          byBrand[brand] = (byBrand[brand] || 0) + Number(t.amount);
+                        }
+                        const sorted = Object.entries(byBrand).sort((a, b) => b[1] - a[1]);
+                        if (sorted.length === 0) return <Empty description="No Stripe data" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+                        return <div className="space-y-2">{sorted.map(([brand, amount]) => (
+                          <div key={brand} className="flex justify-between items-center">
+                            <span className="text-sm">{brand}</span>
+                            <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
+                          </div>
+                        ))}</div>;
+                      })()}
                     </Card>
                     <Card title="Tickets by Status">
                       {Object.entries(report.by_status).length === 0
