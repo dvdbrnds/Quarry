@@ -1,0 +1,220 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Table, App, Upload, Tag, Space, Input, Popconfirm } from "antd";
+import { UploadOutlined, DeleteOutlined, SearchOutlined } from "@ant-design/icons";
+import { authHeaders } from "../auth";
+
+interface RosterEntry {
+  id: string;
+  student_id: string;
+  email: string | null;
+  first_name: string;
+  last_name: string;
+  reason: string;
+  building: string | null;
+  room: string | null;
+  academic_year: string | null;
+  created_at: string;
+}
+
+export default function FeeExemptRoster() {
+  const { message, modal } = App.useApp();
+  const [entries, setEntries] = useState<RosterEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [search, setSearch] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/fee-exempt/roster", { headers: await authHeaders() });
+      if (!res.ok) throw new Error("Failed to load");
+      setEntries(await res.json());
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleUpload(file: File, replace: boolean) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("reason", "Res Life Staff");
+      formData.append("academic_year", "2026-2027");
+      formData.append("replace", replace ? "true" : "false");
+
+      const headers = await authHeaders();
+      delete (headers as any)["Content-Type"];
+      const res = await fetch("/api/admin/fee-exempt/roster/upload", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Upload failed");
+      }
+      const result = await res.json();
+      message.success(`Imported ${result.imported} students${result.skipped ? ` (${result.skipped} skipped)` : ""}`);
+      if (result.errors?.length) {
+        message.warning(result.errors.slice(0, 3).join("; "));
+      }
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  function promptUpload(file: File) {
+    if (entries.length > 0) {
+      modal.confirm({
+        title: "Replace or append?",
+        content: `There are already ${entries.length} students on the roster. Do you want to replace them with this file, or add to the existing list?`,
+        okText: "Replace all",
+        cancelText: "Append",
+        okButtonProps: { danger: true },
+        onOk: () => handleUpload(file, true),
+        onCancel: () => handleUpload(file, false),
+      });
+    } else {
+      handleUpload(file, false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/admin/fee-exempt/roster/${id}`, {
+        method: "DELETE",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      message.success("Removed");
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    }
+  }
+
+  async function handleClearAll() {
+    try {
+      const res = await fetch("/api/admin/fee-exempt/roster", {
+        method: "DELETE",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) throw new Error("Clear failed");
+      const data = await res.json();
+      message.success(`Cleared ${data.deleted} entries`);
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    }
+  }
+
+  const filtered = search
+    ? entries.filter((e) =>
+        `${e.first_name} ${e.last_name} ${e.student_id} ${e.email || ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      )
+    : entries;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold m-0">Fee-Exempt Roster</h3>
+          <p className="text-sm text-gray-500 m-0">
+            Students on this list receive their permit at no charge (RAs, RDs, etc.)
+          </p>
+        </div>
+        <Space>
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 200 }}
+            allowClear
+          />
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.csv"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) promptUpload(f);
+            }}
+          />
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            loading={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            Upload List
+          </Button>
+          {entries.length > 0 && (
+            <Popconfirm
+              title={`Clear all ${entries.length} entries?`}
+              onConfirm={handleClearAll}
+              okText="Clear"
+              okType="danger"
+            >
+              <Button danger icon={<DeleteOutlined />}>Clear All</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      </div>
+
+      <Table
+        dataSource={filtered}
+        loading={loading}
+        rowKey="id"
+        size="small"
+        pagination={{ pageSize: 25, showSizeChanger: true }}
+        columns={[
+          { title: "ID", dataIndex: "student_id", key: "student_id", width: 100 },
+          {
+            title: "Name",
+            key: "name",
+            render: (_, r) => `${r.first_name} ${r.last_name}`,
+            sorter: (a, b) => a.last_name.localeCompare(b.last_name),
+          },
+          { title: "Email", dataIndex: "email", key: "email", render: (v: string | null) => v || "—" },
+          { title: "Building", dataIndex: "building", key: "building", render: (v: string | null) => v || "—" },
+          { title: "Room", dataIndex: "room", key: "room", width: 80, render: (v: string | null) => v || "—" },
+          {
+            title: "Reason",
+            dataIndex: "reason",
+            key: "reason",
+            render: (v: string) => <Tag color="blue">{v}</Tag>,
+          },
+          {
+            title: "",
+            key: "actions",
+            width: 60,
+            render: (_, r) => (
+              <Popconfirm title="Remove?" onConfirm={() => handleDelete(r.id)} okType="danger">
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            ),
+          },
+        ]}
+      />
+
+      <div className="text-xs text-gray-400 mt-3">
+        Upload an Excel (.xlsx) or CSV file with columns: Moravian ID, Last, First, Building, Room.
+        Students on this list will receive permits at $0 when they go through the commuter permit purchase flow.
+      </div>
+    </div>
+  );
+}

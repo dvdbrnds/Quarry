@@ -7,6 +7,7 @@ from .alert_template import AlertTemplate
 from .audit_log import AuditLog
 from .device import Device
 from .enforcement_settings import EnforcementSettings
+from .fee_exempt_roster import FeeExemptRoster
 from .lot import ParkingLot
 from .lot_closure import LotClosure
 from .lot_zone import LotZone
@@ -36,6 +37,7 @@ __all__ = [
     "AuditLog",
     "Device",
     "EnforcementSettings",
+    "FeeExemptRoster",
     "LotClosure",
     "LotZone",
     "LotteryV2Application",

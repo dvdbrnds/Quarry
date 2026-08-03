@@ -12,6 +12,7 @@ import dayjs from "dayjs";
 import PermitTypes from "./PermitTypes";
 import LotteryV2Manager from "./LotteryV2Manager";
 import LiveMonitor from "./LiveMonitor";
+import FeeExemptRoster from "./FeeExemptRoster";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -164,7 +165,9 @@ export default function Permits() {
         ? "types"
         : location.hash === "#live"
           ? "live"
-          : "permits";
+          : location.hash === "#fee-exempt"
+            ? "fee-exempt"
+            : "permits";
   const [tab, setTab] = useState(initTab);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
@@ -598,6 +601,11 @@ export default function Permits() {
             key: "lottery",
             label: "Lottery",
             children: <LotteryV2Manager />,
+          },
+          {
+            key: "fee-exempt",
+            label: "Fee Exempt",
+            children: <FeeExemptRoster />,
           },
           {
             key: "live",

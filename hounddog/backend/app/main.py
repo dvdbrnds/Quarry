@@ -19,6 +19,7 @@ from .routers import (
     branding,
     devices,
     enforcement_settings,
+    fee_exempt,
     lots,
     lottery_v2,
     messaging,
@@ -432,6 +433,21 @@ async def lifespan(app: FastAPI):
             )""",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS photo_data BYTEA",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS photo_mime VARCHAR(64)",
+            # Fee-exempt roster for RAs, RDs, etc.
+            """CREATE TABLE IF NOT EXISTS fee_exempt_roster (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                student_id VARCHAR(64) NOT NULL,
+                email VARCHAR(256),
+                first_name VARCHAR(256) DEFAULT '',
+                last_name VARCHAR(256) DEFAULT '',
+                reason VARCHAR(256) DEFAULT 'Res Life Staff',
+                building VARCHAR(256),
+                room VARCHAR(128),
+                academic_year VARCHAR(16),
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_student_id ON fee_exempt_roster(student_id)",
+            "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_email ON fee_exempt_roster(email)",
             ]
             for migration in migrations:
                 try:
@@ -847,6 +863,7 @@ app.include_router(alerts.public_router, prefix="/api/alerts", tags=["alerts-pub
 app.include_router(signage.admin_router, prefix="/api/signage", tags=["signage"])
 app.include_router(signage.public_router, prefix="/api/signage", tags=["signage-public"])
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
+app.include_router(fee_exempt.router, prefix="/api/admin/fee-exempt", tags=["fee-exempt"])
 app.include_router(branding.admin_router, prefix="/api/branding", tags=["branding"])
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])

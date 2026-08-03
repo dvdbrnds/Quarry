@@ -504,7 +504,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         window.location.href = data.checkout_url;
         return;
       }
-      message.success("Permit purchased");
+      if (data.fee_exempt) {
+        message.success("Your permit has been issued — no charge (fee exempt).");
+      } else {
+        message.success("Permit purchased");
+      }
       setStep("done");
     } catch (e: any) {
       message.error(e.message || "Purchase failed");

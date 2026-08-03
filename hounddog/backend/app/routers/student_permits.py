@@ -603,6 +603,60 @@ async def direct_purchase(
     if data.sms_opt_in and data.phone:
         await _opt_in_alerts(db, data.student_name, user.email, data.phone)
 
+    # Fee-exempt roster check: issue permit at $0 without Stripe
+    from ..models.fee_exempt_roster import FeeExemptRoster
+    from sqlalchemy import or_
+    user_full_name = f"{user.given_name} {user.family_name}".strip().lower()
+    exempt_filters = [FeeExemptRoster.email == user.email]
+    if user.sub:
+        exempt_filters.append(FeeExemptRoster.student_id == user.sub)
+    if user_full_name:
+        exempt_filters.append(
+            func.lower(func.concat(FeeExemptRoster.first_name, ' ', FeeExemptRoster.last_name)) == user_full_name
+        )
+    exempt_match = (await db.execute(
+        select(FeeExemptRoster).where(or_(*exempt_filters)).limit(1)
+    )).scalar()
+
+    if exempt_match:
+        lot_assignment = data.lot_preference or (
+            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
+        )
+        new_permit = Permit(
+            permit_number=await next_permit_number(db),
+            student_id=user.sub,
+            name=data.student_name,
+            email=user.email,
+            phone=data.phone or "",
+            sms_opt_in=data.sms_opt_in,
+            plates=[data.plate.upper().strip()],
+            permit_type=pt.code,
+            lot_assignment=lot_assignment,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=pt.valid_days),
+            status="active",
+        )
+        db.add(new_permit)
+
+        payment = Payment(
+            amount=Decimal("0.00"),
+            method="fee_exempt",
+            payment_type="direct_permit_purchase",
+            payer_name=data.student_name or None,
+            payer_email=user.email or None,
+            plate=data.plate.upper().strip(),
+            description=f"Fee-Exempt Permit ({pt.code}) — {data.plate.upper().strip()} [{exempt_match.reason}]",
+        )
+        db.add(payment)
+        await db.flush()
+
+        _logger.info(
+            "Fee-exempt permit issued: %s (%s) — %s",
+            user.email, exempt_match.reason, pt.code,
+        )
+
+        return {"status": "issued", "fee_exempt": True, "permit_type": pt.code}
+
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
 
