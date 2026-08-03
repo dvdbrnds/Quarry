@@ -547,6 +547,14 @@ export const api = {
     get: (id: string) => request<Permit>(`/permits/${id}`),
     create: (data: Partial<Permit>) =>
       request<Permit>("/permits", { method: "POST", body: JSON.stringify(data) }),
+    createWithCharge: (data: {
+      name: string; email: string; phone?: string; plates?: string[];
+      student_id?: string; lot_assignment?: string; permit_type: string;
+      start_date?: string; end_date?: string; waive_fee?: boolean; coupon_code?: string;
+    }) =>
+      request<{ permit_id: string; status: string; waived: boolean; checkout_url?: string; amount?: string; coupon_applied?: boolean }>(
+        "/permits/charge", { method: "POST", body: JSON.stringify(data) }
+      ),
     update: (id: string, data: Partial<Permit>) =>
       request<Permit>(`/permits/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>

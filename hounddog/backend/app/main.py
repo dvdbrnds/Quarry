@@ -465,6 +465,8 @@ async def lifespan(app: FastAPI):
                 updated_at TIMESTAMPTZ DEFAULT now()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code)",
+            # Admin permit charge — link permit to Stripe session for payment
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS stripe_session_id VARCHAR(255)",
             ]
             for migration in migrations:
                 try:

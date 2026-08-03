@@ -527,6 +527,17 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
             except Exception as e:
                 logger.warning("verify-session fulfillment failed (reconciler will retry): %s", e)
 
+        # Trigger admin permit charge fulfillment
+        if payment_status == "paid" and payment_type == "admin_permit_charge":
+            try:
+                from ..services.stripe_reconciler import _fulfill_admin_charge
+                result = await _fulfill_admin_charge(db, data)
+                if result:
+                    await db.commit()
+                    permit_fulfilled = True
+            except Exception as e:
+                logger.warning("verify-session admin charge fulfillment failed (reconciler will retry): %s", e)
+
         # Trigger ticket fulfillment for paid ticket sessions
         if payment_status == "paid" and payment_type == "ticket_payment" and ticket_id:
             try:

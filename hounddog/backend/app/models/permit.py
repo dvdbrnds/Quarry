@@ -31,3 +31,4 @@ class Permit(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_plate_change: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stripe_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

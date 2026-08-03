@@ -424,3 +424,47 @@ async def send_waitlist_position_update_email(
     )
     return await send_email([recipient_email], subject, body_html, body_text)
 
+
+async def send_payment_link_email(
+    recipient_email: str,
+    recipient_name: str,
+    permit_type_label: str,
+    permit_number: str,
+    amount_display: str,
+    checkout_url: str,
+) -> bool:
+    """Send a payment link email for an admin-issued permit pending payment."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    primary = b["primary_color"]
+    first_name = extract_first_name(recipient_name)
+    department = b.get("department_name", "Parking Authority")
+    subject = f"Payment Required — {permit_type_label} Parking Permit"
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 8px;font-size:20px;">'
+        f'Parking Permit — Payment Required</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name},</p>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">'
+        f'A <strong>{permit_type_label}</strong> parking permit (#{permit_number}) has been issued to you '
+        f'by the {department}. Please complete payment of <strong>{amount_display}</strong> to activate it.</p>'
+        '<div style="text-align:center;margin:28px 0;">'
+        f'<a href="{checkout_url}" style="display:inline-block;background:{primary};'
+        'color:#fff;padding:14px 36px;border-radius:6px;text-decoration:none;'
+        f'font-size:16px;font-weight:600;">Pay {amount_display}</a></div>'
+        '<p style="color:#666;font-size:13px;line-height:1.5;">'
+        'Your permit will remain inactive until payment is received. '
+        'If you have questions, please contact the parking office.</p>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"PARKING PERMIT — PAYMENT REQUIRED\n\n"
+        f"Dear {first_name},\n\n"
+        f"A {permit_type_label} parking permit (#{permit_number}) has been issued to you "
+        f"by the {department}. Please complete payment of {amount_display} to activate it.\n\n"
+        f"Pay here: {checkout_url}\n\n"
+        f"Your permit will remain inactive until payment is received.\n\n"
+        f"{school} {department}"
+    )
+    return await send_email([recipient_email], subject, body_html, body_text)
+

@@ -27,7 +27,8 @@ from ..services.permit_numbering import next_permit_number
 logger = logging.getLogger("quarry.stripe_reconciler")
 
 PERMIT_SESSION_TYPES = {"direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"}
-ALL_RECONCILABLE_TYPES = PERMIT_SESSION_TYPES | {"ticket_payment"}
+ADMIN_CHARGE_TYPE = "admin_permit_charge"
+ALL_RECONCILABLE_TYPES = PERMIT_SESSION_TYPES | {"ticket_payment", ADMIN_CHARGE_TYPE}
 
 
 async def _permit_exists_for_session(db: AsyncSession, stripe_pi: str) -> bool:
@@ -196,6 +197,72 @@ async def _fulfill_ticket_payment(db: AsyncSession, session_data: dict) -> bool:
     return True
 
 
+async def _fulfill_admin_charge(db: AsyncSession, session_data: dict) -> bool:
+    """Activate an admin-issued pending_payment permit after Stripe payment completes.
+
+    Returns True on success, False if skipped.
+    """
+    metadata = session_data.get("metadata") or {}
+    permit_id_str = metadata.get("permit_id")
+    if not permit_id_str:
+        return False
+
+    stripe_pi = session_data.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return False
+
+    try:
+        permit = await db.get(Permit, uuid.UUID(permit_id_str))
+    except (ValueError, TypeError):
+        return False
+    if not permit:
+        return False
+    if permit.status != "pending_payment":
+        return False
+
+    permit.status = "active"
+
+    amount_total = session_data.get("amount_total", 0)
+    permit_type_code = metadata.get("permit_type_code", "")
+    plate = metadata.get("plate", "")
+
+    payment = Payment(
+        amount=Decimal(amount_total) / 100 if amount_total else Decimal("0.00"),
+        method="online_permit_purchase",
+        stripe_payment_id=stripe_pi or None,
+        payment_type="admin_permit_charge",
+        payer_name=permit.name or None,
+        payer_email=permit.email or None,
+        plate=plate or None,
+        description=f"Admin permit ({permit_type_code}) — {plate}" if plate else f"Admin permit ({permit_type_code})",
+    )
+    db.add(payment)
+    await db.flush()
+
+    if permit.email:
+        try:
+            from .email import send_permit_confirmation_email
+            permit_label = metadata.get("permit_type_label", permit_type_code)
+            await send_permit_confirmation_email(
+                recipient_email=permit.email,
+                student_name=permit.name,
+                permit_type_label=permit_label,
+                permit_number=permit.permit_number or "",
+                plate=plate,
+                lot_assignment=permit.lot_assignment,
+                start_date=permit.start_date.strftime("%B %d, %Y"),
+                end_date=permit.end_date.strftime("%B %d, %Y") if permit.end_date else "N/A",
+            )
+        except Exception as e:
+            logger.warning("Admin charge confirmation email failed for %s: %s", permit.email, e)
+
+    return True
+
+
 async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
     """Poll Stripe for paid checkout sessions and fulfill any missing permits/tickets.
 
@@ -266,6 +333,17 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                             logger.info(
                                 "Reconciled ticket payment: ticket=%s pi=%s",
                                 metadata.get("ticket_id", "?"),
+                                sess_dict.get("payment_intent", "?")[:16],
+                            )
+                        else:
+                            already_fulfilled += 1
+                    elif payment_type == ADMIN_CHARGE_TYPE:
+                        result = await _fulfill_admin_charge(db, sess_dict)
+                        if result:
+                            fulfilled += 1
+                            logger.info(
+                                "Reconciled admin permit charge: permit=%s pi=%s",
+                                metadata.get("permit_id", "?"),
                                 sess_dict.get("payment_intent", "?")[:16],
                             )
                         else:

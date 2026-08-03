@@ -10,6 +10,7 @@ from sqlalchemy import select, func, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user
+from ..config import settings
 from ..database import get_db
 from ..services.lottery_runner import run_lottery, verify_lottery, LotteryResult
 from ..models.audit_log import AuditLog
@@ -266,6 +267,208 @@ async def create_permit(data: PermitCreate, db: AsyncSession = Depends(get_db)):
     await db.refresh(permit)
     await _notify_permit_change("created", 1)
     return permit
+
+
+class AdminChargeRequest(BaseModel):
+    name: str
+    email: str
+    phone: str = ""
+    plates: list[str] = []
+    student_id: str = ""
+    lot_assignment: str = ""
+    permit_type: str
+    start_date: date | None = None
+    end_date: date | None = None
+    waive_fee: bool = False
+    coupon_code: str | None = None
+
+
+@router.post("/charge", status_code=201)
+async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession = Depends(get_db)):
+    """Admin endpoint: create a permit with an optional charge. If not waived, a Stripe payment
+    link is emailed to the permit holder and the permit stays pending_payment until paid."""
+    from decimal import Decimal
+
+    pt_result = await db.execute(
+        select(PermitType).where(PermitType.code == data.permit_type)
+    )
+    pt = pt_result.scalar()
+    if not pt:
+        raise HTTPException(400, "Invalid permit type")
+
+    permit_number = await next_permit_number(db)
+    start = data.start_date or date.today()
+    end = data.end_date or (start + timedelta(days=pt.valid_days))
+
+    if data.waive_fee or pt.price <= 0:
+        permit = Permit(
+            permit_number=permit_number,
+            name=data.name,
+            email=data.email,
+            phone=data.phone,
+            plates=[p.upper().strip() for p in data.plates if p.strip()],
+            student_id=data.student_id,
+            lot_assignment=data.lot_assignment,
+            permit_type=data.permit_type,
+            start_date=start,
+            end_date=end,
+            status="active",
+        )
+        db.add(permit)
+        await db.flush()
+        await db.refresh(permit)
+        await _notify_permit_change("created", 1)
+        return {"permit_id": str(permit.id), "status": "active", "waived": True}
+
+    # Calculate discounted price
+    discounted_price = pt.price
+    applied_coupon = None
+    if data.coupon_code:
+        from ..models.coupon import Coupon
+        from .coupons import _validate_coupon
+
+        coupon_result = await db.execute(
+            select(Coupon).where(func.upper(Coupon.code) == data.coupon_code.upper().strip())
+        )
+        coupon = coupon_result.scalar()
+        if coupon:
+            error = _validate_coupon(coupon, data.permit_type)
+            if not error:
+                applied_coupon = coupon
+                if coupon.discount_type == "full":
+                    discounted_price = Decimal("0.00")
+                elif coupon.discount_type == "percent":
+                    discounted_price = pt.price * (1 - coupon.discount_value / 100)
+                elif coupon.discount_type == "flat":
+                    discounted_price = max(Decimal("0.00"), pt.price - coupon.discount_value)
+
+    # Full waiver via coupon
+    if applied_coupon and discounted_price <= 0:
+        permit = Permit(
+            permit_number=permit_number,
+            name=data.name,
+            email=data.email,
+            phone=data.phone,
+            plates=[p.upper().strip() for p in data.plates if p.strip()],
+            student_id=data.student_id,
+            lot_assignment=data.lot_assignment,
+            permit_type=data.permit_type,
+            start_date=start,
+            end_date=end,
+            status="active",
+        )
+        db.add(permit)
+        applied_coupon.current_uses += 1
+        await db.flush()
+        await db.refresh(permit)
+        await _notify_permit_change("created", 1)
+        return {"permit_id": str(permit.id), "status": "active", "waived": True, "coupon_applied": True}
+
+    # Create pending permit + Stripe checkout session
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    permit = Permit(
+        permit_number=permit_number,
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        plates=[p.upper().strip() for p in data.plates if p.strip()],
+        student_id=data.student_id,
+        lot_assignment=data.lot_assignment,
+        permit_type=data.permit_type,
+        start_date=start,
+        end_date=end,
+        status="pending_payment",
+    )
+    db.add(permit)
+    await db.flush()
+    await db.refresh(permit)
+
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+    plate_str = ", ".join(p.upper().strip() for p in data.plates if p.strip()) or "N/A"
+
+    session = stripe.checkout.Session.create(
+        customer_email=data.email,
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"{pt.label} Parking Permit",
+                    "description": f"Permit #{permit_number} | Plate: {plate_str}",
+                },
+                "unit_amount": int(discounted_price * 100),
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "admin_permit_charge",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_permits, settings.gl_activity_permits,
+                    settings.gl_segment5, settings.gl_segment6,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_permits,
+                "gl_activity": settings.gl_activity_permits,
+                "permit_type_code": pt.code,
+                "permit_type_label": pt.label,
+                "permit_id": str(permit.id),
+                "permit_number": permit_number,
+                "plate": plate_str,
+                "institution": settings.school_name or "moravian",
+            },
+        },
+        success_url=f"{base_url}/parking?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}/parking?payment=cancelled",
+        metadata={
+            "type": "admin_permit_charge",
+            "permit_id": str(permit.id),
+            "permit_type_code": pt.code,
+            "permit_type_label": pt.label,
+            "permit_number": permit_number,
+            "coupon_code": applied_coupon.code if applied_coupon else "",
+        },
+    )
+
+    permit.stripe_session_id = session.id
+    if applied_coupon:
+        applied_coupon.current_uses += 1
+    await db.flush()
+    await _notify_permit_change("created", 1)
+
+    # Send payment link email
+    amount_display = f"${discounted_price:.2f}"
+    try:
+        from ..services.email import send_payment_link_email
+        await send_payment_link_email(
+            recipient_email=data.email,
+            recipient_name=data.name,
+            permit_type_label=pt.label,
+            permit_number=permit_number,
+            amount_display=amount_display,
+            checkout_url=session.url,
+        )
+    except Exception:
+        pass  # best-effort, admin sees the URL in the response
+
+    return {
+        "permit_id": str(permit.id),
+        "status": "pending_payment",
+        "waived": False,
+        "checkout_url": session.url,
+        "amount": str(discounted_price),
+        "coupon_applied": applied_coupon is not None,
+    }
 
 
 @router.get("/{permit_id}", response_model=PermitRead)

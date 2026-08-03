@@ -34,7 +34,7 @@ interface PermitStats {
   revoked: number;
 }
 
-interface PermitTypeOption { code: string; label: string; }
+interface PermitTypeOption { code: string; label: string; price: number; }
 interface LotOption { id: string; name: string; }
 
 function PermitForm({
@@ -46,6 +46,25 @@ function PermitForm({
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [waiveFee, setWaiveFee] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponValid, setCouponValid] = useState(false);
+  const [couponDiscount, setCouponDiscount] = useState<{ type: string; value: number; message: string } | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+
+  const selectedType = Form.useWatch("permit_type", form);
+  const selectedPt = permitTypes.find(pt => pt.code === selectedType);
+  const basePrice = selectedPt?.price ?? 0;
+  const isCreating = !initial;
+  const hasFee = isCreating && basePrice > 0 && !waiveFee;
+
+  const finalPrice = (() => {
+    if (!hasFee || !couponValid || !couponDiscount) return basePrice;
+    if (couponDiscount.type === "full") return 0;
+    if (couponDiscount.type === "percent") return Math.max(0, basePrice * (1 - couponDiscount.value / 100));
+    if (couponDiscount.type === "flat") return Math.max(0, basePrice - couponDiscount.value);
+    return basePrice;
+  })();
 
   useEffect(() => {
     if (initial) {
@@ -67,28 +86,94 @@ function PermitForm({
     }
   }, [initial, form]);
 
+  useEffect(() => {
+    setCouponCode("");
+    setCouponValid(false);
+    setCouponDiscount(null);
+  }, [selectedType]);
+
+  async function validateCoupon() {
+    if (!couponCode.trim() || !selectedType) return;
+    setValidatingCoupon(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode.trim(), permit_type_code: selectedType }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setCouponValid(true);
+        setCouponDiscount({ type: data.discount_type, value: data.discount_value, message: data.message });
+      } else {
+        setCouponValid(false);
+        setCouponDiscount(null);
+        message.warning(data.message || "Invalid coupon");
+      }
+    } catch {
+      message.error("Failed to validate coupon");
+    } finally {
+      setValidatingCoupon(false);
+    }
+  }
+
   async function handleFinish(values: any) {
     setSaving(true);
-    const data = {
-      name: values.name,
-      plates: values.plates.split(",").map((p: string) => p.trim().toUpperCase()).filter(Boolean),
-      student_id: values.student_id,
-      email: values.email || null,
-      phone: values.phone,
-      beacon_id: values.beacon_id || null,
-      lot_assignment: values.lot_assignment,
-      permit_type: values.permit_type,
-      status: values.status || "active",
-      start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
-      end_date: values.end_date?.format("YYYY-MM-DD") || null,
-    };
+    const plates = values.plates
+      ? values.plates.split(",").map((p: string) => p.trim().toUpperCase()).filter(Boolean)
+      : [];
     try {
       if (initial) {
+        const data = {
+          name: values.name,
+          plates,
+          student_id: values.student_id,
+          email: values.email || null,
+          phone: values.phone,
+          beacon_id: values.beacon_id || null,
+          lot_assignment: values.lot_assignment,
+          permit_type: values.permit_type,
+          status: values.status || "active",
+          start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+          end_date: values.end_date?.format("YYYY-MM-DD") || null,
+        };
         await api.permits.update(initial.id, data);
         message.success("Permit updated");
+      } else if (basePrice > 0 && !waiveFee) {
+        const result = await api.permits.createWithCharge({
+          name: values.name,
+          email: values.email,
+          phone: values.phone || "",
+          plates,
+          student_id: values.student_id || "",
+          lot_assignment: values.lot_assignment || "",
+          permit_type: values.permit_type,
+          start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+          end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
+          waive_fee: false,
+          coupon_code: couponValid ? couponCode.trim() : undefined,
+        });
+        if (result.waived) {
+          message.success("Permit created (fee fully covered by coupon)");
+        } else {
+          message.success("Permit created — payment link emailed to " + values.email);
+        }
       } else {
-        await api.permits.create(data);
-        message.success("Permit created");
+        const chargeData = {
+          name: values.name,
+          email: values.email || "",
+          phone: values.phone || "",
+          plates,
+          student_id: values.student_id || "",
+          lot_assignment: values.lot_assignment || "",
+          permit_type: values.permit_type,
+          start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+          end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
+          waive_fee: true,
+        };
+        await api.permits.createWithCharge(chargeData);
+        message.success("Permit created (fee waived)");
       }
       onSave();
     } catch {
@@ -116,36 +201,88 @@ function PermitForm({
             <Select placeholder="— Select —" allowClear
               options={lots.map(l => ({ label: l.name, value: l.name }))} />
           </Form.Item>
-          <Form.Item name="permit_type" label="Permit Type">
+          <Form.Item name="permit_type" label="Permit Type" rules={[{ required: true }]}>
             <Select placeholder="— Select —" allowClear
-              options={permitTypes.map(pt => ({ label: pt.label, value: pt.code }))} />
+              options={permitTypes.map(pt => ({ label: `${pt.label}${pt.price > 0 ? ` ($${pt.price})` : ""}`, value: pt.code }))} />
           </Form.Item>
-          <Form.Item name="status" label="Status">
-            <Select options={[
-              { label: "Active", value: "active" },
-              { label: "Expired", value: "expired" },
-              { label: "Revoked", value: "revoked" },
-              { label: "Suspended", value: "suspended" },
-            ]} />
-          </Form.Item>
+          {initial && (
+            <Form.Item name="status" label="Status">
+              <Select options={[
+                { label: "Active", value: "active" },
+                { label: "Expired", value: "expired" },
+                { label: "Revoked", value: "revoked" },
+                { label: "Suspended", value: "suspended" },
+                { label: "Pending Payment", value: "pending_payment" },
+              ]} />
+            </Form.Item>
+          )}
           <Form.Item name="start_date" label="Start Date">
             <DatePicker className="w-full" />
           </Form.Item>
           <Form.Item name="end_date" label="End Date">
             <DatePicker className="w-full" />
           </Form.Item>
-          <Form.Item name="email" label="Email">
+          <Form.Item name="email" label="Email" rules={isCreating && basePrice > 0 ? [{ required: true, type: "email", message: "Email required for payment link" }] : []}>
             <Input type="email" placeholder="student@university.edu" />
           </Form.Item>
           <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone is required" }]}>
             <Input placeholder="+1 (555) 123-4567" />
           </Form.Item>
-          {/* beacon_id field hidden — bluetooth beacons no longer used as hangtag alternatives */}
         </div>
+
+        {isCreating && basePrice > 0 && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">
+                Permit Fee: <span className="text-lg font-bold text-gray-900">${basePrice.toFixed(2)}</span>
+              </span>
+              <Checkbox checked={waiveFee} onChange={e => setWaiveFee(e.target.checked)}>
+                Waive fee
+              </Checkbox>
+            </div>
+            {!waiveFee && (
+              <>
+                <div className="flex gap-2 mb-2">
+                  <Input
+                    size="small"
+                    placeholder="Coupon code (optional)"
+                    value={couponCode}
+                    onChange={e => { setCouponCode(e.target.value); setCouponValid(false); setCouponDiscount(null); }}
+                    onPressEnter={e => { e.preventDefault(); validateCoupon(); }}
+                    className="max-w-[200px]"
+                  />
+                  <Button size="small" onClick={validateCoupon} loading={validatingCoupon}
+                    disabled={!couponCode.trim() || !selectedType}>
+                    Apply
+                  </Button>
+                </div>
+                {couponValid && couponDiscount && (
+                  <p className="text-xs text-green-600 m-0 mb-2">{couponDiscount.message}</p>
+                )}
+                {finalPrice !== basePrice && (
+                  <p className="text-sm m-0">
+                    <span className="line-through text-gray-400">${basePrice.toFixed(2)}</span>{" "}
+                    <span className="font-bold text-green-700">
+                      {finalPrice <= 0 ? "FREE" : `$${finalPrice.toFixed(2)}`}
+                    </span>
+                    {" — "}payment link will be emailed
+                  </p>
+                )}
+                {finalPrice === basePrice && (
+                  <p className="text-xs text-gray-500 m-0">Payment link will be emailed to the permit holder</p>
+                )}
+              </>
+            )}
+            {waiveFee && (
+              <p className="text-xs text-gray-500 m-0">No charge — permit will be created as active immediately</p>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end gap-3">
           <Button onClick={onCancel}>Cancel</Button>
           <Button type="primary" htmlType="submit" loading={saving}>
-            {initial ? "Update" : "Create"}
+            {initial ? "Update" : hasFee ? `Create & Send Payment Link` : "Create"}
           </Button>
         </div>
       </Form>
@@ -225,7 +362,7 @@ export default function Permits() {
         fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
       ]);
       setStats(s);
-      setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label })));
+      setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label, price: pt.price ?? 0 })));
       setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
       setDuplicateGroups(dupRes.duplicate_groups ?? []);
     } catch { /* silently fail */ }
@@ -372,7 +509,7 @@ export default function Permits() {
       title: "Status", dataIndex: "status", key: "status", sorter: true,
       render: (status, p) => (
         <Space>
-          <Tag color={status === "active" ? "green" : status === "expired" || status === "renewed" ? "default" : "red"}>{status}</Tag>
+          <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
           {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
         </Space>
       ),
