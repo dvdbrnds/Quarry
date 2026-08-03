@@ -1552,17 +1552,10 @@ async def stripe_transactions(
     has_more = False
     errors: list[str] = []
 
-    def add_txn(txn: StripeTransaction):
+    def add_txn(txn: StripeTransaction, include_in_list: bool = True):
         if txn.id in seen_ids:
             return
         seen_ids.add(txn.id)
-        d = txn.model_dump()
-        d["created"] = d["created"].isoformat()
-        d["amount"] = str(d["amount"])
-        d["amount_refunded"] = str(d["amount_refunded"])
-        d["net"] = str(d["net"])
-        d["fee"] = str(d["fee"])
-        transactions.append(d)
         if txn.status == "succeeded":
             overview["successful_count"] += 1
             overview["total_volume"] += txn.amount
@@ -1573,49 +1566,59 @@ async def stripe_transactions(
             overview["total_refunded"] += txn.amount_refunded
         if txn.status == "failed":
             overview["failed_count"] += 1
+        if include_in_list:
+            d = txn.model_dump()
+            d["created"] = d["created"].isoformat()
+            d["amount"] = str(d["amount"])
+            d["amount_refunded"] = str(d["amount_refunded"])
+            d["net"] = str(d["net"])
+            d["fee"] = str(d["fee"])
+            transactions.append(d)
 
     # --- Charges (canonical records — have fee, net, and full metadata) ---
+    # Paginate all charges for accurate totals
     try:
-        charges = stripe.Charge.list(limit=limit, expand=["data.balance_transaction"])
-        has_more = has_more or charges.has_more
-        for i, ch in enumerate(charges.data):
+        charges_iter = stripe.Charge.list(limit=100, expand=["data.balance_transaction"]).auto_paging_iter()
+        count = 0
+        for ch in charges_iter:
             try:
-                add_txn(_charge_to_txn(ch))
+                count += 1
+                add_txn(_charge_to_txn(ch), include_in_list=(count <= limit))
                 pi_id = getattr(ch, "payment_intent", None)
                 if pi_id:
                     seen_pi_ids.add(pi_id)
             except Exception as e:
-                errors.append(f"charge[{i}] {ch.id}: {e}\n{traceback.format_exc()}")
+                errors.append(f"charge {ch.id}: {e}")
+        if count > limit:
+            has_more = True
     except Exception as e:
         errors.append(f"Charge.list failed: {e}\n{traceback.format_exc()}")
 
     # --- PaymentIntents (skip if we already have the charge) ---
     try:
-        pis = stripe.PaymentIntent.list(limit=limit, expand=["data.latest_charge.balance_transaction"])
-        has_more = has_more or pis.has_more
-        for i, pi in enumerate(pis.data):
+        pis_iter = stripe.PaymentIntent.list(limit=100, expand=["data.latest_charge.balance_transaction"]).auto_paging_iter()
+        for pi in pis_iter:
             try:
                 if pi.id in seen_pi_ids:
                     continue
                 seen_pi_ids.add(pi.id)
                 add_txn(_pi_to_txn(pi))
             except Exception as e:
-                errors.append(f"pi[{i}] {pi.id}: {e}\n{traceback.format_exc()}")
+                errors.append(f"pi {pi.id}: {e}")
     except Exception as e:
         errors.append(f"PaymentIntent.list failed: {e}\n{traceback.format_exc()}")
 
     # --- Checkout Sessions (skip if we already have the charge/PI) ---
     try:
-        sessions = stripe.checkout.Session.list(limit=limit)
-        has_more = has_more or sessions.has_more
-        for i, sess in enumerate(sessions.data):
+        sessions_iter = stripe.checkout.Session.list(limit=100).auto_paging_iter()
+        for sess in sessions_iter:
             try:
                 sess_pi = getattr(sess, "payment_intent", None)
                 if sess_pi and sess_pi in seen_pi_ids:
                     continue
                 add_txn(_session_to_txn(sess))
             except Exception as e:
-                errors.append(f"session[{i}] {sess.id}: {e}\n{traceback.format_exc()}")
+                errors.append(f"session {sess.id}: {e}")
     except Exception as e:
         errors.append(f"Session.list failed: {e}\n{traceback.format_exc()}")
 
