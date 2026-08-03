@@ -238,13 +238,13 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
         </div>
       )}
 
-      <main className="max-w-3xl mx-auto px-6 py-10">
+      <main className="max-w-7xl mx-auto px-6 py-10">
         {loading || renewalLoading ? (
           <div className="flex justify-center py-20"><Spin size="large" /></div>
         ) : (
-          <div className="space-y-8">
+          <div className={`grid grid-cols-1 gap-6 ${mapsApiKey && lots.length > 0 && permitType ? "lg:grid-cols-3" : ""}`}>
             {mapsApiKey && lots.length > 0 && permitType && (
-              <div className="h-[300px] rounded-xl overflow-hidden shadow">
+              <div className="lg:hidden h-[280px] rounded-xl overflow-hidden shadow">
                 <StudentLotMap
                   apiKey={mapsApiKey}
                   lots={lots.filter(l => {
@@ -256,6 +256,8 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
                 />
               </div>
             )}
+
+            <div className={`space-y-8 ${mapsApiKey && lots.length > 0 && permitType ? "lg:col-span-2" : ""}`}>
             {/* Renewal card (from email link) */}
             {renewalSuccess && (
               <Alert
@@ -423,6 +425,23 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
             <div className="text-center text-xs text-gray-400 pt-4 border-t">
               {brand.schoolName || "Campus"} {brand.departmentName}{brand.brandName ? ` — ${brand.brandName}` : ""}
             </div>
+            </div>
+
+            {mapsApiKey && lots.length > 0 && permitType && (
+              <div className="hidden lg:block lg:col-span-1">
+                <div className="sticky top-6 h-[calc(100vh-6rem)] rounded-xl overflow-hidden shadow">
+                  <StudentLotMap
+                    apiKey={mapsApiKey}
+                    lots={lots.filter(l => {
+                      const lotKey = l.name.replace(/^Lot\s+/i, "").trim().toLowerCase();
+                      return permitType.lot_assignments.some(a => a.toLowerCase() === lotKey || a.toLowerCase() === l.name.toLowerCase());
+                    })}
+                    highlightedLots={permitType.lot_assignments}
+                    defaultCenter={campusCenter}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
