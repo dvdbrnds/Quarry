@@ -236,6 +236,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
   const [externalLot, setExternalLot] = useState<Lot | null>(null);
+  const [commuterTiers, setCommuterTiers] = useState<Tier[]>([]);
 
   /** Lots belonging to the eligible path options only */
   const eligibleTiers = ranked.length > 0 ? ranked : tiers;
@@ -409,6 +410,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   useEffect(() => {
     load();
     loadTiers("north");
+    // Load commuter tiers independently for standalone display
+    (async () => {
+      try {
+        const headers = await authHeadersAs(impersonateEmail);
+        const res = await fetch("/api/lottery-v2/eligible-tiers?campus=commuter", { headers });
+        if (res.ok) setCommuterTiers(await res.json());
+      } catch { /* ignore */ }
+    })();
     loadConfig().then((cfg) => {
       setMapsApiKey(cfg.google_maps_api_key || "");
       if (cfg.campus_lat && cfg.campus_lng) {
@@ -721,7 +730,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           )}
 
           <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
-            {!cycle && (
+            {!cycle && step === "intake" && !isCommuterPath && (
+              <>
               <Card>
                 <p className="text-gray-500 m-0">
                   No lottery cycle is available right now. The residential parking lottery runs
@@ -729,6 +739,44 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   registration opens.
                 </p>
               </Card>
+              {commuterTiers.length > 0 && (
+                <Card title="Commuter Permits">
+                  <p className="text-sm text-gray-500 mb-4">
+                    Commuter parking permits are available for direct purchase — no lottery required.
+                  </p>
+                  <div className="space-y-3">
+                    {commuterTiers.map((tier) => (
+                      <div
+                        key={tier.id}
+                        className="flex items-center justify-between border rounded-lg px-4 py-3"
+                      >
+                        <div>
+                          <div className="font-medium">{tier.label}</div>
+                          <div className="text-xs text-gray-500">
+                            {tier.remaining} of {tier.max_capacity} spots remaining
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-brand-primary">${Number(tier.price).toFixed(0)}</div>
+                          {tier.remaining > 0 ? (
+                            <Button
+                              type="primary"
+                              size="small"
+                              className="mt-1"
+                              onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked(commuterTiers); setStep("intake"); }}
+                            >
+                              Buy Now
+                            </Button>
+                          ) : (
+                            <Tag color="red" className="mt-1">Full</Tag>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+              </>
             )}
 
             {cycle && !isCommuterPath && (
@@ -870,9 +918,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
-            {!application && step === "intake" && (
-              <Card title="1. About you">
+            {!application && step === "intake" && (cycle || isCommuterPath) && (
+              <Card title={!cycle && isCommuterPath ? "Commuter Permit — Your Info" : "1. About you"}>
                 <Form layout="vertical" onFinish={continueToRank}>
+                  {cycle && (
                   <Form.Item label="Where do you park?" required>
                     <Radio.Group
                       value={campus}
@@ -886,6 +935,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       ]}
                     />
                   </Form.Item>
+                  )}
                   {isSouthPath && southExternalLots.length > 0 && (
                     <Alert
                       type="warning"
@@ -988,12 +1038,17 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
             {!application && step === "choose" && (
               <Card
-                title="2. Choose your permit"
+                title={!cycle && isCommuterPath ? "Commuter Permits" : "2. Choose your permit"}
                 extra={
                   <Button
                     type="link"
                     onClick={() => {
-                      setStep("intake");
+                      if (!cycle) {
+                        setStep("intake");
+                        setCampus("north");
+                      } else {
+                        setStep("intake");
+                      }
                       setHighlightedLots([]);
                       setHoveredTierId(null);
                       setFocusedLot(null);
