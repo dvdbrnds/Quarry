@@ -764,9 +764,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     >
                       <div>
                         <div className="font-medium">{tier.label}</div>
-                        <div className="text-xs text-gray-500">
-                          {tier.remaining} of {tier.max_capacity} spots remaining
-                        </div>
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-brand-primary">${Number(tier.price).toFixed(0)}</div>
