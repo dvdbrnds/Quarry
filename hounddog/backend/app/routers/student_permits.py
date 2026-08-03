@@ -666,6 +666,64 @@ async def direct_purchase(
 
         return {"status": "issued", "fee_exempt": True, "permit_type": pt.code}
 
+    # ── Coupon discount ──────────────────────────────────────────────────────
+    from ..models.coupon import Coupon
+    from ..routers.coupons import _validate_coupon
+
+    discounted_price = pt.price
+    applied_coupon: Coupon | None = None
+
+    if data.coupon_code:
+        coupon_result = await db.execute(
+            select(Coupon).where(func.upper(Coupon.code) == data.coupon_code.upper().strip())
+        )
+        applied_coupon = coupon_result.scalar()
+        if not applied_coupon:
+            raise HTTPException(400, "Invalid coupon code.")
+        error = _validate_coupon(applied_coupon, pt.code)
+        if error:
+            raise HTTPException(400, error)
+
+        if applied_coupon.discount_type == "full":
+            discounted_price = Decimal("0.00")
+        elif applied_coupon.discount_type == "percent":
+            discounted_price = pt.price * (Decimal("100") - applied_coupon.discount_value) / Decimal("100")
+        elif applied_coupon.discount_type == "flat":
+            discounted_price = max(Decimal("0.00"), pt.price - applied_coupon.discount_value)
+
+    # Full coupon waiver: issue permit at $0 without Stripe
+    if applied_coupon and discounted_price <= 0:
+        lot_assignment = data.lot_preference or (
+            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
+        )
+        new_permit = Permit(
+            permit_number=await next_permit_number(db),
+            student_id=user.sub,
+            name=data.student_name,
+            email=user.email,
+            phone=data.phone or "",
+            sms_opt_in=data.sms_opt_in,
+            plates=[data.plate.upper().strip()],
+            permit_type=pt.code,
+            lot_assignment=lot_assignment,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=pt.valid_days),
+            status="active",
+        )
+        db.add(new_permit)
+        db.add(Payment(
+            amount=Decimal("0.00"),
+            method="coupon",
+            payment_type="direct_permit_purchase",
+            payer_name=data.student_name or None,
+            payer_email=user.email or None,
+            plate=data.plate.upper().strip(),
+            description=f"Coupon {applied_coupon.code} ({applied_coupon.program_name}) — {pt.code} — {data.plate.upper().strip()}",
+        ))
+        applied_coupon.current_uses += 1
+        await db.flush()
+        return {"status": "issued", "fee_exempt": False, "coupon": True, "permit_type": pt.code}
+
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
 
@@ -685,9 +743,10 @@ async def direct_purchase(
                 "currency": "usd",
                 "product_data": {
                     "name": f"{pt.label} Parking Permit",
-                    "description": f"Plate: {data.plate.upper()} | Valid for {pt.valid_days} days",
+                    "description": f"Plate: {data.plate.upper()} | Valid for {pt.valid_days} days"
+                    + (f" | Coupon: {applied_coupon.code}" if applied_coupon else ""),
                 },
-                "unit_amount": int(pt.price * 100),
+                "unit_amount": int(discounted_price * 100),
             },
             "quantity": 1,
         }],
@@ -736,8 +795,14 @@ async def direct_purchase(
             "lot_assignment": lot_assignment,
             "phone": data.phone or "",
             "sms_opt_in": "true" if data.sms_opt_in else "false",
+            "coupon_code": applied_coupon.code if applied_coupon else "",
         },
     )
+
+    # Increment coupon usage now — Stripe will handle payment collection
+    if applied_coupon:
+        applied_coupon.current_uses += 1
+        await db.flush()
 
     return {"checkout_url": session.url, "session_id": session.id}
 

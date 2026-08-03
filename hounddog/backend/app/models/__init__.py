@@ -5,6 +5,7 @@ from .alert_scenario import AlertScenario
 from .alert_subscriber import AlertSubscriber
 from .alert_template import AlertTemplate
 from .audit_log import AuditLog
+from .coupon import Coupon
 from .device import Device
 from .enforcement_settings import EnforcementSettings
 from .fee_exempt_roster import FeeExemptRoster
@@ -35,6 +36,7 @@ __all__ = [
     "AlertSubscriber",
     "AlertTemplate",
     "AuditLog",
+    "Coupon",
     "Device",
     "EnforcementSettings",
     "FeeExemptRoster",

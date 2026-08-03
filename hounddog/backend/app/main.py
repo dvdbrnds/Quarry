@@ -17,6 +17,7 @@ from .routers import (
     auth,
     backup,
     branding,
+    coupons,
     devices,
     enforcement_settings,
     fee_exempt,
@@ -448,6 +449,22 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_student_id ON fee_exempt_roster(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_email ON fee_exempt_roster(email)",
+            # Coupon codes for academic programs
+            """CREATE TABLE IF NOT EXISTS coupons (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                code VARCHAR(64) NOT NULL UNIQUE,
+                program_name VARCHAR(256) DEFAULT '',
+                discount_type VARCHAR(16) NOT NULL,
+                discount_value NUMERIC(8,2) DEFAULT 0,
+                applicable_permit_codes TEXT[] DEFAULT '{}',
+                max_uses INTEGER,
+                current_uses INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                expires_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code)",
             ]
             for migration in migrations:
                 try:
@@ -868,6 +885,8 @@ app.include_router(branding.admin_router, prefix="/api/branding", tags=["brandin
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
 app.include_router(visitor_permits.router, prefix="/api/visitor/permits", tags=["visitor-permits"])
+app.include_router(coupons.admin_router, prefix="/api/coupons", tags=["coupons"])
+app.include_router(coupons.router, prefix="/api/coupons", tags=["coupons"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

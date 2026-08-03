@@ -101,6 +101,7 @@ interface Application {
   assigned_permit_type_id: string | null;
   assigned_permit_type_label: string | null;
   assigned_permit_type_price: string | null;
+  assigned_permit_type_code: string | null;
   assigned_lot: string | null;
   status: string;
   lottery_rank: number | null;
@@ -237,6 +238,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
   const [externalLot, setExternalLot] = useState<Lot | null>(null);
   const [commuterTiers, setCommuterTiers] = useState<Tier[]>([]);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponValid, setCouponValid] = useState<{ discount_type: string; discount_value: number; message: string } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   /** Lots belonging to the eligible path options only */
   const eligibleTiers = ranked.length > 0 ? ranked : tiers;
@@ -495,6 +500,39 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     setRanked(next);
   }
 
+  async function validateCoupon(permitTypeCode: string) {
+    if (!couponCode.trim()) return;
+    setValidatingCoupon(true);
+    setCouponError("");
+    setCouponValid(null);
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode.trim(), permit_type_code: permitTypeCode }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setCouponValid({ discount_type: data.discount_type, discount_value: data.discount_value, message: data.message });
+        setCouponError("");
+      } else {
+        setCouponValid(null);
+        setCouponError(data.message || "Invalid coupon code.");
+      }
+    } catch {
+      setCouponError("Failed to validate coupon.");
+    } finally {
+      setValidatingCoupon(false);
+    }
+  }
+
+  function clearCoupon() {
+    setCouponCode("");
+    setCouponValid(null);
+    setCouponError("");
+  }
+
   async function purchaseCommuterPermit(tier: Tier) {
     if (!classYear || !plate.trim() || !phone.trim()) return;
     setSubmitting(true);
@@ -511,6 +549,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           class_year: classYear,
           phone: phone.trim(),
           sms_opt_in: smsOptIn,
+          coupon_code: couponValid ? couponCode.trim() : undefined,
         }),
       });
       if (!res.ok) {
@@ -524,6 +563,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       }
       if (data.fee_exempt) {
         message.success("Your permit has been issued — no charge (fee exempt).");
+      } else if (data.coupon) {
+        message.success("Your permit has been issued — coupon applied, no charge.");
       } else {
         message.success("Permit purchased");
       }
@@ -576,7 +617,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       const headers = await authHeadersAs(impersonateEmail);
       const res = await fetch(`/api/lottery-v2/applications/${application.id}/accept`, {
         method: "POST",
-        headers,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(couponValid ? { coupon_code: couponCode.trim() } : {}),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -855,6 +897,35 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           Offer expires {new Date(application.offer_expires_at).toLocaleDateString()}
                         </p>
                       )}
+
+                      {/* Coupon code input for lottery accept */}
+                      <div className="p-2 bg-white rounded border border-dashed border-gray-300">
+                        <p className="text-xs font-medium text-gray-600 mb-1">Have a coupon code?</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            className="flex-1 px-2 py-1 border rounded text-sm uppercase"
+                            placeholder="Enter code"
+                            value={couponCode}
+                            onChange={(e) => { setCouponCode(e.target.value); setCouponValid(null); setCouponError(""); }}
+                            disabled={!!couponValid}
+                          />
+                          {couponValid ? (
+                            <button className="px-2 py-1 text-xs bg-gray-200 rounded" onClick={clearCoupon}>Clear</button>
+                          ) : (
+                            <button
+                              className="px-2 py-1 text-xs bg-brand-primary text-white rounded disabled:opacity-50"
+                              onClick={() => application.assigned_permit_type_code && validateCoupon(application.assigned_permit_type_code)}
+                              disabled={!couponCode.trim() || validatingCoupon}
+                            >
+                              {validatingCoupon ? "..." : "Apply"}
+                            </button>
+                          )}
+                        </div>
+                        {couponValid && <p className="text-xs text-green-600 mt-1 mb-0">{couponValid.message}</p>}
+                        {couponError && <p className="text-xs text-red-500 mt-1 mb-0">{couponError}</p>}
+                      </div>
+
                       <Space>
                         <Button type="primary" loading={accepting} onClick={acceptOffer}>
                           Accept &amp; Pay
@@ -1077,6 +1148,44 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         ? "Map colors: blue = full-time, amber = after 4 PM & weekends, teal = street. Hover a permit to emphasize its lots."
                         : "Spots remaining after the lottery draw. Purchase directly — first come, first served."}
                     </p>
+
+                    {/* Coupon code input */}
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                      <p className="text-xs font-medium text-gray-600 mb-2">Have a coupon code?</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 px-3 py-1.5 border rounded text-sm uppercase"
+                          placeholder="Enter code"
+                          value={couponCode}
+                          onChange={(e) => { setCouponCode(e.target.value); setCouponValid(null); setCouponError(""); }}
+                          disabled={!!couponValid}
+                        />
+                        {couponValid ? (
+                          <button
+                            className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300"
+                            onClick={clearCoupon}
+                          >
+                            Clear
+                          </button>
+                        ) : (
+                          <button
+                            className="px-3 py-1.5 text-sm bg-brand-primary text-white rounded disabled:opacity-50"
+                            onClick={() => ranked.length > 0 && validateCoupon(ranked[0].code)}
+                            disabled={!couponCode.trim() || validatingCoupon}
+                          >
+                            {validatingCoupon ? "..." : "Apply"}
+                          </button>
+                        )}
+                      </div>
+                      {couponValid && (
+                        <p className="text-xs text-green-600 mt-1 mb-0">{couponValid.message}</p>
+                      )}
+                      {couponError && (
+                        <p className="text-xs text-red-500 mt-1 mb-0">{couponError}</p>
+                      )}
+                    </div>
+
                     <ul className="space-y-2 list-none p-0 m-0">
                       {ranked.map((tier, i) => {
                         const colors = tierColor(tier, i);
@@ -1112,7 +1221,20 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   {tier.label}
                                 </p>
                                 <p className="m-0 text-xs text-gray-500 mt-1">
-                                  ${tier.price}
+                                  {couponValid ? (
+                                    <>
+                                      <span className="line-through">${tier.price}</span>{" "}
+                                      <span className="text-green-600 font-medium">
+                                        {couponValid.discount_type === "full"
+                                          ? "FREE"
+                                          : couponValid.discount_type === "percent"
+                                            ? `$${(Number(tier.price) * (100 - couponValid.discount_value) / 100).toFixed(0)}`
+                                            : `$${Math.max(0, Number(tier.price) - couponValid.discount_value).toFixed(0)}`}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>${tier.price}</>
+                                  )}
                                 </p>
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                                   <span>Lots:</span>

@@ -11,7 +11,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,6 +100,7 @@ class ApplicationRead(BaseModel):
     assigned_permit_type_id: uuid.UUID | None
     assigned_permit_type_label: str | None = None
     assigned_permit_type_price: Decimal | None = None
+    assigned_permit_type_code: str | None = None
     assigned_lot: str | None
     status: str
     lottery_rank: int | None
@@ -146,11 +147,13 @@ async def _cycle_to_read(db: AsyncSession, cycle: LotteryV2Cycle) -> CycleRead:
 async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> ApplicationRead:
     label = None
     price = None
+    code = None
     if app.assigned_permit_type_id:
         pt = await db.get(PermitType, app.assigned_permit_type_id)
         if pt:
             label = pt.label
             price = pt.price
+            code = pt.code
     return ApplicationRead(
         id=app.id,
         cycle_id=app.cycle_id,
@@ -164,6 +167,7 @@ async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> Applicati
         assigned_permit_type_id=app.assigned_permit_type_id,
         assigned_permit_type_label=label,
         assigned_permit_type_price=price,
+        assigned_permit_type_code=code,
         assigned_lot=app.assigned_lot,
         status=app.status,
         lottery_rank=app.lottery_rank,
@@ -466,6 +470,7 @@ async def my_application(
 @router.post("/applications/{application_id}/accept")
 async def accept_offer(
     application_id: uuid.UUID,
+    body: dict | None = Body(None),
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
@@ -524,6 +529,65 @@ async def accept_offer(
         await db.flush()
         return {"status": "accepted", "fee_exempt": True}
 
+    # ── Coupon discount ──────────────────────────────────────────────────────
+    from ..models.coupon import Coupon
+    from ..routers.coupons import _validate_coupon
+
+    discounted_price = pt.price
+    applied_coupon: Coupon | None = None
+    coupon_code = (body or {}).get("coupon_code", "")
+
+    if coupon_code:
+        coupon_result = await db.execute(
+            select(Coupon).where(func.upper(Coupon.code) == coupon_code.upper().strip())
+        )
+        applied_coupon = coupon_result.scalar()
+        if not applied_coupon:
+            raise HTTPException(400, "Invalid coupon code.")
+        error = _validate_coupon(applied_coupon, pt.code)
+        if error:
+            raise HTTPException(400, error)
+
+        if applied_coupon.discount_type == "full":
+            discounted_price = Decimal("0.00")
+        elif applied_coupon.discount_type == "percent":
+            discounted_price = pt.price * (Decimal("100") - applied_coupon.discount_value) / Decimal("100")
+        elif applied_coupon.discount_type == "flat":
+            discounted_price = max(Decimal("0.00"), pt.price - applied_coupon.discount_value)
+
+    # Full coupon waiver: issue permit at $0 without Stripe
+    if applied_coupon and discounted_price <= 0:
+        lot_assignment = app.assigned_lot or (
+            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
+        )
+        new_permit = Permit(
+            permit_number=await next_permit_number(db),
+            name=app.student_name,
+            email=app.student_email or None,
+            phone=app.phone or "",
+            sms_opt_in=bool(app.sms_opt_in),
+            plates=[app.plate],
+            permit_type=pt.code,
+            lot_assignment=lot_assignment,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=pt.valid_days),
+            status="active",
+        )
+        db.add(new_permit)
+        db.add(Payment(
+            amount=Decimal("0.00"),
+            method="coupon",
+            payment_type="lottery_v2_permit",
+            payer_name=app.student_name or None,
+            payer_email=app.student_email or None,
+            plate=app.plate or None,
+            description=f"Coupon {applied_coupon.code} ({applied_coupon.program_name}) — {pt.code} — {app.plate}",
+        ))
+        applied_coupon.current_uses += 1
+        app.status = "accepted"
+        await db.flush()
+        return {"status": "accepted", "fee_exempt": False, "coupon": True}
+
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
 
@@ -540,9 +604,10 @@ async def accept_offer(
                     "currency": "usd",
                     "product_data": {
                         "name": f"{pt.label} Parking Permit",
-                        "description": f"Plate: {app.plate} | Valid for {pt.valid_days} days",
+                        "description": f"Plate: {app.plate} | Valid for {pt.valid_days} days"
+                        + (f" | Coupon: {applied_coupon.code}" if applied_coupon else ""),
                     },
-                    "unit_amount": int(pt.price * 100),
+                    "unit_amount": int(discounted_price * 100),
                 },
                 "quantity": 1,
             }
@@ -585,8 +650,14 @@ async def accept_offer(
             "assigned_lot": app.assigned_lot or "",
             "phone": app.phone or "",
             "sms_opt_in": "true" if app.sms_opt_in else "false",
+            "coupon_code": applied_coupon.code if applied_coupon else "",
         },
     )
+
+    if applied_coupon:
+        applied_coupon.current_uses += 1
+        await db.flush()
+
     return {"checkout_url": session.url, "session_id": session.id}
 
 

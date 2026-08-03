@@ -132,6 +132,7 @@ class DirectPurchaseRequest(BaseModel):
     phone: str
     lot_preference: str | None = None
     sms_opt_in: bool = False
+    coupon_code: str | None = None
 
 
 class VehicleSwapRequest(BaseModel):

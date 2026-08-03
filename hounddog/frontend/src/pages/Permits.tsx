@@ -13,6 +13,7 @@ import PermitTypes from "./PermitTypes";
 import LotteryV2Manager from "./LotteryV2Manager";
 import LiveMonitor from "./LiveMonitor";
 import FeeExemptRoster from "./FeeExemptRoster";
+import CouponManager from "./CouponManager";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -606,6 +607,11 @@ export default function Permits() {
             key: "fee-exempt",
             label: "Fee Exempt",
             children: <FeeExemptRoster />,
+          },
+          {
+            key: "coupons",
+            label: "Coupons",
+            children: <CouponManager />,
           },
           {
             key: "live",
