@@ -51,9 +51,9 @@ function PermitForm({
   const [couponValid, setCouponValid] = useState(false);
   const [couponDiscount, setCouponDiscount] = useState<{ type: string; value: number; message: string } | null>(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [selectedTypeCode, setSelectedTypeCode] = useState<string | undefined>(undefined);
 
-  const selectedType = Form.useWatch("permit_type", form);
-  const selectedPt = permitTypes.find(pt => pt.code === selectedType);
+  const selectedPt = permitTypes.find(pt => pt.code === selectedTypeCode);
   const basePrice = selectedPt?.price ?? 0;
   const isCreating = !initial;
   const hasFee = isCreating && basePrice > 0 && !waiveFee;
@@ -90,17 +90,17 @@ function PermitForm({
     setCouponCode("");
     setCouponValid(false);
     setCouponDiscount(null);
-  }, [selectedType]);
+  }, [selectedTypeCode]);
 
   async function validateCoupon() {
-    if (!couponCode.trim() || !selectedType) return;
+    if (!couponCode.trim() || !selectedTypeCode) return;
     setValidatingCoupon(true);
     try {
       const headers = await authHeaders();
       const res = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode.trim(), permit_type_code: selectedType }),
+        body: JSON.stringify({ code: couponCode.trim(), permit_type_code: selectedTypeCode }),
       });
       const data = await res.json();
       if (data.valid) {
@@ -186,6 +186,7 @@ function PermitForm({
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
+        onValuesChange={(changed) => { if (changed.permit_type !== undefined) setSelectedTypeCode(changed.permit_type); }}
         initialValues={{ status: "active", start_date: dayjs() }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
@@ -252,7 +253,7 @@ function PermitForm({
                     className="max-w-[200px]"
                   />
                   <Button size="small" onClick={validateCoupon} loading={validatingCoupon}
-                    disabled={!couponCode.trim() || !selectedType}>
+                    disabled={!couponCode.trim() || !selectedTypeCode}>
                     Apply
                   </Button>
                 </div>
@@ -362,7 +363,7 @@ export default function Permits() {
         fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
       ]);
       setStats(s);
-      setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label, price: pt.price ?? 0 })));
+      setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label, price: Number(pt.price) || 0 })));
       setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
       setDuplicateGroups(dupRes.duplicate_groups ?? []);
     } catch { /* silently fail */ }
