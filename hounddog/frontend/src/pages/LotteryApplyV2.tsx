@@ -269,8 +269,17 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     if (isSouthPath) {
       for (const lot of southExternalLots) byId.set(lot.id, lot);
     }
+    // Include commuter lots so hover highlighting works from the standalone card
+    if (commuterTiers.length > 0 && !isCommuterPath) {
+      const commuterLotNames = new Set(
+        commuterTiers.flatMap((t) => t.lot_assignments).map(normalizeLotKey)
+      );
+      for (const lot of lots) {
+        if (commuterLotNames.has(normalizeLotKey(lot.name))) byId.set(lot.id, lot);
+      }
+    }
     return [...byId.values()];
-  }, [lots, eligibleLotNames, isSouthPath, southExternalLots]);
+  }, [lots, eligibleLotNames, isSouthPath, southExternalLots, commuterTiers, isCommuterPath]);
 
   /** Lot assignment name → tier fill color (for resident rank map); external lots stay amber */
   const lotColors = useMemo(() => {
