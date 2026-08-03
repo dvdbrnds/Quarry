@@ -393,11 +393,9 @@ function VisitorFlow() {
                           }}
                           onMouseEnter={() => {
                             setHoveredOptionId(opt.id);
-                            if (visitorLots[0]) setFocusedLot(visitorLots[0].name);
                           }}
                           onMouseLeave={() => {
                             setHoveredOptionId(null);
-                            setFocusedLot(null);
                           }}
                           onClick={() => chooseOption(opt)}
                         >
