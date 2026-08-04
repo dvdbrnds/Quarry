@@ -119,6 +119,7 @@ class ApplicationRead(BaseModel):
     lottery_rank: int | None
     waitlist_position: int | None
     offer_expires_at: datetime | None
+    admin_notes: str | None = None
     is_test_entry: bool
     created_at: datetime
 
@@ -208,6 +209,7 @@ async def _app_to_read(
         lottery_rank=app.lottery_rank,
         waitlist_position=app.waitlist_position,
         offer_expires_at=app.offer_expires_at,
+        admin_notes=app.admin_notes,
         is_test_entry=app.is_test_entry,
         created_at=app.created_at,
     )
