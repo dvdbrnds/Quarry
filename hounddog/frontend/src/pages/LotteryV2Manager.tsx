@@ -28,6 +28,8 @@ interface Application {
   status: string;
   lottery_rank: number | null;
   waitlist_position: number | null;
+  first_choice_label: string | null;
+  tier_preference_labels: string[];
   assigned_permit_type_label: string | null;
   assigned_lot: string | null;
   is_test_entry: boolean;
@@ -207,6 +209,22 @@ export default function LotteryV2Manager() {
       width: 90,
       render: (v: string) => <span className="capitalize">{v}</span>,
     },
+    {
+      title: "1st Choice",
+      dataIndex: "first_choice_label",
+      render: (v: string | null, r: Application) => {
+        const prefs = r.tier_preference_labels || [];
+        if (!v && prefs.length === 0) return "—";
+        return (
+          <span title={prefs.length > 1 ? `Ranked: ${prefs.join(" → ")}` : undefined}>
+            {v || prefs[0]}
+            {prefs.length > 1 && (
+              <span className="text-gray-400 text-xs ml-1">(+{prefs.length - 1})</span>
+            )}
+          </span>
+        );
+      },
+    },
     { title: "Plate", dataIndex: "plate", className: "font-mono" },
     {
       title: "Status",
@@ -228,6 +246,14 @@ export default function LotteryV2Manager() {
         ),
     },
   ];
+
+  const firstChoiceDemand = Object.entries(
+    apps.reduce<Record<string, number>>((acc, a) => {
+      const key = a.first_choice_label || "Unknown";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="space-y-6">
@@ -455,6 +481,15 @@ export default function LotteryV2Manager() {
           )}
 
           <Card title="All applications" size="small">
+            {firstChoiceDemand.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {firstChoiceDemand.map(([label, count]) => (
+                  <Tag key={label} color="blue">
+                    {label}: {count} first-choice
+                  </Tag>
+                ))}
+              </div>
+            )}
             <Table
               rowKey="id"
               size="small"

@@ -101,6 +101,8 @@ class ApplicationRead(BaseModel):
     plate: str
     plate_state: str
     tier_preferences: list[uuid.UUID]
+    tier_preference_labels: list[str] = []
+    first_choice_label: str | None = None
     assigned_permit_type_id: uuid.UUID | None
     assigned_permit_type_label: str | None = None
     assigned_permit_type_price: Decimal | None = None
@@ -123,6 +125,11 @@ class RunDrawRequest(BaseModel):
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
+
+async def _permit_type_map(db: AsyncSession) -> dict[uuid.UUID, PermitType]:
+    pts = (await db.execute(select(PermitType))).scalars().all()
+    return {pt.id: pt for pt in pts}
 
 
 async def _cycle_to_read(db: AsyncSession, cycle: LotteryV2Cycle) -> CycleRead:
@@ -148,16 +155,28 @@ async def _cycle_to_read(db: AsyncSession, cycle: LotteryV2Cycle) -> CycleRead:
     )
 
 
-async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> ApplicationRead:
+async def _app_to_read(
+    db: AsyncSession,
+    app: LotteryV2Application,
+    pt_by_id: dict[uuid.UUID, PermitType] | None = None,
+) -> ApplicationRead:
+    if pt_by_id is None:
+        pt_by_id = await _permit_type_map(db)
+
     label = None
     price = None
     code = None
     if app.assigned_permit_type_id:
-        pt = await db.get(PermitType, app.assigned_permit_type_id)
+        pt = pt_by_id.get(app.assigned_permit_type_id)
         if pt:
             label = pt.label
             price = pt.price
             code = pt.code
+
+    prefs = list(app.tier_preferences or [])
+    preference_labels = [
+        pt_by_id[tid].label if tid in pt_by_id else str(tid) for tid in prefs
+    ]
     return ApplicationRead(
         id=app.id,
         cycle_id=app.cycle_id,
@@ -167,7 +186,9 @@ async def _app_to_read(db: AsyncSession, app: LotteryV2Application) -> Applicati
         campus=app.campus,
         plate=app.plate,
         plate_state=app.plate_state or "",
-        tier_preferences=list(app.tier_preferences or []),
+        tier_preferences=prefs,
+        tier_preference_labels=preference_labels,
+        first_choice_label=preference_labels[0] if preference_labels else None,
         assigned_permit_type_id=app.assigned_permit_type_id,
         assigned_permit_type_label=label,
         assigned_permit_type_price=price,
@@ -1054,7 +1075,8 @@ async def list_applications(
             )
         )
     ).scalars().all()
-    return [await _app_to_read(db, a) for a in apps]
+    pt_by_id = await _permit_type_map(db)
+    return [await _app_to_read(db, a, pt_by_id) for a in apps]
 
 
 @router.get("/cycles/{cycle_id}/results")
@@ -1076,8 +1098,9 @@ async def get_results(
         )
     ).scalar_one_or_none()
 
+    pt_by_id = await _permit_type_map(db)
     apps = [
-        await _app_to_read(db, a)
+        await _app_to_read(db, a, pt_by_id)
         for a in (
             await db.execute(
                 select(LotteryV2Application)
