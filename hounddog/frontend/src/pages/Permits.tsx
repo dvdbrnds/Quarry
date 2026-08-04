@@ -4,9 +4,8 @@ import { api, Permit, ImportResult } from "../api";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Upload, Tooltip, Checkbox,
+  Space, Tabs, Alert, App, Upload, Checkbox,
 } from "antd";
-import { MailOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import PermitTypes from "./PermitTypes";
@@ -335,9 +334,6 @@ export default function Permits() {
     permits: Array<{ id: string; name: string; student_id: string; lot_assignment: string; permit_type: string }>;
   }>>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
-  const [showTestRenewal, setShowTestRenewal] = useState(false);
-  const [testEmail, setTestEmail] = useState("");
-  const [sendingTest, setSendingTest] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -388,55 +384,6 @@ export default function Permits() {
         } catch { message.error("Failed to delete permit"); }
       },
     });
-  }
-
-  async function handleSendRenewal(p: Permit) {
-    if (!p.email) {
-      message.warning("This permit has no email address");
-      return;
-    }
-    modal.confirm({
-      title: "Send renewal email?",
-      content: `A renewal email will be sent to ${p.email} (${p.name}).`,
-      okText: "Send",
-      onOk: async () => {
-        try {
-          const res = await fetch(`/api/renewals/send/${p.id}`, {
-            method: "POST",
-            headers: await authHeaders(),
-          });
-          const data = await res.json();
-          if (data.status === "sent") {
-            message.success(data.message);
-          } else {
-            message.warning(data.message);
-          }
-        } catch {
-          message.error("Failed to send renewal email");
-        }
-      },
-    });
-  }
-
-  async function handleSendTestRenewal() {
-    if (!testEmail) return;
-    setSendingTest(true);
-    try {
-      const res = await fetch("/api/renewals/send-test", {
-        method: "POST",
-        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-        body: JSON.stringify({ email: testEmail }),
-      });
-      const data = await res.json();
-      if (data.status === "sent") {
-        message.success(data.message);
-        setShowTestRenewal(false);
-        setTestEmail("");
-      } else {
-        message.error(data.message);
-      }
-    } catch { message.error("Failed to send test email"); }
-    finally { setSendingTest(false); }
   }
 
   function handleBulkAction() {
@@ -518,16 +465,9 @@ export default function Permits() {
       ),
     },
     {
-      title: "Actions", key: "actions", width: 200, fixed: "right",
+      title: "Actions", key: "actions", width: 120, fixed: "right",
       render: (_, p) => (
         <Space onClick={e => e.stopPropagation()}>
-          <Tooltip title={p.email ? `Send renewal to ${p.email}` : "No email on file"}>
-            <Button size="small" icon={<MailOutlined />}
-              disabled={!p.email}
-              onClick={() => handleSendRenewal(p)}>
-              Renew
-            </Button>
-          </Tooltip>
           <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
           <Button type="link" size="small" danger onClick={() => handleDelete(p.id)}>Del</Button>
         </Space>
@@ -566,7 +506,6 @@ export default function Permits() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold">Permits</h2>
                   <Space>
-                    <Button icon={<MailOutlined />} onClick={() => setShowTestRenewal(true)}>Test Renewal Email</Button>
                     <Button onClick={() => setShowImport(true)}>Import CSV</Button>
                     <Button onClick={() => downloadWithAuth("/api/permits/export/csv", "permits.csv")}>Export CSV</Button>
                     <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>
@@ -716,27 +655,6 @@ export default function Permits() {
                     CSV columns: <code>plate_normalized</code>, <code>owner_name</code>, <code>permit_number</code>, <code>permit_type</code>, <code>lot_zone</code>
                   </p>
                   <input ref={fileRef} type="file" accept=".csv" />
-                </Modal>
-
-                <Modal
-                  open={showTestRenewal}
-                  title="Send Test Renewal Email"
-                  onCancel={() => { setShowTestRenewal(false); setTestEmail(""); }}
-                  okText="Send"
-                  confirmLoading={sendingTest}
-                  onOk={handleSendTestRenewal}
-                  okButtonProps={{ disabled: !testEmail }}
-                >
-                  <p className="text-sm text-ink-mute mb-4">
-                    Send a sample renewal email to preview the template. The email will contain placeholder data and non-functional renew/decline buttons.
-                  </p>
-                  <Input
-                    placeholder="recipient@example.edu"
-                    value={testEmail}
-                    onChange={e => setTestEmail(e.target.value)}
-                    type="email"
-                    onPressEnter={handleSendTestRenewal}
-                  />
                 </Modal>
               </div>
             ),
