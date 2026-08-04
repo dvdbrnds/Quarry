@@ -18,7 +18,7 @@ from .routers import (
     auth,
     backup,
     branding,
-    coupons,
+    vouchers,
     devices,
     enforcement_settings,
     fee_exempt,
@@ -450,8 +450,31 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_student_id ON fee_exempt_roster(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_email ON fee_exempt_roster(email)",
-            # Coupon codes for academic programs
-            """CREATE TABLE IF NOT EXISTS coupons (
+            # Rename coupon → voucher (preserve existing data; no-op if already renamed)
+            """DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='coupons')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='vouchers') THEN
+                    ALTER TABLE coupons RENAME TO vouchers;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='coupon_usages')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='voucher_usages') THEN
+                    ALTER TABLE coupon_usages RENAME TO voucher_usages;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voucher_usages' AND column_name='coupon_id') THEN
+                    ALTER TABLE voucher_usages RENAME COLUMN coupon_id TO voucher_id;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voucher_usages' AND column_name='coupon_code') THEN
+                    ALTER TABLE voucher_usages RENAME COLUMN coupon_code TO voucher_code;
+                END IF;
+                IF EXISTS (SELECT 1 FROM pg_class WHERE relname='idx_coupons_code') THEN
+                    ALTER INDEX idx_coupons_code RENAME TO idx_vouchers_code;
+                END IF;
+                IF EXISTS (SELECT 1 FROM pg_class WHERE relname='idx_coupon_usages_coupon_id') THEN
+                    ALTER INDEX idx_coupon_usages_coupon_id RENAME TO idx_voucher_usages_voucher_id;
+                END IF;
+            END $$""",
+            # Voucher codes for academic programs
+            """CREATE TABLE IF NOT EXISTS vouchers (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 code VARCHAR(64) NOT NULL UNIQUE,
                 program_name VARCHAR(256) DEFAULT '',
@@ -465,14 +488,14 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMPTZ DEFAULT now(),
                 updated_at TIMESTAMPTZ DEFAULT now()
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code)",
+            "CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code)",
             # Admin permit charge — link permit to Stripe session for payment
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS stripe_session_id VARCHAR(255)",
-            # Coupon usage tracking for department chargebacks
-            """CREATE TABLE IF NOT EXISTS coupon_usages (
+            # Voucher usage tracking for department chargebacks
+            """CREATE TABLE IF NOT EXISTS voucher_usages (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                coupon_id UUID NOT NULL,
-                coupon_code VARCHAR(64) NOT NULL,
+                voucher_id UUID NOT NULL,
+                voucher_code VARCHAR(64) NOT NULL,
                 program_name VARCHAR(256) DEFAULT '',
                 student_name VARCHAR(256) DEFAULT '',
                 student_email VARCHAR(256) DEFAULT '',
@@ -483,7 +506,7 @@ async def lifespan(app: FastAPI):
                 final_price NUMERIC(8,2) DEFAULT 0,
                 used_at TIMESTAMPTZ DEFAULT now()
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon_id ON coupon_usages(coupon_id)",
+            "CREATE INDEX IF NOT EXISTS idx_voucher_usages_voucher_id ON voucher_usages(voucher_id)",
             # Stripe transaction cache for fast Finance page loads
             """CREATE TABLE IF NOT EXISTS stripe_transaction_cache (
                 id VARCHAR(256) PRIMARY KEY,
@@ -930,8 +953,8 @@ app.include_router(branding.admin_router, prefix="/api/branding", tags=["brandin
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
 app.include_router(visitor_permits.router, prefix="/api/visitor/permits", tags=["visitor-permits"])
-app.include_router(coupons.admin_router, prefix="/api/coupons", tags=["coupons"])
-app.include_router(coupons.router, prefix="/api/coupons", tags=["coupons"])
+app.include_router(vouchers.admin_router, prefix="/api/vouchers", tags=["vouchers"])
+app.include_router(vouchers.router, prefix="/api/vouchers", tags=["vouchers"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

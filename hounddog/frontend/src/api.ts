@@ -550,9 +550,9 @@ export const api = {
     createWithCharge: (data: {
       name: string; email: string; phone?: string; plates?: string[];
       student_id?: string; lot_assignment?: string; permit_type: string;
-      start_date?: string; end_date?: string; waive_fee?: boolean; coupon_code?: string;
+      start_date?: string; end_date?: string; waive_fee?: boolean; voucher_code?: string;
     }) =>
-      request<{ permit_id: string; status: string; waived: boolean; checkout_url?: string; amount?: string; coupon_applied?: boolean }>(
+      request<{ permit_id: string; status: string; waived: boolean; checkout_url?: string; amount?: string; voucher_applied?: boolean }>(
         "/permits/charge", { method: "POST", body: JSON.stringify(data) }
       ),
     update: (id: string, data: Partial<Permit>) =>

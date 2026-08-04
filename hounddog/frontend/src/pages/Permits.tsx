@@ -13,7 +13,7 @@ import PermitTypes from "./PermitTypes";
 import LotteryV2Manager from "./LotteryV2Manager";
 import LiveMonitor from "./LiveMonitor";
 import FeeExemptRoster from "./FeeExemptRoster";
-import CouponManager from "./CouponManager";
+import VoucherManager from "./VoucherManager";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -47,10 +47,10 @@ function PermitForm({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [waiveFee, setWaiveFee] = useState(false);
-  const [couponCode, setCouponCode] = useState("");
-  const [couponValid, setCouponValid] = useState(false);
-  const [couponDiscount, setCouponDiscount] = useState<{ type: string; value: number; message: string } | null>(null);
-  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [voucherCode, setVoucherCode] = useState("");
+  const [voucherValid, setVoucherValid] = useState(false);
+  const [voucherDiscount, setVoucherDiscount] = useState<{ type: string; value: number; message: string } | null>(null);
+  const [validatingVoucher, setValidatingVoucher] = useState(false);
   const [selectedTypeCode, setSelectedTypeCode] = useState<string | undefined>(undefined);
 
   const selectedPt = permitTypes.find(pt => pt.code === selectedTypeCode);
@@ -59,10 +59,10 @@ function PermitForm({
   const hasFee = isCreating && basePrice > 0 && !waiveFee;
 
   const finalPrice = (() => {
-    if (!hasFee || !couponValid || !couponDiscount) return basePrice;
-    if (couponDiscount.type === "full") return 0;
-    if (couponDiscount.type === "percent") return Math.max(0, basePrice * (1 - couponDiscount.value / 100));
-    if (couponDiscount.type === "flat") return Math.max(0, basePrice - couponDiscount.value);
+    if (!hasFee || !voucherValid || !voucherDiscount) return basePrice;
+    if (voucherDiscount.type === "full") return 0;
+    if (voucherDiscount.type === "percent") return Math.max(0, basePrice * (1 - voucherDiscount.value / 100));
+    if (voucherDiscount.type === "flat") return Math.max(0, basePrice - voucherDiscount.value);
     return basePrice;
   })();
 
@@ -87,34 +87,34 @@ function PermitForm({
   }, [initial, form]);
 
   useEffect(() => {
-    setCouponCode("");
-    setCouponValid(false);
-    setCouponDiscount(null);
+    setVoucherCode("");
+    setVoucherValid(false);
+    setVoucherDiscount(null);
   }, [selectedTypeCode]);
 
-  async function validateCoupon() {
-    if (!couponCode.trim() || !selectedTypeCode) return;
-    setValidatingCoupon(true);
+  async function validateVoucher() {
+    if (!voucherCode.trim() || !selectedTypeCode) return;
+    setValidatingVoucher(true);
     try {
       const headers = await authHeaders();
-      const res = await fetch("/api/coupons/validate", {
+      const res = await fetch("/api/vouchers/validate", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode.trim(), permit_type_code: selectedTypeCode }),
+        body: JSON.stringify({ code: voucherCode.trim(), permit_type_code: selectedTypeCode }),
       });
       const data = await res.json();
       if (data.valid) {
-        setCouponValid(true);
-        setCouponDiscount({ type: data.discount_type, value: data.discount_value, message: data.message });
+        setVoucherValid(true);
+        setVoucherDiscount({ type: data.discount_type, value: data.discount_value, message: data.message });
       } else {
-        setCouponValid(false);
-        setCouponDiscount(null);
-        message.warning(data.message || "Invalid coupon");
+        setVoucherValid(false);
+        setVoucherDiscount(null);
+        message.warning(data.message || "Invalid voucher");
       }
     } catch {
-      message.error("Failed to validate coupon");
+      message.error("Failed to validate voucher");
     } finally {
-      setValidatingCoupon(false);
+      setValidatingVoucher(false);
     }
   }
 
@@ -152,10 +152,10 @@ function PermitForm({
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
           end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
           waive_fee: false,
-          coupon_code: couponValid ? couponCode.trim() : undefined,
+          voucher_code: voucherValid ? voucherCode.trim() : undefined,
         });
         if (result.waived) {
-          message.success("Permit created (fee fully covered by coupon)");
+          message.success("Permit created (fee fully covered by voucher)");
         } else {
           message.success("Permit created — payment link emailed to " + values.email);
         }
@@ -246,19 +246,19 @@ function PermitForm({
                 <div className="flex gap-2 mb-2">
                   <Input
                     size="small"
-                    placeholder="Coupon code (optional)"
-                    value={couponCode}
-                    onChange={e => { setCouponCode(e.target.value); setCouponValid(false); setCouponDiscount(null); }}
-                    onPressEnter={e => { e.preventDefault(); validateCoupon(); }}
+                    placeholder="Voucher code (optional)"
+                    value={voucherCode}
+                    onChange={e => { setVoucherCode(e.target.value); setVoucherValid(false); setVoucherDiscount(null); }}
+                    onPressEnter={e => { e.preventDefault(); validateVoucher(); }}
                     className="max-w-[200px]"
                   />
-                  <Button size="small" onClick={validateCoupon} loading={validatingCoupon}
-                    disabled={!couponCode.trim() || !selectedTypeCode}>
+                  <Button size="small" onClick={validateVoucher} loading={validatingVoucher}
+                    disabled={!voucherCode.trim() || !selectedTypeCode}>
                     Apply
                   </Button>
                 </div>
-                {couponValid && couponDiscount && (
-                  <p className="text-xs text-green-600 m-0 mb-2">{couponDiscount.message}</p>
+                {voucherValid && voucherDiscount && (
+                  <p className="text-xs text-green-600 m-0 mb-2">{voucherDiscount.message}</p>
                 )}
                 {finalPrice !== basePrice && (
                   <p className="text-sm m-0">
@@ -306,7 +306,9 @@ export default function Permits() {
           ? "live"
           : location.hash === "#fee-exempt"
             ? "fee-exempt"
-            : "permits";
+            : location.hash === "#vouchers" || location.hash === "#coupons"
+              ? "vouchers"
+              : "permits";
   const [tab, setTab] = useState(initTab);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
@@ -547,7 +549,13 @@ export default function Permits() {
         activeKey={tab}
         onChange={(key) => {
           setTab(key);
-          window.location.hash = key === "permits" ? "" : key === "lottery" ? "lottery" : key === "live" ? "live" : "types";
+          window.location.hash =
+            key === "permits" ? ""
+            : key === "lottery" ? "lottery"
+            : key === "live" ? "live"
+            : key === "fee-exempt" ? "fee-exempt"
+            : key === "vouchers" ? "vouchers"
+            : "types";
         }}
         items={[
           {
@@ -749,9 +757,9 @@ export default function Permits() {
             children: <FeeExemptRoster />,
           },
           {
-            key: "coupons",
-            label: "Coupons",
-            children: <CouponManager />,
+            key: "vouchers",
+            label: "Vouchers",
+            children: <VoucherManager />,
           },
           {
             key: "live",

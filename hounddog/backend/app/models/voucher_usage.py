@@ -9,12 +9,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..database import Base
 
 
-class CouponUsage(Base):
-    __tablename__ = "coupon_usages"
+class VoucherUsage(Base):
+    __tablename__ = "voucher_usages"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    coupon_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
-    coupon_code: Mapped[str] = mapped_column(String(64))
+    voucher_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    voucher_code: Mapped[str] = mapped_column(String(64))
     program_name: Mapped[str] = mapped_column(String(256), default="")
     student_name: Mapped[str] = mapped_column(String(256), default="")
     student_email: Mapped[str] = mapped_column(String(256), default="")

@@ -666,33 +666,33 @@ async def direct_purchase(
 
         return {"status": "issued", "fee_exempt": True, "permit_type": pt.code}
 
-    # ── Coupon discount ──────────────────────────────────────────────────────
-    from ..models.coupon import Coupon
-    from ..routers.coupons import _validate_coupon
+    # ── Voucher discount ──────────────────────────────────────────────────────
+    from ..models.voucher import Voucher
+    from ..routers.vouchers import _validate_voucher
 
     discounted_price = pt.price
-    applied_coupon: Coupon | None = None
+    applied_voucher: Voucher | None = None
 
-    if data.coupon_code:
-        coupon_result = await db.execute(
-            select(Coupon).where(func.upper(Coupon.code) == data.coupon_code.upper().strip())
+    if data.voucher_code:
+        voucher_result = await db.execute(
+            select(Voucher).where(func.upper(Voucher.code) == data.voucher_code.upper().strip())
         )
-        applied_coupon = coupon_result.scalar()
-        if not applied_coupon:
-            raise HTTPException(400, "Invalid coupon code.")
-        error = _validate_coupon(applied_coupon, pt.code)
+        applied_voucher = voucher_result.scalar()
+        if not applied_voucher:
+            raise HTTPException(400, "Invalid voucher code.")
+        error = _validate_voucher(applied_voucher, pt.code)
         if error:
             raise HTTPException(400, error)
 
-        if applied_coupon.discount_type == "full":
+        if applied_voucher.discount_type == "full":
             discounted_price = Decimal("0.00")
-        elif applied_coupon.discount_type == "percent":
-            discounted_price = pt.price * (Decimal("100") - applied_coupon.discount_value) / Decimal("100")
-        elif applied_coupon.discount_type == "flat":
-            discounted_price = max(Decimal("0.00"), pt.price - applied_coupon.discount_value)
+        elif applied_voucher.discount_type == "percent":
+            discounted_price = pt.price * (Decimal("100") - applied_voucher.discount_value) / Decimal("100")
+        elif applied_voucher.discount_type == "flat":
+            discounted_price = max(Decimal("0.00"), pt.price - applied_voucher.discount_value)
 
-    # Full coupon waiver: issue permit at $0 without Stripe
-    if applied_coupon and discounted_price <= 0:
+    # Full voucher waiver: issue permit at $0 without Stripe
+    if applied_voucher and discounted_price <= 0:
         lot_assignment = data.lot_preference or (
             ",".join(pt.lot_assignments) if pt.lot_assignments else ""
         )
@@ -713,18 +713,18 @@ async def direct_purchase(
         db.add(new_permit)
         db.add(Payment(
             amount=Decimal("0.00"),
-            method="coupon",
+            method="voucher",
             payment_type="direct_permit_purchase",
             payer_name=data.student_name or None,
             payer_email=user.email or None,
             plate=data.plate.upper().strip(),
-            description=f"Coupon {applied_coupon.code} ({applied_coupon.program_name}) — {pt.code} — {data.plate.upper().strip()}",
+            description=f"Voucher {applied_voucher.code} ({applied_voucher.program_name}) — {pt.code} — {data.plate.upper().strip()}",
         ))
-        applied_coupon.current_uses += 1
-        from .coupons import record_coupon_usage
-        await record_coupon_usage(db, applied_coupon, data.student_name, user.email, user.sub, pt.code, pt.price, Decimal("0.00"))
+        applied_voucher.current_uses += 1
+        from .vouchers import record_voucher_usage
+        await record_voucher_usage(db, applied_voucher, data.student_name, user.email, user.sub, pt.code, pt.price, Decimal("0.00"))
         await db.flush()
-        return {"status": "issued", "fee_exempt": False, "coupon": True, "permit_type": pt.code}
+        return {"status": "issued", "fee_exempt": False, "voucher": True, "permit_type": pt.code}
 
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
@@ -746,7 +746,7 @@ async def direct_purchase(
                 "product_data": {
                     "name": f"{pt.label} Parking Permit",
                     "description": f"Plate: {data.plate.upper()} | Valid for {pt.valid_days} days"
-                    + (f" | Coupon: {applied_coupon.code}" if applied_coupon else ""),
+                    + (f" | Voucher: {applied_voucher.code}" if applied_voucher else ""),
                 },
                 "unit_amount": int(discounted_price * 100),
             },
@@ -797,15 +797,15 @@ async def direct_purchase(
             "lot_assignment": lot_assignment,
             "phone": data.phone or "",
             "sms_opt_in": "true" if data.sms_opt_in else "false",
-            "coupon_code": applied_coupon.code if applied_coupon else "",
+            "voucher_code": applied_voucher.code if applied_voucher else "",
         },
     )
 
-    # Increment coupon usage now — Stripe will handle payment collection
-    if applied_coupon:
-        applied_coupon.current_uses += 1
-        from .coupons import record_coupon_usage
-        await record_coupon_usage(db, applied_coupon, data.student_name, user.email, user.sub, pt.code, pt.price, discounted_price)
+    # Increment voucher usage now — Stripe will handle payment collection
+    if applied_voucher:
+        applied_voucher.current_uses += 1
+        from .vouchers import record_voucher_usage
+        await record_voucher_usage(db, applied_voucher, data.student_name, user.email, user.sub, pt.code, pt.price, discounted_price)
         await db.flush()
 
     return {"checkout_url": session.url, "session_id": session.id}

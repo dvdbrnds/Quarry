@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user_or_impersonated, require_admin
 from ..database import get_db
-from ..models.coupon import Coupon
-from ..models.coupon_usage import CouponUsage
+from ..models.voucher import Voucher
+from ..models.voucher_usage import VoucherUsage
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ admin_router = APIRouter(dependencies=[Depends(require_admin())])
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
-class CouponCreate(BaseModel):
+class VoucherCreate(BaseModel):
     code: str
     program_name: str = ""
     discount_type: str  # "percent", "flat", "full"
@@ -30,7 +30,7 @@ class CouponCreate(BaseModel):
     expires_at: datetime | None = None
 
 
-class CouponUpdate(BaseModel):
+class VoucherUpdate(BaseModel):
     code: str | None = None
     program_name: str | None = None
     discount_type: str | None = None
@@ -41,7 +41,7 @@ class CouponUpdate(BaseModel):
     expires_at: datetime | None = None
 
 
-class CouponRead(BaseModel):
+class VoucherRead(BaseModel):
     id: str
     code: str
     program_name: str
@@ -56,12 +56,12 @@ class CouponRead(BaseModel):
     updated_at: datetime
 
 
-class CouponValidateRequest(BaseModel):
+class VoucherValidateRequest(BaseModel):
     code: str
     permit_type_code: str
 
 
-class CouponValidateResponse(BaseModel):
+class VoucherValidateResponse(BaseModel):
     valid: bool
     discount_type: str | None = None
     discount_value: Decimal | None = None
@@ -71,8 +71,8 @@ class CouponValidateResponse(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _to_read(c: Coupon) -> CouponRead:
-    return CouponRead(
+def _to_read(c: Voucher) -> VoucherRead:
+    return VoucherRead(
         id=str(c.id),
         code=c.code,
         program_name=c.program_name,
@@ -88,41 +88,41 @@ def _to_read(c: Coupon) -> CouponRead:
     )
 
 
-def _validate_coupon(coupon: Coupon, permit_type_code: str) -> str | None:
-    """Return an error message if the coupon is invalid for the given permit type, else None."""
-    if not coupon.is_active:
-        return "This coupon is no longer active."
-    if coupon.expires_at and datetime.now(timezone.utc) > coupon.expires_at:
-        return "This coupon has expired."
-    if coupon.max_uses is not None and coupon.current_uses >= coupon.max_uses:
-        return "This coupon has reached its usage limit."
-    if coupon.applicable_permit_codes and permit_type_code not in coupon.applicable_permit_codes:
-        return "This coupon does not apply to the selected permit type."
+def _validate_voucher(voucher: Voucher, permit_type_code: str) -> str | None:
+    """Return an error message if the voucher is invalid for the given permit type, else None."""
+    if not voucher.is_active:
+        return "This voucher is no longer active."
+    if voucher.expires_at and datetime.now(timezone.utc) > voucher.expires_at:
+        return "This voucher has expired."
+    if voucher.max_uses is not None and voucher.current_uses >= voucher.max_uses:
+        return "This voucher has reached its usage limit."
+    if voucher.applicable_permit_codes and permit_type_code not in voucher.applicable_permit_codes:
+        return "This voucher does not apply to the selected permit type."
     return None
 
 
 # ── Admin endpoints ──────────────────────────────────────────────────────────
 
-@admin_router.get("", response_model=list[CouponRead])
-async def list_coupons(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Coupon).order_by(Coupon.created_at.desc()))
+@admin_router.get("", response_model=list[VoucherRead])
+async def list_vouchers(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Voucher).order_by(Voucher.created_at.desc()))
     return [_to_read(c) for c in result.scalars().all()]
 
 
-@admin_router.post("", response_model=CouponRead, status_code=201)
-async def create_coupon(data: CouponCreate, db: AsyncSession = Depends(get_db)):
+@admin_router.post("", response_model=VoucherRead, status_code=201)
+async def create_voucher(data: VoucherCreate, db: AsyncSession = Depends(get_db)):
     if data.discount_type not in ("percent", "flat", "full"):
         raise HTTPException(400, "discount_type must be 'percent', 'flat', or 'full'")
     if data.discount_type == "percent" and (data.discount_value < 0 or data.discount_value > 100):
         raise HTTPException(400, "Percent discount must be between 0 and 100")
 
     existing = await db.execute(
-        select(Coupon).where(func.upper(Coupon.code) == data.code.upper().strip())
+        select(Voucher).where(func.upper(Voucher.code) == data.code.upper().strip())
     )
     if existing.scalar():
-        raise HTTPException(409, "A coupon with this code already exists")
+        raise HTTPException(409, "A voucher with this code already exists")
 
-    coupon = Coupon(
+    voucher = Voucher(
         code=data.code.upper().strip(),
         program_name=data.program_name.strip(),
         discount_type=data.discount_type,
@@ -132,103 +132,103 @@ async def create_coupon(data: CouponCreate, db: AsyncSession = Depends(get_db)):
         is_active=data.is_active,
         expires_at=data.expires_at,
     )
-    db.add(coupon)
+    db.add(voucher)
     await db.flush()
-    await db.refresh(coupon)
-    return _to_read(coupon)
+    await db.refresh(voucher)
+    return _to_read(voucher)
 
 
-@admin_router.put("/{coupon_id}", response_model=CouponRead)
-async def update_coupon(
-    coupon_id: uuid.UUID,
-    data: CouponUpdate,
+@admin_router.put("/{voucher_id}", response_model=VoucherRead)
+async def update_voucher(
+    voucher_id: uuid.UUID,
+    data: VoucherUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    coupon = await db.get(Coupon, coupon_id)
-    if not coupon:
-        raise HTTPException(404, "Coupon not found")
+    voucher = await db.get(Voucher, voucher_id)
+    if not voucher:
+        raise HTTPException(404, "Voucher not found")
 
     if data.code is not None:
         new_code = data.code.upper().strip()
-        if new_code != coupon.code:
+        if new_code != voucher.code:
             existing = await db.execute(
-                select(Coupon).where(func.upper(Coupon.code) == new_code, Coupon.id != coupon_id)
+                select(Voucher).where(func.upper(Voucher.code) == new_code, Voucher.id != voucher_id)
             )
             if existing.scalar():
-                raise HTTPException(409, "A coupon with this code already exists")
-            coupon.code = new_code
+                raise HTTPException(409, "A voucher with this code already exists")
+            voucher.code = new_code
     if data.program_name is not None:
-        coupon.program_name = data.program_name.strip()
+        voucher.program_name = data.program_name.strip()
     if data.discount_type is not None:
         if data.discount_type not in ("percent", "flat", "full"):
             raise HTTPException(400, "discount_type must be 'percent', 'flat', or 'full'")
-        coupon.discount_type = data.discount_type
+        voucher.discount_type = data.discount_type
     if data.discount_value is not None:
-        coupon.discount_value = data.discount_value
+        voucher.discount_value = data.discount_value
     if data.applicable_permit_codes is not None:
-        coupon.applicable_permit_codes = data.applicable_permit_codes
+        voucher.applicable_permit_codes = data.applicable_permit_codes
     if data.max_uses is not None:
-        coupon.max_uses = data.max_uses
+        voucher.max_uses = data.max_uses
     if data.is_active is not None:
-        coupon.is_active = data.is_active
+        voucher.is_active = data.is_active
     if data.expires_at is not None:
-        coupon.expires_at = data.expires_at
+        voucher.expires_at = data.expires_at
 
     await db.flush()
-    await db.refresh(coupon)
-    return _to_read(coupon)
+    await db.refresh(voucher)
+    return _to_read(voucher)
 
 
-@admin_router.post("/{coupon_id}/delete", status_code=204)
-async def delete_coupon(coupon_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    coupon = await db.get(Coupon, coupon_id)
-    if not coupon:
-        raise HTTPException(404, "Coupon not found")
-    await db.delete(coupon)
+@admin_router.post("/{voucher_id}/delete", status_code=204)
+async def delete_voucher(voucher_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    voucher = await db.get(Voucher, voucher_id)
+    if not voucher:
+        raise HTTPException(404, "Voucher not found")
+    await db.delete(voucher)
     await db.flush()
 
 
 # ── Student endpoint ─────────────────────────────────────────────────────────
 
-@router.post("/validate", response_model=CouponValidateResponse)
-async def validate_coupon(
-    data: CouponValidateRequest,
+@router.post("/validate", response_model=VoucherValidateResponse)
+async def validate_voucher(
+    data: VoucherValidateRequest,
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
-    """Validate a coupon code for a specific permit type. Returns discount info or error."""
+    """Validate a voucher code for a specific permit type. Returns discount info or error."""
     result = await db.execute(
-        select(Coupon).where(func.upper(Coupon.code) == data.code.upper().strip())
+        select(Voucher).where(func.upper(Voucher.code) == data.code.upper().strip())
     )
-    coupon = result.scalar()
-    if not coupon:
-        return CouponValidateResponse(valid=False, message="Invalid coupon code.")
+    voucher = result.scalar()
+    if not voucher:
+        return VoucherValidateResponse(valid=False, message="Invalid voucher code.")
 
-    error = _validate_coupon(coupon, data.permit_type_code)
+    error = _validate_voucher(voucher, data.permit_type_code)
     if error:
-        return CouponValidateResponse(valid=False, message=error)
+        return VoucherValidateResponse(valid=False, message=error)
 
-    return CouponValidateResponse(
+    return VoucherValidateResponse(
         valid=True,
-        discount_type=coupon.discount_type,
-        discount_value=coupon.discount_value,
-        program_name=coupon.program_name,
-        message=_discount_description(coupon),
+        discount_type=voucher.discount_type,
+        discount_value=voucher.discount_value,
+        program_name=voucher.program_name,
+        message=_discount_description(voucher),
     )
 
 
-def _discount_description(coupon: Coupon) -> str:
-    if coupon.discount_type == "full":
-        return f"{coupon.code}: 100% off ({coupon.program_name})"
-    elif coupon.discount_type == "percent":
-        return f"{coupon.code}: {coupon.discount_value}% off ({coupon.program_name})"
+def _discount_description(voucher: Voucher) -> str:
+    if voucher.discount_type == "full":
+        return f"{voucher.code}: 100% off ({voucher.program_name})"
+    elif voucher.discount_type == "percent":
+        return f"{voucher.code}: {voucher.discount_value}% off ({voucher.program_name})"
     else:
-        return f"{coupon.code}: ${coupon.discount_value} off ({coupon.program_name})"
+        return f"{voucher.code}: ${voucher.discount_value} off ({voucher.program_name})"
 
 
-async def record_coupon_usage(
+async def record_voucher_usage(
     db: AsyncSession,
-    coupon: Coupon,
+    voucher: Voucher,
     student_name: str,
     student_email: str,
     student_id: str,
@@ -236,11 +236,11 @@ async def record_coupon_usage(
     original_price: Decimal,
     final_price: Decimal,
 ) -> None:
-    """Record a coupon usage for chargeback reporting."""
-    usage = CouponUsage(
-        coupon_id=coupon.id,
-        coupon_code=coupon.code,
-        program_name=coupon.program_name,
+    """Record a voucher usage for chargeback reporting."""
+    usage = VoucherUsage(
+        voucher_id=voucher.id,
+        voucher_code=voucher.code,
+        program_name=voucher.program_name,
         student_name=student_name,
         student_email=student_email,
         student_id=student_id,
@@ -254,9 +254,9 @@ async def record_coupon_usage(
 
 # ── Usage report endpoints ───────────────────────────────────────────────────
 
-class CouponUsageRead(BaseModel):
+class VoucherUsageRead(BaseModel):
     id: str
-    coupon_code: str
+    voucher_code: str
     program_name: str
     student_name: str
     student_email: str
@@ -268,14 +268,14 @@ class CouponUsageRead(BaseModel):
     used_at: datetime
 
 
-@admin_router.get("/usages", response_model=list[CouponUsageRead])
-async def list_coupon_usages(db: AsyncSession = Depends(get_db)):
-    """List all coupon usages for chargeback reporting."""
-    result = await db.execute(select(CouponUsage).order_by(CouponUsage.used_at.desc()))
+@admin_router.get("/usages", response_model=list[VoucherUsageRead])
+async def list_voucher_usages(db: AsyncSession = Depends(get_db)):
+    """List all voucher usages for chargeback reporting."""
+    result = await db.execute(select(VoucherUsage).order_by(VoucherUsage.used_at.desc()))
     return [
-        CouponUsageRead(
+        VoucherUsageRead(
             id=str(u.id),
-            coupon_code=u.coupon_code,
+            voucher_code=u.voucher_code,
             program_name=u.program_name,
             student_name=u.student_name,
             student_email=u.student_email,
@@ -291,26 +291,26 @@ async def list_coupon_usages(db: AsyncSession = Depends(get_db)):
 
 
 @admin_router.get("/usages/export")
-async def export_coupon_usages(db: AsyncSession = Depends(get_db)):
-    """Export coupon usages as CSV for department chargeback."""
+async def export_voucher_usages(db: AsyncSession = Depends(get_db)):
+    """Export voucher usages as CSV for department chargeback."""
     import csv
     import io
     from fastapi.responses import StreamingResponse
 
-    result = await db.execute(select(CouponUsage).order_by(CouponUsage.used_at.desc()))
+    result = await db.execute(select(VoucherUsage).order_by(VoucherUsage.used_at.desc()))
     usages = result.scalars().all()
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "Date", "Coupon Code", "Program/Department", "Student Name",
+        "Date", "Voucher Code", "Program/Department", "Student Name",
         "Student Email", "Student ID", "Permit Type", "Original Price",
         "Discount Amount", "Amount Charged",
     ])
     for u in usages:
         writer.writerow([
             u.used_at.strftime("%Y-%m-%d %H:%M") if u.used_at else "",
-            u.coupon_code,
+            u.voucher_code,
             u.program_name,
             u.student_name,
             u.student_email,
@@ -325,5 +325,5 @@ async def export_coupon_usages(db: AsyncSession = Depends(get_db)):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=coupon_chargebacks.csv"},
+        headers={"Content-Disposition": "attachment; filename=voucher_chargebacks.csv"},
     )

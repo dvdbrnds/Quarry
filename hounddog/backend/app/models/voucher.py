@@ -9,8 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..database import Base
 
 
-class Coupon(Base):
-    __tablename__ = "coupons"
+class Voucher(Base):
+    __tablename__ = "vouchers"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), unique=True)

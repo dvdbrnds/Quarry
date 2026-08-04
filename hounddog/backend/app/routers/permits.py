@@ -280,7 +280,7 @@ class AdminChargeRequest(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     waive_fee: bool = False
-    coupon_code: str | None = None
+    voucher_code: str | None = None
 
 
 @router.post("/charge", status_code=201)
@@ -322,28 +322,28 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
 
     # Calculate discounted price
     discounted_price = pt.price
-    applied_coupon = None
-    if data.coupon_code:
-        from ..models.coupon import Coupon
-        from .coupons import _validate_coupon
+    applied_voucher = None
+    if data.voucher_code:
+        from ..models.voucher import Voucher
+        from .vouchers import _validate_voucher
 
-        coupon_result = await db.execute(
-            select(Coupon).where(func.upper(Coupon.code) == data.coupon_code.upper().strip())
+        voucher_result = await db.execute(
+            select(Voucher).where(func.upper(Voucher.code) == data.voucher_code.upper().strip())
         )
-        coupon = coupon_result.scalar()
-        if coupon:
-            error = _validate_coupon(coupon, data.permit_type)
+        voucher = voucher_result.scalar()
+        if voucher:
+            error = _validate_voucher(voucher, data.permit_type)
             if not error:
-                applied_coupon = coupon
-                if coupon.discount_type == "full":
+                applied_voucher = voucher
+                if voucher.discount_type == "full":
                     discounted_price = Decimal("0.00")
-                elif coupon.discount_type == "percent":
-                    discounted_price = pt.price * (1 - coupon.discount_value / 100)
-                elif coupon.discount_type == "flat":
-                    discounted_price = max(Decimal("0.00"), pt.price - coupon.discount_value)
+                elif voucher.discount_type == "percent":
+                    discounted_price = pt.price * (1 - voucher.discount_value / 100)
+                elif voucher.discount_type == "flat":
+                    discounted_price = max(Decimal("0.00"), pt.price - voucher.discount_value)
 
-    # Full waiver via coupon
-    if applied_coupon and discounted_price <= 0:
+    # Full waiver via voucher
+    if applied_voucher and discounted_price <= 0:
         permit = Permit(
             permit_number=permit_number,
             name=data.name,
@@ -358,13 +358,13 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             status="active",
         )
         db.add(permit)
-        applied_coupon.current_uses += 1
-        from .coupons import record_coupon_usage
-        await record_coupon_usage(db, applied_coupon, data.name, data.email, data.student_id, data.permit_type, pt.price, Decimal("0.00"))
+        applied_voucher.current_uses += 1
+        from .vouchers import record_voucher_usage
+        await record_voucher_usage(db, applied_voucher, data.name, data.email, data.student_id, data.permit_type, pt.price, Decimal("0.00"))
         await db.flush()
         await db.refresh(permit)
         await _notify_permit_change("created", 1)
-        return {"permit_id": str(permit.id), "status": "active", "waived": True, "coupon_applied": True}
+        return {"permit_id": str(permit.id), "status": "active", "waived": True, "voucher_applied": True}
 
     # Create pending permit + Stripe checkout session
     if not settings.stripe_secret_key:
@@ -438,15 +438,15 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             "permit_type_code": pt.code,
             "permit_type_label": pt.label,
             "permit_number": permit_number,
-            "coupon_code": applied_coupon.code if applied_coupon else "",
+            "voucher_code": applied_voucher.code if applied_voucher else "",
         },
     )
 
     permit.stripe_session_id = session.id
-    if applied_coupon:
-        applied_coupon.current_uses += 1
-        from .coupons import record_coupon_usage
-        await record_coupon_usage(db, applied_coupon, data.name, data.email, data.student_id, data.permit_type, pt.price, discounted_price)
+    if applied_voucher:
+        applied_voucher.current_uses += 1
+        from .vouchers import record_voucher_usage
+        await record_voucher_usage(db, applied_voucher, data.name, data.email, data.student_id, data.permit_type, pt.price, discounted_price)
     await db.flush()
     await _notify_permit_change("created", 1)
 
@@ -471,7 +471,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
         "waived": False,
         "checkout_url": session.url,
         "amount": str(discounted_price),
-        "coupon_applied": applied_coupon is not None,
+        "voucher_applied": applied_voucher is not None,
     }
 
 

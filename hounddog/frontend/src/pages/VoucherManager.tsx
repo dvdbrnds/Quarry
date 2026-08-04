@@ -20,7 +20,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined } from "@a
 import { authHeaders } from "../auth";
 import dayjs from "dayjs";
 
-interface Coupon {
+interface Voucher {
   id: string;
   code: string;
   program_name: string;
@@ -42,9 +42,9 @@ interface PermitType {
   is_active: boolean;
 }
 
-interface CouponUsageEntry {
+interface VoucherUsageEntry {
   id: string;
-  coupon_code: string;
+  voucher_code: string;
   program_name: string;
   student_name: string;
   student_email: string;
@@ -56,29 +56,29 @@ interface CouponUsageEntry {
   used_at: string;
 }
 
-export default function CouponManager() {
+export default function VoucherManager() {
   const { message } = App.useApp();
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [permitTypes, setPermitTypes] = useState<PermitType[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Coupon | null>(null);
+  const [editing, setEditing] = useState<Voucher | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
-  const [usages, setUsages] = useState<CouponUsageEntry[]>([]);
+  const [usages, setUsages] = useState<VoucherUsageEntry[]>([]);
   const [usagesLoading, setUsagesLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [cRes, ptRes] = await Promise.all([
-        fetch("/api/coupons", { headers: await authHeaders() }),
+        fetch("/api/vouchers", { headers: await authHeaders() }),
         fetch("/api/permit-types?all=true", { headers: await authHeaders() }),
       ]);
-      if (cRes.ok) setCoupons(await cRes.json());
+      if (cRes.ok) setVouchers(await cRes.json());
       if (ptRes.ok) setPermitTypes(await ptRes.json());
     } catch (e: any) {
-      message.error(e.message || "Failed to load coupons");
+      message.error(e.message || "Failed to load vouchers");
     } finally {
       setLoading(false);
     }
@@ -87,7 +87,7 @@ export default function CouponManager() {
   const loadUsages = useCallback(async () => {
     setUsagesLoading(true);
     try {
-      const res = await fetch("/api/coupons/usages", { headers: await authHeaders() });
+      const res = await fetch("/api/vouchers/usages", { headers: await authHeaders() });
       if (res.ok) setUsages(await res.json());
     } catch { /* silent */ }
     finally { setUsagesLoading(false); }
@@ -102,17 +102,17 @@ export default function CouponManager() {
     setModalOpen(true);
   }
 
-  function openEdit(coupon: Coupon) {
-    setEditing(coupon);
+  function openEdit(voucher: Voucher) {
+    setEditing(voucher);
     form.setFieldsValue({
-      code: coupon.code,
-      program_name: coupon.program_name,
-      discount_type: coupon.discount_type,
-      discount_value: coupon.discount_value,
-      applicable_permit_codes: coupon.applicable_permit_codes,
-      max_uses: coupon.max_uses,
-      is_active: coupon.is_active,
-      expires_at: coupon.expires_at ? dayjs(coupon.expires_at) : null,
+      code: voucher.code,
+      program_name: voucher.program_name,
+      discount_type: voucher.discount_type,
+      discount_value: voucher.discount_value,
+      applicable_permit_codes: voucher.applicable_permit_codes,
+      max_uses: voucher.max_uses,
+      is_active: voucher.is_active,
+      expires_at: voucher.expires_at ? dayjs(voucher.expires_at) : null,
     });
     setModalOpen(true);
   }
@@ -133,7 +133,7 @@ export default function CouponManager() {
         expires_at: values.expires_at ? values.expires_at.toISOString() : null,
       };
 
-      const url = editing ? `/api/coupons/${editing.id}` : "/api/coupons";
+      const url = editing ? `/api/vouchers/${editing.id}` : "/api/vouchers";
       const method = editing ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -147,7 +147,7 @@ export default function CouponManager() {
         throw new Error((err as any).detail || `Failed (${res.status})`);
       }
 
-      message.success(editing ? "Coupon updated" : "Coupon created");
+      message.success(editing ? "Voucher updated" : "Voucher created");
       setModalOpen(false);
       load();
     } catch (e: any) {
@@ -158,26 +158,26 @@ export default function CouponManager() {
     }
   }
 
-  async function handleDelete(coupon: Coupon) {
+  async function handleDelete(voucher: Voucher) {
     try {
-      const res = await fetch(`/api/coupons/${coupon.id}/delete`, {
+      const res = await fetch(`/api/vouchers/${voucher.id}/delete`, {
         method: "POST",
         headers: await authHeaders(),
       });
       if (!res.ok) throw new Error("Failed to delete");
-      message.success("Coupon deleted");
+      message.success("Voucher deleted");
       load();
     } catch (e: any) {
       message.error(e.message);
     }
   }
 
-  async function toggleActive(coupon: Coupon) {
+  async function toggleActive(voucher: Voucher) {
     try {
-      const res = await fetch(`/api/coupons/${coupon.id}`, {
+      const res = await fetch(`/api/vouchers/${voucher.id}`, {
         method: "PUT",
         headers: await authHeaders(),
-        body: JSON.stringify({ is_active: !coupon.is_active }),
+        body: JSON.stringify({ is_active: !voucher.is_active }),
       });
       if (!res.ok) throw new Error("Failed to update");
       load();
@@ -203,7 +203,7 @@ export default function CouponManager() {
     {
       title: "Discount",
       key: "discount",
-      render: (_: unknown, r: Coupon) => {
+      render: (_: unknown, r: Voucher) => {
         if (r.discount_type === "full") return <Tag color="green">100% off</Tag>;
         if (r.discount_type === "percent") return <Tag color="blue">{r.discount_value}% off</Tag>;
         return <Tag color="purple">${r.discount_value} off</Tag>;
@@ -223,13 +223,13 @@ export default function CouponManager() {
     {
       title: "Usage",
       key: "usage",
-      render: (_: unknown, r: Coupon) =>
+      render: (_: unknown, r: Voucher) =>
         r.max_uses ? `${r.current_uses} / ${r.max_uses}` : `${r.current_uses} / ∞`,
     },
     {
       title: "Status",
       key: "status",
-      render: (_: unknown, r: Coupon) => {
+      render: (_: unknown, r: Voucher) => {
         if (!r.is_active) return <Tag>Inactive</Tag>;
         if (r.expires_at && new Date(r.expires_at) < new Date()) return <Tag color="red">Expired</Tag>;
         if (r.max_uses && r.current_uses >= r.max_uses) return <Tag color="orange">Maxed</Tag>;
@@ -245,13 +245,13 @@ export default function CouponManager() {
     {
       title: "",
       key: "actions",
-      render: (_: unknown, r: Coupon) => (
+      render: (_: unknown, r: Voucher) => (
         <Space size="small">
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
           <Button size="small" onClick={() => toggleActive(r)}>
             {r.is_active ? "Disable" : "Enable"}
           </Button>
-          <Popconfirm title="Delete this coupon?" onConfirm={() => handleDelete(r)}>
+          <Popconfirm title="Delete this voucher?" onConfirm={() => handleDelete(r)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -262,14 +262,14 @@ export default function CouponManager() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold m-0">Coupons</h2>
+        <h2 className="text-2xl font-bold m-0">Vouchers</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Create Coupon
+          Create Voucher
         </Button>
       </div>
 
       <Table
-        dataSource={coupons}
+        dataSource={vouchers}
         columns={columns}
         rowKey="id"
         loading={loading}
@@ -278,7 +278,7 @@ export default function CouponManager() {
       />
 
       <Modal
-        title={editing ? "Edit Coupon" : "Create Coupon"}
+        title={editing ? "Edit Voucher" : "Create Voucher"}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSave}
@@ -286,7 +286,7 @@ export default function CouponManager() {
         destroyOnClose
       >
         <Form form={form} layout="vertical" className="mt-4">
-          <Form.Item name="code" label="Coupon Code" rules={[{ required: true, message: "Required" }]}>
+          <Form.Item name="code" label="Voucher Code" rules={[{ required: true, message: "Required" }]}>
             <Input
               placeholder="e.g., NURSING2026"
               style={{ textTransform: "uppercase" }}
@@ -354,20 +354,20 @@ export default function CouponManager() {
         <div>
           <h3 className="text-lg font-semibold m-0">Department Chargebacks</h3>
           <p className="text-sm text-gray-500 m-0">
-            Coupon usage log — send to departments for reimbursement
+            Voucher usage log — send to departments for reimbursement
           </p>
         </div>
         <Button
           icon={<DownloadOutlined />}
           onClick={async () => {
             const headers = await authHeaders();
-            const res = await fetch("/api/coupons/usages/export", { headers });
+            const res = await fetch("/api/vouchers/usages/export", { headers });
             if (!res.ok) { message.error("Export failed"); return; }
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "coupon_chargebacks.csv";
+            a.download = "voucher_chargebacks.csv";
             a.click();
             URL.revokeObjectURL(url);
           }}
@@ -391,7 +391,7 @@ export default function CouponManager() {
             width: 130,
             render: (v: string) => dayjs(v).format("MMM D, YYYY"),
           },
-          { title: "Code", dataIndex: "coupon_code", key: "coupon_code", width: 130, render: (v: string) => <code>{v}</code> },
+          { title: "Code", dataIndex: "voucher_code", key: "voucher_code", width: 130, render: (v: string) => <code>{v}</code> },
           { title: "Program", dataIndex: "program_name", key: "program_name" },
           { title: "Student", dataIndex: "student_name", key: "student_name" },
           { title: "Email", dataIndex: "student_email", key: "student_email" },
