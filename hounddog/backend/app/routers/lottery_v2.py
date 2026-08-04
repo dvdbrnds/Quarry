@@ -26,7 +26,9 @@ from ..models.permit_type import PermitType
 from ..services.lottery_v2_runner import (
     ALL_V2_TIER_CODES,
     CAMPUS_TIER_CODES,
+    LOTTERY_TIER_CODES,
     bump_waitlist_to_top,
+    build_tier_capacities,
     class_year_eligible,
     manual_select_application,
     promote_from_waitlist,
@@ -1120,6 +1122,199 @@ async def list_applications(
     ).scalars().all()
     pt_by_id = await _permit_type_map(db)
     return [await _app_to_read(db, a, pt_by_id) for a in apps]
+
+
+@router.get("/cycles/{cycle_id}/capacity-audit")
+async def capacity_audit(
+    cycle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Live capacity vs demand diagnostic for a lottery cycle.
+
+    Answers: why did Q/U (or any tier) only get N placements?
+    """
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+
+    pts = (
+        await db.execute(
+            select(PermitType).where(PermitType.code.in_(LOTTERY_TIER_CODES))
+        )
+    ).scalars().all()
+    pt_by_id = {pt.id: pt for pt in pts}
+    pt_by_code = {pt.code: pt for pt in pts}
+    tiers = await build_tier_capacities(db, list(pts))
+
+    apps = (
+        await db.execute(
+            select(LotteryV2Application).where(LotteryV2Application.cycle_id == cycle_id)
+        )
+    ).scalars().all()
+
+    # Active permit counts by type code (same filter the draw uses)
+    active_by_code: dict[str, int] = {}
+    for pt in pts:
+        active_by_code[pt.code] = (
+            await db.execute(
+                select(func.count())
+                .select_from(Permit)
+                .where(
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalar() or 0
+
+    # Also count active permits assigned to lots Q / U regardless of type
+    lot_active = {}
+    for lot in ("Q", "U"):
+        lot_active[lot] = (
+            await db.execute(
+                select(func.count())
+                .select_from(Permit)
+                .where(
+                    Permit.lot_assignment == lot,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalar() or 0
+
+    def prefs(app: LotteryV2Application) -> list:
+        return list(app.tier_preferences or [])
+
+    south_apps = [a for a in apps if a.campus == "south"]
+    north_apps = [a for a in apps if a.campus == "north"]
+
+    south_guaranteed = pt_by_code.get("south_guaranteed_resident")
+    steel_field = pt_by_code.get("steel_field_resident")
+
+    def has_pref(app: LotteryV2Application, pt: PermitType | None) -> bool:
+        return bool(pt and pt.id in prefs(app))
+
+    def first_choice(app: LotteryV2Application, pt: PermitType | None) -> bool:
+        p = prefs(app)
+        return bool(pt and p and p[0] == pt.id)
+
+    tier_rows = []
+    for code in LOTTERY_TIER_CODES:
+        pt = pt_by_code.get(code)
+        if not pt:
+            tier_rows.append({"code": code, "missing": True})
+            continue
+        tier = tiers.get(pt.id)
+        selected_to_tier = [
+            a for a in apps
+            if a.assigned_permit_type_id == pt.id
+            and a.status in ("selected", "accepted")
+        ]
+        waitlisted_with_pref = [
+            a for a in apps if a.status == "waitlisted" and has_pref(a, pt)
+        ]
+        pending_with_pref = [
+            a for a in apps if a.status == "pending" and has_pref(a, pt)
+        ]
+        first_choice_apps = [a for a in apps if first_choice(a, pt)]
+        any_pref_apps = [a for a in apps if has_pref(a, pt)]
+        tier_rows.append({
+            "code": pt.code,
+            "label": pt.label,
+            "lot_assignments": list(pt.lot_assignments or []),
+            "max_capacity": pt.max_capacity,
+            "active_permits": active_by_code.get(pt.code, 0),
+            "remaining_at_audit": tier.remaining if tier else None,
+            "remaining_formula": f"{pt.max_capacity or 0} - {active_by_code.get(pt.code, 0)} = {max(0, (pt.max_capacity or 0) - active_by_code.get(pt.code, 0))}",
+            "is_active": pt.is_active,
+            "min_class_year": pt.min_class_year,
+            "allow_freshmen": pt.allow_freshmen,
+            "apps_with_any_pref": len(any_pref_apps),
+            "apps_first_choice": len(first_choice_apps),
+            "selected_or_accepted": len(selected_to_tier),
+            "waitlisted_with_pref": len(waitlisted_with_pref),
+            "pending_with_pref": len(pending_with_pref),
+            "unique_emails_selected": len({(a.student_email or "").lower() for a in selected_to_tier}),
+            "duplicate_emails_in_selected": len(selected_to_tier) - len({(a.student_email or "").lower() for a in selected_to_tier}),
+        })
+
+    # South / U deep dive
+    sg_id = south_guaranteed.id if south_guaranteed else None
+    south_unique_emails = {(a.student_email or "").lower() for a in south_apps}
+    south_with_u = [a for a in south_apps if has_pref(a, south_guaranteed)]
+    south_selected_u = [
+        a for a in south_apps
+        if a.assigned_permit_type_id == sg_id and a.status in ("selected", "accepted")
+    ]
+    south_selected_other = [
+        a for a in south_apps
+        if a.status in ("selected", "accepted") and a.assigned_permit_type_id != sg_id
+    ]
+    south_waitlisted = [a for a in south_apps if a.status == "waitlisted"]
+    south_waitlisted_with_u = [a for a in south_waitlisted if has_pref(a, south_guaranteed)]
+
+    # North / Q deep dive
+    sf_id = steel_field.id if steel_field else None
+    north_with_q = [a for a in north_apps if has_pref(a, steel_field)]
+    north_selected_q = [
+        a for a in north_apps
+        if a.assigned_permit_type_id == sf_id and a.status in ("selected", "accepted")
+    ]
+    north_waitlisted_with_q = [
+        a for a in north_apps if a.status == "waitlisted" and has_pref(a, steel_field)
+    ]
+    # People who ranked Q first (would take Q even if guaranteed open)
+    q_first = [a for a in apps if first_choice(a, steel_field)]
+
+    # Duplicate application detection
+    email_counts: dict[str, int] = {}
+    for a in apps:
+        e = (a.student_email or "").lower()
+        email_counts[e] = email_counts.get(e, 0) + 1
+    duplicate_emails = {e: n for e, n in email_counts.items() if n > 1 and e}
+
+    return {
+        "cycle": {
+            "id": str(cycle.id),
+            "name": cycle.name,
+            "status": cycle.status,
+            "drawn_at": cycle.drawn_at.isoformat() if cycle.drawn_at else None,
+            "application_count": len(apps),
+        },
+        "lot_active_permits": lot_active,
+        "tiers": tier_rows,
+        "south": {
+            "total_apps": len(south_apps),
+            "unique_emails": len(south_unique_emails),
+            "with_u_in_prefs": len(south_with_u),
+            "selected_to_u": len(south_selected_u),
+            "selected_to_other": len(south_selected_other),
+            "waitlisted": len(south_waitlisted),
+            "waitlisted_with_u_in_prefs": len(south_waitlisted_with_u),
+            "waitlisted_with_u_emails": sorted(
+                {(a.student_email or "").lower() for a in south_waitlisted_with_u}
+            )[:50],
+            "status_breakdown": {
+                s: len([a for a in south_apps if a.status == s])
+                for s in sorted({a.status for a in south_apps})
+            },
+        },
+        "north_q": {
+            "with_q_in_prefs": len(north_with_q),
+            "ranked_q_first": len(q_first),
+            "selected_to_q": len(north_selected_q),
+            "waitlisted_with_q_in_prefs": len(north_waitlisted_with_q),
+            "ranked_q_first_emails": sorted(
+                {(a.student_email or "").lower() for a in q_first}
+            )[:50],
+        },
+        "duplicates": {
+            "emails_with_multiple_apps": len(duplicate_emails),
+            "extra_app_rows": sum(n - 1 for n in duplicate_emails.values()),
+            "sample": dict(list(sorted(duplicate_emails.items(), key=lambda x: -x[1])[:20])),
+        },
+    }
 
 
 @router.get("/cycles/{cycle_id}/results")

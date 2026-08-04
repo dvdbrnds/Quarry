@@ -77,6 +77,7 @@ export default function LotteryV2Manager() {
   const [selectTarget, setSelectTarget] = useState<Application | null>(null);
   const [selectPermitId, setSelectPermitId] = useState<string | undefined>(undefined);
   const [selectNotify, setSelectNotify] = useState(true);
+  const [capacityAudit, setCapacityAudit] = useState<any | null>(null);
 
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
@@ -220,6 +221,25 @@ export default function LotteryV2Manager() {
           (data.assigned_permit_type_label ? `: ${data.assigned_permit_type_label}` : ""),
       );
       setSelectTarget(null);
+    }
+  }
+
+  async function loadCapacityAudit() {
+    if (!activeId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/lottery-v2/cycles/${activeId}/capacity-audit`, {
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Capacity audit failed");
+      }
+      setCapacityAudit(await res.json());
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -400,7 +420,83 @@ export default function LotteryV2Manager() {
               >
                 Run draw
               </Button>
+              <Button disabled={busy} onClick={loadCapacityAudit}>
+                Capacity audit
+              </Button>
             </Space>
+
+            {capacityAudit && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium m-0">Capacity audit</h4>
+                  <Button type="link" size="small" onClick={() => setCapacityAudit(null)}>Dismiss</Button>
+                </div>
+                <p className="m-0 text-gray-600">
+                  Active on lot Q: <strong>{capacityAudit.lot_active_permits?.Q ?? "—"}</strong>
+                  {" · "}
+                  Active on lot U: <strong>{capacityAudit.lot_active_permits?.U ?? "—"}</strong>
+                  {" · "}
+                  Duplicate emails: <strong>{capacityAudit.duplicates?.emails_with_multiple_apps ?? 0}</strong>
+                  {" "}(+{capacityAudit.duplicates?.extra_app_rows ?? 0} extra rows)
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="text-left border-b">
+                        <th className="py-1 pr-2">Tier</th>
+                        <th className="py-1 pr-2">Max</th>
+                        <th className="py-1 pr-2">Active</th>
+                        <th className="py-1 pr-2">Remaining</th>
+                        <th className="py-1 pr-2">1st choice</th>
+                        <th className="py-1 pr-2">Any pref</th>
+                        <th className="py-1 pr-2">Selected</th>
+                        <th className="py-1 pr-2">WL w/ pref</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(capacityAudit.tiers || []).map((t: any) => (
+                        <tr key={t.code} className="border-b border-amber-100">
+                          <td className="py-1 pr-2">{t.label || t.code}</td>
+                          <td className="py-1 pr-2">{t.max_capacity}</td>
+                          <td className="py-1 pr-2">{t.active_permits}</td>
+                          <td className="py-1 pr-2">{t.remaining_formula}</td>
+                          <td className="py-1 pr-2">{t.apps_first_choice}</td>
+                          <td className="py-1 pr-2">{t.apps_with_any_pref}</td>
+                          <td className="py-1 pr-2">
+                            {t.selected_or_accepted}
+                            {t.duplicate_emails_in_selected > 0 && (
+                              <span className="text-red-600"> (−{t.duplicate_emails_in_selected} dup)</span>
+                            )}
+                          </td>
+                          <td className="py-1 pr-2">{t.waitlisted_with_pref}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <strong>South / U</strong>
+                    <ul className="m-0 mt-1 pl-4 text-gray-700">
+                      <li>Apps: {capacityAudit.south?.total_apps} ({capacityAudit.south?.unique_emails} unique emails)</li>
+                      <li>With U in prefs: {capacityAudit.south?.with_u_in_prefs}</li>
+                      <li>Selected to U: {capacityAudit.south?.selected_to_u}</li>
+                      <li>Selected elsewhere: {capacityAudit.south?.selected_to_other}</li>
+                      <li>Waitlisted with U in prefs: {capacityAudit.south?.waitlisted_with_u_in_prefs}</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <strong>North / Q</strong>
+                    <ul className="m-0 mt-1 pl-4 text-gray-700">
+                      <li>With Q in prefs: {capacityAudit.north_q?.with_q_in_prefs}</li>
+                      <li>Ranked Q first: {capacityAudit.north_q?.ranked_q_first}</li>
+                      <li>Selected to Q: {capacityAudit.north_q?.selected_to_q}</li>
+                      <li>Waitlisted with Q in prefs: {capacityAudit.north_q?.waitlisted_with_q_in_prefs}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {active.status !== "open" && active.status !== "drawn" && (
               <div className="mt-4 p-3 bg-gray-50 rounded-md">
