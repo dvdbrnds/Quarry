@@ -813,46 +813,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
-            {step === "intake" && !isCommuterPath && commuterTiers.length > 0 && (
-              <Card title="Commuter Permits">
-                <p className="text-sm text-gray-500 mb-4">
-                  Commuter parking permits are available for direct purchase — no lottery required.
-                </p>
-                <div className="space-y-3">
-                  {commuterTiers.map((tier) => (
-                    <div
-                      key={tier.id}
-                      className="flex items-center justify-between border rounded-lg px-4 py-3 transition-shadow hover:shadow-md cursor-pointer"
-                      onMouseEnter={() => setHighlightedLots(tier.lot_assignments)}
-                      onMouseLeave={() => setHighlightedLots([])}
-                    >
-                      <div>
-                        <div className="font-medium">{tier.label}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-brand-primary">{formatTierPrice(tier)}</div>
-                        {tier.discount_label && (
-                          <div className="text-[10px] text-green-700">{tier.discount_label}</div>
-                        )}
-                        {tier.remaining > 0 ? (
-                          <Button
-                            type="primary"
-                            size="small"
-                            className="mt-1"
-                            onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked(commuterTiers); setStep("intake"); }}
-                          >
-                            Buy Now
-                          </Button>
-                        ) : (
-                          <Tag color="red" className="mt-1">Full</Tag>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
             {cycle && !isCommuterPath && (
               <Card size="small">
                 <div className="flex items-center justify-between gap-4">
@@ -1136,6 +1096,46 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         : "Continue — available permits"}
                   </Button>
                 </Form>
+              </Card>
+            )}
+
+            {step === "intake" && !isCommuterPath && commuterTiers.length > 0 && (
+              <Card title="Commuter Permits">
+                <p className="text-sm text-gray-500 mb-4">
+                  Commuter parking permits are available for direct purchase — no lottery required.
+                </p>
+                <div className="space-y-3">
+                  {commuterTiers.map((tier) => (
+                    <div
+                      key={tier.id}
+                      className="flex items-center justify-between border rounded-lg px-4 py-3 transition-shadow hover:shadow-md cursor-pointer"
+                      onMouseEnter={() => setHighlightedLots(tier.lot_assignments)}
+                      onMouseLeave={() => setHighlightedLots([])}
+                    >
+                      <div>
+                        <div className="font-medium">{tier.label}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-brand-primary">{formatTierPrice(tier)}</div>
+                        {tier.discount_label && (
+                          <div className="text-[10px] text-green-700">{tier.discount_label}</div>
+                        )}
+                        {tier.remaining > 0 ? (
+                          <Button
+                            type="primary"
+                            size="small"
+                            className="mt-1"
+                            onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked(commuterTiers); setStep("intake"); }}
+                          >
+                            Buy Now
+                          </Button>
+                        ) : (
+                          <Tag color="red" className="mt-1">Full</Tag>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </Card>
             )}
 
