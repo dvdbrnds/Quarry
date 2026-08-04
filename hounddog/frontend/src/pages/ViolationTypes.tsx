@@ -20,8 +20,10 @@ function ViolationTypeForm({ initial, onSave, onCancel }: {
     if (initial) {
       form.setFieldsValue({
         code: initial.code, label: initial.label, category: initial.category,
-        fine_first: initial.fine_first, fine_second: initial.fine_second ?? "",
-        fine_third_plus: initial.fine_third_plus ?? "", sort_order: initial.sort_order,
+        fine_first: Number(initial.fine_first),
+        fine_second: initial.fine_second != null && initial.fine_second !== "" ? Number(initial.fine_second) : undefined,
+        fine_third_plus: initial.fine_third_plus != null && initial.fine_third_plus !== "" ? Number(initial.fine_third_plus) : undefined,
+        sort_order: initial.sort_order,
       });
     } else { form.resetFields(); }
   }, [initial, form]);
@@ -31,8 +33,13 @@ function ViolationTypeForm({ initial, onSave, onCancel }: {
     try {
       const method = initial ? "PUT" : "POST";
       const url = initial ? `/api/violation-types/${initial.id}` : "/api/violation-types";
+      const toFine = (v: unknown) =>
+        v === undefined || v === null || v === "" ? null : Number(v);
       await fetch(url, { method, headers: await authHeaders(), body: JSON.stringify({
-        ...values, fine_second: values.fine_second || null, fine_third_plus: values.fine_third_plus || null,
+        ...values,
+        fine_first: Number(values.fine_first),
+        fine_second: toFine(values.fine_second),
+        fine_third_plus: toFine(values.fine_third_plus),
       })});
       message.success(initial ? "Violation type updated" : "Violation type created");
       onSave();
@@ -42,7 +49,7 @@ function ViolationTypeForm({ initial, onSave, onCancel }: {
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
-        initialValues={{ category: "parking", fine_first: "35.00", sort_order: 0 }}>
+        initialValues={{ category: "parking", fine_first: 35, sort_order: 0 }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="code" label="Code" rules={[{ required: true }]}>
             <Input placeholder="e.g. no_permit" />
@@ -56,14 +63,31 @@ function ViolationTypeForm({ initial, onSave, onCancel }: {
           <Form.Item name="sort_order" label="Sort Order">
             <InputNumber className="w-full" />
           </Form.Item>
-          <Form.Item name="fine_first" label="Fine (1st Offense)" rules={[{ required: true }]}>
-            <Input type="number" step="0.01" prefix="$" />
+          <Form.Item
+            name="fine_first"
+            label="Fine (1st Offense)"
+            extra="Use $0 for a warning (no fine)."
+            rules={[
+              {
+                validator: (_, value) => {
+                  if (value === undefined || value === null || value === "") {
+                    return Promise.reject(new Error("Please enter Fine (1st Offense)"));
+                  }
+                  if (Number(value) < 0) {
+                    return Promise.reject(new Error("Fine cannot be negative"));
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
+          >
+            <InputNumber className="w-full" min={0} step={0.01} prefix="$" placeholder="0 for warning" />
           </Form.Item>
           <Form.Item name="fine_second" label="Fine (2nd Offense)">
-            <Input type="number" step="0.01" prefix="$" placeholder="Leave blank if no escalation" />
+            <InputNumber className="w-full" min={0} step={0.01} prefix="$" placeholder="Leave blank if no escalation" />
           </Form.Item>
           <Form.Item name="fine_third_plus" label="Fine (3rd+ Offense)">
-            <Input type="number" step="0.01" prefix="$" placeholder="Leave blank if no escalation" />
+            <InputNumber className="w-full" min={0} step={0.01} prefix="$" placeholder="Leave blank if no escalation" />
           </Form.Item>
         </div>
         <Space>
