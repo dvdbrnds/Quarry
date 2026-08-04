@@ -12,6 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, require_admin
 from ..database import get_db
 from ..models.fee_exempt_roster import FeeExemptRoster
+from ..services.roster_permit_status import (
+    PermitMatch,
+    load_active_permit_indexes,
+    match_roster_to_permit,
+)
 
 logger = logging.getLogger("quarry.fee_exempt")
 
@@ -29,6 +34,10 @@ class RosterEntry(BaseModel):
     room: str | None
     academic_year: str | None
     created_at: str
+    has_permit: bool = False
+    permit_number: str | None = None
+    permit_type: str | None = None
+    matched_by: str | None = None
 
 
 class RosterAddRequest(BaseModel):
@@ -48,25 +57,46 @@ class RosterUploadResult(BaseModel):
     errors: list[str]
 
 
+def _entry_from_row(e: FeeExemptRoster, match: PermitMatch | None = None) -> RosterEntry:
+    m = match or PermitMatch()
+    return RosterEntry(
+        id=str(e.id),
+        student_id=e.student_id,
+        email=e.email,
+        first_name=e.first_name,
+        last_name=e.last_name,
+        reason=e.reason,
+        building=e.building,
+        room=e.room,
+        academic_year=e.academic_year,
+        created_at=e.created_at.isoformat() if e.created_at else "",
+        has_permit=m.has_permit,
+        permit_number=m.permit_number,
+        permit_type=m.permit_type,
+        matched_by=m.matched_by,
+    )
+
+
 @router.get("/roster", response_model=list[RosterEntry])
 async def list_roster(db: AsyncSession = Depends(get_db)):
-    """List all fee-exempt students."""
+    """List all fee-exempt students with active-permit status."""
     result = await db.execute(
         select(FeeExemptRoster).order_by(FeeExemptRoster.last_name, FeeExemptRoster.first_name)
     )
     entries = result.scalars().all()
+    by_email, by_student_id, by_name = await load_active_permit_indexes(db)
     return [
-        RosterEntry(
-            id=str(e.id),
-            student_id=e.student_id,
-            email=e.email,
-            first_name=e.first_name,
-            last_name=e.last_name,
-            reason=e.reason,
-            building=e.building,
-            room=e.room,
-            academic_year=e.academic_year,
-            created_at=e.created_at.isoformat() if e.created_at else "",
+        _entry_from_row(
+            e,
+            match_roster_to_permit(
+                student_id=e.student_id,
+                email=e.email,
+                first_name=e.first_name,
+                last_name=e.last_name,
+                by_email=by_email,
+                by_student_id=by_student_id,
+                by_name=by_name,
+            ),
         )
         for e in entries
     ]
@@ -96,17 +126,18 @@ async def add_single_entry(data: RosterAddRequest, db: AsyncSession = Depends(ge
     db.add(entry)
     await db.flush()
     await db.refresh(entry)
-    return RosterEntry(
-        id=str(entry.id),
-        student_id=entry.student_id,
-        email=entry.email,
-        first_name=entry.first_name,
-        last_name=entry.last_name,
-        reason=entry.reason,
-        building=entry.building,
-        room=entry.room,
-        academic_year=entry.academic_year,
-        created_at=entry.created_at.isoformat() if entry.created_at else "",
+    by_email, by_student_id, by_name = await load_active_permit_indexes(db)
+    return _entry_from_row(
+        entry,
+        match_roster_to_permit(
+            student_id=entry.student_id,
+            email=entry.email,
+            first_name=entry.first_name,
+            last_name=entry.last_name,
+            by_email=by_email,
+            by_student_id=by_student_id,
+            by_name=by_name,
+        ),
     )
 
 

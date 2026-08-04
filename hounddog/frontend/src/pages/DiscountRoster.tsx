@@ -13,7 +13,13 @@ interface RosterEntry {
   discount_amount: number;
   academic_year: string | null;
   created_at: string;
+  has_permit?: boolean;
+  permit_number?: string | null;
+  permit_type?: string | null;
+  matched_by?: string | null;
 }
+
+type PermitFilter = "all" | "issued" | "missing";
 
 export default function DiscountRoster() {
   const { message, modal } = App.useApp();
@@ -21,6 +27,7 @@ export default function DiscountRoster() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
+  const [permitFilter, setPermitFilter] = useState<PermitFilter>("all");
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addForm] = Form.useForm();
   const [addingSingle, setAddingSingle] = useState(false);
@@ -153,13 +160,17 @@ export default function DiscountRoster() {
     }
   }
 
-  const filtered = search
-    ? entries.filter((e) =>
-        `${e.first_name} ${e.last_name} ${e.student_id} ${e.email || ""} ${e.program_name}`
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : entries;
+  const issuedCount = entries.filter((e) => e.has_permit).length;
+  const missingCount = entries.length - issuedCount;
+
+  const filtered = entries.filter((e) => {
+    if (permitFilter === "issued" && !e.has_permit) return false;
+    if (permitFilter === "missing" && e.has_permit) return false;
+    if (!search) return true;
+    return `${e.first_name} ${e.last_name} ${e.student_id} ${e.email || ""} ${e.program_name} ${e.permit_number || ""}`
+      .toLowerCase()
+      .includes(search.toLowerCase());
+  });
 
   return (
     <div>
@@ -168,6 +179,11 @@ export default function DiscountRoster() {
           <h3 className="text-lg font-semibold m-0">ABSN / Program Discount</h3>
           <p className="text-sm text-gray-500 m-0">
             Students on this list automatically get $100 off at checkout — no voucher code needed.
+            {entries.length > 0 && (
+              <>
+                {" "}· <strong>{issuedCount}</strong> issued · <strong>{missingCount}</strong> not yet
+              </>
+            )}
           </p>
         </div>
         <Space>
@@ -213,6 +229,25 @@ export default function DiscountRoster() {
         </Space>
       </div>
 
+      <div className="flex flex-wrap gap-2 mb-3">
+        {(
+          [
+            ["all", `All (${entries.length})`],
+            ["issued", `Permit issued (${issuedCount})`],
+            ["missing", `Not yet (${missingCount})`],
+          ] as [PermitFilter, string][]
+        ).map(([key, label]) => (
+          <Tag
+            key={key}
+            color={permitFilter === key ? "blue" : "default"}
+            className="cursor-pointer px-2 py-0.5"
+            onClick={() => setPermitFilter(key)}
+          >
+            {label}
+          </Tag>
+        ))}
+      </div>
+
       <Table
         dataSource={filtered}
         loading={loading}
@@ -240,6 +275,28 @@ export default function DiscountRoster() {
             key: "discount_amount",
             width: 100,
             render: (v: number) => `$${Number(v).toFixed(0)}`,
+          },
+          {
+            title: "Permit",
+            key: "permit",
+            width: 160,
+            filters: [
+              { text: "Issued", value: true },
+              { text: "Not yet", value: false },
+            ],
+            onFilter: (value, record) => !!record.has_permit === value,
+            render: (_, r) =>
+              r.has_permit ? (
+                <span title={r.matched_by ? `Matched by ${r.matched_by}` : undefined}>
+                  <Tag color="green">Issued</Tag>
+                  <span className="text-xs text-gray-500">
+                    {r.permit_number || r.permit_type || ""}
+                  </span>
+                </span>
+              ) : (
+                <Tag>Not yet</Tag>
+              ),
+            sorter: (a, b) => Number(!!a.has_permit) - Number(!!b.has_permit),
           },
           {
             title: "",
