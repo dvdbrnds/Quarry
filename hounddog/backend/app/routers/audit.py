@@ -2,7 +2,7 @@ import logging
 import traceback
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, desc, text
+from sqlalchemy import select, func, desc, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import get_current_user, OktaUser, require_admin
@@ -179,7 +179,15 @@ async def list_audit_logs(
     if to_date:
         query = query.where(AuditLog.timestamp <= to_date)
     if search:
-        query = query.where(AuditLog.summary.ilike(f"%{search}%"))
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                AuditLog.summary.ilike(like),
+                AuditLog.user_email.ilike(like),
+                AuditLog.endpoint.ilike(like),
+                AuditLog.resource_type.ilike(like),
+            )
+        )
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
