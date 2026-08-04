@@ -8,6 +8,7 @@ interface AuditEntry {
   resource_type: string; resource_id: string | null; endpoint: string;
   summary: string; response_status: number; ip_address: string | null;
   changes: Record<string, any> | null;
+  request_body: Record<string, any> | null;
 }
 
 interface AuditListResponse { items: AuditEntry[]; total: number; page: number; page_size: number; }
@@ -19,7 +20,59 @@ const ACTION_COLORS: Record<string, string> = {
 const RESOURCE_TYPES = [
   "tickets", "permits", "lots", "devices", "sync", "violation_types",
   "permit_types", "academic_calendar", "settings", "payments", "auth", "audit",
+  "lottery_v2",
 ];
+
+function ExpandedDetails({ entry }: { entry: AuditEntry }) {
+  const body = entry.request_body;
+  const prefs = body?.tier_preference_labels as string[] | undefined;
+  const hasChanges = !!entry.changes && Object.keys(entry.changes).length > 0;
+  const hasBody = !!body && Object.keys(body).length > 0;
+
+  if (!hasChanges && !hasBody) {
+    return <span className="text-xs text-gray-400">No details recorded</span>;
+  }
+
+  return (
+    <div className="text-xs space-y-3">
+      {prefs && prefs.length > 0 && (
+        <div className="bg-blue-50 border border-blue-100 rounded p-3">
+          <h4 className="font-bold mb-2 text-sm">Permit preferences (ranked)</h4>
+          <ol className="m-0 pl-5 space-y-0.5">
+            {prefs.map((label, i) => (
+              <li key={`${label}-${i}`}>{label}</li>
+            ))}
+          </ol>
+          {body?.campus && (
+            <p className="mt-2 mb-0 text-gray-600">Campus: <span className="capitalize">{String(body.campus)}</span></p>
+          )}
+          {body?.plate && (
+            <p className="mt-1 mb-0 text-gray-600">Plate: <span className="font-mono">{String(body.plate)}</span></p>
+          )}
+        </div>
+      )}
+      {hasChanges && (
+        <div className="font-mono bg-gray-50 p-3 rounded">
+          <h4 className="font-bold mb-2 text-sm font-sans">Changes</h4>
+          {Object.entries(entry.changes!).map(([field, vals]: [string, any]) => (
+            <div key={field} className="flex gap-2 mb-1">
+              <span className="font-medium w-32">{field}:</span>
+              <span className="text-red-500 line-through">{JSON.stringify(vals?.old)}</span>
+              <span>&rarr;</span>
+              <span className="text-green-600">{JSON.stringify(vals?.new)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {hasBody && !prefs?.length && (
+        <div className="font-mono bg-gray-50 p-3 rounded">
+          <h4 className="font-bold mb-2 text-sm font-sans">Request details</h4>
+          <pre className="m-0 whitespace-pre-wrap break-all">{JSON.stringify(body, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ActivityLog() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
@@ -100,26 +153,16 @@ export default function ActivityLog() {
 
       <Table dataSource={entries} columns={columns} rowKey="id" loading={loading} size="small"
         expandable={{
-          expandedRowRender: (entry) => entry.changes ? (
-            <div className="text-xs font-mono bg-gray-50 p-3 rounded">
-              <h4 className="font-bold mb-2 text-sm font-sans">Changes</h4>
-              {Object.entries(entry.changes).map(([field, vals]: [string, any]) => (
-                <div key={field} className="flex gap-2 mb-1">
-                  <span className="font-medium w-32">{field}:</span>
-                  <span className="text-red-500 line-through">{JSON.stringify(vals?.old)}</span>
-                  <span>&rarr;</span>
-                  <span className="text-green-600">{JSON.stringify(vals?.new)}</span>
-                </div>
-              ))}
-            </div>
-          ) : null,
-          rowExpandable: (entry) => !!entry.changes,
+          expandedRowRender: (entry) => <ExpandedDetails entry={entry} />,
+          rowExpandable: (entry) =>
+            !!(entry.changes && Object.keys(entry.changes).length) ||
+            !!(entry.request_body && Object.keys(entry.request_body).length),
         }}
         pagination={{
           current: page, total, pageSize: 50, onChange: setPage,
           showSizeChanger: false, showTotal: t => `${t} entries`,
         }}
-        locale={{ emptyText: <Empty description="No activity recorded yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+        locale={{ emptyText: <Empty description="No activity recorded" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
     </div>
   );

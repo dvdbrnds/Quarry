@@ -94,10 +94,38 @@ def _extract_resource_id(path: str) -> str | None:
 
 
 def _generate_summary(method: str, resource_type: str, resource_id: str | None,
-                      path: str) -> str:
+                      path: str, request_body: dict | list | None = None) -> str:
     key = f"{method} {path.rstrip('/')}"
     if key in SYNC_SUMMARIES:
         return SYNC_SUMMARIES[key]
+
+    # Lottery V2 application submit — include ranked permit choices when possible
+    if (
+        method == "POST"
+        and path.rstrip("/") == "/api/lottery-v2/applications"
+        and isinstance(request_body, dict)
+    ):
+        campus = (request_body.get("campus") or "").capitalize()
+        prefs = request_body.get("tier_preference_labels") or request_body.get(
+            "tier_preferences"
+        )
+        if isinstance(prefs, list) and prefs:
+            # Prefer human labels when present; fall back to truncated UUIDs
+            ranked = []
+            for i, p in enumerate(prefs[:6], 1):
+                label = str(p)
+                if len(label) > 36 and "-" in label:
+                    label = label[:8]
+                ranked.append(f"#{i} {label}")
+            joined = " → ".join(ranked)
+            where = f"{campus} campus — " if campus else ""
+            return f"Submitted lottery application ({where}{joined})"
+        return f"Submitted lottery application{f' ({campus})' if campus else ''}"
+
+    if method == "POST" and "/lottery-v2/applications/" in path and path.rstrip("/").endswith("/accept"):
+        return "Accepted lottery permit offer"
+    if method == "POST" and "/lottery-v2/applications/" in path and path.rstrip("/").endswith("/decline"):
+        return "Declined lottery permit offer"
 
     verb = ACTION_WORDS.get(method, method)
     readable_type = resource_type.replace("_", " ")
@@ -133,6 +161,33 @@ def _generate_summary(method: str, resource_type: str, resource_id: str | None,
     if resource_id:
         return f"{verb} {readable_type} {resource_id}"
     return f"{verb} {readable_type}"
+
+
+async def _resolve_tier_labels(pref_ids: list) -> list[str]:
+    """Resolve permit type UUIDs to labels for audit summaries."""
+    if not pref_ids:
+        return []
+    try:
+        import uuid as _uuid
+        from ..models.permit_type import PermitType
+
+        ids = []
+        for raw in pref_ids:
+            try:
+                ids.append(_uuid.UUID(str(raw)))
+            except (ValueError, TypeError):
+                continue
+        if not ids:
+            return [str(p) for p in pref_ids]
+        async with async_session() as db:
+            rows = (
+                await db.execute(select(PermitType).where(PermitType.id.in_(ids)))
+            ).scalars().all()
+            by_id = {str(pt.id): pt.label for pt in rows}
+        return [by_id.get(str(p), str(p)[:8]) for p in pref_ids]
+    except Exception:
+        logger.exception("Failed to resolve lottery tier labels for audit")
+        return [str(p)[:8] for p in pref_ids]
 
 
 async def _identify_user(headers: list[tuple[bytes, bytes]]) -> tuple[str, str]:
@@ -248,6 +303,24 @@ class AuditMiddleware:
         resource_type = _extract_resource_type(path)
         resource_id = _extract_resource_id(path)
 
+        # Enrich lottery application bodies with human-readable permit ranks
+        body_for_log = request_body
+        if (
+            method == "POST"
+            and path.rstrip("/") == "/api/lottery-v2/applications"
+            and isinstance(request_body, dict)
+            and request_body.get("tier_preferences")
+        ):
+            labels = await _resolve_tier_labels(list(request_body["tier_preferences"]))
+            body_for_log = {
+                **request_body,
+                "tier_preference_labels": labels,
+            }
+
+        summary = _generate_summary(
+            method, resource_type, resource_id, path, body_for_log
+        )
+
         # Write audit entry
         try:
             async with async_session() as session:
@@ -259,9 +332,8 @@ class AuditMiddleware:
                         resource_type=resource_type,
                         resource_id=resource_id,
                         endpoint=path,
-                        summary=_generate_summary(
-                            method, resource_type, resource_id, path),
-                        request_body=_sanitize_body(request_body)
+                        summary=summary,
+                        request_body=_sanitize_body(body_for_log)
                         if method != "GET" else None,
                         response_status=response_status,
                         ip_address=ip_address,

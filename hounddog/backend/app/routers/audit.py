@@ -8,12 +8,57 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import get_current_user, OktaUser, require_admin
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
+from ..models.permit_type import PermitType
 from ..schemas.audit import AuditLogList, AuditLogRead
 
 logger = logging.getLogger("quarry.audit")
 
 diagnostic_router = APIRouter()
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+async def _enrich_lottery_audit_items(
+    db: AsyncSession, items: list[AuditLog]
+) -> list[AuditLogRead]:
+    """Resolve tier preference UUIDs to labels for lottery application audits."""
+    pref_ids: set = set()
+    for entry in items:
+        body = entry.request_body if isinstance(entry.request_body, dict) else None
+        if not body:
+            continue
+        for raw in body.get("tier_preferences") or []:
+            try:
+                import uuid as _uuid
+                pref_ids.add(_uuid.UUID(str(raw)))
+            except (ValueError, TypeError):
+                pass
+
+    labels_by_id: dict[str, str] = {}
+    if pref_ids:
+        rows = (
+            await db.execute(select(PermitType).where(PermitType.id.in_(pref_ids)))
+        ).scalars().all()
+        labels_by_id = {str(pt.id): pt.label for pt in rows}
+
+    out: list[AuditLogRead] = []
+    for entry in items:
+        read = AuditLogRead.model_validate(entry)
+        body = dict(read.request_body) if isinstance(read.request_body, dict) else None
+        if body and body.get("tier_preferences"):
+            labels = [
+                labels_by_id.get(str(p), str(p)[:8])
+                for p in body["tier_preferences"]
+            ]
+            body = {**body, "tier_preference_labels": labels}
+            read.request_body = body
+            # Upgrade generic middleware summaries for older rows
+            if labels and not read.summary.startswith("Submitted lottery application"):
+                campus = (body.get("campus") or "").capitalize()
+                ranked = " → ".join(f"#{i} {lab}" for i, lab in enumerate(labels, 1))
+                where = f"{campus} campus — " if campus else ""
+                read.summary = f"Submitted lottery application ({where}{ranked})"
+        out.append(read)
+    return out
 
 
 @diagnostic_router.get("/diagnostic")
@@ -147,7 +192,8 @@ async def list_audit_logs(
         )
     ).scalars().all()
 
-    return AuditLogList(items=items, total=total, page=page, page_size=page_size)
+    enriched = await _enrich_lottery_audit_items(db, list(items))
+    return AuditLogList(items=enriched, total=total, page=page, page_size=page_size)
 
 
 @router.get("/resource/{resource_type}/{resource_id}", response_model=list[AuditLogRead])
@@ -162,4 +208,4 @@ async def get_resource_audit(
         .order_by(desc(AuditLog.timestamp))
         .limit(100)
     )
-    return result.scalars().all()
+    return await _enrich_lottery_audit_items(db, list(result.scalars().all()))
