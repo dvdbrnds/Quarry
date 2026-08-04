@@ -183,10 +183,20 @@ async def clear_tickets(
 
 @router.delete("/clear-permits")
 async def clear_permits(
-    _admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_admin()),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete all permits, permit applications, lottery applications, and permit-related payments."""
+    """Delete all permits, permit applications, lottery applications, and permit-related payments.
+
+    Locked to a single operator account — irreversible production wipe.
+    """
+    allowed = "brandesd@moravian.edu"
+    if (admin.email or "").strip().lower() != allowed:
+        raise HTTPException(
+            403,
+            f"Clear All Permits is restricted to {allowed}",
+        )
+
     permits_row = await db.execute(text('SELECT count(*) FROM "permits"'))
     permits_count = permits_row.scalar() or 0
 
@@ -209,6 +219,11 @@ async def clear_permits(
         "DELETE FROM payments WHERE payment_type IN "
         "('direct_permit_purchase', 'lottery_permit', 'lottery_v2_permit', 'standalone_permit_purchase', 'fee_exempt')"
     ))
+
+    logger.warning(
+        "Clear All Permits executed by %s — deleted %s permits, %s apps, %s payments",
+        admin.email, permits_count, apps_count + lottery_apps_count, payments_count,
+    )
 
     return {
         "permits_deleted": permits_count,

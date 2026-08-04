@@ -4,11 +4,14 @@ import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, De
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { api, BackupSchedule, BackupHistoryEntry } from "../api";
-import { authHeaders } from "../auth";
+import { authHeaders, fetchCurrentUser } from "../auth";
 
 dayjs.extend(relativeTime);
 
 const { Text, Title } = Typography;
+
+/** Irreversible wipe — UI + API restricted to this account only */
+const CLEAR_PERMITS_ALLOWED_EMAIL = "brandesd@moravian.edu";
 
 export default function DataManagement() {
   const { modal, message } = App.useApp();
@@ -17,6 +20,7 @@ export default function DataManagement() {
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [canClearPermits, setCanClearPermits] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Scheduled backup state
@@ -68,6 +72,14 @@ export default function DataManagement() {
   }, []);
 
   useEffect(() => { load(); loadSchedule(); loadHistory(); }, [load, loadSchedule, loadHistory]);
+
+  useEffect(() => {
+    fetchCurrentUser().then((user) => {
+      setCanClearPermits(
+        (user?.email || "").trim().toLowerCase() === CLEAR_PERMITS_ALLOWED_EMAIL,
+      );
+    });
+  }, []);
 
   const handleRunNow = async () => {
     setRunningNow(true);
@@ -389,6 +401,7 @@ export default function DataManagement() {
           </Button>
         </Card>
 
+        {canClearPermits && (
         <Card style={{ flex: 1, minWidth: 280 }}>
           <Title level={5} style={{ marginTop: 0 }}>
             <DeleteOutlined style={{ marginRight: 8 }} />
@@ -408,6 +421,7 @@ export default function DataManagement() {
             Clear All Permits
           </Button>
         </Card>
+        )}
 
         <Card style={{ flex: 1, minWidth: 280 }}>
           <Title level={5} style={{ marginTop: 0 }}>
