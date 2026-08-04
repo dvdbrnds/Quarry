@@ -34,8 +34,14 @@ interface PermitStats {
   revoked: number;
 }
 
-interface PermitTypeOption { code: string; label: string; price: number; }
+interface PermitTypeOption { code: string; label: string; price: number; lot_assignments: string[]; }
 interface LotOption { id: string; name: string; }
+
+function parseLots(value: string | string[] | undefined | null): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((s) => String(s).trim()).filter(Boolean);
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 function PermitForm({
   initial, permitTypes, lots, onSave, onCancel,
@@ -51,9 +57,12 @@ function PermitForm({
   const [voucherValid, setVoucherValid] = useState(false);
   const [voucherDiscount, setVoucherDiscount] = useState<{ type: string; value: number; message: string } | null>(null);
   const [validatingVoucher, setValidatingVoucher] = useState(false);
-  const [selectedTypeCode, setSelectedTypeCode] = useState<string | undefined>(undefined);
+  const [selectedTypeCode, setSelectedTypeCode] = useState<string | undefined>(
+    initial?.permit_type || undefined,
+  );
 
   const selectedPt = permitTypes.find(pt => pt.code === selectedTypeCode);
+  const typeDefaultLots = selectedPt?.lot_assignments ?? [];
   const basePrice = selectedPt?.price ?? 0;
   const isCreating = !initial;
   const hasFee = isCreating && basePrice > 0 && !waiveFee;
@@ -68,6 +77,8 @@ function PermitForm({
 
   useEffect(() => {
     if (initial) {
+      const customLots = parseLots(initial.lot_assignment);
+      const pt = permitTypes.find((p) => p.code === initial.permit_type);
       form.setFieldsValue({
         name: initial.name,
         plates: initial.plates.join(", "),
@@ -75,24 +86,43 @@ function PermitForm({
         email: (initial as any).email ?? "",
         phone: (initial as any).phone ?? "",
         beacon_id: (initial as any).beacon_id ?? "",
-        lot_assignment: initial.lot_assignment
-          ? initial.lot_assignment.split(",").map((s: string) => s.trim()).filter(Boolean)
-          : [],
+        // Custom lots on the permit win; if none stored, show type defaults
+        lot_assignment: customLots.length > 0 ? customLots : (pt?.lot_assignments ?? []),
         permit_type: initial.permit_type,
         status: initial.status,
         start_date: initial.start_date ? dayjs(initial.start_date) : null,
         end_date: initial.end_date ? dayjs(initial.end_date) : null,
       });
+      setSelectedTypeCode(initial.permit_type || undefined);
     } else {
       form.resetFields();
+      setSelectedTypeCode(undefined);
     }
-  }, [initial, form]);
+  }, [initial, form, permitTypes]);
 
   useEffect(() => {
     setVoucherCode("");
     setVoucherValid(false);
     setVoucherDiscount(null);
   }, [selectedTypeCode]);
+
+  function applyTypeDefaults() {
+    if (!typeDefaultLots.length) {
+      message.info("This permit type has no default lots");
+      return;
+    }
+    form.setFieldsValue({ lot_assignment: [...typeDefaultLots] });
+    message.success("Filled type default lots — edit to customize for this permit");
+  }
+
+  function handleTypeChange(code: string | undefined) {
+    setSelectedTypeCode(code);
+    const pt = permitTypes.find((p) => p.code === code);
+    // On create, type change fills defaults. On edit, keep custom lots (they supersede).
+    if (!initial && pt?.lot_assignments?.length) {
+      form.setFieldsValue({ lot_assignment: [...pt.lot_assignments] });
+    }
+  }
 
   async function validateVoucher() {
     if (!voucherCode.trim() || !selectedTypeCode) return;
@@ -191,7 +221,9 @@ function PermitForm({
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
-        onValuesChange={(changed) => { if (changed.permit_type !== undefined) setSelectedTypeCode(changed.permit_type); }}
+        onValuesChange={(changed) => {
+          if (changed.permit_type !== undefined) handleTypeChange(changed.permit_type);
+        }}
         initialValues={{ status: "active", start_date: dayjs() }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
@@ -206,7 +238,25 @@ function PermitForm({
           <Form.Item
             name="lot_assignment"
             label="Lot Assignment"
-            extra="Select one or more lots for campus police flexibility on this permit"
+            extra={
+              <span>
+                Custom lots on this permit override the permit type defaults
+                {typeDefaultLots.length > 0 && (
+                  <>
+                    {" "}
+                    (type default: {typeDefaultLots.join(", ")})
+                    {" · "}
+                    <button
+                      type="button"
+                      className="text-brand-primary underline bg-transparent border-0 p-0 cursor-pointer"
+                      onClick={applyTypeDefaults}
+                    >
+                      Use type defaults
+                    </button>
+                  </>
+                )}
+              </span>
+            }
           >
             <Select
               mode="multiple"
@@ -375,7 +425,12 @@ export default function Permits() {
         fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
       ]);
       setStats(s);
-      setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label, price: Number(pt.price) || 0 })));
+      setPermitTypes(ptRes.map((pt: any) => ({
+        code: pt.code,
+        label: pt.label,
+        price: Number(pt.price) || 0,
+        lot_assignments: Array.isArray(pt.lot_assignments) ? pt.lot_assignments : [],
+      })));
       setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
       setDuplicateGroups(dupRes.duplicate_groups ?? []);
     } catch { /* silently fail */ }

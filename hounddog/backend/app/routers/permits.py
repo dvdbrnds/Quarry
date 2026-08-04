@@ -33,7 +33,7 @@ from ..services.permit_lifecycle import (
 )
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
-from ..services.lot_assignment import format_lot_assignment, permit_lot_matches
+from ..services.lot_assignment import effective_lot_assignment, permit_lot_matches
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -261,7 +261,19 @@ async def list_permits(
 @router.post("", response_model=PermitRead, status_code=201)
 async def create_permit(data: PermitCreate, db: AsyncSession = Depends(get_db)):
     fields = data.model_dump()
-    fields["lot_assignment"] = format_lot_assignment(fields.get("lot_assignment"))
+    type_lots: list[str] = []
+    if fields.get("permit_type"):
+        pt = (
+            await db.execute(
+                select(PermitType).where(PermitType.code == fields["permit_type"])
+            )
+        ).scalar_one_or_none()
+        if pt:
+            type_lots = list(pt.lot_assignments or [])
+    # Custom lots on the permit supersede type defaults; empty → type defaults
+    fields["lot_assignment"] = effective_lot_assignment(
+        fields.get("lot_assignment"), type_lots
+    )
     if not fields.get("permit_number"):
         fields["permit_number"] = await next_permit_number(db)
     permit = Permit(**fields)
@@ -302,7 +314,10 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
     permit_number = await next_permit_number(db)
     start = data.start_date or today_local()
     end = data.end_date or (start + timedelta(days=pt.valid_days))
-    lot_assignment = format_lot_assignment(data.lot_assignment)
+    # Custom lots supersede type defaults
+    lot_assignment = effective_lot_assignment(
+        data.lot_assignment, list(pt.lot_assignments or [])
+    )
 
     if data.waive_fee or pt.price <= 0:
         permit = Permit(
@@ -496,8 +511,19 @@ async def update_permit(
         raise HTTPException(404, "Permit not found")
 
     for field, value in data.model_dump(exclude_unset=True).items():
-        if field == "lot_assignment" and value is not None:
-            value = format_lot_assignment(value)
+        if field == "lot_assignment":
+            type_lots: list[str] = []
+            type_code = data.permit_type if data.permit_type is not None else permit.permit_type
+            if type_code:
+                pt = (
+                    await db.execute(
+                        select(PermitType).where(PermitType.code == type_code)
+                    )
+                ).scalar_one_or_none()
+                if pt:
+                    type_lots = list(pt.lot_assignments or [])
+            # Custom lots supersede type defaults; clearing lots falls back to type
+            value = effective_lot_assignment(value, type_lots)
         setattr(permit, field, value)
 
     await db.flush()
