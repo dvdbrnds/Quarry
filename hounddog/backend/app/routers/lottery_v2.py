@@ -35,6 +35,7 @@ from ..services.lottery_v2_runner import (
     repair_cycle_placements,
     run_waterfall_draw,
     try_place_application,
+    notify_waitlisted_applicants,
 )
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
@@ -131,7 +132,7 @@ class ApplicationRead(BaseModel):
 
 class RunDrawRequest(BaseModel):
     include_test_entries: bool = True
-    send_notifications: bool = False  # default off for staging demos
+    send_notifications: bool = True  # email selected + waitlisted applicants
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -1201,6 +1202,22 @@ async def repair_draw(
         return await repair_cycle_placements(
             db, cycle_id, send_notifications=opts.send_notifications
         )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/cycles/{cycle_id}/notify-waitlist")
+async def notify_waitlist(
+    cycle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Email current waitlisted applicants their waitlist position (resend-safe)."""
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+    try:
+        return await notify_waitlisted_applicants(db, cycle_id)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 

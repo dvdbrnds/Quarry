@@ -1179,13 +1179,17 @@ async def _notify_selected(
         )
 
 
-async def _notify_waitlisted(waitlisted: list[LotteryV2Application]) -> None:
+async def _notify_waitlisted(waitlisted: list[LotteryV2Application]) -> dict:
     school = settings.school_name or "Campus"
     from app.services.email import get_department_name
 
     dept = await get_department_name()
+    sent = 0
+    failed = 0
+    skipped = 0
     for idx, app in enumerate(waitlisted):
         if not app.student_email or app.is_test_entry:
+            skipped += 1
             continue
         try:
             position = app.waitlist_position or (idx + 1)
@@ -1215,11 +1219,49 @@ async def _notify_waitlisted(waitlisted: list[LotteryV2Application]) -> None:
                 f"You were placed on the waitlist at position #{position}.\n\n"
                 f"{school} {dept}"
             )
-            await send_email(
+            ok = await send_email(
                 to=[app.student_email],
                 subject="Parking Permit Waitlisted",
                 body_html=body_html,
                 body_text=body_text,
             )
+            if ok:
+                sent += 1
+            else:
+                failed += 1
         except Exception as e:
+            failed += 1
             logger.error("Failed to notify waitlisted v2 applicant %s: %s", app.id, e)
+    return {"sent": sent, "failed": failed, "skipped": skipped}
+
+
+async def notify_waitlisted_applicants(db: AsyncSession, cycle_id: uuid.UUID) -> dict:
+    """Renumber then email everyone currently waitlisted on a cycle."""
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise ValueError("Cycle not found")
+
+    await _renumber_waitlist(db, cycle_id)
+    await db.flush()
+
+    waitlisted = list(
+        (
+            await db.execute(
+                select(LotteryV2Application)
+                .where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status == "waitlisted",
+                )
+                .order_by(
+                    LotteryV2Application.waitlist_position.asc().nullslast(),
+                    LotteryV2Application.created_at.asc(),
+                )
+            )
+        ).scalars().all()
+    )
+    result = await _notify_waitlisted(waitlisted)
+    return {
+        "cycle_id": str(cycle_id),
+        "waitlisted_count": len(waitlisted),
+        **result,
+    }

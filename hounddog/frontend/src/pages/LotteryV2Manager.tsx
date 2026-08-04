@@ -272,16 +272,37 @@ export default function LotteryV2Manager() {
     modal.confirm({
       title: `Run waterfall draw for "${active.name}"?`,
       content:
-        "Applicants will be sorted by class year then timestamp, then placed into their ranked tiers. Notifications are off by default for staging.",
-      okText: "Run draw",
+        "Applicants will be sorted by class year then timestamp, then placed into their ranked tiers. Selected and waitlisted students will be emailed.",
+      okText: "Run draw & email",
       onOk: async () => {
         const data = await postAction(`/api/lottery-v2/cycles/${active.id}/run`, {
           include_test_entries: true,
-          send_notifications: false,
+          send_notifications: true,
         });
         if (data) {
           message.success(
             `Draw complete: ${data.selected_count} selected, ${data.waitlisted_count} waitlisted`,
+          );
+        }
+      },
+    });
+  }
+
+  function confirmNotifyWaitlist() {
+    if (!active) return;
+    const waitCount = apps.filter((a) => a.status === "waitlisted").length;
+    modal.confirm({
+      title: `Email ${waitCount} waitlisted student${waitCount === 1 ? "" : "s"}?`,
+      content:
+        "Sends each waitlisted applicant their current waitlist position. Use this if the draw ran without notifications.",
+      okText: "Send waitlist emails",
+      onOk: async () => {
+        const data = await postAction(`/api/lottery-v2/cycles/${active.id}/notify-waitlist`);
+        if (data) {
+          message.success(
+            `Waitlist emails: ${data.sent} sent` +
+              (data.failed ? `, ${data.failed} failed` : "") +
+              (data.skipped ? `, ${data.skipped} skipped` : ""),
           );
         }
       },
@@ -808,6 +829,12 @@ export default function LotteryV2Manager() {
                 }}
               >
                 Repair waitlist
+              </Button>
+              <Button
+                disabled={busy || active.status !== "drawn"}
+                onClick={confirmNotifyWaitlist}
+              >
+                Email waitlist
               </Button>
               <Button disabled={busy} onClick={loadCapacityAudit}>
                 Capacity audit
