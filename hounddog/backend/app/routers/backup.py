@@ -29,7 +29,7 @@ logger = logging.getLogger("quarry.backup")
 
 router = APIRouter(dependencies=[Depends(require_admin())])
 
-SKIP_TABLES = {"alembic_version"}
+SKIP_TABLES = {"alembic_version", "backup_snapshots"}
 
 BACKUP_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "backups"
 SCHEDULE_FILE = BACKUP_DIR / "_schedule.json"
@@ -294,15 +294,21 @@ async def get_schedule(db: AsyncSession = Depends(get_db)):
 async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db)):
     """Create or update the scheduled backup configuration."""
     try:
+        from ..services.backup_scheduler import _compute_next_run
+
         data = body.model_dump()
         try:
             existing = await _read_schedule_db(db)
         except Exception:
             existing = {}
         data["last_run"] = existing.get("last_run")
-        data["next_run"] = existing.get("next_run")
         data["last_drive_upload"] = existing.get("last_drive_upload")
         data["last_drive_file_id"] = existing.get("last_drive_file_id")
+        # Recalculate next run whenever schedule settings change
+        data["next_run"] = _compute_next_run(
+            data.get("frequency", "daily"),
+            data.get("time", "02:00"),
+        ).isoformat()
         await _write_schedule_db(db, data)
         await db.flush()
         return data
@@ -320,32 +326,71 @@ async def disable_schedule(db: AsyncSession = Depends(get_db)):
     return data
 
 
+@router.post("/run-now")
+async def run_backup_now(db: AsyncSession = Depends(get_db)):
+    """Create a backup immediately and store it in the database (survives redeploy)."""
+    from datetime import timezone
+    from ..services.backup_scheduler import create_backup_now
+
+    try:
+        filename = await create_backup_now(source="manual")
+    except Exception as e:
+        logger.exception("Manual backup failed")
+        raise HTTPException(500, f"Backup failed: {e}")
+
+    schedule = await _read_schedule_db(db)
+    schedule["last_run"] = datetime.now(timezone.utc).isoformat()
+    await _write_schedule_db(db, schedule)
+    await db.flush()
+
+    drive_folder_id = schedule.get("google_drive_folder_id")
+    drive_file_id = None
+    if drive_folder_id:
+        try:
+            from ..services.backup_scheduler import BACKUP_DIR, get_persisted_backup_content
+            from ..services.google_drive import upload_to_drive
+            filepath = BACKUP_DIR / filename
+            if not filepath.exists():
+                content = await get_persisted_backup_content(filename)
+                if content:
+                    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+                    filepath.write_text(content)
+            if filepath.exists():
+                drive_file_id = upload_to_drive(filepath, drive_folder_id)
+                if drive_file_id:
+                    schedule["last_drive_upload"] = datetime.now(timezone.utc).isoformat()
+                    schedule["last_drive_file_id"] = drive_file_id
+                    await _write_schedule_db(db, schedule)
+                    await db.flush()
+        except Exception as e:
+            logger.error("Drive upload after run-now failed: %s", e)
+
+    return {
+        "filename": filename,
+        "status": "ok",
+        "drive_uploaded": bool(drive_file_id),
+    }
+
+
 @router.get("/history")
 async def list_backup_history():
-    """List all stored backup files with metadata."""
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    files = sorted(BACKUP_DIR.glob("quarry_backup_*.json"), reverse=True)
-    history = []
-    for f in files:
-        stat = f.stat()
-        history.append({
-            "filename": f.name,
-            "size_bytes": stat.st_size,
-            "created_at": datetime.utcfromtimestamp(stat.st_mtime).isoformat(),
-        })
-    return history
+    """List stored backups from the database (survives redeploys)."""
+    from ..services.backup_scheduler import list_persisted_backups
+    return await list_persisted_backups()
 
 
 @router.get("/history/{filename}")
 async def download_backup_file(filename: str):
     """Download a specific stored backup file."""
-    if ".." in filename or "/" in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(400, "Invalid filename")
-    path = BACKUP_DIR / filename
-    if not path.exists():
+    from ..services.backup_scheduler import get_persisted_backup_content
+    content = await get_persisted_backup_content(filename)
+    if not content:
         raise HTTPException(404, "Backup file not found")
-    return FileResponse(
-        path,
+    buf = io.BytesIO(content.encode("utf-8"))
+    return StreamingResponse(
+        buf,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -354,12 +399,12 @@ async def download_backup_file(filename: str):
 @router.delete("/history/{filename}")
 async def delete_backup_file(filename: str):
     """Delete a specific stored backup file."""
-    if ".." in filename or "/" in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(400, "Invalid filename")
-    path = BACKUP_DIR / filename
-    if not path.exists():
+    from ..services.backup_scheduler import delete_persisted_backup
+    deleted = await delete_persisted_backup(filename)
+    if not deleted:
         raise HTTPException(404, "Backup file not found")
-    path.unlink()
     return {"deleted": filename}
 
 

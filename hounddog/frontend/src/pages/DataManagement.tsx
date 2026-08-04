@@ -28,6 +28,7 @@ export default function DataManagement() {
   const [driveFolderId, setDriveFolderId] = useState("");
   const [driveTestResult, setDriveTestResult] = useState<{ ok: boolean; folder_name?: string; error?: string } | null>(null);
   const [driveTesting, setDriveTesting] = useState(false);
+  const [runningNow, setRunningNow] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +68,23 @@ export default function DataManagement() {
   }, []);
 
   useEffect(() => { load(); loadSchedule(); loadHistory(); }, [load, loadSchedule, loadHistory]);
+
+  const handleRunNow = async () => {
+    setRunningNow(true);
+    try {
+      const result = await api.backup.schedule.runNow();
+      message.success(
+        result.drive_uploaded
+          ? `Backup saved (${result.filename}) and uploaded to Drive`
+          : `Backup saved (${result.filename}) — survives redeploy`,
+      );
+      await Promise.all([loadHistory(), loadSchedule()]);
+    } catch (e: any) {
+      message.error(e.message || "Backup failed");
+    } finally {
+      setRunningNow(false);
+    }
+  };
 
   const handleScheduleToggle = async (enabled: boolean) => {
     if (!schedule) return;
@@ -420,11 +438,12 @@ export default function DataManagement() {
             Scheduled Backups
           </Title>
           <p className="text-ink-mute text-sm mb-4">
-            Automatically create backup snapshots on a recurring schedule. Backups are stored on the server and can be downloaded from the history below.
+            Automatic snapshots are stored in the database so they survive redeploys.
+            Optionally mirror each backup to Google Drive for off-site copies.
           </p>
           {schedule && (
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-sm font-medium w-20">Enabled</span>
                 <Switch
                   checked={schedule.enabled}
@@ -436,6 +455,15 @@ export default function DataManagement() {
                 ) : (
                   <Tag>Disabled</Tag>
                 )}
+                <Button
+                  size="small"
+                  type="primary"
+                  loading={runningNow}
+                  onClick={handleRunNow}
+                  className="ml-auto"
+                >
+                  Run backup now
+                </Button>
               </div>
 
               <div className="flex items-center gap-3">
@@ -564,15 +592,20 @@ export default function DataManagement() {
             loading={historyLoading}
             size="small"
             pagination={{ pageSize: 5, size: "small" }}
-            locale={{ emptyText: "No scheduled backups yet" }}
+            locale={{ emptyText: "No backups yet — click “Run backup now” or wait for the scheduled time" }}
             rowKey="filename"
             columns={[
               {
                 title: "File",
                 dataIndex: "filename",
                 key: "filename",
-                render: (name: string) => (
-                  <span className="font-mono text-xs">{name}</span>
+                render: (name: string, row: BackupHistoryEntry) => (
+                  <span>
+                    <span className="font-mono text-xs">{name}</span>
+                    {row.source && row.source !== "scheduled" && (
+                      <Tag className="ml-2" color="blue">{row.source}</Tag>
+                    )}
+                  </span>
                 ),
               },
               {

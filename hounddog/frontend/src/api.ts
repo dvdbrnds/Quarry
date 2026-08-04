@@ -526,6 +526,7 @@ export interface BackupHistoryEntry {
   filename: string;
   size_bytes: number;
   created_at: string;
+  source?: string;
 }
 
 export const api = {
@@ -882,6 +883,8 @@ export const api = {
         request<BackupSchedule>("/backup/schedule", { method: "POST", body: JSON.stringify(data) }),
       disable: () =>
         request<BackupSchedule>("/backup/schedule/disable", { method: "POST" }),
+      runNow: () =>
+        request<{ filename: string; status: string; drive_uploaded: boolean }>("/backup/run-now", { method: "POST" }),
     },
     testDrive: (folderId: string) =>
       request<{ ok: boolean; folder_name: string }>(`/backup/test-drive?folder_id=${encodeURIComponent(folderId)}`, { method: "POST" }),

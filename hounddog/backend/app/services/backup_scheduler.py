@@ -19,7 +19,7 @@ logger = logging.getLogger("quarry.backup_scheduler")
 
 BACKUP_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "backups"
 SCHEDULE_FILE = BACKUP_DIR / "_schedule.json"
-SKIP_TABLES = {"alembic_version"}
+SKIP_TABLES = {"alembic_version", "backup_snapshots"}
 
 FREQUENCY_DELTAS = {
     "daily": timedelta(days=1),
@@ -106,10 +106,8 @@ def _compute_next_run(frequency: str, time_str: str, from_dt: datetime | None = 
     return candidate
 
 
-async def _create_backup_file() -> str:
-    """Create a backup JSON file on disk and return the filename."""
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-
+async def _create_backup_payload() -> tuple[str, str, dict]:
+    """Build a backup JSON payload. Returns (filename, json_text, backup_dict)."""
     async with engine.connect() as conn:
         def _inspect(sync_conn):
             insp = sa_inspect(sync_conn)
@@ -134,17 +132,143 @@ async def _create_backup_file() -> str:
         "source": "scheduled",
         "tables": payload,
     }
-
     filename = f"quarry_backup_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    filepath = BACKUP_DIR / filename
-    filepath.write_text(json.dumps(backup, indent=2, default=str))
-    logger.info("Scheduled backup created: %s (%.1f KB)", filename, filepath.stat().st_size / 1024)
+    content = json.dumps(backup, indent=2, default=str)
+    return filename, content, backup
+
+
+async def _persist_backup(filename: str, content: str, source: str = "scheduled") -> str:
+    """Store backup in Postgres (survives redeploys) and mirror to disk for Drive upload."""
+    size = len(content.encode("utf-8"))
+
+    async with async_session() as db:
+        await db.execute(
+            text("""
+                INSERT INTO backup_snapshots (filename, source, size_bytes, content, created_at)
+                VALUES (:filename, :source, :size_bytes, :content, now())
+                ON CONFLICT (filename) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    size_bytes = EXCLUDED.size_bytes,
+                    source = EXCLUDED.source,
+                    created_at = now()
+            """),
+            {
+                "filename": filename,
+                "source": source,
+                "size_bytes": size,
+                "content": content,
+            },
+        )
+        await db.commit()
+
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        (BACKUP_DIR / filename).write_text(content)
+    except Exception as e:
+        logger.warning("Disk mirror of backup failed (DB copy saved): %s", e)
+
+    logger.info("Backup saved: %s (%.1f KB) source=%s", filename, size / 1024, source)
     return filename
 
 
+async def create_backup_now(source: str = "manual") -> str:
+    """Create and persist a backup immediately. Returns filename."""
+    filename, content, backup = await _create_backup_payload()
+    backup["source"] = source
+    # Re-serialize with updated source
+    content = json.dumps(backup, indent=2, default=str)
+    # Fix filename prefix for manual if desired — keep timestamp name
+    return await _persist_backup(filename, content, source=source)
+
+
+async def _create_backup_file() -> str:
+    """Create a scheduled backup (DB + disk). Returns filename."""
+    return await create_backup_now(source="scheduled")
+
+
+async def list_persisted_backups() -> list[dict]:
+    """List backups from DB (durable), falling back to disk files."""
+    history: list[dict] = []
+    try:
+        async with async_session() as db:
+            result = await db.execute(text("""
+                SELECT filename, size_bytes, source, created_at
+                FROM backup_snapshots
+                ORDER BY created_at DESC
+            """))
+            for row in result.fetchall():
+                history.append({
+                    "filename": row[0],
+                    "size_bytes": row[1] or 0,
+                    "source": row[2] or "scheduled",
+                    "created_at": row[3].isoformat() if row[3] else None,
+                })
+    except Exception as e:
+        logger.warning("Failed to list DB backups: %s", e)
+
+    if history:
+        return history
+
+    # Disk fallback (legacy / pre-migration)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    for f in sorted(BACKUP_DIR.glob("quarry_backup_*.json"), reverse=True):
+        try:
+            stat = f.stat()
+            history.append({
+                "filename": f.name,
+                "size_bytes": stat.st_size,
+                "source": "disk",
+                "created_at": datetime.utcfromtimestamp(stat.st_mtime).replace(tzinfo=timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+    return history
+
+
+async def get_persisted_backup_content(filename: str) -> str | None:
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                text("SELECT content FROM backup_snapshots WHERE filename = :f"),
+                {"f": filename},
+            )
+            row = result.scalar()
+            if row:
+                return row
+    except Exception as e:
+        logger.warning("Failed to read DB backup %s: %s", filename, e)
+
+    path = BACKUP_DIR / filename
+    if path.exists():
+        return path.read_text()
+    return None
+
+
+async def delete_persisted_backup(filename: str) -> bool:
+    deleted = False
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                text("DELETE FROM backup_snapshots WHERE filename = :f"),
+                {"f": filename},
+            )
+            await db.commit()
+            deleted = (result.rowcount or 0) > 0
+    except Exception as e:
+        logger.warning("Failed to delete DB backup %s: %s", filename, e)
+
+    path = BACKUP_DIR / filename
+    if path.exists():
+        path.unlink()
+        deleted = True
+    return deleted
+
+
 def _cleanup_old_backups(retention_days: int):
-    """Delete backup files older than retention_days."""
+    """Delete backup files/rows older than retention_days."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    # Disk cleanup
     for f in BACKUP_DIR.glob("quarry_backup_*.json"):
         try:
             mtime = datetime.utcfromtimestamp(f.stat().st_mtime).replace(tzinfo=timezone.utc)
@@ -153,6 +277,19 @@ def _cleanup_old_backups(retention_days: int):
                 logger.info("Deleted old backup: %s", f.name)
         except Exception as e:
             logger.warning("Failed to delete old backup %s: %s", f.name, e)
+
+
+async def _cleanup_old_backups_db(retention_days: int):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    try:
+        async with async_session() as db:
+            await db.execute(
+                text("DELETE FROM backup_snapshots WHERE created_at < :cutoff"),
+                {"cutoff": cutoff},
+            )
+            await db.commit()
+    except Exception as e:
+        logger.warning("Failed to prune DB backups: %s", e)
 
 
 async def process_scheduled_backups():
@@ -194,6 +331,12 @@ async def process_scheduled_backups():
         drive_folder_id = config.get("google_drive_folder_id")
         if drive_folder_id:
             filepath = BACKUP_DIR / filename
+            # Ensure disk copy exists for Drive upload
+            if not filepath.exists():
+                content = await get_persisted_backup_content(filename)
+                if content:
+                    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+                    filepath.write_text(content)
             try:
                 from .google_drive import upload_to_drive
                 file_id = upload_to_drive(filepath, drive_folder_id)
@@ -205,8 +348,9 @@ async def process_scheduled_backups():
                 else:
                     logger.warning("Google Drive upload returned no file ID")
             except Exception as e:
-                logger.error("Google Drive upload failed (backup still saved locally): %s", e)
+                logger.error("Google Drive upload failed (backup still saved in DB): %s", e)
 
         _cleanup_old_backups(retention)
+        await _cleanup_old_backups_db(retention)
     except Exception as e:
         logger.error("Scheduled backup failed: %s", e, exc_info=True)

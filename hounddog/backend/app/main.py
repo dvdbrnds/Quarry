@@ -465,6 +465,16 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_discount_roster_student_id ON discount_roster(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_discount_roster_email ON discount_roster(email)",
+            # Durable backup snapshots (survive container redeploys with the DB)
+            """CREATE TABLE IF NOT EXISTS backup_snapshots (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                filename VARCHAR(256) NOT NULL UNIQUE,
+                source VARCHAR(32) DEFAULT 'scheduled',
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_backup_snapshots_created ON backup_snapshots(created_at DESC)",
             # Rename coupon → voucher (preserve existing data; no-op if already renamed)
             """DO $$ BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='coupons')
