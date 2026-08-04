@@ -918,7 +918,10 @@ async def admin_restore_waitlist(
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise HTTPException(404, "Application not found")
-    if app.status in ("accepted", "selected", "waitlisted", "pending"):
+    if app.status in ("accepted", "waitlisted", "pending"):
+        raise HTTPException(400, f"Cannot restore an application with status '{app.status}'")
+    # Also allow clearing a selected offer back to waitlist (admin reassignment prep)
+    if app.status not in ("superseded", "expired", "declined", "selected"):
         raise HTTPException(400, f"Cannot restore an application with status '{app.status}'")
 
     max_pos = (
