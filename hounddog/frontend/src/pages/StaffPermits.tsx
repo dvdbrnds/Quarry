@@ -3,6 +3,7 @@ import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbo
 import { CheckCircleOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
+import BrandMark from "../components/BrandMark";
 import StudentLotMap from "../components/StudentLotMap";
 import type { Lot } from "../api";
 
@@ -207,7 +208,7 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
       <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
+            <BrandMark />
             <div>
               {brand.brandName && <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>}
               <span className="text-xs text-white/50">Employee Parking Portal</span>

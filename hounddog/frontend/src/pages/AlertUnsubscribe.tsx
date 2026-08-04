@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Result, Spin, Card } from "antd";
 import { useBranding } from "../useBranding";
+import BrandMark from "../components/BrandMark";
 
 export default function AlertUnsubscribe() {
   const brand = useBranding();
@@ -22,6 +23,7 @@ export default function AlertUnsubscribe() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: `linear-gradient(to bottom, ${brand.primaryColor}, ${brand.primaryColor}dd)` }}>
       <Card className="max-w-md w-full text-center">
+        <BrandMark variant="onLight" className="h-12 w-auto mx-auto mb-4" />
         {status === "loading" && <Spin size="large" />}
         {status === "success" && <Result status="success" title="Unsubscribed" subTitle={msg} />}
         {status === "error" && <Result status="error" title="Oops" subTitle={msg} />}

@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useBranding } from "../useBranding";
+import BrandMark from "./BrandMark";
 
 const PUBLIC_LINKS = [
   { to: "/parking", label: "Students" },
@@ -20,14 +21,7 @@ export default function PublicPageNav({ subtitle }: { subtitle: string }) {
     >
       <div className="max-w-4xl mx-auto flex items-center gap-3 flex-wrap">
         <Link to="/visitor" className="flex items-center gap-3 no-underline">
-          {brand.logoUrl && (
-            <img
-              src={brand.logoUrl}
-              alt={brand.brandName || brand.schoolName || "Logo"}
-              className="h-8 w-auto"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          )}
+          <BrandMark />
           {(brand.brandName || brand.schoolName) && (
             <h1
               style={{ color: brand.accentColor }}

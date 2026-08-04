@@ -5,6 +5,7 @@ import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpers
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
+import BrandMark from "../components/BrandMark";
 
 /** Stable colors per permit-type code — cards and map lots share these */
 const TIER_COLORS: Record<string, { fill: string; soft: string; border: string }> = {
@@ -740,7 +741,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
+            <BrandMark />
             <h1 style={{ color: brand.accentColor }} className="text-xl font-bold m-0">
               Parking Permits
             </h1>

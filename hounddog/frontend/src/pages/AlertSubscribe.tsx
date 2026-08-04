@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 import { Button, Card, Input, Form, Checkbox, Result, Alert, App } from "antd";
 import { useBranding } from "../useBranding";
+import BrandMark from "../components/BrandMark";
 
 const CATEGORIES = [
   { id: "emergency", label: "Emergency Alerts", description: "Critical safety and security notifications" },
@@ -40,6 +41,7 @@ export default function AlertSubscribe() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4" style={{ background: `linear-gradient(to bottom, ${brand.primaryColor}, ${brand.primaryColor}dd)` }}>
         <Card className="max-w-md w-full text-center">
+          <BrandMark variant="onLight" className="h-12 w-auto mx-auto mb-2" />
           <Result status="success" title="You're Subscribed" subTitle="You will receive alerts at the contact information you provided. Every message includes an unsubscribe link." />
         </Card>
       </div>
@@ -50,6 +52,7 @@ export default function AlertSubscribe() {
     <div className="min-h-screen flex items-center justify-center px-4 py-12" style={{ background: `linear-gradient(to bottom, ${brand.primaryColor}, ${brand.primaryColor}dd)` }}>
       <Card className="max-w-lg w-full">
         <div className="text-center mb-6">
+          <BrandMark variant="onLight" className="h-12 w-auto mx-auto mb-3" />
           <h1 className="text-2xl font-bold text-brand-primary">Campus Alerts</h1>
           <p className="text-ink-mute text-sm mt-1">Subscribe to receive emergency and campus notifications via email and SMS.</p>
         </div>

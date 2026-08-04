@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { initAuth, handleCallback, fetchCurrentUser } from "../auth";
+import BrandMark from "../components/BrandMark";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -29,6 +30,7 @@ export default function AuthCallback() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bone-light">
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <BrandMark variant="onLight" className="h-12 w-auto mx-auto mb-4" />
           <h1 className="text-xl font-bold text-signal-red mb-4">Login Error</h1>
           <p className="text-ink-mute mb-6">{error}</p>
           <a
@@ -45,6 +47,7 @@ export default function AuthCallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bone-light">
       <div className="text-center">
+        <BrandMark variant="onLight" className="h-14 w-auto mx-auto mb-6" />
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary mx-auto mb-4" />
         <p className="text-ink-mute">Signing in...</p>
       </div>

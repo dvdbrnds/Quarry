@@ -5,7 +5,7 @@ export interface Branding {
   brandName: string;
   primaryColor: string;
   accentColor: string;
-  logoUrl: string | null;
+  logoUrl: string;
   faviconUrl: string;
   schoolName: string;
   departmentName: string;
@@ -15,7 +15,7 @@ const DEFAULTS: Branding = {
   brandName: "Quarry",
   primaryColor: "#1a2744",
   accentColor: "#c9a84c",
-  logoUrl: null,
+  logoUrl: "/quarry-logo-light.png",
   faviconUrl: "/favicon.png",
   schoolName: "",
   departmentName: "Parking Authority",
@@ -34,7 +34,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           brandName: data.brand_name ?? DEFAULTS.brandName,
           primaryColor: data.primary_color || DEFAULTS.primaryColor,
           accentColor: data.accent_color || DEFAULTS.accentColor,
-          logoUrl: data.logo_url ?? null,
+          logoUrl: data.logo_url || DEFAULTS.logoUrl,
           faviconUrl: data.favicon_url || DEFAULTS.faviconUrl,
           schoolName: data.school_name ?? DEFAULTS.schoolName,
           departmentName: data.department_name ?? DEFAULTS.departmentName,

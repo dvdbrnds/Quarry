@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { initAuth, isAuthenticated, login, fetchCurrentUser, type AuthUser } from "../auth";
+import BrandMark from "./BrandMark";
 
 interface Props {
   children: (user: AuthUser) => React.ReactNode;
@@ -41,6 +42,7 @@ export default function AuthGuard({ children }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bone-light">
         <div className="text-center">
+          <BrandMark variant="onLight" className="h-14 w-auto mx-auto mb-6" />
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-primary mx-auto mb-4" />
           <p className="text-ink-mute">Loading...</p>
         </div>
@@ -52,6 +54,7 @@ export default function AuthGuard({ children }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bone-light">
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <BrandMark variant="onLight" className="h-12 w-auto mx-auto mb-4" />
           <h1 className="text-xl font-bold text-signal-red mb-4">Authentication Error</h1>
           <p className="text-ink-mute mb-6">Unable to verify your identity.</p>
           <button

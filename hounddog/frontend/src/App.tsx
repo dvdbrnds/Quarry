@@ -30,6 +30,7 @@ import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
 import type { AuthUser } from "./auth";
 import { UserContext } from "./UserContext";
 import { useBranding } from "./useBranding";
+import BrandMark from "./components/BrandMark";
 import { useState, useEffect, useRef } from "react";
 
 function RootRedirect() {
@@ -115,7 +116,7 @@ function AdminShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-1 shadow-md">
         <div className="flex items-center gap-2 mr-3 shrink-0">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
+          <BrandMark />
           {brand.brandName && (
             <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
               {brand.brandName}
@@ -247,7 +248,7 @@ function StudentShell({ user }: { user: AuthUser }) {
     <div className="min-h-screen">
       <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
         <div className="flex items-center gap-2 mr-4">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
+          <BrandMark />
           {brand.brandName && (
             <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
               {brand.brandName}

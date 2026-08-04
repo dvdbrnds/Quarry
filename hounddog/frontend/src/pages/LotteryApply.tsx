@@ -4,6 +4,7 @@ import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
+import BrandMark from "../components/BrandMark";
 
 const CAMPUS_LAT_THRESHOLD = 40.623;
 
@@ -298,7 +299,7 @@ function LotteryPage({ user }: { user: AuthUser }) {
       <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" />}
+            <BrandMark />
             <div>
               <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>
               <span className="text-xs text-white/50">Parking Permits</span>
