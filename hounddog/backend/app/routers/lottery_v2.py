@@ -32,7 +32,9 @@ from ..services.lottery_v2_runner import (
     class_year_eligible,
     manual_select_application,
     promote_from_waitlist,
+    repair_cycle_placements,
     run_waterfall_draw,
+    try_place_application,
 )
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
@@ -224,6 +226,20 @@ async def _maybe_auto_draw(db: AsyncSession, cycle: LotteryV2Cycle) -> None:
         LOTTERY_TIER_CODES as _LTC,
         build_tier_capacities,
     )
+
+    pending_total = (
+        await db.execute(
+            select(func.count())
+            .select_from(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == cycle.id,
+                LotteryV2Application.status == "pending",
+            )
+        )
+    ).scalar() or 0
+    # Avoid 1-person "draws" when leftover capacity is tiny
+    if pending_total < 10:
+        return
 
     pts = (
         await db.execute(
@@ -447,20 +463,25 @@ async def submit_application(
         is_test_entry=False,
     )
 
-    # If the draw already happened, place directly on the waitlist
+    # If the draw already happened, try open seats first — only waitlist if full
     if cycle.status == "drawn":
-        max_pos = (
-            await db.execute(
-                select(func.max(LotteryV2Application.waitlist_position)).where(
-                    LotteryV2Application.cycle_id == cycle.id
+        db.add(app)
+        await db.flush()
+        placed = await try_place_application(db, app, send_notification=True)
+        if not placed:
+            max_pos = (
+                await db.execute(
+                    select(func.max(LotteryV2Application.waitlist_position)).where(
+                        LotteryV2Application.cycle_id == cycle.id
+                    )
                 )
-            )
-        ).scalar() or 0
-        app.status = "waitlisted"
-        app.waitlist_position = max_pos + 1
-
-    db.add(app)
-    await db.flush()
+            ).scalar() or 0
+            app.status = "waitlisted"
+            app.waitlist_position = max_pos + 1
+            await db.flush()
+    else:
+        db.add(app)
+        await db.flush()
 
     # Opt into parking + emergency SMS now; Phase 23 expands to all AlertUs channels
     if data.sms_opt_in and phone:
@@ -469,7 +490,8 @@ async def submit_application(
         await _opt_in_alerts(db, name, user.email, phone)
 
     # Check if auto-draw threshold is reached
-    await _maybe_auto_draw(db, cycle)
+    if cycle.status == "open":
+        await _maybe_auto_draw(db, cycle)
 
     return await _app_to_read(db, app)
 
@@ -969,6 +991,32 @@ async def run_draw(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return result
+
+
+class RepairRequest(BaseModel):
+    send_notifications: bool = True
+
+
+@router.post("/cycles/{cycle_id}/repair")
+async def repair_draw(
+    cycle_id: uuid.UUID,
+    data: RepairRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Demote duplicate offers and place waitlisted applicants into open seats."""
+    opts = data or RepairRequest()
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+    if cycle.status != "drawn":
+        raise HTTPException(400, "Repair is only for drawn cycles")
+    try:
+        return await repair_cycle_placements(
+            db, cycle_id, send_notifications=opts.send_notifications
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @router.post("/cycles/{cycle_id}/seed")

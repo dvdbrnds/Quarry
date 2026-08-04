@@ -420,6 +420,31 @@ export default function LotteryV2Manager() {
               >
                 Run draw
               </Button>
+              <Button
+                disabled={busy || active.status !== "drawn"}
+                onClick={() => {
+                  if (!active) return;
+                  modal.confirm({
+                    title: `Repair placements for "${active.name}"?`,
+                    content:
+                      "Demotes duplicate selected offers (same email), then places waitlisted students into any open seats. Emails newly selected students by default.",
+                    okText: "Repair now",
+                    onOk: async () => {
+                      const data = await postAction(
+                        `/api/lottery-v2/cycles/${active.id}/repair`,
+                        { send_notifications: true },
+                      );
+                      if (data) {
+                        message.success(
+                          `Repair done: ${data.newly_selected} newly selected, ${data.duplicates_demoted} duplicates demoted, ${data.remaining_waitlisted} still waitlisted`,
+                        );
+                      }
+                    },
+                  });
+                }}
+              >
+                Repair waitlist
+              </Button>
               <Button disabled={busy} onClick={loadCapacityAudit}>
                 Capacity audit
               </Button>

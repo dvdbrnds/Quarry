@@ -104,6 +104,30 @@ def class_year_eligible(pt: PermitType, class_year: int) -> bool:
     return True
 
 
+def _as_uuid(value: Any) -> uuid.UUID | None:
+    """Normalize UUID / string UUID values from PG arrays and JSON."""
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _normalize_preferences(prefs: list[Any] | None) -> list[uuid.UUID]:
+    out: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for raw in prefs or []:
+        uid = _as_uuid(raw)
+        if uid is None or uid in seen:
+            continue
+        seen.add(uid)
+        out.append(uid)
+    return out
+
+
 def waterfall_place(
     applicants: list[WaterfallApplicant],
     tiers: dict[Any, TierCapacity],
@@ -114,6 +138,13 @@ def waterfall_place(
     tiers until one has remaining capacity; assign a lot within that tier.
     Returns (selected, waitlisted, warnings).
     """
+    # Accept both UUID and string keys in the tiers map
+    tiers_by_id: dict[uuid.UUID, TierCapacity] = {}
+    for key, tier in tiers.items():
+        uid = _as_uuid(key) or _as_uuid(getattr(tier, "permit_type_id", None))
+        if uid is not None:
+            tiers_by_id[uid] = tier
+
     ordered = sorted(applicants, key=lambda a: (a.class_year, a.created_at))
     selected: list[Placement] = []
     waitlisted: list[Placement] = []
@@ -122,8 +153,8 @@ def waterfall_place(
 
     for app in ordered:
         placed = False
-        for ptid in app.tier_preferences:
-            tier = tiers.get(ptid)
+        for ptid in _normalize_preferences(app.tier_preferences):
+            tier = tiers_by_id.get(ptid)
             if not tier or tier.remaining <= 0:
                 continue
 
@@ -187,8 +218,14 @@ def try_place_one(
     tiers: dict[Any, TierCapacity],
 ) -> Placement | None:
     """Attempt waterfall placement for a single waitlisted applicant (decline backfill)."""
-    for ptid in applicant.tier_preferences:
-        tier = tiers.get(ptid)
+    tiers_by_id: dict[uuid.UUID, TierCapacity] = {}
+    for key, tier in tiers.items():
+        uid = _as_uuid(key) or _as_uuid(getattr(tier, "permit_type_id", None))
+        if uid is not None:
+            tiers_by_id[uid] = tier
+
+    for ptid in _normalize_preferences(applicant.tier_preferences):
+        tier = tiers_by_id.get(ptid)
         if not tier or tier.remaining <= 0:
             continue
         lot = _pick_lot(tier, applicant.lot_preferences)
@@ -277,6 +314,30 @@ async def run_waterfall_draw(
             continue
         eligible_orm.append(app)
 
+    # One application per email — keep earliest; mark extras ineligible
+    filtered_duplicates = 0
+    by_email: dict[str, list[LotteryV2Application]] = {}
+    for app in eligible_orm:
+        key = (app.student_email or "").strip().lower() or f"sub:{app.student_sub}"
+        by_email.setdefault(key, []).append(app)
+    deduped: list[LotteryV2Application] = []
+    for key, group in by_email.items():
+        group_sorted = sorted(
+            group, key=lambda a: a.created_at or datetime.now(timezone.utc)
+        )
+        deduped.append(group_sorted[0])
+        for extra in group_sorted[1:]:
+            extra.status = "ineligible"
+            note = (
+                f"Duplicate application for {key}; kept earliest "
+                f"({group_sorted[0].id})."
+            )
+            extra.admin_notes = (
+                f"{extra.admin_notes}\n{note}".strip() if extra.admin_notes else note
+            )
+            filtered_duplicates += 1
+    eligible_orm = deduped
+
     # Unpaid citations filter
     filtered_citations = 0
     citation_clean: list[LotteryV2Application] = []
@@ -304,7 +365,9 @@ async def run_waterfall_draw(
                 continue
         citation_clean.append(app)
 
-    # Load all v2 permit types for capacity
+    # Capacity = live remaining minus seats already offered in this cycle
+    # (protects against partial/re-entrant draws)
+    tiers = await _tiers_with_offers_reserved(db, cycle_id)
     pts = (
         await db.execute(
             select(PermitType).where(
@@ -313,14 +376,14 @@ async def run_waterfall_draw(
             )
         )
     ).scalars().all()
-    tiers = await build_tier_capacities(db, list(pts))
+    pt_by_id = {pt.id: pt for pt in pts}
 
     applicants = [
         WaterfallApplicant(
             id=a.id,
             class_year=a.class_year or 9999,
             created_at=a.created_at or datetime.now(timezone.utc),
-            tier_preferences=list(a.tier_preferences or []),
+            tier_preferences=_normalize_preferences(a.tier_preferences),
             student_email=a.student_email,
             student_name=a.student_name,
         )
@@ -329,10 +392,14 @@ async def run_waterfall_draw(
 
     selected, waitlisted, warnings = waterfall_place(applicants, tiers)
 
+    if filtered_duplicates:
+        warnings.append(
+            f"Skipped {filtered_duplicates} duplicate application(s) (same email)."
+        )
+
     offer_days = cycle.offer_window_days or 5
     offer_expires = datetime.now(timezone.utc) + timedelta(days=offer_days)
     app_by_id = {a.id: a for a in citation_clean}
-    pt_by_id = {pt.id: pt for pt in pts}
 
     selected_for_notify: list[tuple[LotteryV2Application, PermitType]] = []
     waitlisted_for_notify: list[LotteryV2Application] = []
@@ -345,7 +412,8 @@ async def run_waterfall_draw(
         app.assigned_lot = p.assigned_lot
         app.offer_expires_at = offer_expires
         app.waitlist_position = None
-        pt = pt_by_id.get(p.assigned_permit_type_id)
+        pt_id = _as_uuid(p.assigned_permit_type_id)
+        pt = pt_by_id.get(pt_id) if pt_id else None
         if pt:
             selected_for_notify.append((app, pt))
 
@@ -428,6 +496,7 @@ async def run_waterfall_draw(
         "waitlisted_count": len(waitlisted),
         "filtered_test_entries": filtered_test,
         "filtered_unpaid_citations": filtered_citations,
+        "filtered_duplicates": filtered_duplicates,
         "warnings": warnings,
         "run_at": now.isoformat(),
         "run_by": run_by,
@@ -458,10 +527,15 @@ async def _tiers_with_offers_reserved(
         )
     ).scalars().all()
     for app in selected_apps:
-        if not app.assigned_permit_type_id:
+        ptid = _as_uuid(app.assigned_permit_type_id)
+        if not ptid:
             continue
-        tier = tiers.get(app.assigned_permit_type_id)
+        tier = tiers.get(ptid)
         if not tier:
+            continue
+        # Accepted apps already created an active Permit — counted in build_tier_capacities.
+        # Only reserve seats still held as un-accepted offers.
+        if app.status == "accepted":
             continue
         tier.remaining = max(0, tier.remaining - 1)
         if app.assigned_lot and app.assigned_lot in tier.lot_remaining:
@@ -487,6 +561,181 @@ async def _renumber_waitlist(db: AsyncSession, cycle_id: uuid.UUID) -> None:
     ).scalars().all()
     for i, app in enumerate(waitlisted, 1):
         app.waitlist_position = i
+
+
+async def try_place_application(
+    db: AsyncSession,
+    app: LotteryV2Application,
+    *,
+    send_notification: bool = True,
+) -> bool:
+    """Try to place one pending/waitlisted app into remaining capacity. Returns True if selected."""
+    if app.status not in ("pending", "waitlisted"):
+        return False
+    cycle = await db.get(LotteryV2Cycle, app.cycle_id)
+    if not cycle:
+        return False
+
+    tiers = await _tiers_with_offers_reserved(db, app.cycle_id)
+    applicant = WaterfallApplicant(
+        id=app.id,
+        class_year=app.class_year or 9999,
+        created_at=app.created_at or datetime.now(timezone.utc),
+        tier_preferences=_normalize_preferences(app.tier_preferences),
+        student_email=app.student_email,
+        student_name=app.student_name,
+    )
+    placement = try_place_one(applicant, tiers)
+    if not placement:
+        return False
+
+    offer_days = cycle.offer_window_days or 5
+    app.status = "selected"
+    app.assigned_permit_type_id = placement.assigned_permit_type_id
+    app.assigned_lot = placement.assigned_lot
+    app.waitlist_position = None
+    app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
+    note = f"Placed into open capacity at {datetime.now(timezone.utc).isoformat()}"
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+
+    await _renumber_waitlist(db, app.cycle_id)
+    await db.flush()
+
+    pt = await db.get(PermitType, placement.assigned_permit_type_id)
+    if (
+        send_notification
+        and pt
+        and app.student_email
+        and not app.is_test_entry
+        and app.offer_expires_at
+    ):
+        try:
+            await send_lottery_selection_email(
+                recipient_email=app.student_email,
+                student_name=app.student_name,
+                permit_type_label=pt.label,
+                price=str(pt.price),
+                deadline=app.offer_expires_at.strftime("%B %d, %Y"),
+                portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
+                assigned_lot=app.assigned_lot,
+                lot_assignments=list(pt.lot_assignments or []),
+            )
+        except Exception as e:
+            logger.error("Failed to notify placed applicant %s: %s", app.id, e)
+    return True
+
+
+async def repair_cycle_placements(
+    db: AsyncSession,
+    cycle_id: uuid.UUID,
+    *,
+    send_notifications: bool = True,
+) -> dict:
+    """Fix a drawn cycle: collapse duplicate offers, then place waitlisted into open seats."""
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise ValueError("Cycle not found")
+
+    apps = list(
+        (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id
+                )
+            )
+        ).scalars().all()
+    )
+
+    # Collapse duplicate selected/accepted rows per email — keep accepted, else best rank
+    winners = [a for a in apps if a.status in ("selected", "accepted")]
+    by_email: dict[str, list[LotteryV2Application]] = {}
+    for app in winners:
+        key = (app.student_email or "").strip().lower() or f"sub:{app.student_sub}"
+        by_email.setdefault(key, []).append(app)
+
+    duplicates_demoted = 0
+    for key, group in by_email.items():
+        if len(group) < 2:
+            continue
+        group_sorted = sorted(
+            group,
+            key=lambda a: (
+                0 if a.status == "accepted" else 1,
+                a.lottery_rank if a.lottery_rank is not None else 10_000,
+                a.created_at or datetime.now(timezone.utc),
+            ),
+        )
+        keep = group_sorted[0]
+        for extra in group_sorted[1:]:
+            if extra.status == "accepted":
+                continue  # never demote an accepted/paid permit
+            extra.status = "waitlisted"
+            extra.assigned_permit_type_id = None
+            extra.assigned_lot = None
+            extra.offer_expires_at = None
+            extra.lottery_rank = None
+            note = (
+                f"Repair: duplicate offer demoted; kept {keep.id} "
+                f"({keep.status})."
+            )
+            extra.admin_notes = (
+                f"{extra.admin_notes}\n{note}".strip() if extra.admin_notes else note
+            )
+            duplicates_demoted += 1
+
+    await db.flush()
+
+    # Place waitlisted in seniority order into remaining capacity
+    waitlisted = [
+        a
+        for a in (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status == "waitlisted",
+                )
+            )
+        ).scalars().all()
+    ]
+    waitlisted.sort(
+        key=lambda a: (
+            a.class_year or 9999,
+            a.created_at or datetime.now(timezone.utc),
+        )
+    )
+
+    newly_selected = 0
+    newly_selected_emails: list[str] = []
+    for app in waitlisted:
+        # Refresh capacity each time
+        placed = await try_place_application(
+            db, app, send_notification=send_notifications
+        )
+        if placed:
+            newly_selected += 1
+            newly_selected_emails.append(app.student_email)
+
+    await _renumber_waitlist(db, cycle_id)
+    await db.flush()
+
+    remaining_waitlisted = (
+        await db.execute(
+            select(func.count())
+            .select_from(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status == "waitlisted",
+            )
+        )
+    ).scalar() or 0
+
+    return {
+        "cycle_id": str(cycle_id),
+        "duplicates_demoted": duplicates_demoted,
+        "newly_selected": newly_selected,
+        "newly_selected_emails": newly_selected_emails,
+        "remaining_waitlisted": remaining_waitlisted,
+    }
 
 
 async def bump_waitlist_to_top(
