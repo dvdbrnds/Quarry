@@ -143,6 +143,12 @@ export default function ActivityLog() {
             { label: "Update", value: "PUT" }, { label: "Patch", value: "PATCH" },
             { label: "Delete", value: "DELETE" },
           ]} />
+        <Button
+          size="small"
+          onClick={() => { setSearch("Started lottery payment"); setFilterAction("POST"); setPage(1); }}
+        >
+          Payment started
+        </Button>
         {(filterUser || filterResource || filterAction || search) && (
           <Button type="link" danger size="small"
             onClick={() => { setFilterUser(""); setFilterResource(""); setFilterAction(""); setSearch(""); setPage(1); }}>

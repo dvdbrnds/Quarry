@@ -123,7 +123,7 @@ def _generate_summary(method: str, resource_type: str, resource_id: str | None,
         return f"Submitted lottery application{f' ({campus})' if campus else ''}"
 
     if method == "POST" and "/lottery-v2/applications/" in path and path.rstrip("/").endswith("/accept"):
-        return "Accepted lottery permit offer"
+        return "Started lottery payment (Accept & Pay → Stripe)"
     if method == "POST" and "/lottery-v2/applications/" in path and path.rstrip("/").endswith("/decline"):
         return "Declined lottery permit offer"
 

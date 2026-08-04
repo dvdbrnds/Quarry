@@ -740,6 +740,11 @@ async def accept_offer(
         )
         app.status = "accepted"
         app.student_name = display_name
+        note = (
+            f"Fee-exempt claim by {user.email or user.sub} at "
+            f"{datetime.now(timezone.utc).isoformat()} — {pt.label} (no payment)"
+        )
+        app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
         await db.flush()
         return {
             "status": "accepted",
@@ -903,6 +908,14 @@ async def accept_offer(
         from .vouchers import record_voucher_usage
         await record_voucher_usage(db, applied_voucher, app.student_name, app.student_email, user.sub, pt.code, pt.price, discounted_price)
         await db.flush()
+
+    # Mark payment-stage entry on the application for admin case view
+    note = (
+        f"Payment started (Stripe checkout {session.id}) by {user.email or user.sub} at "
+        f"{datetime.now(timezone.utc).isoformat()} — {pt.label} ${discounted_price}"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+    await db.flush()
 
     return {"checkout_url": session.url, "session_id": session.id}
 
