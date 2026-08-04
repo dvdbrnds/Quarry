@@ -1094,8 +1094,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
             {step === "intake" && !isCommuterPath && commuterTiers.length > 0 && (
               <Card title="Commuter Permits">
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-gray-500 mb-2">
                   Commuter parking permits are available for direct purchase — no lottery required.
+                </p>
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                  These permits are for <strong>commuters only</strong>. We verify eligibility — do not buy one if you live on campus.
                 </p>
                 <div className="space-y-3">
                   {commuterTiers.map((tier) => (
@@ -1163,6 +1166,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         ? "Map colors: blue = full-time, amber = after 4 PM & weekends, teal = street. Hover a permit to emphasize its lots."
                         : "Spots remaining after the lottery draw. Purchase directly — first come, first served."}
                     </p>
+                    {isCommuterPath && (
+                      <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                        These permits are for <strong>commuters only</strong>. We verify eligibility — do not buy one if you live on campus.
+                      </p>
+                    )}
 
                     {/* Voucher code input */}
                     <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
