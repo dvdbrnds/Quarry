@@ -90,6 +90,14 @@ function emailKey(app: Application): string {
   return (app.student_email || "").trim().toLowerCase() || app.id;
 }
 
+/** True if this application ranked (or was assigned) the given permit-type label. */
+function wantsTier(app: Application, tierLabel: string): boolean {
+  if (!tierLabel) return false;
+  if (app.assigned_permit_type_label === tierLabel) return true;
+  if (app.first_choice_label === tierLabel) return true;
+  return (app.tier_preference_labels || []).includes(tierLabel);
+}
+
 function buildComplaintSummary(app: Application, siblings: Application[]): string {
   const prefs = app.tier_preference_labels || [];
   const first = prefs[0] || app.first_choice_label || "—";
@@ -370,10 +378,11 @@ export default function LotteryV2Manager() {
 
   const deskFiltered = useMemo(() => {
     const q = deskQuery.trim().toLowerCase();
-    return deskRows.filter((a) => {
+    const rows = deskRows.filter((a) => {
       if (deskTier) {
         if (a.status === "waitlisted") {
-          if ((a.first_choice_label || "") !== deskTier) return false;
+          // Waiting for this permit type if they ranked it anywhere
+          if (!wantsTier(a, deskTier)) return false;
         } else if (a.assigned_permit_type_label !== deskTier) {
           return false;
         }
@@ -395,6 +404,15 @@ export default function LotteryV2Manager() {
         (a.plate || "").toLowerCase().includes(q)
       );
     });
+
+    if (deskFilter === "waitlist") {
+      return [...rows].sort((a, b) => {
+        const pa = a.waitlist_position ?? 10_000;
+        const pb = b.waitlist_position ?? 10_000;
+        return pa - pb;
+      });
+    }
+    return rows;
   }, [deskRows, deskQuery, deskFilter, deskTier]);
 
   const caseSiblings = useMemo(() => {
@@ -407,14 +425,16 @@ export default function LotteryV2Manager() {
     const labels = Object.keys(caps).length
       ? Object.keys(caps)
       : Object.keys(results?.by_tier || {});
+    const waitlisted = deskRows.filter((a) => a.status === "waitlisted");
     return labels.map((label) => {
       const cap = caps[label];
       const count =
         cap?.unique_placed ??
         (results?.by_tier?.[label]?.length ?? 0);
-      return { label, count, cap };
+      const waitCount = waitlisted.filter((a) => wantsTier(a, label)).length;
+      return { label, count, waitCount, cap };
     });
-  }, [results]);
+  }, [results, deskRows]);
 
   async function copyCaseSummary(app: Application) {
     const siblings = appsByEmail.get(emailKey(app)) || [app];
@@ -926,34 +946,61 @@ export default function LotteryV2Manager() {
               <div className="flex flex-wrap gap-2 mb-3">
                 <Button
                   size="small"
-                  type={!deskTier ? "primary" : "default"}
-                  onClick={() => setDeskTier(null)}
+                  type={!deskTier && deskFilter !== "waitlist" ? "primary" : "default"}
+                  onClick={() => {
+                    setDeskTier(null);
+                    setDeskFilter("all");
+                  }}
                 >
                   All tiers
                 </Button>
-                {tierChips.map(({ label, count, cap }) => (
-                  <Button
-                    key={label}
-                    size="small"
-                    type={deskTier === label ? "primary" : "default"}
-                    danger={!!cap?.over_capacity}
-                    onClick={() => setDeskTier((t) => (t === label ? null : label))}
-                  >
-                    {label.replace(/ Resident$/i, "")}: {count}
-                    {cap ? ` / ${cap.remaining_vs_active} open` : ""}
-                  </Button>
-                ))}
+                {tierChips.map(({ label, count, waitCount, cap }) => {
+                  const short = label.replace(/ Resident$/i, "");
+                  const activeChip = deskTier === label && deskFilter === "waitlist";
+                  return (
+                    <Button
+                      key={label}
+                      size="small"
+                      type={activeChip ? "primary" : "default"}
+                      danger={!!cap?.over_capacity}
+                      title={`Click to view the waitlist for ${short}`}
+                      onClick={() => {
+                        if (activeChip) {
+                          setDeskTier(null);
+                          setDeskFilter("all");
+                        } else {
+                          setDeskTier(label);
+                          setDeskFilter("waitlist");
+                        }
+                      }}
+                    >
+                      {short}: {count} placed
+                      {waitCount > 0 ? ` · ${waitCount} wait` : ""}
+                      {cap && waitCount === 0 ? ` · ${cap.remaining_vs_active} open` : ""}
+                    </Button>
+                  );
+                })}
                 <Button
                   size="small"
-                  type={deskTier === "__waitlist__" ? "primary" : "default"}
+                  type={!deskTier && deskFilter === "waitlist" ? "primary" : "default"}
                   onClick={() => {
                     setDeskTier(null);
                     setDeskFilter("waitlist");
                   }}
                 >
-                  Waitlist: {results?.live?.waitlisted_count ?? results?.waitlisted?.length ?? 0}
+                  All waitlists: {results?.live?.waitlisted_count ?? results?.waitlisted?.length ?? 0}
                 </Button>
               </div>
+
+              {deskFilter === "waitlist" && deskTier && (
+                <Alert
+                  type="info"
+                  showIcon
+                  className="mb-3"
+                  message={`Waitlist for ${deskTier.replace(/ Resident$/i, "")}`}
+                  description="Students still waiting who ranked this permit type (any preference). Ordered by waitlist position. Click the tier again to clear."
+                />
+              )}
 
               <div className="flex flex-wrap gap-2 mb-4">
                 {(
