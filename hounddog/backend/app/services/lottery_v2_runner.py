@@ -794,7 +794,7 @@ async def repair_cycle_placements(
             continue
         seats = max(0, tier.remaining)  # max_capacity − active permits
         group_sorted = sorted(group, key=_seniority_key)
-        keep, excess = group_sorted[:seats], group_sorted[seats:]
+        excess = group_sorted[seats:]
         for app in excess:
             app.status = "waitlisted"
             app.assigned_permit_type_id = None
