@@ -258,10 +258,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
   const [externalLot, setExternalLot] = useState<Lot | null>(null);
   const [commuterTiers, setCommuterTiers] = useState<Tier[]>([]);
-  const [voucherCode, setVoucherCode] = useState("");
-  const [voucherValid, setVoucherValid] = useState<{ discount_type: string; discount_value: number; message: string } | null>(null);
-  const [voucherError, setVoucherError] = useState("");
-  const [validatingVoucher, setValidatingVoucher] = useState(false);
 
   /** All eligible path options (map + choose); ranking is intentional and separate */
   const eligibleTiers = tiers;
@@ -536,39 +532,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     setRanked(next);
   }
 
-  async function validateVoucher(permitTypeCode: string) {
-    if (!voucherCode.trim()) return;
-    setValidatingVoucher(true);
-    setVoucherError("");
-    setVoucherValid(null);
-    try {
-      const headers = await authHeadersAs(impersonateEmail);
-      const res = await fetch("/api/vouchers/validate", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ code: voucherCode.trim(), permit_type_code: permitTypeCode }),
-      });
-      const data = await res.json();
-      if (data.valid) {
-        setVoucherValid({ discount_type: data.discount_type, discount_value: data.discount_value, message: data.message });
-        setVoucherError("");
-      } else {
-        setVoucherValid(null);
-        setVoucherError(data.message || "Invalid voucher code.");
-      }
-    } catch {
-      setVoucherError("Failed to validate voucher.");
-    } finally {
-      setValidatingVoucher(false);
-    }
-  }
-
-  function clearVoucher() {
-    setVoucherCode("");
-    setVoucherValid(null);
-    setVoucherError("");
-  }
-
   async function purchaseCommuterPermit(tier: Tier) {
     if (!classYear || !plate.trim() || !phone.trim()) return;
     setSubmitting(true);
@@ -585,7 +548,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           class_year: classYear,
           phone: phone.trim(),
           sms_opt_in: smsOptIn,
-          voucher_code: voucherValid ? voucherCode.trim() : undefined,
         }),
       });
       if (!res.ok) {
@@ -599,8 +561,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       }
       if (data.fee_exempt) {
         message.success("Your permit has been issued — no charge (fee exempt).");
-      } else if (data.voucher) {
-        message.success("Your permit has been issued — voucher applied, no charge.");
       } else {
         message.success("Permit purchased");
       }
@@ -725,7 +685,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       const res = await fetch(`/api/lottery-v2/applications/${application.id}/accept`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(voucherValid ? { voucher_code: voucherCode.trim() } : {}),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -966,35 +926,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           Offer expires {new Date(application.offer_expires_at).toLocaleDateString()}
                         </p>
                       )}
-
-                      {/* Voucher code input for lottery accept */}
-                      <div className="p-2 bg-white rounded border border-dashed border-gray-300">
-                        <p className="text-xs font-medium text-gray-600 mb-0.5">Program discount</p>
-                        <p className="text-xs text-gray-500 mb-2">Some specialty programs subsidize parking. Your program director will have provided you with a code if applicable.</p>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            className="flex-1 px-2 py-1 border rounded text-sm uppercase"
-                            placeholder="Enter code"
-                            value={voucherCode}
-                            onChange={(e) => { setVoucherCode(e.target.value); setVoucherValid(null); setVoucherError(""); }}
-                            disabled={!!voucherValid}
-                          />
-                          {voucherValid ? (
-                            <button className="px-2 py-1 text-xs bg-gray-200 rounded" onClick={clearVoucher}>Clear</button>
-                          ) : (
-                            <button
-                              className="px-2 py-1 text-xs bg-brand-primary text-white rounded disabled:opacity-50"
-                              onClick={() => application.assigned_permit_type_code && validateVoucher(application.assigned_permit_type_code)}
-                              disabled={!voucherCode.trim() || validatingVoucher}
-                            >
-                              {validatingVoucher ? "..." : "Apply"}
-                            </button>
-                          )}
-                        </div>
-                        {voucherValid && <p className="text-xs text-green-600 mt-1 mb-0">{voucherValid.message}</p>}
-                        {voucherError && <p className="text-xs text-red-500 mt-1 mb-0">{voucherError}</p>}
-                      </div>
 
                       <Space>
                         <Button type="primary" loading={accepting} onClick={acceptOffer}>
@@ -1286,44 +1217,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       />
                     )}
 
-                    {/* Voucher code input */}
-                    <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                      <p className="text-sm font-medium text-gray-600 mb-0.5">Program discount</p>
-                      <p className="text-xs text-gray-500 mb-3">Some specialty programs subsidize parking. Your program director will have provided you with a code if applicable.</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          className="flex-1 px-3 py-1.5 border rounded text-sm uppercase"
-                          placeholder="Enter code"
-                          value={voucherCode}
-                          onChange={(e) => { setVoucherCode(e.target.value); setVoucherValid(null); setVoucherError(""); }}
-                          disabled={!!voucherValid}
-                        />
-                        {voucherValid ? (
-                          <button
-                            className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300"
-                            onClick={clearVoucher}
-                          >
-                            Clear
-                          </button>
-                        ) : (
-                          <button
-                            className="px-3 py-1.5 text-sm bg-brand-primary text-white rounded disabled:opacity-50"
-                            onClick={() => tiers.length > 0 && validateVoucher(tiers[0].code)}
-                            disabled={!voucherCode.trim() || validatingVoucher}
-                          >
-                            {validatingVoucher ? "..." : "Apply"}
-                          </button>
-                        )}
-                      </div>
-                      {voucherValid && (
-                        <p className="text-xs text-green-600 mt-1 mb-0">{voucherValid.message}</p>
-                      )}
-                      {voucherError && (
-                        <p className="text-xs text-red-500 mt-1 mb-0">{voucherError}</p>
-                      )}
-                    </div>
-
                     <ul className="space-y-2 list-none p-0 m-0">
                       {tiers.map((tier, i) => {
                         const colors = tierColor(tier, i);
@@ -1364,22 +1257,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   )}
                                 </p>
                                 <p className="m-0 text-xs text-gray-500 mt-1">
-                                  {voucherValid ? (
-                                    <>
-                                      <span className="line-through">${tier.list_price ?? tier.price}</span>{" "}
-                                      <span className="text-green-600 font-medium">
-                                        {voucherValid.discount_type === "full"
-                                          ? "FREE"
-                                          : voucherValid.discount_type === "percent"
-                                            ? `$${(Number(tier.list_price ?? tier.price) * (100 - voucherValid.discount_value) / 100).toFixed(0)}`
-                                            : `$${Math.max(0, Number(tier.list_price ?? tier.price) - voucherValid.discount_value).toFixed(0)}`}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    formatTierPrice(tier)
-                                  )}
+                                  {formatTierPrice(tier)}
                                 </p>
-                                {tier.discount_label && !voucherValid && (
+                                {tier.discount_label && (
                                   <p className="m-0 text-[10px] text-green-700 mt-0.5">{tier.discount_label} applied</p>
                                 )}
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
