@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { api, Permit, ImportResult } from "../api";
+import { api, Permit } from "../api";
 import { authHeaders } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Upload, Checkbox,
+  Space, Tabs, Alert, App, Checkbox,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -294,7 +294,6 @@ export default function Permits() {
   const { modal, message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const initTab =
     location.hash === "#lottery" || location.hash === "#lottery-v2"
@@ -320,9 +319,6 @@ export default function Permits() {
   const [sort, setSort] = useState("");
   const [editing, setEditing] = useState<Permit | null>(null);
   const [creating, setCreating] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [importing, setImporting] = useState(false);
   const [stats, setStats] = useState<PermitStats | null>(null);
   const [permitTypes, setPermitTypes] = useState<PermitTypeOption[]>([]);
   const [lots, setLots] = useState<LotOption[]>([]);
@@ -400,40 +396,6 @@ export default function Permits() {
     });
   }
 
-  async function handleImport() {
-    const file = fileRef.current?.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const lines = text.split("\n").filter(Boolean);
-      if (lines.length < 2) return;
-      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
-      const permits = lines.slice(1).map(line => {
-        const vals = line.split(",");
-        const row: Record<string, string> = {};
-        headers.forEach((h, i) => (row[h] = vals[i]?.trim() ?? ""));
-        return {
-          plate_normalized: row.plate_normalized || row.plate || "",
-          owner_name: row.owner_name || row.name || "",
-          permit_number: row.permit_number || row.student_id || "",
-          permit_type: row.permit_type || "student",
-          permit_status: row.permit_status || row.status || "active",
-          lot_zone: row.lot_zone || row.lot || "",
-        };
-      });
-      const result = await api.permits.importJson(permits);
-      setImportResult(result);
-      setShowImport(false);
-      message.success(`Imported: ${result.inserted} new, ${result.updated} updated`);
-      load(); loadMeta();
-    } catch {
-      message.error("Import failed");
-    } finally {
-      setImporting(false);
-    }
-  }
-
   const isExpiringSoon = (p: Permit) => {
     if (!p.end_date || p.status !== "active") return false;
     const diff = (new Date(p.end_date).getTime() - Date.now()) / 86_400_000;
@@ -506,7 +468,6 @@ export default function Permits() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold">Permits</h2>
                   <Space>
-                    <Button onClick={() => setShowImport(true)}>Import CSV</Button>
                     <Button onClick={() => downloadWithAuth("/api/permits/export/csv", "permits.csv")}>Export CSV</Button>
                     <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>
                   </Space>
@@ -594,12 +555,6 @@ export default function Permits() {
                   )}
                 </Space>
 
-                {importResult && (
-                  <Alert className="mb-4" type="success" closable onClose={() => setImportResult(null)}
-                    message={`Imported: ${importResult.inserted} new, ${importResult.updated} updated, ${importResult.skipped} skipped`}
-                  />
-                )}
-
                 {(creating || editing) && (
                   <PermitForm initial={editing ?? undefined} permitTypes={permitTypes} lots={lots}
                     onSave={() => { setCreating(false); setEditing(null); load(); loadMeta(); }}
@@ -648,14 +603,6 @@ export default function Permits() {
                   }}
                   scroll={{ x: 1200 }}
                 />
-
-                <Modal open={showImport} title="Import Permits (CSV)" onCancel={() => setShowImport(false)}
-                  okText="Import" confirmLoading={importing} onOk={handleImport}>
-                  <p className="text-sm text-ink-mute mb-4">
-                    CSV columns: <code>plate_normalized</code>, <code>owner_name</code>, <code>permit_number</code>, <code>permit_type</code>, <code>lot_zone</code>
-                  </p>
-                  <input ref={fileRef} type="file" accept=".csv" />
-                </Modal>
               </div>
             ),
           },
