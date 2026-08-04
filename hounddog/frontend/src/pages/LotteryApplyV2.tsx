@@ -136,6 +136,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   accepted: { text: "Permit active", color: "lime" },
   expired: { text: "Offer expired", color: "default" },
   declined: { text: "Declined", color: "default" },
+  superseded: { text: "Superseded", color: "default" },
   ineligible: { text: "Ineligible", color: "red" },
 };
 

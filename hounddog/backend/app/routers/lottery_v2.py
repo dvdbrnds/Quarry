@@ -540,10 +540,39 @@ async def my_application(
                 LotteryV2Application.student_sub == user.sub,
             )
         )
-    ).scalar_one_or_none()
+    ).scalars().all()
+    if not app:
+        # Fallback: match by email when duplicate rows used different subs
+        email = (user.email or "").strip().lower()
+        if email:
+            app = (
+                await db.execute(
+                    select(LotteryV2Application).where(
+                        LotteryV2Application.cycle_id == cycle.id,
+                        func.lower(LotteryV2Application.student_email) == email,
+                    )
+                )
+            ).scalars().all()
     if not app:
         return None
-    return await _app_to_read(db, app)
+    priority = {
+        "accepted": 0,
+        "selected": 1,
+        "pending": 2,
+        "waitlisted": 3,
+        "expired": 4,
+        "declined": 5,
+        "ineligible": 6,
+        "superseded": 7,
+    }
+    best = sorted(
+        app,
+        key=lambda a: (
+            priority.get(a.status, 99),
+            a.created_at or datetime(1970, 1, 1, tzinfo=timezone.utc),
+        ),
+    )[0]
+    return await _app_to_read(db, best)
 
 
 @router.post("/applications/{application_id}/accept")
@@ -1389,9 +1418,8 @@ async def get_results(
     ).scalar_one_or_none()
 
     pt_by_id = await _permit_type_map(db)
-    apps = [
-        await _app_to_read(db, a, pt_by_id)
-        for a in (
+    apps_raw = list(
+        (
             await db.execute(
                 select(LotteryV2Application)
                 .where(LotteryV2Application.cycle_id == cycle_id)
@@ -1401,15 +1429,64 @@ async def get_results(
                 )
             )
         ).scalars().all()
+    )
+    apps = [await _app_to_read(db, a, pt_by_id) for a in apps_raw]
+
+    # Live unique winners — one row per email for placements view
+    winner_reads = [
+        a for a in apps if a.status in ("selected", "accepted") and a.assigned_permit_type_label
     ]
+    seen_winner_emails: set[str] = set()
+    unique_winners: list = []
+    for a in winner_reads:
+        key = (a.student_email or "").strip().lower() or a.id
+        if key in seen_winner_emails:
+            continue
+        seen_winner_emails.add(key)
+        unique_winners.append(a)
 
     by_tier: dict[str, list] = {}
-    waitlisted = []
-    for a in apps:
-        if a.status in ("selected", "accepted") and a.assigned_permit_type_label:
-            by_tier.setdefault(a.assigned_permit_type_label, []).append(a)
-        elif a.status == "waitlisted":
-            waitlisted.append(a)
+    for a in unique_winners:
+        by_tier.setdefault(a.assigned_permit_type_label or "(none)", []).append(a)
+
+    # True waitlist — exclude superseded and anyone who already won
+    waitlisted = [
+        a
+        for a in apps
+        if a.status == "waitlisted"
+        and (a.student_email or "").strip().lower() not in seen_winner_emails
+    ]
+
+    # Capacity context per tier label
+    tier_capacity: dict[str, dict] = {}
+    for pt in pt_by_id.values():
+        active_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(Permit)
+                .where(
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalar() or 0
+        filled = len(by_tier.get(pt.label, []))
+        selected_only = sum(
+            1 for a in by_tier.get(pt.label, []) if a.status == "selected"
+        )
+        max_cap = pt.max_capacity or 0
+        remaining = max(0, max_cap - active_count)
+        tier_capacity[pt.label] = {
+            "max_capacity": max_cap,
+            "active_permits": active_count,
+            "remaining_vs_active": remaining,
+            "unique_placed": filled,
+            "over_capacity": selected_only > remaining or (max_cap > 0 and filled > max_cap),
+        }
+
+    live_selected = len(unique_winners)
+    live_waitlisted = len(waitlisted)
 
     return {
         "cycle": await _cycle_to_read(db, cycle),
@@ -1425,6 +1502,12 @@ async def get_results(
         }
         if audit
         else None,
+        "live": {
+            "selected_count": live_selected,
+            "waitlisted_count": live_waitlisted,
+            "accepted_count": sum(1 for a in unique_winners if a.status == "accepted"),
+            "tier_capacity": tier_capacity,
+        },
         "by_tier": {k: [x.model_dump(mode="json") for x in v] for k, v in by_tier.items()},
         "waitlisted": [x.model_dump(mode="json") for x in waitlisted],
         "applications": [a.model_dump(mode="json") for a in apps],

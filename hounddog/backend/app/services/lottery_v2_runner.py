@@ -625,13 +625,49 @@ async def try_place_application(
     return True
 
 
+def _email_key(app: LotteryV2Application) -> str:
+    return (app.student_email or "").strip().lower() or f"sub:{app.student_sub}"
+
+
+def _seniority_key(app: LotteryV2Application) -> tuple:
+    return (
+        app.class_year if app.class_year is not None else 9999,
+        app.created_at or datetime.now(timezone.utc),
+        app.lottery_rank if app.lottery_rank is not None else 10_000,
+    )
+
+
+async def _renumber_winner_ranks(db: AsyncSession, cycle_id: uuid.UUID) -> None:
+    """Assign contiguous lottery_rank values for current winners (display + ordering)."""
+    winners = list(
+        (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status.in_(["selected", "accepted"]),
+                )
+            )
+        ).scalars().all()
+    )
+    winners.sort(key=_seniority_key)
+    for i, app in enumerate(winners, 1):
+        app.lottery_rank = i
+
+
 async def repair_cycle_placements(
     db: AsyncSession,
     cycle_id: uuid.UUID,
     *,
     send_notifications: bool = True,
 ) -> dict:
-    """Fix a drawn cycle: collapse duplicate offers, then place waitlisted into open seats."""
+    """Fix a drawn cycle so placements match capacity and unique students.
+
+    1. Collapse duplicate selected/accepted rows per email
+    2. Supersede waitlist rows for emails that already won
+    3. Demote excess *selected* offers over live remaining capacity; re-place via waterfall
+    4. Place remaining true waitlisted into open seats
+    5. Renumber waitlist + winner ranks for a clean admin view
+    """
     cycle = await db.get(LotteryV2Cycle, cycle_id)
     if not cycle:
         raise ValueError("Cycle not found")
@@ -646,36 +682,35 @@ async def repair_cycle_placements(
         ).scalars().all()
     )
 
-    # Collapse duplicate selected/accepted rows per email — keep accepted, else best rank
+    # ── 1. Collapse duplicate selected/accepted rows per email ───────────────
     winners = [a for a in apps if a.status in ("selected", "accepted")]
     by_email: dict[str, list[LotteryV2Application]] = {}
     for app in winners:
-        key = (app.student_email or "").strip().lower() or f"sub:{app.student_sub}"
-        by_email.setdefault(key, []).append(app)
+        by_email.setdefault(_email_key(app), []).append(app)
 
     duplicates_demoted = 0
-    for key, group in by_email.items():
+    for _key, group in by_email.items():
         if len(group) < 2:
             continue
         group_sorted = sorted(
             group,
             key=lambda a: (
                 0 if a.status == "accepted" else 1,
-                a.lottery_rank if a.lottery_rank is not None else 10_000,
-                a.created_at or datetime.now(timezone.utc),
+                *_seniority_key(a),
             ),
         )
         keep = group_sorted[0]
         for extra in group_sorted[1:]:
             if extra.status == "accepted":
                 continue  # never demote an accepted/paid permit
-            extra.status = "waitlisted"
+            extra.status = "superseded"
             extra.assigned_permit_type_id = None
             extra.assigned_lot = None
             extra.offer_expires_at = None
             extra.lottery_rank = None
+            extra.waitlist_position = None
             note = (
-                f"Repair: duplicate offer demoted; kept {keep.id} "
+                f"Repair: duplicate offer superseded; kept {keep.id} "
                 f"({keep.status})."
             )
             extra.admin_notes = (
@@ -685,9 +720,9 @@ async def repair_cycle_placements(
 
     await db.flush()
 
-    # Who already has a real offer/permit — skip their duplicate waitlist rows
+    # Refresh winner set after demotions
     winner_emails = {
-        (a.student_email or "").strip().lower()
+        _email_key(a)
         for a in (
             await db.execute(
                 select(LotteryV2Application).where(
@@ -696,10 +731,107 @@ async def repair_cycle_placements(
                 )
             )
         ).scalars().all()
-        if (a.student_email or "").strip()
     }
 
-    # Place waitlisted in published waitlist order (#1 first)
+    # ── 2. Supersede phantom waitlist rows (same email already won) ───────────
+    waitlisted_rows = list(
+        (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status == "waitlisted",
+                )
+            )
+        ).scalars().all()
+    )
+    superseded_waitlist = 0
+    for app in waitlisted_rows:
+        email = _email_key(app)
+        if email in winner_emails:
+            app.status = "superseded"
+            app.waitlist_position = None
+            app.lottery_rank = None
+            note = "Repair: superseded — student already has a selected/accepted offer."
+            app.admin_notes = (
+                f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+            )
+            superseded_waitlist += 1
+
+    await db.flush()
+
+    # ── 3. Enforce live remaining capacity on un-accepted selected offers ─────
+    pts = (
+        await db.execute(
+            select(PermitType).where(
+                PermitType.code.in_(LOTTERY_TIER_CODES),
+                PermitType.is_active.is_(True),
+            )
+        )
+    ).scalars().all()
+    base_tiers = await build_tier_capacities(db, list(pts))
+    capacity_demoted = 0
+    demoted_for_replace: list[LotteryV2Application] = []
+
+    selected_apps = list(
+        (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status == "selected",
+                )
+            )
+        ).scalars().all()
+    )
+    by_tier: dict[uuid.UUID, list[LotteryV2Application]] = {}
+    for app in selected_apps:
+        ptid = _as_uuid(app.assigned_permit_type_id)
+        if ptid:
+            by_tier.setdefault(ptid, []).append(app)
+
+    for ptid, group in by_tier.items():
+        tier = base_tiers.get(ptid)
+        if not tier:
+            continue
+        seats = max(0, tier.remaining)  # max_capacity − active permits
+        group_sorted = sorted(group, key=_seniority_key)
+        keep, excess = group_sorted[:seats], group_sorted[seats:]
+        for app in excess:
+            app.status = "waitlisted"
+            app.assigned_permit_type_id = None
+            app.assigned_lot = None
+            app.offer_expires_at = None
+            app.lottery_rank = None
+            note = (
+                f"Repair: demoted over capacity for {tier.label} "
+                f"(seats remaining vs active={seats})."
+            )
+            app.admin_notes = (
+                f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+            )
+            demoted_for_replace.append(app)
+            capacity_demoted += 1
+
+    await db.flush()
+
+    # Re-place capacity-demoted into lower prefs before general waitlist
+    newly_selected = 0
+    newly_selected_emails: list[str] = []
+    demoted_for_replace.sort(key=_seniority_key)
+    for app in demoted_for_replace:
+        email = _email_key(app)
+        if email in winner_emails:
+            app.status = "superseded"
+            app.waitlist_position = None
+            continue
+        placed = await try_place_application(
+            db, app, send_notification=send_notifications
+        )
+        if placed:
+            newly_selected += 1
+            newly_selected_emails.append(app.student_email or "")
+            winner_emails.add(email)
+
+    # ── 4. Place remaining true waitlisted into open seats ────────────────────
     waitlisted = [
         a
         for a in (
@@ -718,13 +850,16 @@ async def repair_cycle_placements(
         )
     )
 
-    newly_selected = 0
-    newly_selected_emails: list[str] = []
     skipped_already_won = 0
     for app in waitlisted:
-        email = (app.student_email or "").strip().lower()
-        if email and email in winner_emails:
-            # Already have an offer under another application row — leave waitlisted
+        email = _email_key(app)
+        if email in winner_emails:
+            app.status = "superseded"
+            app.waitlist_position = None
+            note = "Repair: superseded — student already has a selected/accepted offer."
+            app.admin_notes = (
+                f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+            )
             skipped_already_won += 1
             continue
         placed = await try_place_application(
@@ -732,11 +867,11 @@ async def repair_cycle_placements(
         )
         if placed:
             newly_selected += 1
-            newly_selected_emails.append(app.student_email)
-            if email:
-                winner_emails.add(email)
+            newly_selected_emails.append(app.student_email or "")
+            winner_emails.add(email)
 
     await _renumber_waitlist(db, cycle_id)
+    await _renumber_winner_ranks(db, cycle_id)
     await db.flush()
 
     remaining_waitlisted = (
@@ -753,6 +888,8 @@ async def repair_cycle_placements(
     return {
         "cycle_id": str(cycle_id),
         "duplicates_demoted": duplicates_demoted,
+        "superseded_waitlist": superseded_waitlist + skipped_already_won,
+        "capacity_demoted": capacity_demoted,
         "newly_selected": newly_selected,
         "newly_selected_emails": newly_selected_emails,
         "skipped_already_won": skipped_already_won,
@@ -899,11 +1036,29 @@ async def promote_from_waitlist(
     if not waitlisted:
         return None
 
+    winner_emails = {
+        _email_key(a)
+        for a in (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status.in_(["selected", "accepted"]),
+                )
+            )
+        ).scalars().all()
+    }
+
     tiers = await _tiers_with_offers_reserved(db, cycle_id)
 
     promoted: LotteryV2Application | None = None
     remaining_waitlist = list(waitlisted)
     for app in waitlisted:
+        email = _email_key(app)
+        if email in winner_emails:
+            app.status = "superseded"
+            app.waitlist_position = None
+            remaining_waitlist = [a for a in remaining_waitlist if a.id != app.id]
+            continue
         applicant = WaterfallApplicant(
             id=app.id,
             class_year=app.class_year,

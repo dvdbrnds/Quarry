@@ -49,6 +49,21 @@ interface Results {
     run_by: string | null;
     warnings: string | null;
   } | null;
+  live?: {
+    selected_count: number;
+    waitlisted_count: number;
+    accepted_count: number;
+    tier_capacity: Record<
+      string,
+      {
+        max_capacity: number;
+        active_permits: number;
+        remaining_vs_active: number;
+        unique_placed: number;
+        over_capacity: boolean;
+      }
+    >;
+  };
   by_tier: Record<string, Application[]>;
   waitlisted: Application[];
   applications: Application[];
@@ -62,6 +77,7 @@ const STATUS_COLORS: Record<string, string> = {
   declined: "default",
   expired: "default",
   ineligible: "red",
+  superseded: "default",
 };
 
 export default function LotteryV2Manager() {
@@ -388,12 +404,18 @@ export default function LotteryV2Manager() {
                   value={new Date(active.drawn_at).toLocaleString()}
                 />
               )}
-              {results?.audit && (
+              {results?.live ? (
+                <>
+                  <Statistic title="Placed (unique)" value={results.live.selected_count} />
+                  <Statistic title="Accepted" value={results.live.accepted_count} />
+                  <Statistic title="True waitlist" value={results.live.waitlisted_count} />
+                </>
+              ) : results?.audit ? (
                 <>
                   <Statistic title="Selected" value={results.audit.selected_count} />
                   <Statistic title="Waitlisted" value={results.audit.waitlisted_count} />
                 </>
-              )}
+              ) : null}
             </div>
             <Space wrap>
               <Button
@@ -427,7 +449,7 @@ export default function LotteryV2Manager() {
                   modal.confirm({
                     title: `Repair placements for "${active.name}"?`,
                     content:
-                      "Demotes duplicate selected offers (same email), then places waitlisted students into any open seats. Emails newly selected students by default.",
+                      "Removes duplicate offers, clears phantom waitlist rows for people who already won, demotes excess selected offers over capacity (re-places into lower prefs when possible), then fills remaining open seats. Emails newly selected students by default. Does not revoke accepted/paid permits.",
                     okText: "Repair now",
                     onOk: async () => {
                       const data = await postAction(
@@ -436,7 +458,7 @@ export default function LotteryV2Manager() {
                       );
                       if (data) {
                         message.success(
-                          `Repair done: ${data.newly_selected} newly selected, ${data.duplicates_demoted} duplicates demoted, ${data.remaining_waitlisted} still waitlisted`,
+                          `Repair: ${data.newly_selected} newly selected, ${data.capacity_demoted ?? 0} over-cap demoted, ${data.superseded_waitlist ?? data.duplicates_demoted} duplicates cleared, ${data.remaining_waitlisted} still waitlisted`,
                         );
                       }
                     },
@@ -633,21 +655,30 @@ export default function LotteryV2Manager() {
           {results && Object.keys(results.by_tier).length > 0 && (
             <Card title="Placements by tier" size="small">
               <div className="space-y-4">
-                {Object.entries(results.by_tier).map(([tier, list]) => (
+                {Object.entries(results.by_tier).map(([tier, list]) => {
+                  const cap = results.live?.tier_capacity?.[tier];
+                  const over = cap?.over_capacity;
+                  return (
                   <div key={tier}>
                     <h4 className="font-medium m-0 mb-2">
                       {tier}{" "}
-                      <Tag>{list.length}</Tag>
+                      <Tag color={over ? "red" : undefined}>
+                        {list.length}
+                        {cap ? ` / ${cap.remaining_vs_active} open seats (${cap.max_capacity} max, ${cap.active_permits} active)` : ""}
+                      </Tag>
+                      {over && <Tag color="red">over capacity</Tag>}
                     </h4>
                     <ul className="text-sm text-gray-600 m-0 pl-5">
                       {list.map((a) => (
                         <li key={a.id}>
-                          #{a.lottery_rank} {a.student_name} ({a.class_year}) → {a.assigned_lot || "—"}
+                          #{a.lottery_rank ?? "—"} {a.student_name} ({a.class_year}) → {a.assigned_lot || "—"}
+                          {a.status === "accepted" ? " · accepted" : " · offer"}
                         </li>
                       ))}
                     </ul>
                   </div>
-                ))}
+                  );
+                })}
                 {results.waitlisted.length > 0 && (
                   <div>
                     <h4 className="font-medium m-0 mb-2">
@@ -670,6 +701,9 @@ export default function LotteryV2Manager() {
                       ))}
                     </ul>
                   </div>
+                )}
+                {results.waitlisted.length === 0 && (
+                  <p className="text-sm text-gray-500 m-0">No true waitlist — duplicate rows for winners are hidden.</p>
                 )}
               </div>
             </Card>
