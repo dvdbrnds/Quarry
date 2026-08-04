@@ -273,6 +273,10 @@ export default function DataManagement() {
   const appCount = tables["permit_applications"] ?? 0;
 
   const handleClearPermits = () => {
+    if (!canClearPermits) {
+      message.error("Clear All Permits is restricted");
+      return;
+    }
     modal.confirm({
       title: "Clear All Permits",
       icon: <WarningOutlined style={{ color: "#ff4d4f" }} />,
