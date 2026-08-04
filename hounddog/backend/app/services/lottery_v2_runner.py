@@ -819,10 +819,9 @@ async def repair_cycle_placements(
     demoted_for_replace.sort(key=_seniority_key)
     for app in demoted_for_replace:
         email = _email_key(app)
-        if email in winner_emails:
-            app.status = "superseded"
-            app.waitlist_position = None
-            continue
+        # They were just demoted — drop them from the winner set so re-place works
+        # instead of immediately marking them superseded as "already won".
+        winner_emails.discard(email)
         placed = await try_place_application(
             db, app, send_notification=send_notifications
         )
@@ -940,55 +939,91 @@ async def manual_select_application(
     permit_type_id: uuid.UUID | None = None,
     send_notification: bool = True,
     admin_label: str = "admin",
+    allow_any_type: bool = True,
+    force_capacity: bool = False,
 ) -> LotteryV2Application:
-    """Manually select a pending/waitlisted applicant into an available tier."""
+    """Manually select an applicant into a permit type and email an offer."""
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise ValueError("Application not found")
-    if app.status not in ("waitlisted", "pending"):
+    if app.status in ("accepted", "selected"):
         raise ValueError(
-            f"Can only manually select waitlisted or pending applicants (status is '{app.status}')"
+            f"Application is already {app.status} — decline or wait for expiry before re-offering"
+        )
+    if app.status not in ("waitlisted", "pending", "superseded", "expired", "declined"):
+        raise ValueError(
+            f"Can only offer waitlisted/pending/superseded applicants (status is '{app.status}')"
         )
 
     cycle = await db.get(LotteryV2Cycle, app.cycle_id)
     if not cycle:
         raise ValueError("Cycle not found")
 
-    tiers = await _tiers_with_offers_reserved(db, app.cycle_id)
-    prefs = list(app.tier_preferences or [])
-    if permit_type_id is not None:
-        if permit_type_id not in prefs:
-            raise ValueError("Chosen permit type is not in this applicant's preferences")
-        prefs = [permit_type_id]
+    if permit_type_id is None:
+        raise ValueError("Choose a permit type for the offer")
 
-    applicant = WaterfallApplicant(
-        id=app.id,
-        class_year=app.class_year,
-        created_at=app.created_at or datetime.now(timezone.utc),
-        tier_preferences=prefs,
-        student_email=app.student_email,
-        student_name=app.student_name,
-    )
-    placement = try_place_one(applicant, tiers)
-    if not placement:
-        raise ValueError("No remaining capacity in the applicant's preferred tiers")
+    pt = await db.get(PermitType, permit_type_id)
+    if not pt or not pt.is_active:
+        raise ValueError("Invalid or inactive permit type")
+
+    prefs = list(app.tier_preferences or [])
+    if permit_type_id not in prefs:
+        if not allow_any_type:
+            raise ValueError("Chosen permit type is not in this applicant's preferences")
+        prefs = [permit_type_id] + prefs
+        app.tier_preferences = prefs
+
+    tiers = await _tiers_with_offers_reserved(db, app.cycle_id)
+    if permit_type_id not in tiers:
+        built = await build_tier_capacities(db, [pt])
+        if permit_type_id in built:
+            tiers[permit_type_id] = built[permit_type_id]
+
+    tier = tiers.get(permit_type_id)
+    if not tier:
+        raise ValueError(f"No capacity config for {pt.label}")
+    if tier.remaining <= 0 and not force_capacity:
+        raise ValueError(
+            f"{pt.label} has no open seats. Enable force capacity to offer anyway."
+        )
+
+    if force_capacity and tier.remaining <= 0:
+        lot = (list(pt.lot_assignments or []) or [None])[0]
+        app.status = "selected"
+        app.assigned_permit_type_id = permit_type_id
+        app.assigned_lot = lot
+        app.waitlist_position = None
+        forced = True
+    else:
+        applicant = WaterfallApplicant(
+            id=app.id,
+            class_year=app.class_year,
+            created_at=app.created_at or datetime.now(timezone.utc),
+            tier_preferences=[permit_type_id],
+            student_email=app.student_email,
+            student_name=app.student_name,
+        )
+        placement = try_place_one(applicant, tiers)
+        if not placement:
+            raise ValueError(f"No remaining capacity in {pt.label}")
+        app.status = "selected"
+        app.assigned_permit_type_id = placement.assigned_permit_type_id
+        app.assigned_lot = placement.assigned_lot
+        app.waitlist_position = None
+        forced = False
 
     offer_days = cycle.offer_window_days or 5
-    app.status = "selected"
-    app.assigned_permit_type_id = placement.assigned_permit_type_id
-    app.assigned_lot = placement.assigned_lot
-    app.waitlist_position = None
     app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
     note = (
-        f"Manually selected by {admin_label} at {datetime.now(timezone.utc).isoformat()}"
-        f" → {placement.assigned_lot or 'lot TBD'}"
+        f"Offer sent by {admin_label} at {datetime.now(timezone.utc).isoformat()}"
+        f" → {pt.label} ({app.assigned_lot or 'lot TBD'})"
+        + (" [forced over capacity]" if forced else "")
     )
     app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
 
     await _renumber_waitlist(db, app.cycle_id)
     await db.flush()
 
-    pt = await db.get(PermitType, placement.assigned_permit_type_id)
     if (
         send_notification
         and pt
@@ -1011,6 +1046,7 @@ async def manual_select_application(
             logger.error("Failed to notify manually selected applicant %s: %s", app.id, e)
 
     return app
+
 
 
 async def promote_from_waitlist(
