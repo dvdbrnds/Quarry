@@ -67,6 +67,9 @@ class AvailablePermitType(BaseModel):
     label: str
     eligible: str
     price: Decimal
+    list_price: Decimal | None = None
+    discount_amount: Decimal | None = None
+    discount_label: str | None = None
     max_capacity: int
     remaining: int
     lot_assignments: list[str]

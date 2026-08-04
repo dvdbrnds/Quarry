@@ -68,6 +68,9 @@ class TierRead(BaseModel):
     code: str
     label: str
     price: Decimal
+    list_price: Decimal | None = None
+    discount_amount: Decimal | None = None
+    discount_label: str | None = None
     max_capacity: int
     remaining: int
     lot_assignments: list[str]
@@ -241,7 +244,10 @@ async def _eligible_tiers_for(
     db: AsyncSession,
     campus: str,
     class_year: int | None = None,
+    prog_discount=None,
 ) -> list[TierRead]:
+    from ..services.group_discount import apply_flat_discount
+
     codes = CAMPUS_TIER_CODES.get(campus, [])
     if not codes:
         return []
@@ -273,12 +279,16 @@ async def _eligible_tiers_for(
             )
         ).scalar() or 0
         remaining = max(0, (pt.max_capacity or 0) - active_count)
+        your_price = apply_flat_discount(pt.price, prog_discount)
         out.append(
             TierRead(
                 id=pt.id,
                 code=pt.code,
                 label=pt.label,
-                price=pt.price,
+                price=your_price,
+                list_price=pt.price if prog_discount else None,
+                discount_amount=prog_discount.amount if prog_discount else None,
+                discount_label=prog_discount.label if prog_discount else None,
                 max_capacity=pt.max_capacity or 0,
                 remaining=remaining,
                 lot_assignments=list(pt.lot_assignments or []),
@@ -333,9 +343,11 @@ async def eligible_tiers(
     campus: str = Query(..., pattern="^(north|south|commuter)$"),
     class_year: int | None = Query(None, ge=2000, le=2100),
     db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(get_current_user_or_impersonated),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
-    return await _eligible_tiers_for(db, campus, class_year)
+    from ..services.group_discount import resolve_program_discount
+    prog_discount = await resolve_program_discount(db, user)
+    return await _eligible_tiers_for(db, campus, class_year, prog_discount)
 
 
 @router.post("/applications", response_model=ApplicationRead, status_code=201)
@@ -545,13 +557,16 @@ async def accept_offer(
         await db.flush()
         return {"status": "accepted", "fee_exempt": True}
 
-    # ── Voucher discount ──────────────────────────────────────────────────────
+    # ── Program discount (ABSN) + optional voucher ────────────────────────────
     from ..models.voucher import Voucher
     from ..routers.vouchers import _validate_voucher
+    from ..services.group_discount import resolve_program_discount, apply_flat_discount
 
-    discounted_price = pt.price
+    prog_discount = await resolve_program_discount(db, user)
+    discounted_price = apply_flat_discount(pt.price, prog_discount)
     applied_voucher: Voucher | None = None
     voucher_code = (body or {}).get("voucher_code", "")
+    discount_note = f" | {prog_discount.label}: −${prog_discount.amount:.0f}" if prog_discount else ""
 
     if voucher_code:
         voucher_result = await db.execute(
@@ -564,15 +579,20 @@ async def accept_offer(
         if error:
             raise HTTPException(400, error)
 
+        voucher_price = pt.price
         if applied_voucher.discount_type == "full":
-            discounted_price = Decimal("0.00")
+            voucher_price = Decimal("0.00")
         elif applied_voucher.discount_type == "percent":
-            discounted_price = pt.price * (Decimal("100") - applied_voucher.discount_value) / Decimal("100")
+            voucher_price = pt.price * (Decimal("100") - applied_voucher.discount_value) / Decimal("100")
         elif applied_voucher.discount_type == "flat":
-            discounted_price = max(Decimal("0.00"), pt.price - applied_voucher.discount_value)
+            voucher_price = max(Decimal("0.00"), pt.price - applied_voucher.discount_value)
+        if voucher_price < discounted_price:
+            discounted_price = voucher_price
+            discount_note = f" | Voucher: {applied_voucher.code}"
+        else:
+            applied_voucher = None
 
-    # Full voucher waiver: issue permit at $0 without Stripe
-    if applied_voucher and discounted_price <= 0:
+    if discounted_price <= 0:
         lot_assignment = app.assigned_lot or (
             ",".join(pt.lot_assignments) if pt.lot_assignments else ""
         )
@@ -590,21 +610,33 @@ async def accept_offer(
             status="active",
         )
         db.add(new_permit)
+        method = "voucher" if applied_voucher else "program_discount"
+        desc = (
+            f"Voucher {applied_voucher.code} ({applied_voucher.program_name}) — {pt.code} — {app.plate}"
+            if applied_voucher
+            else f"{prog_discount.label if prog_discount else 'Program Discount'} — {pt.code} — {app.plate}"
+        )
         db.add(Payment(
             amount=Decimal("0.00"),
-            method="voucher",
+            method=method,
             payment_type="lottery_v2_permit",
             payer_name=app.student_name or None,
             payer_email=app.student_email or None,
             plate=app.plate or None,
-            description=f"Voucher {applied_voucher.code} ({applied_voucher.program_name}) — {pt.code} — {app.plate}",
+            description=desc,
         ))
-        applied_voucher.current_uses += 1
-        from .vouchers import record_voucher_usage
-        await record_voucher_usage(db, applied_voucher, app.student_name, app.student_email, user.sub, pt.code, pt.price, Decimal("0.00"))
+        if applied_voucher:
+            applied_voucher.current_uses += 1
+            from .vouchers import record_voucher_usage
+            await record_voucher_usage(db, applied_voucher, app.student_name, app.student_email, user.sub, pt.code, pt.price, Decimal("0.00"))
         app.status = "accepted"
         await db.flush()
-        return {"status": "accepted", "fee_exempt": False, "voucher": True}
+        return {
+            "status": "accepted",
+            "fee_exempt": False,
+            "voucher": bool(applied_voucher),
+            "program_discount": bool(prog_discount) and not applied_voucher,
+        }
 
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
@@ -623,7 +655,7 @@ async def accept_offer(
                     "product_data": {
                         "name": f"{pt.label} Parking Permit",
                         "description": f"Plate: {app.plate} | Valid for {pt.valid_days} days"
-                        + (f" | Voucher: {applied_voucher.code}" if applied_voucher else ""),
+                        + discount_note,
                     },
                     "unit_amount": int(discounted_price * 100),
                 },
@@ -652,6 +684,8 @@ async def accept_offer(
                 "phone": app.phone or "",
                 "sms_opt_in": "true" if app.sms_opt_in else "false",
                 "institution": settings.school_name or "moravian",
+                "program_discount": prog_discount.label if prog_discount else "",
+                "program_discount_amount": str(prog_discount.amount) if prog_discount else "",
             },
         },
         success_url=f"{base_url}/parking?accepted={application_id}&session_id={{CHECKOUT_SESSION_ID}}",
@@ -669,6 +703,8 @@ async def accept_offer(
             "phone": app.phone or "",
             "sms_opt_in": "true" if app.sms_opt_in else "false",
             "voucher_code": applied_voucher.code if applied_voucher else "",
+            "program_discount": prog_discount.label if prog_discount else "",
+            "program_discount_amount": str(prog_discount.amount) if prog_discount else "",
         },
     )
 

@@ -154,6 +154,9 @@ async def available_permit_types(
 
     lot_lookup = await _load_lot_lookup(db)
 
+    from ..services.group_discount import resolve_program_discount, apply_flat_discount
+    prog_discount = await resolve_program_discount(db, user)
+
     out: list[AvailablePermitType] = []
     for pt in types:
         active_count = (await db.execute(
@@ -180,12 +183,16 @@ async def available_permit_types(
                 if app_count > 0 else "100%"
             )
 
+        your_price = apply_flat_discount(pt.price, prog_discount)
         out.append(AvailablePermitType(
             id=pt.id,
             code=pt.code,
             label=pt.label,
             eligible=pt.eligible,
-            price=pt.price,
+            price=your_price,
+            list_price=pt.price if prog_discount else None,
+            discount_amount=prog_discount.amount if prog_discount else None,
+            discount_label=prog_discount.label if prog_discount else None,
             max_capacity=pt.max_capacity,
             remaining=remaining,
             lot_assignments=pt.lot_assignments,
@@ -667,12 +674,17 @@ async def direct_purchase(
 
         return {"status": "issued", "fee_exempt": True, "permit_type": pt.code}
 
-    # ── Voucher discount ──────────────────────────────────────────────────────
+    # ── Program discount (ABSN roster / Okta group) + optional voucher ─────────
     from ..models.voucher import Voucher
     from ..routers.vouchers import _validate_voucher
+    from ..services.group_discount import resolve_program_discount, apply_flat_discount
 
-    discounted_price = pt.price
+    prog_discount = await resolve_program_discount(db, user)
+    discounted_price = apply_flat_discount(pt.price, prog_discount)
     applied_voucher: Voucher | None = None
+    discount_note = ""
+    if prog_discount:
+        discount_note = f" | {prog_discount.label}: −${prog_discount.amount:.0f}"
 
     if data.voucher_code:
         voucher_result = await db.execute(
@@ -685,15 +697,23 @@ async def direct_purchase(
         if error:
             raise HTTPException(400, error)
 
+        voucher_price = pt.price
         if applied_voucher.discount_type == "full":
-            discounted_price = Decimal("0.00")
+            voucher_price = Decimal("0.00")
         elif applied_voucher.discount_type == "percent":
-            discounted_price = pt.price * (Decimal("100") - applied_voucher.discount_value) / Decimal("100")
+            voucher_price = pt.price * (Decimal("100") - applied_voucher.discount_value) / Decimal("100")
         elif applied_voucher.discount_type == "flat":
-            discounted_price = max(Decimal("0.00"), pt.price - applied_voucher.discount_value)
+            voucher_price = max(Decimal("0.00"), pt.price - applied_voucher.discount_value)
+        # Use the better deal for the student
+        if voucher_price < discounted_price:
+            discounted_price = voucher_price
+            discount_note = f" | Voucher: {applied_voucher.code}"
+        else:
+            # Keep program discount; still record voucher only if it was the better/used path
+            applied_voucher = None
 
-    # Full voucher waiver: issue permit at $0 without Stripe
-    if applied_voucher and discounted_price <= 0:
+    # Full waiver at $0 without Stripe
+    if discounted_price <= 0:
         lot_assignment = data.lot_preference or (
             ",".join(pt.lot_assignments) if pt.lot_assignments else ""
         )
@@ -712,20 +732,33 @@ async def direct_purchase(
             status="active",
         )
         db.add(new_permit)
+        method = "voucher" if applied_voucher else "program_discount"
+        desc = (
+            f"Voucher {applied_voucher.code} ({applied_voucher.program_name}) — {pt.code} — {data.plate.upper().strip()}"
+            if applied_voucher
+            else f"{prog_discount.label if prog_discount else 'Program Discount'} — {pt.code} — {data.plate.upper().strip()}"
+        )
         db.add(Payment(
             amount=Decimal("0.00"),
-            method="voucher",
+            method=method,
             payment_type="direct_permit_purchase",
             payer_name=data.student_name or None,
             payer_email=user.email or None,
             plate=data.plate.upper().strip(),
-            description=f"Voucher {applied_voucher.code} ({applied_voucher.program_name}) — {pt.code} — {data.plate.upper().strip()}",
+            description=desc,
         ))
-        applied_voucher.current_uses += 1
-        from .vouchers import record_voucher_usage
-        await record_voucher_usage(db, applied_voucher, data.student_name, user.email, user.sub, pt.code, pt.price, Decimal("0.00"))
+        if applied_voucher:
+            applied_voucher.current_uses += 1
+            from .vouchers import record_voucher_usage
+            await record_voucher_usage(db, applied_voucher, data.student_name, user.email, user.sub, pt.code, pt.price, Decimal("0.00"))
         await db.flush()
-        return {"status": "issued", "fee_exempt": False, "voucher": True, "permit_type": pt.code}
+        return {
+            "status": "issued",
+            "fee_exempt": False,
+            "voucher": bool(applied_voucher),
+            "program_discount": bool(prog_discount) and not applied_voucher,
+            "permit_type": pt.code,
+        }
 
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
@@ -747,7 +780,7 @@ async def direct_purchase(
                 "product_data": {
                     "name": f"{pt.label} Parking Permit",
                     "description": f"Plate: {data.plate.upper()} | Valid for {pt.valid_days} days"
-                    + (f" | Voucher: {applied_voucher.code}" if applied_voucher else ""),
+                    + discount_note,
                 },
                 "unit_amount": int(discounted_price * 100),
             },
@@ -781,6 +814,8 @@ async def direct_purchase(
                 "phone": data.phone or "",
                 "sms_opt_in": "true" if data.sms_opt_in else "false",
                 "institution": settings.school_name or "moravian",
+                "program_discount": prog_discount.label if prog_discount else "",
+                "program_discount_amount": str(prog_discount.amount) if prog_discount else "",
             },
         },
         success_url=f"{base_url}/parking?purchased=true&session_id={{CHECKOUT_SESSION_ID}}",
@@ -799,10 +834,11 @@ async def direct_purchase(
             "phone": data.phone or "",
             "sms_opt_in": "true" if data.sms_opt_in else "false",
             "voucher_code": applied_voucher.code if applied_voucher else "",
+            "program_discount": prog_discount.label if prog_discount else "",
+            "program_discount_amount": str(prog_discount.amount) if prog_discount else "",
         },
     )
 
-    # Increment voucher usage now — Stripe will handle payment collection
     if applied_voucher:
         applied_voucher.current_uses += 1
         from .vouchers import record_voucher_usage

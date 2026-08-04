@@ -81,6 +81,9 @@ interface Tier {
   code: string;
   label: string;
   price: string;
+  list_price?: string | null;
+  discount_amount?: string | null;
+  discount_label?: string | null;
   max_capacity: number;
   remaining: number;
   lot_assignments: string[];
@@ -88,6 +91,20 @@ interface Tier {
   campus: string;
   requires_lottery?: boolean;
   is_purchasable_online?: boolean;
+}
+
+function formatTierPrice(tier: Tier) {
+  const price = Number(tier.price);
+  const list = tier.list_price != null ? Number(tier.list_price) : null;
+  if (list != null && list > price) {
+    return (
+      <>
+        <span className="line-through text-gray-400 mr-1">${list.toFixed(0)}</span>
+        <span className="text-green-700">${price.toFixed(0)}</span>
+      </>
+    );
+  }
+  return <>${price.toFixed(0)}</>;
 }
 
 interface Application {
@@ -813,7 +830,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         <div className="font-medium">{tier.label}</div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-brand-primary">${Number(tier.price).toFixed(0)}</div>
+                        <div className="font-bold text-brand-primary">{formatTierPrice(tier)}</div>
+                        {tier.discount_label && (
+                          <div className="text-[10px] text-green-700">{tier.discount_label}</div>
+                        )}
                         {tier.remaining > 0 ? (
                           <Button
                             type="primary"
@@ -1226,19 +1246,22 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                 <p className="m-0 text-xs text-gray-500 mt-1">
                                   {voucherValid ? (
                                     <>
-                                      <span className="line-through">${tier.price}</span>{" "}
+                                      <span className="line-through">${tier.list_price ?? tier.price}</span>{" "}
                                       <span className="text-green-600 font-medium">
                                         {voucherValid.discount_type === "full"
                                           ? "FREE"
                                           : voucherValid.discount_type === "percent"
-                                            ? `$${(Number(tier.price) * (100 - voucherValid.discount_value) / 100).toFixed(0)}`
-                                            : `$${Math.max(0, Number(tier.price) - voucherValid.discount_value).toFixed(0)}`}
+                                            ? `$${(Number(tier.list_price ?? tier.price) * (100 - voucherValid.discount_value) / 100).toFixed(0)}`
+                                            : `$${Math.max(0, Number(tier.list_price ?? tier.price) - voucherValid.discount_value).toFixed(0)}`}
                                       </span>
                                     </>
                                   ) : (
-                                    <>${tier.price}</>
+                                    formatTierPrice(tier)
                                   )}
                                 </p>
+                                {tier.discount_label && !voucherValid && (
+                                  <p className="m-0 text-[10px] text-green-700 mt-0.5">{tier.discount_label} applied</p>
+                                )}
                                 <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                                   <span>Lots:</span>
                                   {tier.lot_assignments.slice(0, 8).map((lotName) => {

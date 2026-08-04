@@ -12,6 +12,7 @@ import PermitTypes from "./PermitTypes";
 import LotteryV2Manager from "./LotteryV2Manager";
 import LiveMonitor from "./LiveMonitor";
 import FeeExemptRoster from "./FeeExemptRoster";
+import DiscountRoster from "./DiscountRoster";
 import VoucherManager from "./VoucherManager";
 
 async function downloadWithAuth(url: string, filename: string) {
@@ -304,6 +305,8 @@ export default function Permits() {
           ? "live"
           : location.hash === "#fee-exempt"
             ? "fee-exempt"
+            : location.hash === "#absn" || location.hash === "#discounts"
+              ? "discounts"
             : location.hash === "#vouchers" || location.hash === "#coupons"
               ? "vouchers"
               : "permits";
@@ -456,6 +459,7 @@ export default function Permits() {
             : key === "lottery" ? "lottery"
             : key === "live" ? "live"
             : key === "fee-exempt" ? "fee-exempt"
+            : key === "discounts" ? "absn"
             : key === "vouchers" ? "vouchers"
             : "types";
         }}
@@ -620,6 +624,11 @@ export default function Permits() {
             key: "fee-exempt",
             label: "Fee Exempt",
             children: <FeeExemptRoster />,
+          },
+          {
+            key: "discounts",
+            label: "ABSN Discount",
+            children: <DiscountRoster />,
           },
           {
             key: "vouchers",

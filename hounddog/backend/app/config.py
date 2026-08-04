@@ -147,6 +147,12 @@ class Settings(BaseSettings):
     # Campus timezone for "today", schedules, and display (EST/EDT)
     app_timezone: str = "America/New_York"
 
+    # Automatic flat program discount (e.g. ABSN) via Okta group membership
+    # Comma-separated Okta group names. Roster upload is the primary path; this is optional.
+    auto_discount_okta_groups: str = ""
+    auto_discount_amount: float = 100.0
+    auto_discount_label: str = "ABSN Program Discount"
+
     model_config = {"env_prefix": "", "env_file": ".env"}
 
 

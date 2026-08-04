@@ -22,6 +22,7 @@ from .routers import (
     devices,
     enforcement_settings,
     fee_exempt,
+    discount_roster,
     lots,
     lottery_v2,
     messaging,
@@ -450,6 +451,20 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_student_id ON fee_exempt_roster(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_fee_exempt_roster_email ON fee_exempt_roster(email)",
+            # Program discount roster (ABSN $100 off, etc.)
+            """CREATE TABLE IF NOT EXISTS discount_roster (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                student_id VARCHAR(64) NOT NULL,
+                email VARCHAR(256),
+                first_name VARCHAR(256) DEFAULT '',
+                last_name VARCHAR(256) DEFAULT '',
+                program_name VARCHAR(256) DEFAULT 'ABSN',
+                discount_amount NUMERIC(10,2) DEFAULT 100.00,
+                academic_year VARCHAR(16),
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_discount_roster_student_id ON discount_roster(student_id)",
+            "CREATE INDEX IF NOT EXISTS idx_discount_roster_email ON discount_roster(email)",
             # Rename coupon → voucher (preserve existing data; no-op if already renamed)
             """DO $$ BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='coupons')
@@ -949,6 +964,7 @@ app.include_router(signage.admin_router, prefix="/api/signage", tags=["signage"]
 app.include_router(signage.public_router, prefix="/api/signage", tags=["signage-public"])
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(fee_exempt.router, prefix="/api/admin/fee-exempt", tags=["fee-exempt"])
+app.include_router(discount_roster.router, prefix="/api/admin/discounts", tags=["discounts"])
 app.include_router(branding.admin_router, prefix="/api/branding", tags=["branding"])
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
