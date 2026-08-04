@@ -68,7 +68,7 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
         isActive ? { background: brand.accentColor, color: brand.primaryColor } : {}
       }
       className={({ isActive }) =>
-        `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+        `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
           isActive ? "" : "text-bone hover:bg-white/10"
         }`
       }
