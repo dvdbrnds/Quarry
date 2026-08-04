@@ -685,7 +685,21 @@ async def repair_cycle_placements(
 
     await db.flush()
 
-    # Place waitlisted in seniority order into remaining capacity
+    # Who already has a real offer/permit — skip their duplicate waitlist rows
+    winner_emails = {
+        (a.student_email or "").strip().lower()
+        for a in (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status.in_(["selected", "accepted"]),
+                )
+            )
+        ).scalars().all()
+        if (a.student_email or "").strip()
+    }
+
+    # Place waitlisted in published waitlist order (#1 first)
     waitlisted = [
         a
         for a in (
@@ -699,21 +713,28 @@ async def repair_cycle_placements(
     ]
     waitlisted.sort(
         key=lambda a: (
-            a.class_year or 9999,
+            a.waitlist_position if a.waitlist_position is not None else 10_000,
             a.created_at or datetime.now(timezone.utc),
         )
     )
 
     newly_selected = 0
     newly_selected_emails: list[str] = []
+    skipped_already_won = 0
     for app in waitlisted:
-        # Refresh capacity each time
+        email = (app.student_email or "").strip().lower()
+        if email and email in winner_emails:
+            # Already have an offer under another application row — leave waitlisted
+            skipped_already_won += 1
+            continue
         placed = await try_place_application(
             db, app, send_notification=send_notifications
         )
         if placed:
             newly_selected += 1
             newly_selected_emails.append(app.student_email)
+            if email:
+                winner_emails.add(email)
 
     await _renumber_waitlist(db, cycle_id)
     await db.flush()
@@ -734,6 +755,7 @@ async def repair_cycle_placements(
         "duplicates_demoted": duplicates_demoted,
         "newly_selected": newly_selected,
         "newly_selected_emails": newly_selected_emails,
+        "skipped_already_won": skipped_already_won,
         "remaining_waitlisted": remaining_waitlisted,
     }
 
