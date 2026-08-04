@@ -859,13 +859,17 @@ async def accept_offer(
 async def decline_offer(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise HTTPException(404, "Application not found")
-    if app.student_sub != user.sub:
-        raise HTTPException(403, "Not your application")
+    if app.student_sub != user.sub and not (user.email or "").lower() == (app.student_email or "").lower():
+        # Admin impersonation uses synthetic sub; also allow email match
+        if not (user.sub or "").startswith("impersonated:"):
+            raise HTTPException(403, "Not your application")
+        if (user.email or "").lower() != (app.student_email or "").lower():
+            raise HTTPException(403, "Not your application")
     if app.status != "selected":
         raise HTTPException(400, f"Cannot decline an application with status '{app.status}'")
 

@@ -946,13 +946,11 @@ async def manual_select_application(
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise ValueError("Application not found")
-    if app.status in ("accepted", "selected"):
+    if app.status == "accepted":
+        raise ValueError("Application is already accepted — cannot change the offer")
+    if app.status not in ("waitlisted", "pending", "superseded", "expired", "declined", "selected"):
         raise ValueError(
-            f"Application is already {app.status} — decline or wait for expiry before re-offering"
-        )
-    if app.status not in ("waitlisted", "pending", "superseded", "expired", "declined"):
-        raise ValueError(
-            f"Can only offer waitlisted/pending/superseded applicants (status is '{app.status}')"
+            f"Can only offer waitlisted/pending/superseded/selected applicants (status is '{app.status}')"
         )
 
     cycle = await db.get(LotteryV2Cycle, app.cycle_id)
@@ -965,6 +963,14 @@ async def manual_select_application(
     pt = await db.get(PermitType, permit_type_id)
     if not pt or not pt.is_active:
         raise ValueError("Invalid or inactive permit type")
+
+    # Reassigning an existing selected offer — clear prior seat first
+    if app.status == "selected":
+        app.assigned_permit_type_id = None
+        app.assigned_lot = None
+        app.offer_expires_at = None
+        app.status = "waitlisted"
+        await db.flush()
 
     prefs = list(app.tier_preferences or [])
     if permit_type_id not in prefs:
