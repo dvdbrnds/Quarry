@@ -13,6 +13,7 @@ from ..models.permit import Permit
 from ..config import settings
 from .email import send_lot_closure_notification, send_lot_reopen_notification
 from .sms import send_bulk_sms_async
+from .timeutils import today_local
 
 logger = logging.getLogger("quarry.scheduler")
 
@@ -189,7 +190,7 @@ async def _auto_send_renewal_emails():
     """
     global _last_renewal_check_date
 
-    today = date.today()
+    today = today_local()
     if _last_renewal_check_date == today:
         return
     _last_renewal_check_date = today

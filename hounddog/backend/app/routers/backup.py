@@ -224,7 +224,7 @@ async def clear_permits(
 class BackupSchedule(BaseModel):
     enabled: bool = False
     frequency: str = "daily"  # daily | weekly | monthly
-    time: str = "02:00"       # HH:MM in UTC
+    time: str = "02:00"       # HH:MM in Eastern Time
     retention_days: int = 30  # auto-delete after N days
     google_drive_folder_id: str = ""  # Google Drive folder to upload backups to
     last_run: str | None = None

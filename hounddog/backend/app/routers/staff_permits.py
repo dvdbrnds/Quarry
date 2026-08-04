@@ -13,6 +13,7 @@ from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
 from ..services.permit_numbering import next_permit_number
+from ..services.timeutils import today_local
 
 
 _require_staff = require_role("admin", "staff")
@@ -107,7 +108,7 @@ async def enroll_vehicle(
     if existing.scalar():
         raise HTTPException(409, f"Plate {plate} is already registered for a faculty/staff permit")
 
-    new_start = date.today()
+    new_start = today_local()
     target = date(new_start.year, 6, 30)
     if target <= new_start:
         target = date(new_start.year + 1, 6, 30)

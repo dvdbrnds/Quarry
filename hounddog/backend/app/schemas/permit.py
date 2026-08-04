@@ -1,7 +1,9 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from ..services.timeutils import today_local
 
 
 class PermitBase(BaseModel):
@@ -15,7 +17,7 @@ class PermitBase(BaseModel):
     lot_assignment: str = ""
     permit_type: str = "student"
     beacon_id: str | None = None
-    start_date: date = date.today()
+    start_date: date = Field(default_factory=today_local)
     end_date: date | None = None
     status: str = "active"
 

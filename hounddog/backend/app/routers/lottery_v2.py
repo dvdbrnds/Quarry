@@ -31,6 +31,7 @@ from ..services.lottery_v2_runner import (
     run_waterfall_draw,
 )
 from ..services.permit_numbering import next_permit_number
+from ..services.timeutils import today_local
 
 logger = logging.getLogger("quarry.lottery_v2")
 
@@ -524,8 +525,8 @@ async def accept_offer(
             plates=[app.plate],
             permit_type=pt.code,
             lot_assignment=lot_assignment,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=pt.valid_days),
+            start_date=today_local(),
+            end_date=today_local() + timedelta(days=pt.valid_days),
             status="active",
         )
         db.add(new_permit)
@@ -584,8 +585,8 @@ async def accept_offer(
             plates=[app.plate],
             permit_type=pt.code,
             lot_assignment=lot_assignment,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=pt.valid_days),
+            start_date=today_local(),
+            end_date=today_local() + timedelta(days=pt.valid_days),
             status="active",
         )
         db.add(new_permit)

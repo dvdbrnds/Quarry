@@ -23,6 +23,7 @@ from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
 from ..services.permit_numbering import next_permit_number
+from .timeutils import today_local
 
 logger = logging.getLogger("quarry.stripe_reconciler")
 
@@ -95,8 +96,8 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
         plates=[plate] if plate else [],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=valid_days),
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=valid_days),
         status="active",
     )
     db.add(new_permit)

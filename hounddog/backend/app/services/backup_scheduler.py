@@ -92,8 +92,10 @@ async def _write_schedule(data: dict):
 
 
 def _compute_next_run(frequency: str, time_str: str, from_dt: datetime | None = None) -> datetime:
-    """Compute the next run datetime based on frequency and time (HH:MM UTC)."""
-    now = from_dt or datetime.now(timezone.utc)
+    """Compute the next run datetime based on frequency and time (HH:MM Eastern)."""
+    from .timeutils import campus_tz, now_local
+    tz = campus_tz()
+    now = from_dt.astimezone(tz) if from_dt else now_local()
     parts = time_str.split(":")
     hour = int(parts[0]) if len(parts) > 0 else 2
     minute = int(parts[1]) if len(parts) > 1 else 0
@@ -170,7 +172,8 @@ async def process_scheduled_backups():
         try:
             next_run = datetime.fromisoformat(next_run_str)
             if next_run.tzinfo is None:
-                next_run = next_run.replace(tzinfo=timezone.utc)
+                from .timeutils import campus_tz
+                next_run = next_run.replace(tzinfo=campus_tz())
         except (ValueError, TypeError):
             next_run = _compute_next_run(frequency, time_str)
     else:

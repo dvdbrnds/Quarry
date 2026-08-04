@@ -144,6 +144,9 @@ class Settings(BaseSettings):
     # Google Drive Backup
     google_drive_credentials_json: str = ""  # service account JSON (entire file contents or path)
 
+    # Campus timezone for "today", schedules, and display (EST/EDT)
+    app_timezone: str = "America/New_York"
+
     model_config = {"env_prefix": "", "env_file": ".env"}
 
 

@@ -17,13 +17,14 @@ from ..models.permit import Permit
 from ..models.renewal_token import RenewalToken
 from ..services.email import send_renewal_email, get_department_name
 from ..services.permit_numbering import next_permit_number
+from ..services.timeutils import today_local
 
 router = APIRouter()
 
 
 def _next_june_30(from_date: date | None = None) -> date:
     """Return the next June 30 that is in the future relative to from_date."""
-    ref = from_date or date.today()
+    ref = from_date or today_local()
     target = date(ref.year, 6, 30)
     if target <= ref:
         target = date(ref.year + 1, 6, 30)
@@ -119,7 +120,7 @@ async def send_renewal_campaign(
     _admin: OktaUser = Depends(require_admin()),
 ):
     """Generate renewal tokens and send magic-link emails to faculty/staff with expiring permits."""
-    today = date.today()
+    today = today_local()
     cutoff = today + timedelta(days=data.expiring_within_days)
 
     query = select(Permit).where(
@@ -331,7 +332,7 @@ async def quick_renew(token: str, db: AsyncSession = Depends(get_db)):
         lot_assignment=permit.lot_assignment,
         permit_type=permit.permit_type,
         beacon_id=permit.beacon_id,
-        start_date=date.today(),
+        start_date=today_local(),
         end_date=new_end,
         status="active",
     )
@@ -440,7 +441,7 @@ async def get_renewal_info(token: str, db: AsyncSession = Depends(get_db)):
         lot_assignment=permit.lot_assignment,
         permit_type=permit.permit_type,
         end_date=permit.end_date.isoformat() if permit.end_date else None,
-        expired=permit.status == "expired" or (permit.end_date is not None and permit.end_date < date.today()),
+        expired=permit.status == "expired" or (permit.end_date is not None and permit.end_date < today_local()),
     )
 
 
@@ -483,7 +484,7 @@ async def confirm_renewal(
         lot_assignment=permit.lot_assignment,
         permit_type=permit.permit_type,
         beacon_id=permit.beacon_id,
-        start_date=date.today(),
+        start_date=today_local(),
         end_date=new_end,
         status="active",
     )

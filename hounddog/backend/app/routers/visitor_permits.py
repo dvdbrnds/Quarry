@@ -14,6 +14,7 @@ from ..database import get_db
 from ..models.permit import Permit
 from ..models.visitor_approval_token import VisitorApprovalToken
 from ..services.permit_numbering import next_permit_number
+from ..services.timeutils import today_local
 
 
 router = APIRouter()
@@ -190,7 +191,7 @@ async def approve_or_deny(token: str, body: ApprovalDecision, db: AsyncSession =
 
 
 async def _create_day_guest(data: VisitorPermitCreate, plate: str, db: AsyncSession) -> VisitorPermitResponse:
-    visit_date = data.visit_date or date.today()
+    visit_date = data.visit_date or today_local()
 
     notes_parts = []
     if data.visiting_person:
@@ -240,7 +241,7 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
     if not data.sponsor_email.strip():
         raise HTTPException(400, "Sponsor email is required for vendor permits")
 
-    start = data.start_date or date.today()
+    start = data.start_date or today_local()
     is_long_term = data.duration in ("multi_day", "long_term_30", "long_term_60", "long_term_90", "semester")
 
     if data.duration == "single_day":

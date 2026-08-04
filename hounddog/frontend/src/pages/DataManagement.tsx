@@ -454,7 +454,7 @@ export default function DataManagement() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium w-20">Time (UTC)</span>
+                <span className="text-sm font-medium w-20">Time (ET)</span>
                 <TimePicker
                   value={dayjs(schedule.time || "02:00", "HH:mm")}
                   format="HH:mm"
@@ -531,12 +531,12 @@ export default function DataManagement() {
 
               {schedule.last_run && (
                 <div className="text-xs text-ink-mute mt-1">
-                  Last backup: {dayjs(schedule.last_run).fromNow()} ({dayjs(schedule.last_run).format("MMM D, YYYY h:mm A")} UTC)
+                  Last backup: {dayjs(schedule.last_run).fromNow()} ({dayjs(schedule.last_run).format("MMM D, YYYY h:mm A")} ET)
                 </div>
               )}
               {schedule.next_run && schedule.enabled && (
                 <div className="text-xs text-ink-mute">
-                  Next backup: {dayjs(schedule.next_run).fromNow()} ({dayjs(schedule.next_run).format("MMM D, YYYY h:mm A")} UTC)
+                  Next backup: {dayjs(schedule.next_run).fromNow()} ({dayjs(schedule.next_run).format("MMM D, YYYY h:mm A")} ET)
                 </div>
               )}
             </Space>

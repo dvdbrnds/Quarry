@@ -132,6 +132,23 @@ def run_preflight() -> list[dict]:
         else:
             check("OKTA_API_TOKEN", "pass", "Set")
 
+    # --- TIMEZONE ---
+    import os
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    tz_name = settings.app_timezone or "America/New_York"
+    env_tz = os.environ.get("TZ", "")
+    try:
+        local_now = datetime.now(ZoneInfo(tz_name))
+        detail = f"{tz_name} — local {local_now.strftime('%Y-%m-%d %H:%M %Z')}"
+        if env_tz and env_tz != tz_name:
+            check("APP_TIMEZONE", "warn", f"{detail} (container TZ={env_tz})")
+        else:
+            check("APP_TIMEZONE", "pass", detail)
+    except Exception as e:
+        check("APP_TIMEZONE", "fail", f"Invalid timezone {tz_name}: {e}")
+
     # --- Log summary ---
     fails = [r for r in results if r["status"] == "fail"]
     warns = [r for r in results if r["status"] == "warn"]

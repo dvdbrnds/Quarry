@@ -14,6 +14,7 @@ from ..schemas.academic_season import (
     AcademicSeasonUpdate,
     ActiveSeasonResponse,
 )
+from ..services.timeutils import today_local
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -28,7 +29,7 @@ async def list_seasons(db: AsyncSession = Depends(get_db)):
 
 @router.get("/active", response_model=ActiveSeasonResponse)
 async def get_active_season(db: AsyncSession = Depends(get_db)):
-    today = date.today()
+    today = today_local()
     result = await db.execute(
         select(AcademicSeason).where(
             AcademicSeason.start_date <= today,

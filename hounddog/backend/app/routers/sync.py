@@ -4,6 +4,7 @@ import os
 import uuid as uuid_mod
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from ..services.timeutils import today_local
 
 logger = logging.getLogger("quarry.sync")
 
@@ -311,7 +312,7 @@ async def sync_calendar(
     )
     seasons = result.scalars().all()
 
-    today = date.today()
+    today = today_local()
     active = None
     for s in seasons:
         if s.start_date <= today <= s.end_date:
@@ -440,7 +441,7 @@ async def _upload_ticket_impl(
             year_start_month = es.academic_year_start_month if es else 8
             year_start_day = es.academic_year_start_day if es else 1
 
-            today = date.today()
+            today = today_local()
             if (today.month > year_start_month) or (today.month == year_start_month and today.day >= year_start_day):
                 academic_year_start = date(today.year, year_start_month, year_start_day)
             else:

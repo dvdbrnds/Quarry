@@ -5,6 +5,7 @@ import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from ..services.timeutils import today_local
 
 logger = logging.getLogger("quarry.payments")
 
@@ -738,8 +739,8 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
         plates=[plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=valid_days),
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=valid_days),
         status="active",
     )
     db.add(new_permit)
@@ -808,8 +809,8 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
         plates=[plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=valid_days),
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=valid_days),
         status="active",
     )
     db.add(new_permit)
@@ -884,8 +885,8 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
         plates=[plate or app.plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=valid_days),
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=valid_days),
         status="active",
     )
     db.add(new_permit)
@@ -945,8 +946,8 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
         plates=[plate],
         permit_type=permit_type_code,
         lot_assignment=lot_assignment,
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=valid_days),
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=valid_days),
         status="active",
     )
     db.add(new_permit)
@@ -1938,7 +1939,7 @@ async def export_oracle_gl(
         settings.gl_account_stripe_fees, settings.gl_activity_zero,
     )
 
-    batch_date = date.today().isoformat()
+    batch_date = today_local().isoformat()
     batch_name = f"QUARRY-{batch_date}"
 
     output = io.StringIO()

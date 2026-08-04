@@ -19,6 +19,7 @@ from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
 from ..services.permit_numbering import next_permit_number
+from ..services.timeutils import today_local
 
 _logger = logging.getLogger("quarry.student_permits")
 from ..schemas.permit_application import (
@@ -449,8 +450,8 @@ async def accept_offer(
             plates=[app.plate],
             permit_type=pt.code,
             lot_assignment=lot_assignment,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=pt.valid_days),
+            start_date=today_local(),
+            end_date=today_local() + timedelta(days=pt.valid_days),
             status="active",
         )
         db.add(new_permit)
@@ -641,8 +642,8 @@ async def direct_purchase(
             plates=[data.plate.upper().strip()],
             permit_type=pt.code,
             lot_assignment=lot_assignment,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=pt.valid_days),
+            start_date=today_local(),
+            end_date=today_local() + timedelta(days=pt.valid_days),
             status="active",
         )
         db.add(new_permit)
@@ -706,8 +707,8 @@ async def direct_purchase(
             plates=[data.plate.upper().strip()],
             permit_type=pt.code,
             lot_assignment=lot_assignment,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=pt.valid_days),
+            start_date=today_local(),
+            end_date=today_local() + timedelta(days=pt.valid_days),
             status="active",
         )
         db.add(new_permit)

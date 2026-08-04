@@ -32,6 +32,7 @@ from ..services.permit_lifecycle import (
     get_permit_stats,
 )
 from ..services.permit_numbering import next_permit_number
+from ..services.timeutils import today_local
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -203,7 +204,7 @@ async def list_permits(
     query = select(Permit).where(Permit.deleted_at.is_(None))
 
     if max_age_years:
-        cutoff = date.today() - timedelta(days=max_age_years * 365)
+        cutoff = today_local() - timedelta(days=max_age_years * 365)
         query = query.where(Permit.start_date >= cutoff)
 
     if search:
@@ -218,7 +219,7 @@ async def list_permits(
         )
     if status:
         if status == "expiring_soon":
-            today = date.today()
+            today = today_local()
             soon = today + timedelta(days=30)
             query = query.where(
                 Permit.status == "active",
@@ -297,7 +298,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
         raise HTTPException(400, "Invalid permit type")
 
     permit_number = await next_permit_number(db)
-    start = data.start_date or date.today()
+    start = data.start_date or today_local()
     end = data.end_date or (start + timedelta(days=pt.valid_days))
 
     if data.waive_fee or pt.price <= 0:
@@ -549,7 +550,7 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
 
     # Faculty/staff permits always expire on June 30
     if old.permit_type == "faculty_staff":
-        new_start = date.today()
+        new_start = today_local()
         target = date(new_start.year, 6, 30)
         if target <= new_start:
             target = date(new_start.year + 1, 6, 30)
@@ -563,7 +564,7 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
             pt = pt_result.scalar()
             if pt and pt.valid_days:
                 valid_days = pt.valid_days
-        new_start = date.today()
+        new_start = today_local()
         new_end = new_start + timedelta(days=valid_days)
 
     renewed = Permit(
@@ -744,7 +745,7 @@ async def import_permits(
                 permit_type=row.permit_type,
                 status=row.permit_status,
                 permit_number=row.permit_number or None,
-                start_date=start or date.today(),
+                start_date=start or today_local(),
                 end_date=end,
             )
             db.add(permit)
@@ -800,7 +801,7 @@ async def import_permits_csv(
                 permit_type=row.get("permit_type", "student"),
                 status=row.get("permit_status", "active"),
                 permit_number=row.get("permit_number") or None,
-                start_date=date.today(),
+                start_date=today_local(),
                 end_date=end,
             )
             db.add(permit)

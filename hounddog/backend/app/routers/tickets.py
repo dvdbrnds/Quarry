@@ -13,6 +13,7 @@ from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
+from ..services.timeutils import campus_tz, today_local
 from ..services.email import send_citation_email
 from ..schemas.ticket import (
     ActionItem,
@@ -176,16 +177,16 @@ async def dashboard(
     period: str = Query("today", pattern="^(today|week|month)$"),
     db: AsyncSession = Depends(get_db),
 ):
-    now = datetime.now(timezone.utc)
-    today = now.date()
+    today = today_local()
+    et = campus_tz()
     if period == "today":
-        since = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+        since = datetime.combine(today, datetime.min.time(), tzinfo=et)
         avg_days = 7
     elif period == "week":
-        since = datetime.combine(today - timedelta(days=6), datetime.min.time(), tzinfo=timezone.utc)
+        since = datetime.combine(today - timedelta(days=6), datetime.min.time(), tzinfo=et)
         avg_days = 28
     else:
-        since = datetime.combine(today.replace(day=1), datetime.min.time(), tzinfo=timezone.utc)
+        since = datetime.combine(today.replace(day=1), datetime.min.time(), tzinfo=et)
         avg_days = 90
 
     # Needs action (all time — these are currently open)
@@ -211,7 +212,7 @@ async def dashboard(
     avg_q = await db.execute(
         select(func.count()).select_from(Ticket)
         .where(
-            Ticket.issued_at >= datetime.combine(today - timedelta(days=avg_days), datetime.min.time(), tzinfo=timezone.utc),
+            Ticket.issued_at >= datetime.combine(today - timedelta(days=avg_days), datetime.min.time(), tzinfo=et),
         )
     )
     avg_raw = avg_q.scalar() or 0
@@ -282,7 +283,7 @@ async def dashboard(
             cast(Ticket.issued_at, Date).label("day"),
             func.count().label("cnt"),
         )
-        .where(Ticket.issued_at >= datetime.combine(trend_start, datetime.min.time(), tzinfo=timezone.utc))
+        .where(Ticket.issued_at >= datetime.combine(trend_start, datetime.min.time(), tzinfo=et))
         .group_by("day")
         .order_by("day")
     )

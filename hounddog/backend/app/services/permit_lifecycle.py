@@ -10,13 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.enforcement_settings import EnforcementSettings
+from .timeutils import today_local
 
 logger = logging.getLogger("quarry.permits")
 
 
 async def auto_expire_permits(db: AsyncSession) -> int:
     """Set status='expired' for active permits past their end_date. Returns count."""
-    today = date.today()
+    today = today_local()
     result = await db.execute(
         select(Permit).where(
             Permit.status == "active",
@@ -147,7 +148,7 @@ async def find_duplicates(db: AsyncSession, plates: list[str], exclude_id=None) 
 
 async def get_permit_stats(db: AsyncSession) -> dict:
     """Compute permit summary statistics."""
-    today = date.today()
+    today = today_local()
     soon = today + timedelta(days=30)
 
     base = select(Permit).where(Permit.deleted_at.is_(None))

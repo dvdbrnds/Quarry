@@ -21,6 +21,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      TZ: America/New_York
     ports:
       - "3200:3200"
     depends_on:
