@@ -442,7 +442,18 @@ async def accept_offer(
     if not pt:
         raise HTTPException(404, "Permit type not found")
 
-    # Fee-exempt path: issue permit directly at $0, skip Stripe
+    # Fee-exempt path: roster match or admin flag — issue at $0, skip Stripe
+    from ..services.fee_exempt import lookup_fee_exempt
+
+    exempt = await lookup_fee_exempt(
+        db,
+        user,
+        extra_emails=[app.student_email],
+        extra_names=[app.student_name],
+    )
+    if exempt:
+        app.fee_exempt = True
+
     if app.fee_exempt:
         lot_assignment = ""
         if app.assigned_lot:
@@ -450,6 +461,7 @@ async def accept_offer(
         elif pt.lot_assignments:
             lot_assignment = ",".join(pt.lot_assignments)
 
+        reason = exempt.entry.reason if exempt else "Fee Exempt"
         new_permit = Permit(
             permit_number=await next_permit_number(db),
             name=app.student_name,
@@ -470,14 +482,18 @@ async def accept_offer(
             payer_name=app.student_name or None,
             payer_email=app.student_email or None,
             plate=app.plate or None,
-            description=f"Fee-Exempt Permit ({pt.code}) — {app.plate}",
+            description=f"Fee-Exempt Permit ({pt.code}) — {app.plate} [{reason}]",
         )
         db.add(payment)
 
         app.status = "accepted"
         await db.flush()
 
-        return {"status": "accepted", "fee_exempt": True}
+        return {
+            "status": "accepted",
+            "fee_exempt": True,
+            "message": "Thank you — your permit has been issued at no charge.",
+        }
 
     # Standard payment path via Stripe
     if not settings.stripe_secret_key:
@@ -612,30 +628,15 @@ async def direct_purchase(
         await _opt_in_alerts(db, data.student_name, user.email, data.phone)
 
     # Fee-exempt roster check: issue permit at $0 without Stripe
-    from ..models.fee_exempt_roster import FeeExemptRoster
-    from sqlalchemy import or_
-    user_full_name = f"{user.given_name} {user.family_name}".strip().lower()
-    exempt_filters = [FeeExemptRoster.email == user.email]
-    if user.sub:
-        exempt_filters.append(FeeExemptRoster.student_id == user.sub)
-    # Check Okta profile fields that may contain the institutional student ID
-    profile = user.profile or {}
-    for field in ("employeeNumber", "employee_number", "studentId", "student_id",
-                  "altId", "moravianId", "preferred_username", "login", "uid"):
-        val = profile.get(field)
-        if val:
-            # Strip email suffix if present (e.g. "547305@moravian.edu" → "547305")
-            val_str = str(val).split("@")[0]
-            exempt_filters.append(FeeExemptRoster.student_id == val_str)
-    if user_full_name:
-        exempt_filters.append(
-            func.lower(func.concat(FeeExemptRoster.first_name, ' ', FeeExemptRoster.last_name)) == user_full_name
-        )
-    exempt_match = (await db.execute(
-        select(FeeExemptRoster).where(or_(*exempt_filters)).limit(1)
-    )).scalar()
+    from ..services.fee_exempt import lookup_fee_exempt
 
-    if exempt_match:
+    exempt = await lookup_fee_exempt(
+        db,
+        user,
+        extra_names=[data.student_name],
+    )
+
+    if exempt:
         lot_assignment = data.lot_preference or (
             ",".join(pt.lot_assignments) if pt.lot_assignments else ""
         )
@@ -662,17 +663,25 @@ async def direct_purchase(
             payer_name=data.student_name or None,
             payer_email=user.email or None,
             plate=data.plate.upper().strip(),
-            description=f"Fee-Exempt Permit ({pt.code}) — {data.plate.upper().strip()} [{exempt_match.reason}]",
+            description=(
+                f"Fee-Exempt Permit ({pt.code}) — {data.plate.upper().strip()} "
+                f"[{exempt.entry.reason}]"
+            ),
         )
         db.add(payment)
         await db.flush()
 
         _logger.info(
-            "Fee-exempt permit issued: %s (%s) — %s",
-            user.email, exempt_match.reason, pt.code,
+            "Fee-exempt permit issued: %s (%s via %s) — %s",
+            user.email, exempt.entry.reason, exempt.matched_by, pt.code,
         )
 
-        return {"status": "issued", "fee_exempt": True, "permit_type": pt.code}
+        return {
+            "status": "issued",
+            "fee_exempt": True,
+            "permit_type": pt.code,
+            "message": "Thank you — your permit has been issued at no charge.",
+        }
 
     # ── Program discount (ABSN roster / Okta group) + optional voucher ─────────
     from ..models.voucher import Voucher

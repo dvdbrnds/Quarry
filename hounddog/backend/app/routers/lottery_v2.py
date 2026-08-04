@@ -122,6 +122,7 @@ class ApplicationRead(BaseModel):
     offer_expires_at: datetime | None
     admin_notes: str | None = None
     is_test_entry: bool
+    fee_exempt: bool = False
     created_at: datetime
 
     class Config:
@@ -212,6 +213,7 @@ async def _app_to_read(
         offer_expires_at=app.offer_expires_at,
         admin_notes=app.admin_notes,
         is_test_entry=app.is_test_entry,
+        fee_exempt=bool(app.fee_exempt),
         created_at=app.created_at,
     )
 
@@ -502,6 +504,17 @@ async def submit_application(
             is_test_entry=False,
         )
 
+    from ..services.fee_exempt import lookup_fee_exempt
+
+    exempt = await lookup_fee_exempt(
+        db,
+        user,
+        extra_emails=[user.email],
+        extra_names=[name],
+    )
+    if exempt:
+        app.fee_exempt = True
+
     # If the draw already happened, try open seats first — only waitlist if full
     if cycle.status == "drawn":
         if not superseded:
@@ -616,6 +629,21 @@ async def my_application(
             a.created_at or datetime(1970, 1, 1, tzinfo=timezone.utc),
         ),
     )[0]
+
+    # Live roster check so Res Life Staff see "Claim free" before paying
+    if not best.fee_exempt:
+        from ..services.fee_exempt import lookup_fee_exempt
+
+        exempt = await lookup_fee_exempt(
+            db,
+            user,
+            extra_emails=[best.student_email, user.email],
+            extra_names=[best.student_name, user.display_name],
+        )
+        if exempt:
+            best.fee_exempt = True
+            await db.flush()
+
     return await _app_to_read(db, best)
 
 
@@ -662,14 +690,32 @@ async def accept_offer(
     if not pt:
         raise HTTPException(404, "Permit type not found")
 
+    # Fee-exempt roster (Res Life Staff etc.) — skip Stripe for everyone on the list
+    from ..services.fee_exempt import lookup_fee_exempt
+
+    exempt = await lookup_fee_exempt(
+        db,
+        user,
+        extra_emails=[app.student_email],
+        extra_names=[app.student_name, user.display_name if hasattr(user, "display_name") else None],
+    )
+    if exempt:
+        app.fee_exempt = True
+
     if app.fee_exempt:
         lot_assignment = app.assigned_lot or (
             ",".join(pt.lot_assignments) if pt.lot_assignments else ""
         )
+        reason = exempt.entry.reason if exempt else "Fee Exempt"
+        display_name = (
+            (user.display_name if user.display_name and "@" not in user.display_name else None)
+            or (f"{user.given_name} {user.family_name}".strip() or None)
+            or app.student_name
+        )
         new_permit = Permit(
             permit_number=await next_permit_number(db),
-            name=app.student_name,
-            email=app.student_email or None,
+            name=display_name,
+            email=app.student_email or user.email or None,
             phone=app.phone or "",
             sms_opt_in=bool(app.sms_opt_in),
             plates=[app.plate],
@@ -685,15 +731,20 @@ async def accept_offer(
                 amount=Decimal("0.00"),
                 method="fee_exempt",
                 payment_type="lottery_v2_permit",
-                payer_name=app.student_name or None,
-                payer_email=app.student_email or None,
+                payer_name=display_name or None,
+                payer_email=app.student_email or user.email or None,
                 plate=app.plate or None,
-                description=f"Fee-Exempt Permit ({pt.code}) — {app.plate}",
+                description=f"Fee-Exempt Permit ({pt.code}) — {app.plate} [{reason}]",
             )
         )
         app.status = "accepted"
+        app.student_name = display_name
         await db.flush()
-        return {"status": "accepted", "fee_exempt": True}
+        return {
+            "status": "accepted",
+            "fee_exempt": True,
+            "message": "Thank you — your permit has been issued at no charge.",
+        }
 
     # ── Program discount (ABSN) + optional voucher ────────────────────────────
     from ..models.voucher import Voucher

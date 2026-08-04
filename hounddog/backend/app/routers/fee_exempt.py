@@ -203,6 +203,7 @@ async def upload_roster(
             errors.append(f"Row {i}: missing student ID")
             skipped += 1
             continue
+        student_id = student_id.split("@")[0]
 
         first_name = str(row.get("first_name") or "").strip()
         last_name = str(row.get("last_name") or "").strip()
@@ -233,6 +234,7 @@ async def upload_roster(
 async def delete_roster_entry(
     entry_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     entry = await db.get(FeeExemptRoster, entry_id)
     if not entry:
@@ -242,8 +244,63 @@ async def delete_roster_entry(
     return {"deleted": True}
 
 
+class RosterUpdateRequest(BaseModel):
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    student_id: str | None = None
+    building: str | None = None
+    room: str | None = None
+    reason: str | None = None
+
+
+@router.patch("/roster/{entry_id}", response_model=RosterEntry)
+async def update_roster_entry(
+    entry_id: uuid.UUID,
+    data: RosterUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Update a fee-exempt roster row (e.g. backfill email for matching)."""
+    entry = await db.get(FeeExemptRoster, entry_id)
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    if data.email is not None:
+        entry.email = data.email.strip().lower() or None
+    if data.first_name is not None:
+        entry.first_name = data.first_name.strip()
+    if data.last_name is not None:
+        entry.last_name = data.last_name.strip()
+    if data.student_id is not None:
+        entry.student_id = data.student_id.strip()
+    if data.building is not None:
+        entry.building = data.building.strip() or None
+    if data.room is not None:
+        entry.room = data.room.strip() or None
+    if data.reason is not None:
+        entry.reason = data.reason.strip() or entry.reason
+    await db.flush()
+    await db.refresh(entry)
+    by_email, by_student_id, by_name = await load_active_permit_indexes(db)
+    return _entry_from_row(
+        entry,
+        match_roster_to_permit(
+            student_id=entry.student_id,
+            email=entry.email,
+            first_name=entry.first_name,
+            last_name=entry.last_name,
+            by_email=by_email,
+            by_student_id=by_student_id,
+            by_name=by_name,
+        ),
+    )
+
+
 @router.delete("/roster")
-async def clear_roster(db: AsyncSession = Depends(get_db)):
+async def clear_roster(
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
     """Delete all entries from the fee-exempt roster."""
     count = (await db.execute(
         select(func.count()).select_from(FeeExemptRoster)

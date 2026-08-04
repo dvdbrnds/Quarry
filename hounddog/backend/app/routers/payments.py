@@ -10,6 +10,7 @@ from ..services.timeutils import today_local
 logger = logging.getLogger("quarry.payments")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy import case, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1900,6 +1901,51 @@ def _fetch_stripe_fee(payment_intent_id: str) -> tuple[int, int]:
         return bt.fee, bt.net
     except Exception:
         return 0, 0
+
+
+class RefundRequest(BaseModel):
+    charge_id: str
+    reason: str = "requested_by_customer"
+    note: str | None = None
+
+
+@router.post("/refund")
+async def refund_stripe_charge(
+    data: RefundRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Admin: full refund of a Stripe charge (e.g. fee-exempt student charged in error)."""
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+    if not data.charge_id.startswith(("ch_", "py_")):
+        raise HTTPException(400, "charge_id must be a Stripe charge id (ch_…)")
+
+    import stripe
+
+    stripe.api_key = settings.stripe_secret_key
+    try:
+        refund = stripe.Refund.create(
+            charge=data.charge_id,
+            reason=data.reason if data.reason in ("duplicate", "fraudulent", "requested_by_customer") else "requested_by_customer",
+            metadata={
+                "refunded_by": admin.email or admin.sub,
+                "note": (data.note or "")[:500],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(400, f"Stripe refund failed: {e}") from e
+
+    logger.info(
+        "Admin %s refunded charge %s → refund %s",
+        admin.email, data.charge_id, getattr(refund, "id", None),
+    )
+    return {
+        "status": getattr(refund, "status", "unknown"),
+        "refund_id": getattr(refund, "id", None),
+        "charge_id": data.charge_id,
+        "amount": (getattr(refund, "amount", 0) or 0) / 100,
+    }
 
 
 @router.get("/export/oracle-gl")

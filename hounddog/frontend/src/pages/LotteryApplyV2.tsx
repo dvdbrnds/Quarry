@@ -126,6 +126,7 @@ interface Application {
   lottery_rank: number | null;
   waitlist_position: number | null;
   offer_expires_at: string | null;
+  fee_exempt?: boolean;
   created_at: string;
 }
 
@@ -561,12 +562,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         throw new Error(err.detail || "Purchase failed");
       }
       const data = await res.json();
-      if (data.checkout_url) {
+      if (data.fee_exempt) {
+        message.success(data.message || "Thank you — your permit has been issued at no charge.");
+      } else if (data.checkout_url) {
         window.location.href = data.checkout_url;
         return;
-      }
-      if (data.fee_exempt) {
-        message.success("Your permit has been issued — no charge (fee exempt).");
       } else {
         message.success("Permit purchased");
       }
@@ -698,6 +698,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         throw new Error(err.detail || "Accept failed");
       }
       const data = await res.json();
+      if (data.fee_exempt) {
+        message.success(data.message || "Thank you — your permit has been issued at no charge.");
+        await load();
+        return;
+      }
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
         return;
@@ -914,10 +919,17 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-3">
                       <p className="m-0 font-medium text-green-900">
                         {application.assigned_permit_type_label}
-                        {application.assigned_permit_type_price != null && (
+                        {application.fee_exempt ? (
+                          <span className="text-green-700"> — No charge</span>
+                        ) : application.assigned_permit_type_price != null ? (
                           <span className="text-green-700"> — ${application.assigned_permit_type_price}</span>
-                        )}
+                        ) : null}
                       </p>
+                      {application.fee_exempt && (
+                        <p className="m-0 text-sm text-green-800">
+                          You are on the fee-exempt roster (Res Life Staff). Claim your permit below — no payment required.
+                        </p>
+                      )}
                       {((application.assigned_permit_type_lots && application.assigned_permit_type_lots.length > 0)
                         || application.assigned_lot) && (
                         <p className="m-0 text-sm text-green-800">
@@ -935,10 +947,16 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                       <Space>
                         <Button type="primary" loading={accepting} onClick={acceptOffer}>
-                          Accept &amp; Pay
+                          {application.fee_exempt ? "Claim Permit (Free)" : "Accept & Pay"}
                         </Button>
                         <Button onClick={declineOffer}>Decline</Button>
                       </Space>
+                    </div>
+                  )}
+
+                  {application.status === "accepted" && application.fee_exempt && (
+                    <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+                      <p className="m-0 font-medium text-green-900">Thank you — your permit is active at no charge.</p>
                     </div>
                   )}
 

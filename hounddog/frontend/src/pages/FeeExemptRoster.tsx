@@ -312,7 +312,8 @@ export default function FeeExemptRoster() {
 
       <div className="text-xs text-gray-400 mt-3">
         Upload an Excel (.xlsx) or CSV file with columns: Moravian ID, Last, First, Building, Room.
-        Students on this list will receive permits at $0 when they go through the commuter permit purchase flow.
+        Students on this list get permits at $0 automatically — lottery accept and
+        direct purchase both skip Stripe and show a thank-you confirmation.
       </div>
 
       <Modal

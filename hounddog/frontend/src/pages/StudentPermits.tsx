@@ -64,7 +64,7 @@ export default function StudentPermits() {
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Accept failed"); }
       const data = await res.json();
       if (data.fee_exempt) {
-        message.success("Your permit has been issued — no payment required.");
+        message.success(data.message || "Thank you — your permit has been issued at no charge.");
         load();
       } else {
         window.location.href = data.checkout_url;
