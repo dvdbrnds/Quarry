@@ -243,18 +243,6 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_escalation_student ON escalation_log(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_escalation_type ON escalation_log(escalation_type)",
-            # Extended Premium Commuter gets all street parking lots
-            """UPDATE permit_types
-               SET lot_assignments = (
-                   SELECT ARRAY(SELECT DISTINCT unnest FROM unnest(
-                       permit_types.lot_assignments || street_lots.names
-                   ))
-               )
-               FROM (
-                   SELECT COALESCE(ARRAY_AGG(name), '{}') AS names
-                   FROM parking_lots WHERE lot_type = 'street'
-               ) AS street_lots
-               WHERE code = 'premium_commuter'""",
             # Lottery audit log
             """CREATE TABLE IF NOT EXISTS lottery_audit_log (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -389,16 +377,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS last_plate_change TIMESTAMPTZ",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT FALSE",
             "UPDATE permit_types SET allow_multiple = TRUE WHERE code = 'faculty_staff' AND allow_multiple = FALSE",
-            # 2025 planning spreadsheet: update tier caps and lot assignments
-            "UPDATE permit_types SET max_capacity = 264, lot_assignments = '{X,A,F,H,M,N,O,R,S}' WHERE code = 'commuter_undergrad'",
-            "UPDATE permit_types SET lot_assignments = '{W,A,F,H,M,N,O,R,S}' WHERE code = 'commuter_grad'",
-            "UPDATE permit_types SET max_capacity = 200, lot_assignments = '{\"Main St\",\"Iron St.\",\"Monocacy St.\",\"Lenox Ave\",\"W. Greenwich St.\",\"Lorain Ave.\",\"W. Elizabeth\",\"W. Locust St\"}' WHERE code = 'premium_commuter'",
-            "UPDATE permit_types SET max_capacity = 58 WHERE code = 'north_premium_resident'",
-            "UPDATE permit_types SET max_capacity = 218 WHERE code = 'north_guaranteed_resident'",
-            "UPDATE permit_types SET max_capacity = 40 WHERE code = 'south_premium_resident'",
-            "UPDATE permit_types SET max_capacity = 44, lot_assignments = '{U}' WHERE code = 'south_guaranteed_resident'",
-            "UPDATE permit_types SET max_capacity = 100 WHERE code = 'south_standalone'",
-            "UPDATE permit_types SET lot_assignments = '{A,F,H,M,N,O,R,S,U,W}' WHERE code = 'faculty_staff'",
+            # NOTE: Do NOT hard-reset permit_types.lot_assignments / max_capacity here.
+            # Those belong to admin edits and must survive redeploys. Initial defaults are
+            # seeded only when the table is empty (see seed block below).
             # 2025 planning spreadsheet: update lot spot counts
             "UPDATE parking_lots SET total_spaces = 103 WHERE name = 'A'",
             "UPDATE parking_lots SET total_spaces = 95 WHERE name = 'B'",
