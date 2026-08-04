@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Button, Card, Collapse, Space, Statistic, Table, Tag, App as AntApp, InputNumber,
+  Alert, Button, Card, Collapse, Modal, Select, Space, Statistic, Table, Tag, App as AntApp, InputNumber,
 } from "antd";
 import { authHeaders } from "../auth";
 
@@ -28,6 +28,7 @@ interface Application {
   status: string;
   lottery_rank: number | null;
   waitlist_position: number | null;
+  tier_preferences: string[];
   first_choice_label: string | null;
   tier_preference_labels: string[];
   assigned_permit_type_label: string | null;
@@ -73,6 +74,9 @@ export default function LotteryV2Manager() {
   const [busy, setBusy] = useState(false);
   const [autoThreshold, setAutoThreshold] = useState<number | null>(100);
   const [autoDays, setAutoDays] = useState<number | null>(3);
+  const [selectTarget, setSelectTarget] = useState<Application | null>(null);
+  const [selectPermitId, setSelectPermitId] = useState<string | undefined>(undefined);
+  const [selectNotify, setSelectNotify] = useState(true);
 
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
@@ -185,6 +189,40 @@ export default function LotteryV2Manager() {
     });
   }
 
+  function confirmBump(app: Application) {
+    modal.confirm({
+      title: `Move ${app.student_name} to #1 on the waitlist?`,
+      content: "They will be offered next when a spot opens or when you manually select them.",
+      okText: "Move to top",
+      onOk: async () => {
+        const data = await postAction(`/api/lottery-v2/applications/${app.id}/bump-waitlist`);
+        if (data) message.success(`${app.student_name} is now #1 on the waitlist`);
+      },
+    });
+  }
+
+  function openManualSelect(app: Application) {
+    const prefs = app.tier_preferences || [];
+    setSelectTarget(app);
+    setSelectPermitId(prefs[0]);
+    setSelectNotify(true);
+  }
+
+  async function confirmManualSelect() {
+    if (!selectTarget) return;
+    const data = await postAction(`/api/lottery-v2/applications/${selectTarget.id}/manual-select`, {
+      permit_type_id: selectPermitId || null,
+      send_notification: selectNotify,
+    });
+    if (data) {
+      message.success(
+        `${selectTarget.student_name} selected` +
+          (data.assigned_permit_type_label ? `: ${data.assigned_permit_type_label}` : ""),
+      );
+      setSelectTarget(null);
+    }
+  }
+
   const columns = [
     {
       title: "Rank",
@@ -244,6 +282,33 @@ export default function LotteryV2Manager() {
         ) : (
           "—"
         ),
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      width: 200,
+      render: (_: unknown, r: Application) => {
+        if (r.status === "waitlisted") {
+          return (
+            <Space size={0} wrap>
+              <Button type="link" size="small" disabled={busy} onClick={() => confirmBump(r)}>
+                Top of waitlist
+              </Button>
+              <Button type="link" size="small" disabled={busy} onClick={() => openManualSelect(r)}>
+                Select
+              </Button>
+            </Space>
+          );
+        }
+        if (r.status === "pending") {
+          return (
+            <Button type="link" size="small" disabled={busy} onClick={() => openManualSelect(r)}>
+              Select
+            </Button>
+          );
+        }
+        return null;
+      },
     },
   ];
 
@@ -469,8 +534,17 @@ export default function LotteryV2Manager() {
                     </h4>
                     <ul className="text-sm text-gray-600 m-0 pl-5">
                       {results.waitlisted.map((a) => (
-                        <li key={a.id}>
-                          #{a.waitlist_position} {a.student_name} ({a.class_year})
+                        <li key={a.id} className="flex flex-wrap items-center gap-2 py-0.5">
+                          <span>
+                            #{a.waitlist_position} {a.student_name} ({a.class_year})
+                            {a.first_choice_label ? ` · ${a.first_choice_label}` : ""}
+                          </span>
+                          <Button type="link" size="small" className="px-0" disabled={busy} onClick={() => confirmBump(a)}>
+                            Top
+                          </Button>
+                          <Button type="link" size="small" className="px-0" disabled={busy} onClick={() => openManualSelect(a)}>
+                            Select
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -512,6 +586,44 @@ export default function LotteryV2Manager() {
           </Button>
         </Card>
       )}
+
+      <Modal
+        title={selectTarget ? `Manually select ${selectTarget.student_name}` : "Manual select"}
+        open={!!selectTarget}
+        onCancel={() => setSelectTarget(null)}
+        onOk={confirmManualSelect}
+        okText="Select & offer"
+        confirmLoading={busy}
+        destroyOnClose
+      >
+        {selectTarget && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 m-0">
+              Places them into remaining capacity from their ranked preferences and starts the offer window.
+            </p>
+            <div>
+              <div className="text-sm font-medium mb-1">Permit type</div>
+              <Select
+                className="w-full"
+                value={selectPermitId}
+                onChange={setSelectPermitId}
+                options={(selectTarget.tier_preferences || []).map((id, i) => ({
+                  value: id,
+                  label: `${i + 1}. ${selectTarget.tier_preference_labels?.[i] || id}`,
+                }))}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectNotify}
+                onChange={(e) => setSelectNotify(e.target.checked)}
+              />
+              Email the student their offer
+            </label>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

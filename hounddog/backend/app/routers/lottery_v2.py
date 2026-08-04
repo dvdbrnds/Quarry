@@ -26,7 +26,9 @@ from ..models.permit_type import PermitType
 from ..services.lottery_v2_runner import (
     ALL_V2_TIER_CODES,
     CAMPUS_TIER_CODES,
+    bump_waitlist_to_top,
     class_year_eligible,
+    manual_select_application,
     promote_from_waitlist,
     run_waterfall_draw,
 )
@@ -762,6 +764,47 @@ async def decline_offer(
         "status": "declined",
         "promoted_application_id": str(promoted.id) if promoted else None,
     }
+
+
+class ManualSelectRequest(BaseModel):
+    permit_type_id: uuid.UUID | None = None
+    send_notification: bool = True
+
+
+@router.post("/applications/{application_id}/bump-waitlist", response_model=ApplicationRead)
+async def admin_bump_waitlist(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Move a waitlisted applicant to position #1."""
+    try:
+        app = await bump_waitlist_to_top(db, application_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return await _app_to_read(db, app)
+
+
+@router.post("/applications/{application_id}/manual-select", response_model=ApplicationRead)
+async def admin_manual_select(
+    application_id: uuid.UUID,
+    data: ManualSelectRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Manually select a pending/waitlisted applicant into available capacity."""
+    opts = data or ManualSelectRequest()
+    try:
+        app = await manual_select_application(
+            db,
+            application_id,
+            permit_type_id=opts.permit_type_id,
+            send_notification=opts.send_notification,
+            admin_label=admin.email or admin.sub,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return await _app_to_read(db, app)
 
 
 # ── Admin endpoints ──────────────────────────────────────────────────

@@ -434,6 +434,176 @@ async def run_waterfall_draw(
     }
 
 
+async def _tiers_with_offers_reserved(
+    db: AsyncSession,
+    cycle_id: uuid.UUID,
+) -> dict[uuid.UUID, TierCapacity]:
+    """Live remaining capacity minus seats already offered (selected/accepted)."""
+    pts = (
+        await db.execute(
+            select(PermitType).where(
+                PermitType.code.in_(LOTTERY_TIER_CODES),
+                PermitType.is_active.is_(True),
+            )
+        )
+    ).scalars().all()
+    tiers = await build_tier_capacities(db, list(pts))
+
+    selected_apps = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status.in_(["selected", "accepted"]),
+            )
+        )
+    ).scalars().all()
+    for app in selected_apps:
+        if not app.assigned_permit_type_id:
+            continue
+        tier = tiers.get(app.assigned_permit_type_id)
+        if not tier:
+            continue
+        tier.remaining = max(0, tier.remaining - 1)
+        if app.assigned_lot and app.assigned_lot in tier.lot_remaining:
+            tier.lot_remaining[app.assigned_lot] = max(
+                0, tier.lot_remaining[app.assigned_lot] - 1
+            )
+    return tiers
+
+
+async def _renumber_waitlist(db: AsyncSession, cycle_id: uuid.UUID) -> None:
+    waitlisted = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status == "waitlisted",
+            )
+            .order_by(
+                LotteryV2Application.waitlist_position.asc().nullslast(),
+                LotteryV2Application.created_at.asc(),
+            )
+        )
+    ).scalars().all()
+    for i, app in enumerate(waitlisted, 1):
+        app.waitlist_position = i
+
+
+async def bump_waitlist_to_top(
+    db: AsyncSession,
+    application_id: uuid.UUID,
+) -> LotteryV2Application:
+    """Move a waitlisted applicant to position #1."""
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise ValueError("Application not found")
+    if app.status != "waitlisted":
+        raise ValueError(f"Only waitlisted applicants can be bumped (status is '{app.status}')")
+
+    others = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == app.cycle_id,
+                LotteryV2Application.status == "waitlisted",
+                LotteryV2Application.id != app.id,
+            )
+            .order_by(
+                LotteryV2Application.waitlist_position.asc().nullslast(),
+                LotteryV2Application.created_at.asc(),
+            )
+        )
+    ).scalars().all()
+
+    app.waitlist_position = 1
+    note = f"Admin bumped to top of waitlist at {datetime.now(timezone.utc).isoformat()}"
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+    for i, other in enumerate(others, 2):
+        other.waitlist_position = i
+
+    await db.flush()
+    return app
+
+
+async def manual_select_application(
+    db: AsyncSession,
+    application_id: uuid.UUID,
+    *,
+    permit_type_id: uuid.UUID | None = None,
+    send_notification: bool = True,
+    admin_label: str = "admin",
+) -> LotteryV2Application:
+    """Manually select a pending/waitlisted applicant into an available tier."""
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise ValueError("Application not found")
+    if app.status not in ("waitlisted", "pending"):
+        raise ValueError(
+            f"Can only manually select waitlisted or pending applicants (status is '{app.status}')"
+        )
+
+    cycle = await db.get(LotteryV2Cycle, app.cycle_id)
+    if not cycle:
+        raise ValueError("Cycle not found")
+
+    tiers = await _tiers_with_offers_reserved(db, app.cycle_id)
+    prefs = list(app.tier_preferences or [])
+    if permit_type_id is not None:
+        if permit_type_id not in prefs:
+            raise ValueError("Chosen permit type is not in this applicant's preferences")
+        prefs = [permit_type_id]
+
+    applicant = WaterfallApplicant(
+        id=app.id,
+        class_year=app.class_year,
+        created_at=app.created_at or datetime.now(timezone.utc),
+        tier_preferences=prefs,
+        student_email=app.student_email,
+        student_name=app.student_name,
+    )
+    placement = try_place_one(applicant, tiers)
+    if not placement:
+        raise ValueError("No remaining capacity in the applicant's preferred tiers")
+
+    offer_days = cycle.offer_window_days or 5
+    app.status = "selected"
+    app.assigned_permit_type_id = placement.assigned_permit_type_id
+    app.assigned_lot = placement.assigned_lot
+    app.waitlist_position = None
+    app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
+    note = (
+        f"Manually selected by {admin_label} at {datetime.now(timezone.utc).isoformat()}"
+        f" → {placement.assigned_lot or 'lot TBD'}"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+
+    await _renumber_waitlist(db, app.cycle_id)
+    await db.flush()
+
+    pt = await db.get(PermitType, placement.assigned_permit_type_id)
+    if (
+        send_notification
+        and pt
+        and app.student_email
+        and not app.is_test_entry
+        and app.offer_expires_at
+    ):
+        try:
+            await send_lottery_selection_email(
+                recipient_email=app.student_email,
+                student_name=app.student_name,
+                permit_type_label=pt.label,
+                price=str(pt.price),
+                deadline=app.offer_expires_at.strftime("%B %d, %Y"),
+                portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
+                assigned_lot=app.assigned_lot,
+            )
+        except Exception as e:
+            logger.error("Failed to notify manually selected applicant %s: %s", app.id, e)
+
+    return app
+
+
 async def promote_from_waitlist(
     db: AsyncSession,
     cycle_id: uuid.UUID,
@@ -457,36 +627,7 @@ async def promote_from_waitlist(
     if not waitlisted:
         return None
 
-    pts = (
-        await db.execute(
-            select(PermitType).where(
-                PermitType.code.in_(LOTTERY_TIER_CODES),
-                PermitType.is_active.is_(True),
-            )
-        )
-    ).scalars().all()
-    tiers = await build_tier_capacities(db, list(pts))
-
-    # Subtract already-selected (not yet accepted) from remaining capacity
-    selected_apps = (
-        await db.execute(
-            select(LotteryV2Application).where(
-                LotteryV2Application.cycle_id == cycle_id,
-                LotteryV2Application.status.in_(["selected", "accepted"]),
-            )
-        )
-    ).scalars().all()
-    for app in selected_apps:
-        if not app.assigned_permit_type_id:
-            continue
-        tier = tiers.get(app.assigned_permit_type_id)
-        if not tier:
-            continue
-        tier.remaining = max(0, tier.remaining - 1)
-        if app.assigned_lot and app.assigned_lot in tier.lot_remaining:
-            tier.lot_remaining[app.assigned_lot] = max(
-                0, tier.lot_remaining[app.assigned_lot] - 1
-            )
+    tiers = await _tiers_with_offers_reserved(db, cycle_id)
 
     promoted: LotteryV2Application | None = None
     remaining_waitlist = list(waitlisted)
