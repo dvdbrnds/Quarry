@@ -19,7 +19,7 @@ class Permit(Base):
     phone: Mapped[str] = mapped_column(String(32), default="")
     sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
     plates: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
-    lot_assignment: Mapped[str] = mapped_column(String(128), default="")
+    lot_assignment: Mapped[str] = mapped_column(String(512), default="")
     permit_type: Mapped[str] = mapped_column(String(64), default="student")
     beacon_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, default=date.today)

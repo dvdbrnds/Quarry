@@ -12,6 +12,7 @@ from ..models.lot import ParkingLot
 from ..models.message_template import MessageTemplate
 from ..models.notification_preference import NotificationPreference
 from ..models.permit import Permit
+from ..services.lot_assignment import permit_lot_matches
 from ..schemas.messaging import (
     MessageTemplateCreate,
     MessageTemplateRead,
@@ -117,7 +118,7 @@ async def _get_recipients(
     if lot_id:
         lot = await db.get(ParkingLot, lot_id)
         if lot:
-            q = q.where(Permit.lot_assignment == lot.name)
+            q = q.where(permit_lot_matches(lot.name))
 
     rows = (await db.execute(q)).all()
 
@@ -230,7 +231,7 @@ async def list_preferences(
         Permit.deleted_at.is_(None),
     )
     if lot:
-        q = q.where(Permit.lot_assignment == lot)
+        q = q.where(permit_lot_matches(lot))
 
     q = q.order_by(Permit.name)
     rows = (await db.execute(q)).all()

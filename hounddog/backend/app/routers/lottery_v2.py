@@ -38,6 +38,7 @@ from ..services.lottery_v2_runner import (
 )
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
+from ..services.lot_assignment import permit_lot_matches
 
 logger = logging.getLogger("quarry.lottery_v2")
 
@@ -1259,7 +1260,7 @@ async def capacity_audit(
                 select(func.count())
                 .select_from(Permit)
                 .where(
-                    Permit.lot_assignment == lot,
+                    permit_lot_matches(lot),
                     Permit.status == "active",
                     Permit.deleted_at.is_(None),
                 )

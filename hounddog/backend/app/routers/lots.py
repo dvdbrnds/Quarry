@@ -13,6 +13,7 @@ from ..models.lot_closure import LotClosure
 from ..models.lot_zone import LotZone
 from ..models.parking_spot import ParkingSpot
 from ..models.permit import Permit
+from ..services.lot_assignment import permit_lot_matches
 from ..schemas.lot import (
     LotCreate,
     LotRead,
@@ -530,7 +531,7 @@ async def _get_closure_recipients(
     if lot:
         result = await db.execute(
             select(Permit.email).where(
-                Permit.lot_assignment == lot.name,
+                permit_lot_matches(lot.name),
                 Permit.email.isnot(None),
                 Permit.status == "active",
                 Permit.deleted_at.is_(None),

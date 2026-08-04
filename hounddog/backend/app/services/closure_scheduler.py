@@ -14,6 +14,7 @@ from ..config import settings
 from .email import send_lot_closure_notification, send_lot_reopen_notification
 from .sms import send_bulk_sms_async
 from .timeutils import today_local
+from .lot_assignment import permit_lot_matches
 
 logger = logging.getLogger("quarry.scheduler")
 
@@ -32,7 +33,7 @@ async def _get_recipients_for_lot(lot_name: str, db) -> list[str]:
         )
     result = await db.execute(
         select(Permit.email).where(
-            Permit.lot_assignment == lot_name,
+            permit_lot_matches(lot_name),
             Permit.email.isnot(None),
             Permit.status == "active",
             Permit.deleted_at.is_(None),
@@ -49,7 +50,7 @@ async def _get_sms_recipients_for_lot(
 ) -> list[str]:
     """Get phone numbers for SMS. Emergency = all with phone, else only opted-in."""
     q = select(Permit.phone, Permit.sms_opt_in).where(
-        Permit.lot_assignment == lot_name,
+        permit_lot_matches(lot_name),
         Permit.phone.isnot(None),
         Permit.status == "active",
         Permit.deleted_at.is_(None),

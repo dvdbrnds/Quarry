@@ -33,6 +33,7 @@ from ..services.permit_lifecycle import (
 )
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
+from ..services.lot_assignment import format_lot_assignment, permit_lot_matches
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -230,7 +231,7 @@ async def list_permits(
         else:
             query = query.where(Permit.status == status)
     if lot:
-        query = query.where(Permit.lot_assignment == lot)
+        query = query.where(permit_lot_matches(lot))
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
 
@@ -260,6 +261,7 @@ async def list_permits(
 @router.post("", response_model=PermitRead, status_code=201)
 async def create_permit(data: PermitCreate, db: AsyncSession = Depends(get_db)):
     fields = data.model_dump()
+    fields["lot_assignment"] = format_lot_assignment(fields.get("lot_assignment"))
     if not fields.get("permit_number"):
         fields["permit_number"] = await next_permit_number(db)
     permit = Permit(**fields)
@@ -300,6 +302,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
     permit_number = await next_permit_number(db)
     start = data.start_date or today_local()
     end = data.end_date or (start + timedelta(days=pt.valid_days))
+    lot_assignment = format_lot_assignment(data.lot_assignment)
 
     if data.waive_fee or pt.price <= 0:
         permit = Permit(
@@ -309,7 +312,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             phone=data.phone,
             plates=[p.upper().strip() for p in data.plates if p.strip()],
             student_id=data.student_id,
-            lot_assignment=data.lot_assignment,
+            lot_assignment=lot_assignment,
             permit_type=data.permit_type,
             start_date=start,
             end_date=end,
@@ -352,7 +355,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             phone=data.phone,
             plates=[p.upper().strip() for p in data.plates if p.strip()],
             student_id=data.student_id,
-            lot_assignment=data.lot_assignment,
+            lot_assignment=lot_assignment,
             permit_type=data.permit_type,
             start_date=start,
             end_date=end,
@@ -381,7 +384,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
         phone=data.phone,
         plates=[p.upper().strip() for p in data.plates if p.strip()],
         student_id=data.student_id,
-        lot_assignment=data.lot_assignment,
+        lot_assignment=lot_assignment,
         permit_type=data.permit_type,
         start_date=start,
         end_date=end,
@@ -493,6 +496,8 @@ async def update_permit(
         raise HTTPException(404, "Permit not found")
 
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "lot_assignment" and value is not None:
+            value = format_lot_assignment(value)
         setattr(permit, field, value)
 
     await db.flush()

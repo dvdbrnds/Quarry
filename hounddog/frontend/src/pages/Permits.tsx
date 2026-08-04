@@ -75,7 +75,9 @@ function PermitForm({
         email: (initial as any).email ?? "",
         phone: (initial as any).phone ?? "",
         beacon_id: (initial as any).beacon_id ?? "",
-        lot_assignment: initial.lot_assignment,
+        lot_assignment: initial.lot_assignment
+          ? initial.lot_assignment.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : [],
         permit_type: initial.permit_type,
         status: initial.status,
         start_date: initial.start_date ? dayjs(initial.start_date) : null,
@@ -123,6 +125,9 @@ function PermitForm({
     const plates = values.plates
       ? values.plates.split(",").map((p: string) => p.trim().toUpperCase()).filter(Boolean)
       : [];
+    const lotAssignment = Array.isArray(values.lot_assignment)
+      ? values.lot_assignment.join(", ")
+      : (values.lot_assignment || "");
     try {
       if (initial) {
         const data = {
@@ -132,7 +137,7 @@ function PermitForm({
           email: values.email || null,
           phone: values.phone,
           beacon_id: values.beacon_id || null,
-          lot_assignment: values.lot_assignment,
+          lot_assignment: lotAssignment,
           permit_type: values.permit_type,
           status: values.status || "active",
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
@@ -147,7 +152,7 @@ function PermitForm({
           phone: values.phone || "",
           plates,
           student_id: values.student_id || "",
-          lot_assignment: values.lot_assignment || "",
+          lot_assignment: lotAssignment,
           permit_type: values.permit_type,
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
           end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
@@ -166,7 +171,7 @@ function PermitForm({
           phone: values.phone || "",
           plates,
           student_id: values.student_id || "",
-          lot_assignment: values.lot_assignment || "",
+          lot_assignment: lotAssignment,
           permit_type: values.permit_type,
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
           end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
@@ -198,9 +203,19 @@ function PermitForm({
           <Form.Item name="student_id" label="Student ID">
             <Input />
           </Form.Item>
-          <Form.Item name="lot_assignment" label="Lot Assignment">
-            <Select placeholder="— Select —" allowClear
-              options={lots.map(l => ({ label: l.name, value: l.name }))} />
+          <Form.Item
+            name="lot_assignment"
+            label="Lot Assignment"
+            extra="Select one or more lots for campus police flexibility on this permit"
+          >
+            <Select
+              mode="multiple"
+              placeholder="Select lots…"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={lots.map(l => ({ label: l.name, value: l.name }))}
+            />
           </Form.Item>
           <Form.Item name="permit_type" label="Permit Type" rules={[{ required: true }]}>
             <Select placeholder="— Select —" allowClear
