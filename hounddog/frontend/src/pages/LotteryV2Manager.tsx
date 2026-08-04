@@ -470,6 +470,21 @@ export default function LotteryV2Manager() {
     return rows;
   }, [deskRows, deskQuery, deskFilter, deskTier, apps]);
 
+  const deskFilterCounts = useMemo(() => {
+    const superseded = apps.filter((a) => a.status === "superseded" && !deskRows.some((d) => d.id === a.id));
+    const all = [...deskRows, ...superseded];
+    const placed = deskRows.filter((a) => ["selected", "accepted"].includes(a.status)).length;
+    const offer = deskRows.filter((a) => a.status === "selected").length;
+    const accepted = deskRows.filter((a) => a.status === "accepted").length;
+    const waitlist = deskRows.filter((a) => a.status === "waitlisted").length;
+    const sup = superseded.length;
+    const mismatch = deskRows.filter((a) => {
+      const first = a.first_choice_label || a.tier_preference_labels?.[0];
+      return first && a.assigned_permit_type_label && first !== a.assigned_permit_type_label;
+    }).length;
+    return { all: all.length, placed, offer, accepted, waitlist, superseded: sup, mismatch } as Record<DeskFilter, number>;
+  }, [apps, deskRows]);
+
   const caseSiblings = useMemo(() => {
     if (!caseApp) return [];
     return appsByEmail.get(emailKey(caseApp)) || [caseApp];
@@ -1098,7 +1113,7 @@ export default function LotteryV2Manager() {
                     className="cursor-pointer px-2 py-0.5"
                     onClick={() => setDeskFilter(key)}
                   >
-                    {label}
+                    {label} ({deskFilterCounts[key] ?? 0})
                   </Tag>
                 ))}
               </div>
