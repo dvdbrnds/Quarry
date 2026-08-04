@@ -510,11 +510,13 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     await loadTiers(campus, classYear);
     if (campus === "commuter") {
       setStep("choose");
-    } else if (cycle?.status !== "open") {
-      // Post-draw: if tiers are purchasable (undersubscribed), offer direct purchase
+    } else if (cycle?.status === "drawn") {
+      // Post-draw: buy open seats and/or join waitlists
       setStep("choose");
-    } else {
+    } else if (cycle?.status === "open") {
       setStep("rank");
+    } else {
+      setStep("choose");
     }
   }
 
@@ -617,39 +619,51 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       return;
     }
     const first = ranked[0];
+    const postDraw = cycle?.status === "drawn";
     modal.confirm({
-      title: "Confirm your first choice",
+      title: postDraw ? "Confirm waitlist ranking" : "Confirm your first choice",
       width: 480,
       content: (
         <div className="space-y-3">
           <p className="m-0 text-sm text-gray-600">
-            Seats are offered in your ranked order. You will be considered for{" "}
-            <strong>{first.label}</strong> first
-            {first.price != null ? ` ($${Number(first.price).toFixed(0)})` : ""}.
+            {postDraw
+              ? "We'll try open seats in this order. If none are open, you'll join the waitlist for these permits."
+              : "Seats are offered in your ranked order. You will be considered for "}
+            {!postDraw && (
+              <>
+                <strong>{first.label}</strong> first
+                {first.price != null ? ` ($${Number(first.price).toFixed(0)})` : ""}.
+              </>
+            )}
           </p>
           <ol className="m-0 pl-5 text-sm space-y-1">
             {ranked.map((t, i) => (
               <li key={t.id}>
                 <strong>#{i + 1}</strong> {t.label}
                 {t.lot_assignments?.length ? ` — lots ${t.lot_assignments.join(", ")}` : ""}
+                {postDraw && t.remaining <= 0 ? " (full — waitlist)" : ""}
+                {postDraw && t.remaining > 0 ? ` (${t.remaining} open)` : ""}
               </li>
             ))}
           </ol>
-          {ranked.length === 1 && (
+          {ranked.length === 1 && !postDraw && (
             <p className="m-0 text-sm text-amber-800">
               You only ranked one option. If it fills up, you will be waitlisted with no backup.
             </p>
           )}
         </div>
       ),
-      okText: `Submit — try ${first.label} first`,
+      okText: postDraw
+        ? `Join waitlist — ${first.label} first`
+        : `Submit — try ${first.label} first`,
       cancelText: "Edit ranking",
       onOk: () => doSubmit(),
     });
   }
 
-  async function doSubmit() {
-    if (!campus || !classYear || ranked.length === 0) return;
+  async function doSubmit(prefs?: Tier[]) {
+    const useRanked = prefs && prefs.length > 0 ? prefs : ranked;
+    if (!campus || !classYear || useRanked.length === 0) return;
     setSubmitting(true);
     try {
       const headers = await authHeadersAs(impersonateEmail);
@@ -664,7 +678,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           phone: phone.trim(),
           sms_opt_in: smsOptIn,
           student_name: studentName,
-          tier_preferences: ranked.map((t) => t.id),
+          tier_preferences: useRanked.map((t) => t.id),
         }),
       });
       if (!res.ok) {
@@ -673,13 +687,34 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       }
       const app = await res.json();
       setApplication(app);
+      setRanked(useRanked);
       setStep("done");
-      message.success("Application submitted");
+      if (app.status === "selected") {
+        message.success("A seat was available — accept your offer below.");
+      } else if (app.status === "waitlisted") {
+        message.success(
+          `You're on the waitlist${app.waitlist_position != null ? ` (#${app.waitlist_position})` : ""}.`,
+        );
+      } else {
+        message.success("Application submitted");
+      }
     } catch (e: any) {
       message.error(e.message || "Submit failed");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function joinWaitlist(tier: Tier) {
+    const soldOut = tier.remaining <= 0;
+    modal.confirm({
+      title: soldOut ? `Join waitlist for ${tier.label}?` : `Request ${tier.label}?`,
+      content: soldOut
+        ? `This permit is currently full (lots: ${tier.lot_assignments.join(", ") || "—"}). You'll be notified if a spot opens.`
+        : `If a seat is still open, you'll get an offer right away. Otherwise you'll join the waitlist for ${tier.label}.`,
+      okText: soldOut ? "Join waitlist" : "Request / waitlist",
+      onOk: () => doSubmit([tier]),
+    });
   }
 
   async function acceptOffer() {
@@ -1146,7 +1181,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       ? "Continue — choose a permit"
                       : cycle?.status === "open"
                         ? "Continue — rank tiers"
-                        : "Continue — available permits"}
+                        : cycle?.status === "drawn"
+                          ? "Continue — buy or join waitlist"
+                          : "Continue — available permits"}
                   </Button>
                 </Form>
               </Card>
@@ -1197,7 +1234,13 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
             {!application && step === "choose" && (
               <Card
-                title={!cycle && isCommuterPath ? "Commuter Permits" : "2. Choose your permit"}
+                title={
+                  !cycle && isCommuterPath
+                    ? "Commuter Permits"
+                    : cycle?.status === "drawn" && !isCommuterPath
+                      ? "2. Buy or join a waitlist"
+                      : "2. Choose your permit"
+                }
                 extra={
                   <Button
                     type="link"
@@ -1224,12 +1267,23 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     <p className="text-sm text-gray-500 mb-4">
                       {isCommuterPath
                         ? "Map colors: blue = full-time, amber = after 4 PM & weekends, teal = street. Hover a permit to emphasize its lots."
-                        : "Spots remaining after the lottery draw. Purchase directly — first come, first served."}
+                        : cycle?.status === "drawn"
+                          ? "Lottery is complete. Buy any permit with open seats, or join the waitlist for any option — including full ones."
+                          : "Spots remaining after the lottery draw. Purchase directly — first come, first served."}
                     </p>
                     {isCommuterPath && (
                       <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
                         These permits are for <strong>commuters only</strong>. We verify eligibility — do not buy one if you live on campus.
                       </p>
+                    )}
+                    {cycle?.status === "drawn" && !isCommuterPath && (
+                      <Alert
+                        type="info"
+                        showIcon
+                        className="mb-4"
+                        message="Waitlists are open for every resident permit type"
+                        description="If a seat is open when you request, you'll get an offer. If not, you'll be added to that waitlist and notified when one opens."
+                      />
                     )}
 
                     {/* Voucher code input */}
@@ -1275,6 +1329,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         const colors = tierColor(tier, i);
                         const isHovered = hoveredTierId === tier.id;
                         const soldOut = tier.remaining <= 0;
+                        const showWaitlist = cycle?.status === "drawn" && !isCommuterPath;
                         return (
                           <li
                             key={tier.id}
@@ -1303,6 +1358,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                     style={{ background: colors.fill }}
                                   />
                                   {tier.label}
+                                  {soldOut && <Tag className="m-0">Full</Tag>}
+                                  {!soldOut && showWaitlist && (
+                                    <Tag color="green" className="m-0">{tier.remaining} open</Tag>
+                                  )}
                                 </p>
                                 <p className="m-0 text-xs text-gray-500 mt-1">
                                   {voucherValid ? (
@@ -1353,34 +1412,68 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   )}
                                 </div>
                               </div>
-                              <Button
-                                type="primary"
-                                size="small"
-                                loading={submitting}
-                                disabled={soldOut}
-                                onClick={() => purchaseCommuterPermit(tier)}
-                                style={{ background: soldOut ? undefined : colors.fill }}
-                              >
-                                {soldOut ? "Full" : "Buy"}
-                              </Button>
+                              <Space direction="vertical" size={4} className="shrink-0">
+                                {!soldOut && (
+                                  <Button
+                                    type="primary"
+                                    size="small"
+                                    loading={submitting}
+                                    onClick={() => purchaseCommuterPermit(tier)}
+                                    style={{ background: colors.fill }}
+                                  >
+                                    Buy
+                                  </Button>
+                                )}
+                                {showWaitlist && (
+                                  <Button
+                                    size="small"
+                                    loading={submitting}
+                                    onClick={() => joinWaitlist(tier)}
+                                  >
+                                    {soldOut ? "Join waitlist" : "Request / waitlist"}
+                                  </Button>
+                                )}
+                                {soldOut && !showWaitlist && (
+                                  <Button type="primary" size="small" disabled>
+                                    Full
+                                  </Button>
+                                )}
+                              </Space>
                             </div>
                           </li>
                         );
                       })}
                     </ul>
+
+                    {cycle?.status === "drawn" && !isCommuterPath && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-sm text-gray-600 mb-2">
+                          Want backups? Rank several permits — we'll try open seats in order, then waitlist you.
+                        </p>
+                        <Button
+                          block
+                          onClick={() => {
+                            setRanked([]);
+                            setStep("rank");
+                          }}
+                        >
+                          Rank multiple for waitlist
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </Card>
             )}
 
-            {!application && cycle?.status === "open" && step === "rank" && (
+            {!application && (cycle?.status === "open" || cycle?.status === "drawn") && step === "rank" && !isCommuterPath && (
               <Card
-                title="2. Rank your tiers"
+                title={cycle?.status === "drawn" ? "2. Rank for waitlist" : "2. Rank your tiers"}
                 extra={
                   <Button
                     type="link"
                     onClick={() => {
-                      setStep("intake");
+                      setStep(cycle?.status === "drawn" ? "choose" : "intake");
                       setHighlightedLots([]);
                       setHoveredTierId(null);
                       setFocusedLot(null);
@@ -1397,9 +1490,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                 ) : (
                   <>
                     <p className="text-sm text-gray-500 mb-4">
-                      Tap <strong>Add</strong> in the order you want seats tried. #1 is offered
-                      first — Premium and Guaranteed are different permits and prices. Hover a
-                      tier to see its lots on the map.
+                      {cycle?.status === "drawn"
+                        ? "Add permits in order. We'll try open seats first; anything full goes to the waitlist."
+                        : "Tap Add in the order you want seats tried. #1 is offered first — Premium and Guaranteed are different permits and prices. Hover a tier to see its lots on the map."}
                     </p>
 
                     {unrankedTiers.length > 0 && (
@@ -1635,7 +1728,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     >
                       {ranked.length === 0
                         ? "Add a permit type to continue"
-                        : `Submit — ${ranked[0].label} first`}
+                        : cycle?.status === "drawn"
+                          ? `Submit waitlist — ${ranked[0].label} first`
+                          : `Submit — ${ranked[0].label} first`}
                     </Button>
                   </>
                 )}
