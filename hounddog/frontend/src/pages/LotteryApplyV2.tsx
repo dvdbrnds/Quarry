@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space, Alert, Modal, Checkbox } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
@@ -262,8 +262,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [voucherError, setVoucherError] = useState("");
   const [validatingVoucher, setValidatingVoucher] = useState(false);
 
-  /** Lots belonging to the eligible path options only */
-  const eligibleTiers = ranked.length > 0 ? ranked : tiers;
+  /** All eligible path options (map + choose); ranking is intentional and separate */
+  const eligibleTiers = tiers;
+  const unrankedTiers = useMemo(
+    () => tiers.filter((t) => !ranked.some((r) => r.id === t.id)),
+    [tiers, ranked],
+  );
   const isCommuterPath = campus === "commuter";
   const isSouthPath = campus === "south";
 
@@ -388,7 +392,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     }
     const data: Tier[] = await res.json();
     setTiers(data);
-    setRanked(data);
+    // Do not pre-rank — Premium is listed first in API order and students were
+    // accidentally submitting it as #1 when they meant Guaranteed.
+    setRanked([]);
   }
 
   async function selectCampus(c: "north" | "south" | "commuter") {
@@ -511,6 +517,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     }
   }
 
+  function addTier(tier: Tier) {
+    setRanked((prev) => (prev.some((t) => t.id === tier.id) ? prev : [...prev, tier]));
+  }
+
+  function removeTier(index: number) {
+    setRanked((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function moveTier(index: number, direction: -1 | 1) {
     const next = [...ranked];
     const t = index + direction;
@@ -595,7 +609,45 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     }
   }
 
-  async function submit() {
+  function submit() {
+    if (!campus || !classYear) return;
+    if (ranked.length === 0) {
+      message.warning("Add at least one permit type to your ranking");
+      return;
+    }
+    const first = ranked[0];
+    modal.confirm({
+      title: "Confirm your first choice",
+      width: 480,
+      content: (
+        <div className="space-y-3">
+          <p className="m-0 text-sm text-gray-600">
+            Seats are offered in your ranked order. You will be considered for{" "}
+            <strong>{first.label}</strong> first
+            {first.price != null ? ` ($${Number(first.price).toFixed(0)})` : ""}.
+          </p>
+          <ol className="m-0 pl-5 text-sm space-y-1">
+            {ranked.map((t, i) => (
+              <li key={t.id}>
+                <strong>#{i + 1}</strong> {t.label}
+                {t.lot_assignments?.length ? ` — lots ${t.lot_assignments.join(", ")}` : ""}
+              </li>
+            ))}
+          </ol>
+          {ranked.length === 1 && (
+            <p className="m-0 text-sm text-amber-800">
+              You only ranked one option. If it fills up, you will be waitlisted with no backup.
+            </p>
+          )}
+        </div>
+      ),
+      okText: `Submit — try ${first.label} first`,
+      cancelText: "Edit ranking",
+      onOk: () => doSubmit(),
+    });
+  }
+
+  async function doSubmit() {
     if (!campus || !classYear || ranked.length === 0) return;
     setSubmitting(true);
     try {
@@ -1128,7 +1180,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             type="primary"
                             size="small"
                             className="mt-1"
-                            onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked(commuterTiers); setStep("intake"); }}
+                            onClick={() => { setCampus("commuter"); setTiers(commuterTiers); setRanked([]); setStep("intake"); }}
                           >
                             Buy Now
                           </Button>
@@ -1164,7 +1216,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   </Button>
                 }
               >
-                {ranked.length === 0 ? (
+                {tiers.length === 0 ? (
                   <p className="text-gray-500">No permits are available for your class year.</p>
                 ) : (
                   <>
@@ -1202,7 +1254,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         ) : (
                           <button
                             className="px-3 py-1.5 text-sm bg-brand-primary text-white rounded disabled:opacity-50"
-                            onClick={() => ranked.length > 0 && validateVoucher(ranked[0].code)}
+                            onClick={() => tiers.length > 0 && validateVoucher(tiers[0].code)}
                             disabled={!voucherCode.trim() || validatingVoucher}
                           >
                             {validatingVoucher ? "..." : "Apply"}
@@ -1218,7 +1270,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     </div>
 
                     <ul className="space-y-2 list-none p-0 m-0">
-                      {ranked.map((tier, i) => {
+                      {tiers.map((tier, i) => {
                         const colors = tierColor(tier, i);
                         const isHovered = hoveredTierId === tier.id;
                         const soldOut = tier.remaining <= 0;
@@ -1337,124 +1389,222 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   </Button>
                 }
               >
-                {ranked.length === 0 ? (
+                {tiers.length === 0 ? (
                   <p className="text-gray-500">
                     No tiers are available for your campus and class year.
                   </p>
                 ) : (
                   <>
                     <p className="text-sm text-gray-500 mb-4">
-                      Rank with the arrows. Each color matches its lots on the map — hover a tier
-                      to zoom and emphasize it. #1 is your first choice.
+                      Tap <strong>Add</strong> in the order you want seats tried. #1 is offered
+                      first — Premium and Guaranteed are different permits and prices. Hover a
+                      tier to see its lots on the map.
                     </p>
-                    <ul className="space-y-2 list-none p-0 m-0 mb-6">
-                      {ranked.map((tier, i) => {
-                        const colors = tierColor(tier, i);
-                        const isHovered = hoveredTierId === tier.id;
-                        return (
-                        <li
-                          key={tier.id}
-                          className="flex items-center gap-3 rounded-lg border px-3 py-3 transition-shadow hover:shadow-md"
-                          style={{
-                            borderColor: colors.border,
-                            borderLeftWidth: 4,
-                            background: isHovered ? colors.soft : "#fff",
-                          }}
-                          onMouseEnter={() => {
-                            setHoveredTierId(tier.id);
-                            setHighlightedLots(tier.lot_assignments);
-                            setFocusedLot(null);
-                          }}
-                          onMouseLeave={() => {
-                            setHoveredTierId(null);
-                            setHighlightedLots([]);
-                            setFocusedLot(null);
-                          }}
-                        >
-                          <span
-                            className="text-sm font-bold w-6"
-                            style={{ color: colors.fill }}
-                          >
-                            #{i + 1}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="m-0 font-medium flex items-center gap-2">
-                              <span
-                                className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                                style={{ background: colors.fill }}
-                              />
-                              {tier.label}
-                            </p>
-                            <p className="m-0 text-xs text-gray-500">
-                              ${tier.price}
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
-                              <span>Lots:</span>
-                              {tier.lot_assignments.length ? (
-                                tier.lot_assignments.map((lotName) => {
-                                  const lot = mapLots.find(
-                                    (l) => normalizeLotKey(l.name) === normalizeLotKey(lotName),
-                                  );
-                                  const external = lot && isExternalLot(lot);
-                                  const tagColor = external
-                                    ? EXTERNAL_LOT_STYLE
-                                    : { fill: colors.fill, soft: colors.soft, border: colors.border };
-                                  return (
-                                    <Tag
-                                      key={lotName}
-                                      className="m-0 cursor-default"
-                                      title={
-                                        external
-                                          ? `${EXTERNAL_LOT_STYLE.label}${lot?.external_provider ? ` (${lot.external_provider})` : ""}`
-                                          : undefined
-                                      }
-                                      style={{
-                                        color: tagColor.border,
-                                        background: tagColor.soft,
-                                        borderColor: tagColor.fill,
-                                      }}
-                                      onClick={() => {
-                                        if (external && lot) setExternalLot(lot);
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.stopPropagation();
-                                        setFocusedLot(lotName);
-                                        setHighlightedLots(tier.lot_assignments);
-                                        setHoveredTierId(tier.id);
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.stopPropagation();
-                                        setFocusedLot(null);
-                                      }}
-                                    >
-                                      {lotName}
-                                      {external ? " · 3rd party" : ""}
-                                    </Tag>
-                                  );
-                                })
-                              ) : (
-                                <span>—</span>
-                              )}
-                            </div>
-                          </div>
-                          <Space size={4}>
-                            <Button
-                              size="small"
-                              icon={<ArrowUpOutlined />}
-                              disabled={i === 0}
-                              onClick={() => moveTier(i, -1)}
-                            />
-                            <Button
-                              size="small"
-                              icon={<ArrowDownOutlined />}
-                              disabled={i === ranked.length - 1}
-                              onClick={() => moveTier(i, 1)}
-                            />
-                          </Space>
-                        </li>
-                        );
-                      })}
-                    </ul>
+
+                    {unrankedTiers.length > 0 && (
+                      <div className="mb-5">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                          Available to add
+                        </p>
+                        <ul className="space-y-2 list-none p-0 m-0">
+                          {unrankedTiers.map((tier, i) => {
+                            const colors = tierColor(tier, i);
+                            const isHovered = hoveredTierId === tier.id;
+                            return (
+                              <li
+                                key={tier.id}
+                                className="flex items-center gap-3 rounded-lg border px-3 py-3 transition-shadow hover:shadow-md"
+                                style={{
+                                  borderColor: colors.border,
+                                  borderLeftWidth: 4,
+                                  background: isHovered ? colors.soft : "#fff",
+                                }}
+                                onMouseEnter={() => {
+                                  setHoveredTierId(tier.id);
+                                  setHighlightedLots(tier.lot_assignments);
+                                  setFocusedLot(null);
+                                }}
+                                onMouseLeave={() => {
+                                  setHoveredTierId(null);
+                                  setHighlightedLots([]);
+                                  setFocusedLot(null);
+                                }}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="m-0 font-medium flex items-center gap-2">
+                                    <span
+                                      className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+                                      style={{ background: colors.fill }}
+                                    />
+                                    {tier.label}
+                                  </p>
+                                  <p className="m-0 text-xs text-gray-500">
+                                    ${tier.price}
+                                    {tier.lot_assignments.length
+                                      ? ` · lots ${tier.lot_assignments.join(", ")}`
+                                      : ""}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="small"
+                                  type="default"
+                                  icon={<PlusOutlined />}
+                                  onClick={() => addTier(tier)}
+                                >
+                                  Add
+                                </Button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="mb-6">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                        Your ranking
+                      </p>
+                      {ranked.length === 0 ? (
+                        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 m-0">
+                          Nothing ranked yet. Add the permit you want most first (that becomes #1).
+                        </p>
+                      ) : (
+                        <ul className="space-y-2 list-none p-0 m-0">
+                          {ranked.map((tier, i) => {
+                            const colors = tierColor(tier, i);
+                            const isHovered = hoveredTierId === tier.id;
+                            return (
+                              <li
+                                key={tier.id}
+                                className="flex items-center gap-3 rounded-lg border px-3 py-3 transition-shadow hover:shadow-md"
+                                style={{
+                                  borderColor: colors.border,
+                                  borderLeftWidth: 4,
+                                  background: isHovered ? colors.soft : "#fff",
+                                }}
+                                onMouseEnter={() => {
+                                  setHoveredTierId(tier.id);
+                                  setHighlightedLots(tier.lot_assignments);
+                                  setFocusedLot(null);
+                                }}
+                                onMouseLeave={() => {
+                                  setHoveredTierId(null);
+                                  setHighlightedLots([]);
+                                  setFocusedLot(null);
+                                }}
+                              >
+                                <span
+                                  className="text-sm font-bold w-6"
+                                  style={{ color: colors.fill }}
+                                >
+                                  #{i + 1}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="m-0 font-medium flex items-center gap-2">
+                                    <span
+                                      className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+                                      style={{ background: colors.fill }}
+                                    />
+                                    {tier.label}
+                                    {i === 0 && (
+                                      <Tag color="green" className="m-0">
+                                        First choice
+                                      </Tag>
+                                    )}
+                                  </p>
+                                  <p className="m-0 text-xs text-gray-500">
+                                    ${tier.price}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-gray-500">
+                                    <span>Lots:</span>
+                                    {tier.lot_assignments.length ? (
+                                      tier.lot_assignments.map((lotName) => {
+                                        const lot = mapLots.find(
+                                          (l) => normalizeLotKey(l.name) === normalizeLotKey(lotName),
+                                        );
+                                        const external = lot && isExternalLot(lot);
+                                        const tagColor = external
+                                          ? EXTERNAL_LOT_STYLE
+                                          : { fill: colors.fill, soft: colors.soft, border: colors.border };
+                                        return (
+                                          <Tag
+                                            key={lotName}
+                                            className="m-0 cursor-default"
+                                            title={
+                                              external
+                                                ? `${EXTERNAL_LOT_STYLE.label}${lot?.external_provider ? ` (${lot.external_provider})` : ""}`
+                                                : undefined
+                                            }
+                                            style={{
+                                              color: tagColor.border,
+                                              background: tagColor.soft,
+                                              borderColor: tagColor.fill,
+                                            }}
+                                            onClick={() => {
+                                              if (external && lot) setExternalLot(lot);
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.stopPropagation();
+                                              setFocusedLot(lotName);
+                                              setHighlightedLots(tier.lot_assignments);
+                                              setHoveredTierId(tier.id);
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.stopPropagation();
+                                              setFocusedLot(null);
+                                            }}
+                                          >
+                                            {lotName}
+                                            {external ? " · 3rd party" : ""}
+                                          </Tag>
+                                        );
+                                      })
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Space size={4}>
+                                  <Button
+                                    size="small"
+                                    icon={<ArrowUpOutlined />}
+                                    disabled={i === 0}
+                                    onClick={() => moveTier(i, -1)}
+                                  />
+                                  <Button
+                                    size="small"
+                                    icon={<ArrowDownOutlined />}
+                                    disabled={i === ranked.length - 1}
+                                    onClick={() => moveTier(i, 1)}
+                                  />
+                                  <Button
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() => removeTier(i)}
+                                  />
+                                </Space>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+
+                    {ranked.length > 0 && (
+                      <Alert
+                        type="info"
+                        showIcon
+                        className="mb-4"
+                        message={`First choice: ${ranked[0].label} ($${Number(ranked[0].price).toFixed(0)})`}
+                        description={
+                          ranked[0].lot_assignments?.length
+                            ? `Allowed lots: ${ranked[0].lot_assignments.join(", ")}`
+                            : undefined
+                        }
+                      />
+                    )}
+
                     {isSouthPath && southExternalLots.length > 0 && (
                       <Alert
                         type="warning"
@@ -1475,8 +1625,16 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         }
                       />
                     )}
-                    <Button type="primary" loading={submitting} onClick={submit} block>
-                      Submit application
+                    <Button
+                      type="primary"
+                      loading={submitting}
+                      onClick={submit}
+                      block
+                      disabled={ranked.length === 0}
+                    >
+                      {ranked.length === 0
+                        ? "Add a permit type to continue"
+                        : `Submit — ${ranked[0].label} first`}
                     </Button>
                   </>
                 )}
