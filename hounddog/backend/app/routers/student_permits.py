@@ -966,6 +966,7 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
         deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
         portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
         assigned_lot=next_app.assigned_lot,
+        lot_assignments=list(pt.lot_assignments or []),
     )
 
     # Recompute positions for remaining waitlisted applicants

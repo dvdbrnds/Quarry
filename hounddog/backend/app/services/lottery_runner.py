@@ -274,6 +274,7 @@ async def _notify_selected(selected, permit_type, offer_expires):
                 deadline=offer_expires.strftime("%B %d, %Y"),
                 portal_url=portal_url,
                 assigned_lot=app.assigned_lot,
+                lot_assignments=list(permit_type.get("lot_assignments") or []),
             )
         except Exception as e:
             logger.error("Failed to notify selected applicant %s: %s", app.id, e)

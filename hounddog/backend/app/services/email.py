@@ -300,6 +300,7 @@ async def send_lottery_selection_email(
     deadline: str,
     portal_url: str,
     assigned_lot: str | None = None,
+    lot_assignments: list[str] | None = None,
     school_name: str | None = None,
 ) -> bool:
     b = await _load_branding()
@@ -310,7 +311,9 @@ async def send_lottery_selection_email(
     from .email_templates import render_lottery_selection_email
     body_html, body_text = render_lottery_selection_email(
         first_name, permit_type_label, price, deadline, portal_url,
-        assigned_lot=assigned_lot, school_name=school,
+        assigned_lot=assigned_lot,
+        lot_assignments=lot_assignments,
+        school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
         department_name=b.get("department_name", "Parking Authority"),

@@ -597,6 +597,7 @@ async def manual_select_application(
                 deadline=app.offer_expires_at.strftime("%B %d, %Y"),
                 portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                 assigned_lot=app.assigned_lot,
+                lot_assignments=list(pt.lot_assignments or []),
             )
         except Exception as e:
             logger.error("Failed to notify manually selected applicant %s: %s", app.id, e)
@@ -661,6 +662,7 @@ async def promote_from_waitlist(
                         deadline=app.offer_expires_at.strftime("%B %d, %Y"),
                         portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                         assigned_lot=app.assigned_lot,
+                        lot_assignments=list(pt.lot_assignments or []),
                     )
                 except Exception as e:
                     logger.error("Failed to notify promoted applicant %s: %s", app.id, e)
@@ -690,6 +692,7 @@ async def _notify_selected(
                 deadline=offer_expires.strftime("%B %d, %Y"),
                 portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                 assigned_lot=app.assigned_lot,
+                lot_assignments=list(pt.lot_assignments or []),
             )
             if not sent:
                 failed_count += 1

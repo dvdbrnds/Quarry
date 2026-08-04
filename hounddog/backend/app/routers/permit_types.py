@@ -362,6 +362,7 @@ async def run_lottery(
             deadline=offer_deadline.strftime("%B %d, %Y"),
             portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
             assigned_lot=app.assigned_lot,
+            lot_assignments=list(pt.lot_assignments or []),
         )
 
     # Notify waitlisted applicants with their position
@@ -478,6 +479,7 @@ async def advance_waitlist(
             deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
             portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
             assigned_lot=next_app.assigned_lot,
+            lot_assignments=list(pt.lot_assignments or []),
         )
 
     await db.flush()
@@ -640,6 +642,7 @@ async def manually_select_application(
         deadline=app.offer_expires_at.strftime("%B %d, %Y"),
         portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
         assigned_lot=app.assigned_lot,
+        lot_assignments=list(pt.lot_assignments or []),
     )
 
     return {

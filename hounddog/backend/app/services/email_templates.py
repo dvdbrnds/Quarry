@@ -328,6 +328,7 @@ def render_lottery_selection_email(
     portal_url: str,
     *,
     assigned_lot: str | None = None,
+    lot_assignments: list[str] | None = None,
     school_name: str = "",
     primary: str = "",
     accent: str = "",
@@ -339,11 +340,14 @@ def render_lottery_selection_email(
     school = school_name or "Campus"
     has_price = price and price != "0" and price != "0.00"
 
+    lots = [str(x).strip() for x in (lot_assignments or []) if str(x).strip()]
+    lots_display = ", ".join(lots) if lots else (assigned_lot or "")
+
     rows: list[tuple[str, str, str]] = [
         ("Permit Type", permit_type_label, "font-weight:600;"),
     ]
-    if assigned_lot:
-        rows.append(("Assigned Lot", assigned_lot, "font-weight:600;"))
+    if lots_display:
+        rows.append(("Allowed Lot(s)", lots_display, "font-weight:600;"))
     if has_price:
         rows.append(("Permit Fee", f"${price}", "font-weight:600;"))
     rows.append(("Accept By", deadline, "font-weight:600;color:#dc2626;"))
@@ -376,8 +380,8 @@ def render_lottery_selection_email(
         f"You've been selected for a {permit_type_label} parking permit.\n\n"
         f"Permit Type: {permit_type_label}\n"
     )
-    if assigned_lot:
-        plain += f"Assigned Lot: {assigned_lot}\n"
+    if lots_display:
+        plain += f"Allowed Lot(s): {lots_display}\n"
     if has_price:
         plain += f"Permit Fee: ${price}\n"
     plain += (

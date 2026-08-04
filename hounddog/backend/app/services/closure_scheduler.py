@@ -344,6 +344,7 @@ async def _expire_lottery_offers():
                     deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
                     portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
                     assigned_lot=next_app.assigned_lot,
+                    lot_assignments=list(pt.lot_assignments or []),
                 )
                 logger.info(
                     "Lottery waitlist advanced: type=%s, promoted=%s",

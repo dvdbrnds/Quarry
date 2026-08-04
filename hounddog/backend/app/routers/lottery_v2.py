@@ -111,6 +111,7 @@ class ApplicationRead(BaseModel):
     assigned_permit_type_label: str | None = None
     assigned_permit_type_price: Decimal | None = None
     assigned_permit_type_code: str | None = None
+    assigned_permit_type_lots: list[str] = []
     assigned_lot: str | None
     status: str
     lottery_rank: int | None
@@ -170,12 +171,14 @@ async def _app_to_read(
     label = None
     price = None
     code = None
+    lots: list[str] = []
     if app.assigned_permit_type_id:
         pt = pt_by_id.get(app.assigned_permit_type_id)
         if pt:
             label = pt.label
             price = pt.price
             code = pt.code
+            lots = list(pt.lot_assignments or [])
 
     prefs = list(app.tier_preferences or [])
     preference_labels = [
@@ -197,6 +200,7 @@ async def _app_to_read(
         assigned_permit_type_label=label,
         assigned_permit_type_price=price,
         assigned_permit_type_code=code,
+        assigned_permit_type_lots=lots,
         assigned_lot=app.assigned_lot,
         status=app.status,
         lottery_rank=app.lottery_rank,

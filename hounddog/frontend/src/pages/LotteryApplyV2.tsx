@@ -120,6 +120,7 @@ interface Application {
   assigned_permit_type_label: string | null;
   assigned_permit_type_price: string | null;
   assigned_permit_type_code: string | null;
+  assigned_permit_type_lots: string[];
   assigned_lot: string | null;
   status: string;
   lottery_rank: number | null;
@@ -863,8 +864,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           <span className="text-green-700"> — ${application.assigned_permit_type_price}</span>
                         )}
                       </p>
-                      {application.assigned_lot && (
-                        <p className="m-0 text-sm text-green-800">Lot: {application.assigned_lot}</p>
+                      {((application.assigned_permit_type_lots && application.assigned_permit_type_lots.length > 0)
+                        || application.assigned_lot) && (
+                        <p className="m-0 text-sm text-green-800">
+                          Allowed lot{((application.assigned_permit_type_lots?.length || 0) > 1) ? "s" : ""}:{" "}
+                          {(application.assigned_permit_type_lots && application.assigned_permit_type_lots.length > 0)
+                            ? application.assigned_permit_type_lots.join(", ")
+                            : application.assigned_lot}
+                        </p>
                       )}
                       {application.offer_expires_at && (
                         <p className="m-0 text-xs text-green-700">
