@@ -421,8 +421,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       setMyPermits(permits);
 
       const appBody = appRes.ok ? await appRes.json() : null;
-      // Only lock into results if the app belongs to the cycle currently shown
-      if (appBody && cycleData && appBody.cycle_id === cycleData.id) {
+      // Only lock into results if the app belongs to the cycle currently shown.
+      // Superseded = dead duplicate — treat as no application so they can re-join.
+      if (
+        appBody &&
+        cycleData &&
+        appBody.cycle_id === cycleData.id &&
+        appBody.status !== "superseded"
+      ) {
         setApplication(appBody);
         setStep("done");
       } else {

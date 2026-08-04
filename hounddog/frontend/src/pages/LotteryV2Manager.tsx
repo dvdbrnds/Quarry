@@ -84,7 +84,7 @@ const STATUS_COLORS: Record<string, string> = {
   superseded: "default",
 };
 
-type DeskFilter = "all" | "placed" | "accepted" | "offer" | "waitlist" | "mismatch";
+type DeskFilter = "all" | "placed" | "accepted" | "offer" | "waitlist" | "mismatch" | "superseded";
 
 function emailKey(app: Application): string {
   return (app.student_email || "").trim().toLowerCase() || app.id;
@@ -299,6 +299,23 @@ export default function LotteryV2Manager() {
     });
   }
 
+  function confirmRestore(app: Application) {
+    modal.confirm({
+      title: `Restore ${app.student_name} to the waitlist?`,
+      content:
+        "Their application was marked superseded (inactive duplicate). This puts them back on the waitlist so they can receive an offer.",
+      okText: "Restore to waitlist",
+      onOk: async () => {
+        const data = await postAction(`/api/lottery-v2/applications/${app.id}/restore-waitlist`);
+        if (data) {
+          message.success(
+            `${app.student_name} restored — waitlist #${data.waitlist_position ?? "?"}`,
+          );
+        }
+      },
+    });
+  }
+
   function openManualSelect(app: Application) {
     const prefs = app.tier_preferences || [];
     setSelectTarget(app);
@@ -378,10 +395,22 @@ export default function LotteryV2Manager() {
 
   const deskFiltered = useMemo(() => {
     const q = deskQuery.trim().toLowerCase();
-    const rows = deskRows.filter((a) => {
+    // Superseded rows are hidden unless searching or filtering for them
+    const base =
+      deskFilter === "superseded" || q
+        ? [
+            ...deskRows,
+            ...apps.filter(
+              (a) =>
+                a.status === "superseded" &&
+                !deskRows.some((d) => d.id === a.id),
+            ),
+          ]
+        : deskRows;
+
+    const rows = base.filter((a) => {
       if (deskTier) {
-        if (a.status === "waitlisted") {
-          // Waiting for this permit type if they ranked it anywhere
+        if (a.status === "waitlisted" || a.status === "superseded") {
           if (!wantsTier(a, deskTier)) return false;
         } else if (a.assigned_permit_type_label !== deskTier) {
           return false;
@@ -391,6 +420,7 @@ export default function LotteryV2Manager() {
       if (deskFilter === "accepted" && a.status !== "accepted") return false;
       if (deskFilter === "offer" && a.status !== "selected") return false;
       if (deskFilter === "waitlist" && a.status !== "waitlisted") return false;
+      if (deskFilter === "superseded" && a.status !== "superseded") return false;
       if (deskFilter === "mismatch") {
         const first = a.first_choice_label || a.tier_preference_labels?.[0];
         if (!first || !a.assigned_permit_type_label || first === a.assigned_permit_type_label) {
@@ -413,7 +443,7 @@ export default function LotteryV2Manager() {
       });
     }
     return rows;
-  }, [deskRows, deskQuery, deskFilter, deskTier]);
+  }, [deskRows, deskQuery, deskFilter, deskTier, apps]);
 
   const caseSiblings = useMemo(() => {
     if (!caseApp) return [];
@@ -530,6 +560,11 @@ export default function LotteryV2Manager() {
               Select
             </Button>
           )}
+          {r.status === "superseded" && (
+            <Button type="link" size="small" className="px-1" disabled={busy} onClick={() => confirmRestore(r)}>
+              Restore
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -611,6 +646,18 @@ export default function LotteryV2Manager() {
               </Button>
               <Button type="link" size="small" disabled={busy} onClick={() => openManualSelect(r)}>
                 Select
+              </Button>
+            </Space>
+          );
+        }
+        if (r.status === "superseded") {
+          return (
+            <Space size={0} wrap>
+              <Button type="link" size="small" onClick={() => setCaseApp(r)}>
+                Case
+              </Button>
+              <Button type="link" size="small" disabled={busy} onClick={() => confirmRestore(r)}>
+                Restore
               </Button>
             </Space>
           );
@@ -1010,6 +1057,7 @@ export default function LotteryV2Manager() {
                     ["offer", "Open offers"],
                     ["accepted", "Accepted"],
                     ["waitlist", "Waitlist"],
+                    ["superseded", "Superseded"],
                     ["mismatch", "Got ≠ #1"],
                   ] as [DeskFilter, string][]
                 ).map(([key, label]) => (
@@ -1188,6 +1236,13 @@ export default function LotteryV2Manager() {
                 </Button>
                 <Button type="primary" disabled={busy} onClick={() => openManualSelect(caseApp)}>
                   Manual select
+                </Button>
+              </Space>
+            )}
+            {caseApp.status === "superseded" && (
+              <Space>
+                <Button type="primary" disabled={busy} onClick={() => confirmRestore(caseApp)}>
+                  Restore to waitlist
                 </Button>
               </Space>
             )}

@@ -428,11 +428,26 @@ async def submit_application(
             select(LotteryV2Application).where(
                 LotteryV2Application.cycle_id == cycle.id,
                 LotteryV2Application.student_sub == user.sub,
+                LotteryV2Application.status.notin_(["superseded"]),
             )
         )
     ).scalar_one_or_none()
     if existing:
         raise HTTPException(400, "You already have an application for this lottery")
+
+    # Revive a superseded row for this student instead of leaving a dead card
+    superseded = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == cycle.id,
+                LotteryV2Application.student_sub == user.sub,
+                LotteryV2Application.status == "superseded",
+            )
+            .order_by(LotteryV2Application.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
 
     eligible = await _eligible_tiers_for(db, data.campus, data.class_year)
     eligible_ids = {t.id for t in eligible}
@@ -450,25 +465,47 @@ async def submit_application(
         or user.email
     )
     phone = data.phone.strip()
-    app = LotteryV2Application(
-        cycle_id=cycle.id,
-        student_sub=user.sub,
-        student_email=user.email,
-        student_name=name,
-        class_year=data.class_year,
-        campus=data.campus,
-        plate=data.plate.strip().upper(),
-        plate_state=(data.plate_state or "").strip().upper()[:2],
-        phone=phone,
-        sms_opt_in=bool(data.sms_opt_in),
-        tier_preferences=list(data.tier_preferences),
-        status="pending",
-        is_test_entry=False,
-    )
+
+    if superseded:
+        app = superseded
+        app.student_email = user.email
+        app.student_name = name
+        app.class_year = data.class_year
+        app.campus = data.campus
+        app.plate = data.plate.strip().upper()
+        app.plate_state = (data.plate_state or "").strip().upper()[:2]
+        app.phone = phone
+        app.sms_opt_in = bool(data.sms_opt_in)
+        app.tier_preferences = list(data.tier_preferences)
+        app.status = "pending"
+        app.waitlist_position = None
+        app.lottery_rank = None
+        app.assigned_permit_type_id = None
+        app.assigned_lot = None
+        app.offer_expires_at = None
+        note = f"Revived from superseded at {datetime.now(timezone.utc).isoformat()}"
+        app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+    else:
+        app = LotteryV2Application(
+            cycle_id=cycle.id,
+            student_sub=user.sub,
+            student_email=user.email,
+            student_name=name,
+            class_year=data.class_year,
+            campus=data.campus,
+            plate=data.plate.strip().upper(),
+            plate_state=(data.plate_state or "").strip().upper()[:2],
+            phone=phone,
+            sms_opt_in=bool(data.sms_opt_in),
+            tier_preferences=list(data.tier_preferences),
+            status="pending",
+            is_test_entry=False,
+        )
 
     # If the draw already happened, try open seats first — only waitlist if full
     if cycle.status == "drawn":
-        db.add(app)
+        if not superseded:
+            db.add(app)
         await db.flush()
         placed = await try_place_application(db, app, send_notification=True)
         if not placed:
@@ -483,7 +520,8 @@ async def submit_application(
             app.waitlist_position = max_pos + 1
             await db.flush()
     else:
-        db.add(app)
+        if not superseded:
+            db.add(app)
         await db.flush()
 
     # Opt into parking + emergency SMS now; Phase 23 expands to all AlertUs channels
@@ -558,6 +596,10 @@ async def my_application(
             ).scalars().all()
     if not app:
         return None
+    # Superseded rows are dead duplicates — never show them as the student's app
+    active = [a for a in app if a.status != "superseded"]
+    if not active:
+        return None
     priority = {
         "accepted": 0,
         "selected": 1,
@@ -566,10 +608,9 @@ async def my_application(
         "expired": 4,
         "declined": 5,
         "ineligible": 6,
-        "superseded": 7,
     }
     best = sorted(
-        app,
+        active,
         key=lambda a: (
             priority.get(a.status, 99),
             a.created_at or datetime(1970, 1, 1, tzinfo=timezone.utc),
@@ -842,6 +883,41 @@ async def admin_bump_waitlist(
         app = await bump_waitlist_to_top(db, application_id)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    return await _app_to_read(db, app)
+
+
+@router.post("/applications/{application_id}/restore-waitlist", response_model=ApplicationRead)
+async def admin_restore_waitlist(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Restore a superseded (or expired/declined) application onto the waitlist."""
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app.status in ("accepted", "selected", "waitlisted", "pending"):
+        raise HTTPException(400, f"Cannot restore an application with status '{app.status}'")
+
+    max_pos = (
+        await db.execute(
+            select(func.max(LotteryV2Application.waitlist_position)).where(
+                LotteryV2Application.cycle_id == app.cycle_id
+            )
+        )
+    ).scalar() or 0
+    app.status = "waitlisted"
+    app.waitlist_position = max_pos + 1
+    app.assigned_permit_type_id = None
+    app.assigned_lot = None
+    app.offer_expires_at = None
+    app.lottery_rank = None
+    note = (
+        f"Admin restored to waitlist #{app.waitlist_position} by "
+        f"{admin.email or admin.sub} at {datetime.now(timezone.utc).isoformat()}"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+    await db.flush()
     return await _app_to_read(db, app)
 
 
