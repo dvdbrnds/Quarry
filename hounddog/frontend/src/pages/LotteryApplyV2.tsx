@@ -710,6 +710,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
+  const lotteryActive = cycle?.status === "open" || cycle?.status === "drawn";
+  const buyingOpen = commuterTiers.some((t) => t.remaining > 0);
+  // Closed-lottery info card only when nothing is actionable (true off-season)
+  const showOffSeasonCard =
+    step === "intake" && !isCommuterPath && !application && !lotteryActive && !buyingOpen;
   const showCommuterAccessColors = isCommuterPath && (step === "intake" || step === "choose");
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
@@ -803,32 +808,20 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           )}
 
           <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
-            {!cycle && step === "intake" && !isCommuterPath && (
-              <Card>
-                <p className="text-gray-500 m-0">
-                  No lottery cycle is available right now. The residential parking lottery runs
-                  during the summer, before the start of the school year. Check back when
-                  registration opens.
-                </p>
-              </Card>
-            )}
-
-            {cycle && !isCommuterPath && (
+            {showOffSeasonCard && (
               <Card size="small">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="font-medium m-0">{cycle.name}</p>
+                    <p className="font-medium m-0">{cycle?.name || "Parking Lottery"}</p>
                     <p className="text-xs text-gray-500 m-0">
-                      Status: <Tag>{cycle.status}</Tag>
+                      Status: <Tag>{cycle?.status || "closed"}</Tag>
                     </p>
                   </div>
-                  <Tag color={cycle.status === "open" ? "green" : "default"}>
-                    {cycle.status === "open" ? "Accepting applications" : cycle.status}
-                  </Tag>
+                  <Tag>closed</Tag>
                 </div>
                 <p className="text-xs text-gray-500 mt-2 mb-0">
                   The residential parking lottery runs during the summer, before the start of
-                  the school year.{cycle.status !== "open" ? " Check back when registration opens." : ""}
+                  the school year. Check back when registration opens.
                 </p>
               </Card>
             )}
