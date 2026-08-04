@@ -30,7 +30,7 @@ import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
 import type { AuthUser } from "./auth";
 import { UserContext } from "./UserContext";
 import { useBranding } from "./useBranding";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 function RootRedirect() {
   const navigate = useNavigate();
@@ -80,19 +80,41 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
 
 function AdminShell({ user }: { user: AuthUser }) {
   const brand = useBranding();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [impersonateInput, setImpersonateInput] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   function handleImpersonate() {
     const email = impersonateInput.trim();
     if (!email) return;
-    // Open the appropriate page depending on likely role
     window.open(`/parking?impersonate=${encodeURIComponent(email)}`, "_blank");
+    setMenuOpen(false);
   }
+
+  const displayName = user.email?.split("@")[0] || user.email || "Account";
 
   return (
     <div className="min-h-screen">
-      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
-        <div className="flex items-center gap-2 mr-4">
+      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-1 shadow-md">
+        <div className="flex items-center gap-2 mr-3 shrink-0">
           {brand.logoUrl && <img src={brand.logoUrl} alt={brand.brandName || "Logo"} className="h-8 w-auto" />}
           {brand.brandName && (
             <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
@@ -109,56 +131,94 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/alerts">Alerts</NavItem>
         <NavItem to="/settings">Settings</NavItem>
 
-        <div className="ml-auto flex items-center gap-3">
-          <a
-            href="/visitor"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs px-3 py-1 rounded-md font-medium transition-colors"
-            style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
-          >
-            Visitor Portal
-          </a>
-          <a
-            href="/employee-parking"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs px-3 py-1 rounded-md font-medium transition-colors"
-            style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
-          >
-            My Permit
-          </a>
-          <div className="flex items-center gap-1">
-            <input
-              type="email"
-              placeholder="View as user..."
-              value={impersonateInput}
-              onChange={(e) => setImpersonateInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleImpersonate(); }}
-              className="text-xs px-2 py-1 rounded-md w-36 bg-white/10 border border-white/20 text-bone placeholder-bone/40 focus:outline-none focus:border-white/50"
-            />
-            <button
-              onClick={handleImpersonate}
-              disabled={!impersonateInput.trim()}
-              className="text-xs px-2 py-1 rounded-md font-medium transition-colors disabled:opacity-30"
-              style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
-            >
-              Go
-            </button>
-          </div>
-          <span className="text-xs text-bone/70">{user.email}</span>
-          <span
-            style={{ background: `${brand.accentColor}33`, color: brand.accentColor }}
-            className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide"
-          >
-            {user.role}
-          </span>
+        <div className="ml-auto relative" ref={menuRef}>
           <button
-            onClick={() => logout()}
-            className="text-xs text-bone/50 hover:text-bone transition-colors"
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
           >
-            Sign out
+            <span className="text-bone/90 max-w-[10rem] truncate">{displayName}</span>
+            <span
+              style={{ background: `${brand.accentColor}33`, color: brand.accentColor }}
+              className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide"
+            >
+              {user.role}
+            </span>
+            <svg className={`w-3.5 h-3.5 text-bone/50 transition-transform ${menuOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
           </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-2 w-72 rounded-lg bg-white text-slate-800 shadow-xl border border-slate-200 z-50 overflow-hidden"
+            >
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="text-sm font-medium truncate">{user.email}</div>
+                <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{user.role}</div>
+              </div>
+
+              <div className="py-1">
+                <a
+                  href="/visitor"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Visitor Portal
+                </a>
+                <a
+                  href="/employee-parking"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  My Permit
+                </a>
+              </div>
+
+              <div className="px-4 py-3 border-t border-slate-100">
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">View as user</label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="email"
+                    placeholder="email@moravian.edu"
+                    value={impersonateInput}
+                    onChange={(e) => setImpersonateInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleImpersonate(); }}
+                    className="flex-1 text-xs px-2 py-1.5 rounded-md border border-slate-200 focus:outline-none focus:border-slate-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleImpersonate}
+                    disabled={!impersonateInput.trim()}
+                    className="text-xs px-2.5 py-1.5 rounded-md font-medium text-white disabled:opacity-40"
+                    style={{ background: brand.primaryColor }}
+                  >
+                    Go
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 py-1">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => logout()}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
