@@ -169,6 +169,7 @@ export default function LotteryV2Manager() {
   const [selectTarget, setSelectTarget] = useState<Application | null>(null);
   const [selectPermitId, setSelectPermitId] = useState<string | undefined>(undefined);
   const [selectNotify, setSelectNotify] = useState(true);
+  const [selectForceCapacity, setSelectForceCapacity] = useState(false);
   const [capacityAudit, setCapacityAudit] = useState<any | null>(null);
 
   const [deskQuery, setDeskQuery] = useState("");
@@ -321,6 +322,7 @@ export default function LotteryV2Manager() {
     setSelectTarget(app);
     setSelectPermitId(prefs[0]);
     setSelectNotify(true);
+    setSelectForceCapacity(false);
   }
 
   async function confirmManualSelect() {
@@ -328,6 +330,8 @@ export default function LotteryV2Manager() {
     const data = await postAction(`/api/lottery-v2/applications/${selectTarget.id}/manual-select`, {
       permit_type_id: selectPermitId || null,
       send_notification: selectNotify,
+      allow_any_type: true,
+      force_capacity: selectForceCapacity,
     });
     if (data) {
       message.success(
@@ -1283,6 +1287,20 @@ export default function LotteryV2Manager() {
                 onChange={(e) => setSelectNotify(e.target.checked)}
               />
               Email the student their offer
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={selectForceCapacity}
+                onChange={(e) => setSelectForceCapacity(e.target.checked)}
+              />
+              <span>
+                Force capacity
+                <span className="block text-xs text-gray-500">
+                  Offer even if this tier has no open seats left
+                </span>
+              </span>
             </label>
           </div>
         )}
