@@ -431,21 +431,21 @@ async def submit_application(
             select(LotteryV2Application).where(
                 LotteryV2Application.cycle_id == cycle.id,
                 LotteryV2Application.student_sub == user.sub,
-                LotteryV2Application.status.notin_(["superseded"]),
+                LotteryV2Application.status.notin_(["superseded", "declined", "expired"]),
             )
         )
     ).scalar_one_or_none()
     if existing:
         raise HTTPException(400, "You already have an application for this lottery")
 
-    # Revive a superseded row for this student instead of leaving a dead card
-    superseded = (
+    # Revive a dead row (superseded / declined / expired) instead of blocking re-apply
+    revived = (
         await db.execute(
             select(LotteryV2Application)
             .where(
                 LotteryV2Application.cycle_id == cycle.id,
                 LotteryV2Application.student_sub == user.sub,
-                LotteryV2Application.status == "superseded",
+                LotteryV2Application.status.in_(["superseded", "declined", "expired"]),
             )
             .order_by(LotteryV2Application.created_at.desc())
             .limit(1)
@@ -469,8 +469,9 @@ async def submit_application(
     )
     phone = data.phone.strip()
 
-    if superseded:
-        app = superseded
+    if revived:
+        prior_status = revived.status
+        app = revived
         app.student_email = user.email
         app.student_name = name
         app.class_year = data.class_year
@@ -486,7 +487,9 @@ async def submit_application(
         app.assigned_permit_type_id = None
         app.assigned_lot = None
         app.offer_expires_at = None
-        note = f"Revived from superseded at {datetime.now(timezone.utc).isoformat()}"
+        note = (
+            f"Revived from {prior_status} at {datetime.now(timezone.utc).isoformat()}"
+        )
         app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
     else:
         app = LotteryV2Application(
@@ -518,7 +521,7 @@ async def submit_application(
 
     # If the draw already happened, try open seats first — only waitlist if full
     if cycle.status == "drawn":
-        if not superseded:
+        if not revived:
             db.add(app)
         await db.flush()
         placed = await try_place_application(db, app, send_notification=True)
@@ -534,7 +537,7 @@ async def submit_application(
             app.waitlist_position = max_pos + 1
             await db.flush()
     else:
-        if not superseded:
+        if not revived:
             db.add(app)
         await db.flush()
 
@@ -610,8 +613,8 @@ async def my_application(
             ).scalars().all()
     if not app:
         return None
-    # Superseded rows are dead duplicates — never show them as the student's app
-    active = [a for a in app if a.status != "superseded"]
+    # Superseded / declined / expired are dead — let the student re-apply
+    active = [a for a in app if a.status not in ("superseded", "declined", "expired")]
     if not active:
         return None
     priority = {
