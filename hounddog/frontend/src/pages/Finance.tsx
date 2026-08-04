@@ -458,10 +458,10 @@ export default function Finance() {
         <div className="flex justify-center py-8"><Spin /></div>
       ) : ov ? (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-          <Card size="small"><Statistic title="Stripe Volume" value={Number(ov.total_volume)} prefix="$" precision={2} valueStyle={{ color: "#15803d", fontWeight: 700 }} /></Card>
-          <Tooltip title="Stripe charges 2.9% + $0.30 per successful card transaction. These fees are deducted before funds reach your account."><Card size="small"><Statistic title="Stripe Fees" value={Number(ov.total_fees)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card></Tooltip>
-          <Card size="small"><Statistic title="Net Revenue" value={Number(ov.total_net)} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
-          <Card size="small"><Statistic title="Refunded" value={Number(ov.total_refunded)} prefix="$" precision={2} /></Card>
+          <Card size="small"><Statistic title="Stripe Volume" value={fmtDollars(ov.total_volume)} valueStyle={{ color: "#15803d", fontWeight: 700, whiteSpace: "nowrap", fontSize: 18 }} /></Card>
+          <Tooltip title="Stripe charges 2.9% + $0.30 per successful card transaction. These fees are deducted before funds reach your account."><Card size="small"><Statistic title="Stripe Fees" value={fmtDollars(ov.total_fees)} valueStyle={{ color: "#b91c1c", whiteSpace: "nowrap", fontSize: 18 }} /></Card></Tooltip>
+          <Card size="small"><Statistic title="Net Revenue" value={fmtDollars(ov.total_net)} valueStyle={{ color: "#15803d", whiteSpace: "nowrap", fontSize: 18 }} /></Card>
+          <Card size="small"><Statistic title="Refunded" value={fmtDollars(ov.total_refunded)} valueStyle={{ whiteSpace: "nowrap", fontSize: 18 }} /></Card>
           <Card size="small"><Statistic title="Successful" value={ov.successful_count} valueStyle={{ color: "#15803d" }} /></Card>
           <Card size="small"><Statistic title="Refunded" value={ov.refunded_count} /></Card>
           <Card size="small"><Statistic title="Failed" value={ov.failed_count} valueStyle={ov.failed_count > 0 ? { color: "#b91c1c" } : {}} /></Card>
