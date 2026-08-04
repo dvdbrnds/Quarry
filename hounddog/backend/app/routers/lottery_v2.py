@@ -644,6 +644,20 @@ async def accept_offer(
     if not app.assigned_permit_type_id:
         raise HTTPException(400, "No permit type assigned")
 
+    # Allow student to confirm/update vehicle info before paying
+    body = body or {}
+    plate = (body.get("plate") or "").strip().upper()
+    plate_state = (body.get("plate_state") or "").strip().upper()[:2]
+    phone = (body.get("phone") or "").strip()
+    if plate:
+        app.plate = plate
+    if plate_state:
+        app.plate_state = plate_state
+    if phone:
+        app.phone = phone
+    if not app.plate:
+        raise HTTPException(400, "License plate is required to accept this offer")
+
     pt = await db.get(PermitType, app.assigned_permit_type_id)
     if not pt:
         raise HTTPException(404, "Permit type not found")
@@ -870,6 +884,10 @@ async def decline_offer(
 class ManualSelectRequest(BaseModel):
     permit_type_id: uuid.UUID | None = None
     send_notification: bool = True
+    # When True, assign even if the type is not in the student's ranked prefs
+    allow_any_type: bool = True
+    # When True, assign even if live remaining capacity is 0 (admin override)
+    force_capacity: bool = False
 
 
 @router.post("/applications/{application_id}/bump-waitlist", response_model=ApplicationRead)
@@ -937,6 +955,8 @@ async def admin_manual_select(
             permit_type_id=opts.permit_type_id,
             send_notification=opts.send_notification,
             admin_label=admin.email or admin.sub,
+            allow_any_type=opts.allow_any_type,
+            force_capacity=opts.force_capacity,
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
