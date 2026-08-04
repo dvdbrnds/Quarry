@@ -128,8 +128,8 @@ export default function ActivityLog() {
     <div>
       <h2 className="text-2xl font-bold mb-4">Activity Log</h2>
       <Space className="mb-4" wrap>
-        <Input.Search placeholder="Search actions..." value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ width: 220 }} allowClear />
+        <Input.Search placeholder="Search email, action, endpoint…" value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ width: 260 }} allowClear />
         <Input placeholder="Filter by email" value={filterUser}
           onChange={e => { setFilterUser(e.target.value); setPage(1); }} style={{ width: 180 }} allowClear />
         <Select value={filterResource || undefined} onChange={v => { setFilterResource(v || ""); setPage(1); }}
