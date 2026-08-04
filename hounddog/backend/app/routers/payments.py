@@ -854,6 +854,32 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
     if not app or app.status != "selected":
         return False
 
+    # Upgrade path: revoke old permit, issue new, advance old tier waitlist
+    if metadata.get("is_upgrade") == "true" or app.is_upgrade:
+        from ..services.lottery_v2_runner import complete_upgrade
+        from ..models.permit_type import PermitType as PT
+
+        pt = await db.get(PT, app.assigned_permit_type_id)
+        if not pt:
+            return False
+
+        stripe_pi = session.get("payment_intent", "")
+        await complete_upgrade(db, app, pt)
+
+        payment = Payment(
+            amount=Decimal(session["amount_total"]) / 100,
+            method="online_permit_purchase",
+            stripe_payment_id=stripe_pi,
+            payment_type="lottery_v2_permit",
+            payer_name=app.student_name or None,
+            payer_email=app.student_email or None,
+            plate=app.plate or None,
+            description=f"Upgrade to {pt.label} — {app.plate}",
+        )
+        db.add(payment)
+        await db.flush()
+        return True
+
     permit_type_code = metadata.get("permit_type_code", "")
     student_name = metadata.get("student_name", "")
     plate = metadata.get("plate", "")

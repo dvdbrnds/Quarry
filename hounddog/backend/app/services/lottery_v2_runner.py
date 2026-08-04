@@ -1265,3 +1265,75 @@ async def notify_waitlisted_applicants(db: AsyncSession, cycle_id: uuid.UUID) ->
         "waitlisted_count": len(waitlisted),
         **result,
     }
+
+
+async def complete_upgrade(
+    db: AsyncSession,
+    app: LotteryV2Application,
+    new_pt: PermitType,
+) -> Permit:
+    """Complete an upgrade: revoke old permit, issue new one, advance old tier's waitlist."""
+    from app.services.permit_numbering import next_permit_number
+    from app.services.timeutils import today_local
+
+    # Find and revoke the old permit
+    old_permit = (
+        await db.execute(
+            select(Permit).where(
+                Permit.email == app.student_email,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            ).order_by(Permit.created_at.desc())
+        )
+    ).scalars().first()
+
+    old_permit_type_code = None
+    if old_permit:
+        old_permit_type_code = old_permit.permit_type
+        old_permit.status = "upgraded"
+        note = f"Upgraded to {new_pt.label} at {datetime.now(timezone.utc).isoformat()}"
+        if hasattr(old_permit, "notes"):
+            old_permit.notes = f"{old_permit.notes or ''}\n{note}".strip()
+
+    # Issue the new permit
+    lot_assignment = app.assigned_lot or (
+        ",".join(new_pt.lot_assignments) if new_pt.lot_assignments else ""
+    )
+    new_permit = Permit(
+        permit_number=await next_permit_number(db),
+        name=app.student_name,
+        email=app.student_email or None,
+        phone=app.phone or "",
+        sms_opt_in=bool(app.sms_opt_in),
+        plates=[app.plate],
+        permit_type=new_pt.code,
+        lot_assignment=lot_assignment,
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=new_pt.valid_days),
+        status="active",
+    )
+    db.add(new_permit)
+
+    # Mark the upgrade application as accepted
+    app.status = "accepted"
+    upgrade_note = (
+        f"Upgrade completed at {datetime.now(timezone.utc).isoformat()} — "
+        f"{new_pt.label} (from {old_permit_type_code or 'unknown'})"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{upgrade_note}".strip() if app.admin_notes else upgrade_note
+
+    await db.flush()
+
+    # Advance the waitlist on the OLD tier (the vacated seat)
+    if old_permit_type_code:
+        old_pt = (
+            await db.execute(
+                select(PermitType).where(PermitType.code == old_permit_type_code)
+            )
+        ).scalar_one_or_none()
+        if old_pt:
+            # Try to promote next waitlisted person for that tier
+            await promote_from_waitlist(db, app.cycle_id)
+
+    await db.flush()
+    return new_permit

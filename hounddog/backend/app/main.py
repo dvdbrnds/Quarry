@@ -377,6 +377,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS last_plate_change TIMESTAMPTZ",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT FALSE",
             "UPDATE permit_types SET allow_multiple = TRUE WHERE code = 'faculty_staff' AND allow_multiple = FALSE",
+            # Waitlist upgrade flow
+            "ALTER TABLE lottery_v2_applications ADD COLUMN IF NOT EXISTS is_upgrade BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE lottery_v2_applications ADD COLUMN IF NOT EXISTS existing_permit_type_id UUID",
+            "ALTER TABLE lottery_v2_applications ADD COLUMN IF NOT EXISTS upgrade_credit DOUBLE PRECISION",
             # NOTE: Do NOT hard-reset permit_types.lot_assignments / max_capacity here.
             # Those belong to admin edits and must survive redeploys. Initial defaults are
             # seeded only when the table is empty (see seed block below).

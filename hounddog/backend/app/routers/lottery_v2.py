@@ -97,6 +97,7 @@ class ApplicationSubmit(BaseModel):
     sms_opt_in: bool = False
     student_name: str | None = None
     tier_preferences: list[uuid.UUID] = Field(..., min_length=1)
+    is_upgrade: bool = False
 
 
 class ApplicationRead(BaseModel):
@@ -124,6 +125,9 @@ class ApplicationRead(BaseModel):
     admin_notes: str | None = None
     is_test_entry: bool
     fee_exempt: bool = False
+    is_upgrade: bool = False
+    existing_permit_type_id: uuid.UUID | None = None
+    upgrade_credit: float | None = None
     created_at: datetime
 
     class Config:
@@ -215,6 +219,9 @@ async def _app_to_read(
         admin_notes=app.admin_notes,
         is_test_entry=app.is_test_entry,
         fee_exempt=bool(app.fee_exempt),
+        is_upgrade=bool(app.is_upgrade) if hasattr(app, "is_upgrade") else False,
+        existing_permit_type_id=getattr(app, "existing_permit_type_id", None),
+        upgrade_credit=getattr(app, "upgrade_credit", None),
         created_at=app.created_at,
     )
 
@@ -434,23 +441,51 @@ async def submit_application(
                 LotteryV2Application.status.notin_(["superseded", "declined", "expired"]),
             )
         )
-    ).scalar_one_or_none()
-    if existing:
-        raise HTTPException(400, "You already have an application for this lottery")
+    ).scalars().all()
+
+    # Upgrade path: student already has an accepted app and wants to join a higher-tier waitlist
+    accepted_app = next((a for a in existing if a.status == "accepted"), None)
+    if data.is_upgrade:
+        if not accepted_app:
+            raise HTTPException(400, "You must have an accepted permit to join an upgrade waitlist")
+        # Validate that the target tier(s) are more expensive than current
+        pt_map = await _permit_type_map(db)
+        current_pt = pt_map.get(accepted_app.assigned_permit_type_id)
+        if not current_pt:
+            raise HTTPException(400, "Cannot determine your current permit type")
+        for tid in data.tier_preferences:
+            target_pt = pt_map.get(tid)
+            if not target_pt or target_pt.price <= current_pt.price:
+                raise HTTPException(400, f"Upgrade waitlist is only for higher-priced tiers")
+        # Block duplicate upgrade waitlist for the same tier
+        existing_upgrade = next(
+            (a for a in existing if a.is_upgrade and set(a.tier_preferences or []) & set(data.tier_preferences)),
+            None,
+        )
+        if existing_upgrade:
+            raise HTTPException(400, "You are already on the upgrade waitlist for this tier")
+    else:
+        # Standard path: only one non-upgrade application allowed
+        non_upgrade = [a for a in existing if not a.is_upgrade]
+        if non_upgrade:
+            raise HTTPException(400, "You already have an application for this lottery")
 
     # Revive a dead row (superseded / declined / expired) instead of blocking re-apply
-    revived = (
-        await db.execute(
-            select(LotteryV2Application)
-            .where(
-                LotteryV2Application.cycle_id == cycle.id,
-                LotteryV2Application.student_sub == user.sub,
-                LotteryV2Application.status.in_(["superseded", "declined", "expired"]),
+    revived = None
+    if not data.is_upgrade:
+        revived = (
+            await db.execute(
+                select(LotteryV2Application)
+                .where(
+                    LotteryV2Application.cycle_id == cycle.id,
+                    LotteryV2Application.student_sub == user.sub,
+                    LotteryV2Application.status.in_(["superseded", "declined", "expired"]),
+                    LotteryV2Application.is_upgrade.is_(False),
+                )
+                .order_by(LotteryV2Application.created_at.desc())
+                .limit(1)
             )
-            .order_by(LotteryV2Application.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+        ).scalar_one_or_none()
 
     eligible = await _eligible_tiers_for(db, data.campus, data.class_year)
     eligible_ids = {t.id for t in eligible}
@@ -506,6 +541,9 @@ async def submit_application(
             tier_preferences=list(data.tier_preferences),
             status="pending",
             is_test_entry=False,
+            is_upgrade=data.is_upgrade,
+            existing_permit_type_id=accepted_app.assigned_permit_type_id if data.is_upgrade and accepted_app else None,
+            upgrade_credit=float(current_pt.price) if data.is_upgrade and accepted_app else None,
         )
 
     from ..services.fee_exempt import lookup_fee_exempt
@@ -520,11 +558,15 @@ async def submit_application(
         app.fee_exempt = True
 
     # If the draw already happened, try open seats first — only waitlist if full
+    # Upgrade waitlist entries always go straight to waitlist (they already hold a permit)
     if cycle.status == "drawn":
         if not revived:
             db.add(app)
         await db.flush()
-        placed = await try_place_application(db, app, send_notification=True)
+        if data.is_upgrade:
+            placed = False
+        else:
+            placed = await try_place_application(db, app, send_notification=True)
         if not placed:
             max_pos = (
                 await db.execute(
@@ -615,6 +657,8 @@ async def my_application(
         return None
     # Superseded / declined / expired are dead — let the student re-apply
     active = [a for a in app if a.status not in ("superseded", "declined", "expired")]
+    # Filter out upgrade apps — they have their own endpoint
+    active = [a for a in active if not a.is_upgrade]
     if not active:
         return None
     priority = {
@@ -649,6 +693,51 @@ async def my_application(
             await db.flush()
 
     return await _app_to_read(db, best)
+
+
+@router.get("/applications/me/upgrades", response_model=list[ApplicationRead])
+async def my_upgrade_applications(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
+):
+    """Return this student's upgrade waitlist applications for the current cycle."""
+    cycle = (
+        await db.execute(
+            select(LotteryV2Cycle)
+            .where(LotteryV2Cycle.status.in_(["open", "drawn", "closed"]))
+            .order_by(LotteryV2Cycle.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not cycle:
+        return []
+
+    apps = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle.id,
+                LotteryV2Application.student_sub == user.sub,
+                LotteryV2Application.is_upgrade.is_(True),
+                LotteryV2Application.status.notin_(["superseded", "declined", "expired"]),
+            )
+        )
+    ).scalars().all()
+
+    if not apps:
+        email = (user.email or "").strip().lower()
+        if email:
+            apps = (
+                await db.execute(
+                    select(LotteryV2Application).where(
+                        LotteryV2Application.cycle_id == cycle.id,
+                        func.lower(LotteryV2Application.student_email) == email,
+                        LotteryV2Application.is_upgrade.is_(True),
+                        LotteryV2Application.status.notin_(["superseded", "declined", "expired"]),
+                    )
+                )
+            ).scalars().all()
+
+    return [await _app_to_read(db, a) for a in apps]
 
 
 @router.post("/applications/{application_id}/accept")
@@ -844,6 +933,24 @@ async def accept_offer(
     stripe.api_key = settings.stripe_secret_key
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
 
+    # Upgrade pricing: charge only the difference
+    charge_amount = discounted_price
+    is_upgrade_checkout = bool(app.is_upgrade)
+    if is_upgrade_checkout and app.upgrade_credit:
+        charge_amount = max(Decimal("0.00"), discounted_price - Decimal(str(app.upgrade_credit)))
+
+    if is_upgrade_checkout and charge_amount <= 0:
+        # Free upgrade (edge case: discount covers the difference)
+        from ..services.lottery_v2_runner import complete_upgrade
+        await complete_upgrade(db, app, pt)
+        return {"status": "accepted", "fee_exempt": False, "upgrade": True, "charge_amount": "0.00"}
+
+    product_name = f"{pt.label} Parking Permit"
+    product_desc = f"Plate: {app.plate} | Valid for {pt.valid_days} days" + discount_note
+    if is_upgrade_checkout:
+        product_name = f"Upgrade to {pt.label}"
+        product_desc = f"Plate: {app.plate} | Difference from current permit" + discount_note
+
     session = stripe.checkout.Session.create(
         customer_email=app.student_email,
         line_items=[
@@ -851,11 +958,10 @@ async def accept_offer(
                 "price_data": {
                     "currency": "usd",
                     "product_data": {
-                        "name": f"{pt.label} Parking Permit",
-                        "description": f"Plate: {app.plate} | Valid for {pt.valid_days} days"
-                        + discount_note,
+                        "name": product_name,
+                        "description": product_desc,
                     },
-                    "unit_amount": int(discounted_price * 100),
+                    "unit_amount": int(charge_amount * 100),
                 },
                 "quantity": 1,
             }
@@ -903,6 +1009,7 @@ async def accept_offer(
             "voucher_code": applied_voucher.code if applied_voucher else "",
             "program_discount": prog_discount.label if prog_discount else "",
             "program_discount_amount": str(prog_discount.amount) if prog_discount else "",
+            "is_upgrade": "true" if is_upgrade_checkout else "false",
         },
     )
 

@@ -127,6 +127,8 @@ interface Application {
   waitlist_position: number | null;
   offer_expires_at: string | null;
   fee_exempt?: boolean;
+  is_upgrade?: boolean;
+  upgrade_credit?: number | null;
   created_at: string;
 }
 
@@ -259,6 +261,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
   const [externalLot, setExternalLot] = useState<Lot | null>(null);
   const [commuterTiers, setCommuterTiers] = useState<Tier[]>([]);
+  const [upgradeApps, setUpgradeApps] = useState<Application[]>([]);
+  const [joiningUpgrade, setJoiningUpgrade] = useState<string | null>(null);
 
   /** All eligible path options (map + choose); ranking is intentional and separate */
   const eligibleTiers = tiers;
@@ -407,12 +411,13 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     setLoading(true);
     try {
       const headers = await authHeadersAs(impersonateEmail);
-      const [cycleRes, appRes, profileRes, lotsRes, permitsRes] = await Promise.all([
+      const [cycleRes, appRes, profileRes, lotsRes, permitsRes, upgradeRes] = await Promise.all([
         fetch("/api/lottery-v2/cycle", { headers }),
         fetch("/api/lottery-v2/applications/me", { headers }),
         fetch("/api/auth/profile", { headers }),
         fetch("/api/lots", { headers }),
         fetch("/api/student/permits/my-permits", { headers }),
+        fetch("/api/lottery-v2/applications/me/upgrades", { headers }),
       ]);
 
       const cycleData: Cycle | null = cycleRes.ok ? await cycleRes.json() : null;
@@ -420,6 +425,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
       const permits = permitsRes.ok ? await permitsRes.json() : [];
       setMyPermits(permits);
+
+      const upgradeData = upgradeRes.ok ? await upgradeRes.json() : [];
+      setUpgradeApps(Array.isArray(upgradeData) ? upgradeData : []);
 
       const appBody = appRes.ok ? await appRes.json() : null;
       // Only lock into results if the app belongs to the cycle currently shown.
@@ -740,6 +748,69 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     });
   }
 
+  async function joinUpgradeWaitlist(tierId: string) {
+    if (!application) return;
+    setJoiningUpgrade(tierId);
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      const res = await fetch("/api/lottery-v2/applications", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campus: application.campus,
+          class_year: application.class_year,
+          plate: application.plate,
+          plate_state: application.plate_state,
+          phone: phone || "0000000",
+          tier_preferences: [tierId],
+          is_upgrade: true,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to join waitlist");
+      }
+      message.success("Joined upgrade waitlist");
+      await load();
+    } catch (e: any) {
+      message.error(e.message || "Failed to join waitlist");
+    } finally {
+      setJoiningUpgrade(null);
+    }
+  }
+
+  async function acceptUpgradeOffer(upgradeApp: Application) {
+    setAccepting(true);
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      const res = await fetch(`/api/lottery-v2/applications/${upgradeApp.id}/accept`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Accept failed");
+      }
+      const data = await res.json();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+      if (data.status === "accepted") {
+        message.success("Upgrade complete!");
+        await load();
+        return;
+      }
+      message.success("Upgrade issued");
+      await load();
+    } catch (e: any) {
+      message.error(e.message || "Accept failed");
+    } finally {
+      setAccepting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -976,6 +1047,82 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       You're entered. Results appear here after the draw runs.
                     </p>
                   )}
+                </div>
+              </Card>
+            )}
+
+            {application && application.status === "accepted" && tiers.length > 0 && (
+              <Card className="mt-4">
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold m-0">Upgrade Waitlist</h3>
+                  <p className="text-sm text-gray-600 m-0">
+                    Want a higher-tier permit? Join a waitlist below. If a spot opens, you'll be
+                    offered the upgrade for just the price difference.
+                  </p>
+                  {(() => {
+                    const currentPrice = parseFloat(application.assigned_permit_type_price || "0");
+                    const higherTiers = tiers.filter(
+                      (t) => parseFloat(t.price) > currentPrice && t.id !== application.assigned_permit_type_id
+                    );
+                    if (higherTiers.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-400 m-0">
+                          You already have the highest-tier permit available.
+                        </p>
+                      );
+                    }
+                    return higherTiers.map((tier) => {
+                      const alreadyOn = upgradeApps.some(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const upgradeApp = upgradeApps.find(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const diff = (parseFloat(tier.price) - currentPrice).toFixed(2);
+                      return (
+                        <div
+                          key={tier.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+                        >
+                          <div>
+                            <span className="font-medium">{tier.label}</span>
+                            <span className="text-sm text-gray-500 ml-2">
+                              +${diff} difference
+                            </span>
+                            {upgradeApp?.status === "waitlisted" && upgradeApp.waitlist_position && (
+                              <Tag color="blue" className="ml-2">
+                                #{upgradeApp.waitlist_position} on waitlist
+                              </Tag>
+                            )}
+                            {upgradeApp?.status === "selected" && (
+                              <Tag color="green" className="ml-2">Offer available!</Tag>
+                            )}
+                          </div>
+                          <div>
+                            {upgradeApp?.status === "selected" ? (
+                              <Button
+                                type="primary"
+                                size="small"
+                                loading={accepting}
+                                onClick={() => acceptUpgradeOffer(upgradeApp)}
+                              >
+                                Accept Upgrade (${diff})
+                              </Button>
+                            ) : (
+                              <Button
+                                size="small"
+                                disabled={alreadyOn}
+                                loading={joiningUpgrade === tier.id}
+                                onClick={() => joinUpgradeWaitlist(tier.id)}
+                              >
+                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </Card>
             )}

@@ -38,6 +38,9 @@ interface Application {
   offer_expires_at?: string | null;
   admin_notes?: string | null;
   is_test_entry: boolean;
+  is_upgrade?: boolean;
+  existing_permit_type_id?: string | null;
+  upgrade_credit?: number | null;
   created_at: string;
 }
 
@@ -582,7 +585,12 @@ export default function LotteryV2Manager() {
       title: "Status",
       dataIndex: "status",
       width: 110,
-      render: (s: string) => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>,
+      render: (s: string, r: Application) => (
+        <span>
+          <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>
+          {r.is_upgrade && <Tag color="purple">upgrade</Tag>}
+        </span>
+      ),
     },
     {
       title: "",
@@ -654,7 +662,12 @@ export default function LotteryV2Manager() {
     {
       title: "Status",
       dataIndex: "status",
-      render: (s: string) => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>,
+      render: (s: string, r: Application) => (
+        <span>
+          <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>
+          {r.is_upgrade && <Tag color="purple">upgrade</Tag>}
+        </span>
+      ),
     },
     {
       title: "Assigned",
@@ -1213,11 +1226,17 @@ export default function LotteryV2Manager() {
               <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Outcome</div>
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <Tag color={STATUS_COLORS[caseApp.status] || "default"}>{caseApp.status}</Tag>
+                {caseApp.is_upgrade && <Tag color="purple">Upgrade</Tag>}
                 {caseApp.lottery_rank != null && <span>Rank #{caseApp.lottery_rank}</span>}
                 {caseApp.waitlist_position != null && (
                   <span>Waitlist #{caseApp.waitlist_position}</span>
                 )}
               </div>
+              {caseApp.is_upgrade && caseApp.upgrade_credit != null && (
+                <div className="text-sm text-purple-700 mb-1">
+                  Upgrading from existing permit · Credit: ${Number(caseApp.upgrade_credit).toFixed(2)}
+                </div>
+              )}
               {caseApp.assigned_permit_type_label ? (
                 <div>
                   <div className="font-medium">{caseApp.assigned_permit_type_label}</div>
