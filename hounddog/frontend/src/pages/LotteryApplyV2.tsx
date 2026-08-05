@@ -1064,7 +1064,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       const existingApp = upgradeApps.find(
                         (ua) => ua.tier_preferences?.includes(tier.id)
                       );
-                      const soldOut = tier.remaining <= 0;
                       return (
                         <div
                           key={tier.id}
@@ -1076,8 +1075,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                               ${Number(tier.price).toFixed(0)}
                               {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
                             </span>
-                            {soldOut && <Tag className="ml-2">Full</Tag>}
-                            {!soldOut && <Tag color="green" className="ml-2">{tier.remaining} open</Tag>}
                             {existingApp?.status === "waitlisted" && existingApp.waitlist_position && (
                               <Tag color="blue" className="ml-2">
                                 #{existingApp.waitlist_position} on waitlist
@@ -1104,7 +1101,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                 loading={joiningUpgrade === tier.id}
                                 onClick={() => joinUpgradeWaitlist(tier.id)}
                               >
-                                {alreadyOn ? "On Waitlist" : soldOut ? "Join Waitlist" : "Request / Waitlist"}
+                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
                               </Button>
                             )}
                           </div>
@@ -1144,7 +1141,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         (ua) => ua.tier_preferences?.includes(tier.id)
                       );
                       const diff = (parseFloat(tier.price) - currentPrice).toFixed(2);
-                      const soldOut = tier.remaining <= 0;
                       return (
                         <div
                           key={tier.id}
@@ -1155,8 +1151,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             <span className="text-sm text-gray-500 ml-2">
                               +${diff} difference
                             </span>
-                            {soldOut && <Tag className="ml-2">Full</Tag>}
-                            {!soldOut && <Tag color="green" className="ml-2">{tier.remaining} open</Tag>}
                             {upgradeApp?.status === "waitlisted" && upgradeApp.waitlist_position && (
                               <Tag color="blue" className="ml-2">
                                 #{upgradeApp.waitlist_position} on waitlist
@@ -1183,7 +1177,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                 loading={joiningUpgrade === tier.id}
                                 onClick={() => joinUpgradeWaitlist(tier.id)}
                               >
-                                {alreadyOn ? "On Waitlist" : soldOut ? "Join Waitlist" : "Request / Waitlist"}
+                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
                               </Button>
                             )}
                           </div>
