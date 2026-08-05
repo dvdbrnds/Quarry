@@ -1625,6 +1625,8 @@ async def capacity_audit(
             if a.assigned_permit_type_id == pt.id
             and a.status in ("selected", "accepted")
         ]
+        selected_only = [a for a in selected_to_tier if a.status == "selected"]
+        accepted_only = [a for a in selected_to_tier if a.status == "accepted"]
         waitlisted_with_pref = [
             a for a in apps if a.status == "waitlisted" and has_pref(a, pt)
         ]
@@ -1639,9 +1641,12 @@ async def capacity_audit(
             "lot_assignments": list(pt.lot_assignments or []),
             "max_capacity": pt.max_capacity,
             "active_permits": active_by_code.get(pt.code, 0),
+            "selected_pending_payment": len(selected_only),
+            "accepted_paid": len(accepted_only),
             "remaining_at_audit": tier.remaining if tier else None,
-            "remaining_formula": f"{pt.max_capacity or 0} - {active_by_code.get(pt.code, 0)} = {max(0, (pt.max_capacity or 0) - active_by_code.get(pt.code, 0))}",
+            "remaining_formula": f"{pt.max_capacity or 0} cap - {active_by_code.get(pt.code, 0)} active - {len(selected_only)} selected = {max(0, (pt.max_capacity or 0) - active_by_code.get(pt.code, 0) - len(selected_only))} open",
             "is_active": pt.is_active,
+            "auto_advance_waitlist": pt.auto_advance_waitlist,
             "min_class_year": pt.min_class_year,
             "allow_freshmen": pt.allow_freshmen,
             "apps_with_any_pref": len(any_pref_apps),

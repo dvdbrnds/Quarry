@@ -954,29 +954,34 @@ export default function LotteryV2Manager() {
                         <th className="py-1 pr-2">Tier</th>
                         <th className="py-1 pr-2">Max</th>
                         <th className="py-1 pr-2">Active</th>
-                        <th className="py-1 pr-2">Remaining</th>
+                        <th className="py-1 pr-2">Selected (pending)</th>
+                        <th className="py-1 pr-2">Accepted (paid)</th>
+                        <th className="py-1 pr-2">Open</th>
                         <th className="py-1 pr-2">1st choice</th>
-                        <th className="py-1 pr-2">Any pref</th>
-                        <th className="py-1 pr-2">Selected</th>
                         <th className="py-1 pr-2">WL w/ pref</th>
+                        <th className="py-1 pr-2">Auto-advance</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(capacityAudit.tiers || []).map((t: any) => (
                         <tr key={t.code} className="border-b border-amber-100">
-                          <td className="py-1 pr-2">{t.label || t.code}</td>
+                          <td className="py-1 pr-2 font-medium">{t.label || t.code}</td>
                           <td className="py-1 pr-2">{t.max_capacity}</td>
                           <td className="py-1 pr-2">{t.active_permits}</td>
+                          <td className="py-1 pr-2">
+                            <span className="text-blue-600 font-medium">{t.selected_pending_payment ?? "—"}</span>
+                          </td>
+                          <td className="py-1 pr-2">
+                            <span className="text-green-600 font-medium">{t.accepted_paid ?? "—"}</span>
+                          </td>
                           <td className="py-1 pr-2">{t.remaining_formula}</td>
                           <td className="py-1 pr-2">{t.apps_first_choice}</td>
-                          <td className="py-1 pr-2">{t.apps_with_any_pref}</td>
-                          <td className="py-1 pr-2">
-                            {t.selected_or_accepted}
-                            {t.duplicate_emails_in_selected > 0 && (
-                              <span className="text-red-600"> (−{t.duplicate_emails_in_selected} dup)</span>
-                            )}
-                          </td>
                           <td className="py-1 pr-2">{t.waitlisted_with_pref}</td>
+                          <td className="py-1 pr-2">
+                            {t.auto_advance_waitlist === false
+                              ? <Tag color="red" className="text-[10px]">OFF</Tag>
+                              : <Tag color="green" className="text-[10px]">ON</Tag>}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
