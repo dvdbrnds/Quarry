@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Table, App, Tag, Space, Input, Popconfirm, Modal, Form } from "antd";
-import { UploadOutlined, DeleteOutlined, SearchOutlined, PlusOutlined } from "@ant-design/icons";
+import { Button, Table, App, Tag, Space, Input, Popconfirm, Modal, Form, Tabs, Statistic } from "antd";
+import { UploadOutlined, DeleteOutlined, SearchOutlined, PlusOutlined, DollarOutlined, SendOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 
 interface RosterEntry {
@@ -20,6 +20,19 @@ interface RosterEntry {
   matched_by?: string | null;
 }
 
+interface BalanceDueRow {
+  application_id: string;
+  student_name: string;
+  email: string;
+  permit_type: string;
+  list_price: string;
+  expected_price: string;
+  amount_paid: string;
+  balance_due: string;
+  permit_number: string | null;
+  payment_link_sent: boolean;
+}
+
 type PermitFilter = "all" | "issued" | "missing";
 
 export default function FeeExemptRoster() {
@@ -33,6 +46,11 @@ export default function FeeExemptRoster() {
   const [addForm] = Form.useForm();
   const [addingSingle, setAddingSingle] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [balanceRows, setBalanceRows] = useState<BalanceDueRow[]>([]);
+  const [balanceTotal, setBalanceTotal] = useState("0.00");
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [sendingPayment, setSendingPayment] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("roster");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,7 +65,23 @@ export default function FeeExemptRoster() {
     }
   }, [message]);
 
+  const loadBalanceDue = useCallback(async () => {
+    setBalanceLoading(true);
+    try {
+      const res = await fetch("/api/admin/fee-exempt/balance-due", { headers: await authHeaders() });
+      if (!res.ok) throw new Error("Failed to load balance data");
+      const data = await res.json();
+      setBalanceRows(data.rows);
+      setBalanceTotal(data.total_owed);
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [message]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (activeTab === "balance") loadBalanceDue(); }, [activeTab, loadBalanceDue]);
 
   async function handleUpload(file: File, replace: boolean) {
     setUploading(true);
@@ -161,6 +195,27 @@ export default function FeeExemptRoster() {
     }
   }
 
+  async function handleSendPayment(appId: string) {
+    setSendingPayment(appId);
+    try {
+      const res = await fetch(`/api/admin/fee-exempt/balance-due/${appId}/send-payment`, {
+        method: "POST",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to send payment request");
+      }
+      const data = await res.json();
+      message.success(`Payment link sent — $${data.balance_due} (${data.session_id})`);
+      loadBalanceDue();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSendingPayment(null);
+    }
+  }
+
   const issuedCount = entries.filter((e) => e.has_permit).length;
   const missingCount = entries.length - issuedCount;
 
@@ -174,12 +229,14 @@ export default function FeeExemptRoster() {
   });
 
   return (
+    <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+      { key: "roster", label: "RA Roster", children: (
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold m-0">RA Roster (Discount Disabled)</h3>
+          <h3 className="text-lg font-semibold m-0">RA Roster ($50 Discount)</h3>
           <p className="text-sm text-gray-500 m-0">
-            Students on this list receive their permit at no charge (RAs, RDs, etc.)
+            Students on this list receive a $50 discount on their parking permit (RAs, RDs, etc.)
             {entries.length > 0 && (
               <>
                 {" "}· <strong>{issuedCount}</strong> issued · <strong>{missingCount}</strong> not yet
@@ -312,8 +369,7 @@ export default function FeeExemptRoster() {
 
       <div className="text-xs text-gray-400 mt-3">
         Upload an Excel (.xlsx) or CSV file with columns: Moravian ID, Last, First, Building, Room.
-        Students on this list get permits at $0 automatically — lottery accept and
-        direct purchase both skip Stripe and show a thank-you confirmation.
+        Students on this list receive a $50 discount on their parking permit.
       </div>
 
       <Modal
@@ -353,5 +409,97 @@ export default function FeeExemptRoster() {
         </Form>
       </Modal>
     </div>
+      )},
+      { key: "balance", label: <span><DollarOutlined /> Balance Due {balanceRows.length > 0 && <Tag color="red" className="ml-1">{balanceRows.length}</Tag>}</span>, children: (
+    <div>
+      {balanceRows.length > 0 && (
+        <div className="flex gap-6 mb-4">
+          <Statistic title="Students with balance" value={balanceRows.length} />
+          <Statistic title="Total owed" value={`$${parseFloat(balanceTotal).toFixed(2)}`} />
+        </div>
+      )}
+
+      {balanceRows.length === 0 && !balanceLoading && (
+        <div className="text-center py-8 text-gray-400">
+          No RAs owe a balance. All students either paid the correct amount or haven't checked out yet.
+        </div>
+      )}
+
+      <Table
+        dataSource={balanceRows}
+        loading={balanceLoading}
+        rowKey="application_id"
+        size="small"
+        pagination={false}
+        columns={[
+          {
+            title: "Name",
+            dataIndex: "student_name",
+            key: "name",
+            render: (v: string) => <span className="font-medium">{v}</span>,
+          },
+          { title: "Email", dataIndex: "email", key: "email", ellipsis: true },
+          { title: "Permit Type", dataIndex: "permit_type", key: "permit_type" },
+          {
+            title: "List Price",
+            dataIndex: "list_price",
+            key: "list_price",
+            render: (v: string) => `$${parseFloat(v).toFixed(2)}`,
+          },
+          {
+            title: "Expected ($50 off)",
+            dataIndex: "expected_price",
+            key: "expected_price",
+            render: (v: string) => `$${parseFloat(v).toFixed(2)}`,
+          },
+          {
+            title: "Paid",
+            dataIndex: "amount_paid",
+            key: "amount_paid",
+            render: (v: string) => `$${parseFloat(v).toFixed(2)}`,
+          },
+          {
+            title: "Balance Due",
+            dataIndex: "balance_due",
+            key: "balance_due",
+            render: (v: string) => <span className="font-semibold text-red-600">${parseFloat(v).toFixed(2)}</span>,
+          },
+          {
+            title: "Permit #",
+            dataIndex: "permit_number",
+            key: "permit_number",
+            render: (v: string | null) => v || "—",
+          },
+          {
+            title: "Status",
+            key: "status",
+            render: (_, r: BalanceDueRow) =>
+              r.payment_link_sent ? (
+                <Tag color="blue">Payment Link Sent</Tag>
+              ) : (
+                <Tag>Not Sent</Tag>
+              ),
+          },
+          {
+            title: "",
+            key: "action",
+            width: 180,
+            render: (_, r: BalanceDueRow) => (
+              <Button
+                type="primary"
+                size="small"
+                icon={<SendOutlined />}
+                loading={sendingPayment === r.application_id}
+                onClick={() => handleSendPayment(r.application_id)}
+              >
+                {r.payment_link_sent ? "Resend" : "Send Payment Request"}
+              </Button>
+            ),
+          },
+        ]}
+      />
+    </div>
+      )},
+    ]} />
   );
 }

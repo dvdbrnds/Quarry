@@ -297,7 +297,7 @@ export function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload,
   }
 
   const appColumns: ColumnsType<Application> = [
-    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}{a.fee_exempt && <Tag color="green" className="ml-1.5 text-[10px]">RA 50%</Tag>}</> },
+    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}{a.fee_exempt && <Tag color="green" className="ml-1.5 text-[10px]">RA Discount</Tag>}</> },
     { title: "Email", dataIndex: "student_email", key: "email", ellipsis: true },
     { title: "Class", dataIndex: "class_year", key: "class" },
     { title: "Plate", dataIndex: "plate", key: "plate", render: (_v, r: Application) => <span className="font-mono text-xs">{r.plate}{r.plate_state ? ` (${r.plate_state})` : ""}</span> },

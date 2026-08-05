@@ -3,6 +3,7 @@
 import io
 import logging
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
@@ -10,8 +11,12 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, require_admin
+from ..config import settings
 from ..database import get_db
 from ..models.fee_exempt_roster import FeeExemptRoster
+from ..models.lottery_v2 import LotteryV2Application
+from ..models.payment import Payment
+from ..models.permit_type import PermitType
 from ..services.roster_permit_status import (
     PermitMatch,
     load_active_permit_indexes,
@@ -331,3 +336,253 @@ def _normalize_headers(headers: list[str]) -> list[str]:
         "room #": "room",
     }
     return [mapping.get(h, h) for h in headers]
+
+
+# ── Balance Due (RA discount difference collection) ──────────────────────
+
+
+class BalanceDueRow(BaseModel):
+    application_id: str
+    student_name: str
+    email: str
+    permit_type: str
+    list_price: str
+    expected_price: str
+    amount_paid: str
+    balance_due: str
+    permit_number: str | None = None
+    payment_link_sent: bool = False
+
+
+class BalanceDueResponse(BaseModel):
+    rows: list[BalanceDueRow]
+    total_owed: str
+    count: int
+
+
+@router.get("/balance-due", response_model=BalanceDueResponse)
+async def get_balance_due(db: AsyncSession = Depends(get_db)):
+    """RAs who checked out under the old pricing and owe a balance."""
+    ra_discount = Decimal(str(settings.ra_discount_amount))
+
+    # Find accepted lottery apps that are fee_exempt (RA roster match)
+    apps_result = await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.fee_exempt == True,  # noqa: E712
+            LotteryV2Application.status == "accepted",
+        )
+    )
+    apps = apps_result.scalars().all()
+    if not apps:
+        return BalanceDueResponse(rows=[], total_owed="0.00", count=0)
+
+    # Load permit types for price lookup
+    pt_ids = {a.assigned_permit_type_id for a in apps if a.assigned_permit_type_id}
+    pt_map: dict[uuid.UUID, PermitType] = {}
+    if pt_ids:
+        pt_result = await db.execute(select(PermitType).where(PermitType.id.in_(pt_ids)))
+        for pt in pt_result.scalars().all():
+            pt_map[pt.id] = pt
+
+    # Load payments for these students (lottery_v2_permit type)
+    emails = {a.student_email.lower() for a in apps if a.student_email}
+    payment_by_email: dict[str, Payment] = {}
+    if emails:
+        pay_result = await db.execute(
+            select(Payment).where(
+                func.lower(Payment.payer_email).in_(emails),
+                Payment.payment_type.in_(["lottery_v2_permit", "lottery_permit"]),
+            )
+        )
+        for p in pay_result.scalars().all():
+            key = (p.payer_email or "").lower()
+            if key not in payment_by_email or p.amount > payment_by_email[key].amount:
+                payment_by_email[key] = p
+
+    # Load permits for permit_number lookup
+    from ..models.permit import Permit
+    permit_by_email: dict[str, Permit] = {}
+    if emails:
+        perm_result = await db.execute(
+            select(Permit).where(
+                func.lower(Permit.email).in_(emails),
+                Permit.status == "active",
+            )
+        )
+        for pm in perm_result.scalars().all():
+            permit_by_email[(pm.email or "").lower()] = pm
+
+    rows: list[BalanceDueRow] = []
+    total = Decimal("0.00")
+
+    for app in apps:
+        pt = pt_map.get(app.assigned_permit_type_id) if app.assigned_permit_type_id else None
+        if not pt:
+            continue
+
+        expected_price = max(Decimal("0.00"), pt.price - ra_discount)
+        email_key = (app.student_email or "").lower()
+        payment = payment_by_email.get(email_key)
+        amount_paid = payment.amount if payment else Decimal("0.00")
+        balance = expected_price - amount_paid
+
+        if balance <= 0:
+            continue
+
+        permit = permit_by_email.get(email_key)
+        payment_link_sent = bool(
+            app.admin_notes and "balance_due_session" in app.admin_notes
+        )
+
+        rows.append(BalanceDueRow(
+            application_id=str(app.id),
+            student_name=app.student_name,
+            email=app.student_email,
+            permit_type=pt.label,
+            list_price=str(pt.price),
+            expected_price=str(expected_price),
+            amount_paid=str(amount_paid),
+            balance_due=str(balance),
+            permit_number=permit.permit_number if permit else None,
+            payment_link_sent=payment_link_sent,
+        ))
+        total += balance
+
+    return BalanceDueResponse(
+        rows=rows,
+        total_owed=str(total),
+        count=len(rows),
+    )
+
+
+@router.post("/balance-due/{app_id}/send-payment")
+async def send_balance_payment(
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Create a Stripe Checkout Session for the RA balance and email the link."""
+    ra_discount = Decimal(str(settings.ra_discount_amount))
+
+    app = await db.get(LotteryV2Application, app_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if not app.fee_exempt or app.status != "accepted":
+        raise HTTPException(400, "Application is not an accepted RA entry")
+
+    pt = await db.get(PermitType, app.assigned_permit_type_id) if app.assigned_permit_type_id else None
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    expected_price = max(Decimal("0.00"), pt.price - ra_discount)
+
+    # Find what they actually paid
+    pay_result = await db.execute(
+        select(Payment).where(
+            func.lower(Payment.payer_email) == app.student_email.lower(),
+            Payment.payment_type.in_(["lottery_v2_permit", "lottery_permit"]),
+        ).order_by(Payment.amount.desc()).limit(1)
+    )
+    payment = pay_result.scalar()
+    amount_paid = payment.amount if payment else Decimal("0.00")
+    balance = expected_price - amount_paid
+
+    if balance <= 0:
+        raise HTTPException(400, "No balance due for this student")
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+
+    session = stripe.checkout.Session.create(
+        customer_email=app.student_email,
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"RA Parking Permit — Balance Due",
+                    "description": (
+                        f"{pt.label} permit balance: ${pt.price:.2f} list "
+                        f"− ${ra_discount:.0f} RA discount "
+                        f"− ${amount_paid:.2f} paid = ${balance:.2f} due"
+                    ),
+                },
+                "unit_amount": int(balance * 100),
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "ra_balance_due",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "gl_string": settings.gl_segment_separator.join([
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_permits, settings.gl_activity_permits,
+                    settings.gl_segment5, settings.gl_segment6,
+                ]),
+                "gl_fund": settings.gl_fund,
+                "gl_org": settings.gl_org,
+                "gl_account": settings.gl_account_permits,
+                "gl_activity": settings.gl_activity_permits,
+                "permit_type_code": pt.code,
+                "permit_type_label": pt.label,
+                "application_id": str(app.id),
+                "student_name": app.student_name,
+                "student_email": app.student_email,
+                "balance_amount": str(balance),
+                "institution": settings.school_name or "moravian",
+            },
+        },
+        success_url=f"{base_url}/parking?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}/parking?payment=cancelled",
+        metadata={
+            "type": "ra_balance_due",
+            "application_id": str(app.id),
+            "permit_type_code": pt.code,
+            "student_name": app.student_name,
+            "email": app.student_email,
+        },
+    )
+
+    # Track that we sent a payment link via admin_notes
+    notes = app.admin_notes or ""
+    app.admin_notes = f"{notes}\nbalance_due_session:{session.id}".strip()
+    await db.flush()
+
+    # Best-effort email
+    from ..models.permit import Permit
+    perm_result = await db.execute(
+        select(Permit).where(
+            func.lower(Permit.email) == app.student_email.lower(),
+            Permit.status == "active",
+        ).limit(1)
+    )
+    permit = perm_result.scalar()
+    permit_number = permit.permit_number if permit else "N/A"
+
+    try:
+        from ..services.email import send_payment_link_email
+        await send_payment_link_email(
+            recipient_email=app.student_email,
+            recipient_name=app.student_name,
+            permit_type_label=pt.label,
+            permit_number=permit_number,
+            amount_display=f"${balance:.2f}",
+            checkout_url=session.url,
+        )
+    except Exception:
+        logger.exception("Failed to send balance-due email to %s", app.student_email)
+
+    return {
+        "checkout_url": session.url,
+        "session_id": session.id,
+        "balance_due": str(balance),
+        "email_sent": True,
+    }

@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     apns_bundle_id: str = "edu.moravian.birddog"
     apns_use_sandbox: bool = False
 
+    # RA/RD discount (flat dollar amount off permit price)
+    ra_discount_amount: float = 50.0
+
     # Escalation thresholds
     conduct_referral_threshold: int = 3
     registration_hold_threshold: int = 5

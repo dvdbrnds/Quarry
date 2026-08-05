@@ -452,58 +452,26 @@ async def accept_offer(
     if not pt:
         raise HTTPException(404, "Permit type not found")
 
-    # Fee-exempt path: DISABLED pending clarity from Student Life
-    # from ..services.fee_exempt import lookup_fee_exempt
-    #
-    # exempt = await lookup_fee_exempt(
-    #     db,
-    #     user,
-    #     extra_emails=[app.student_email],
-    #     extra_names=[app.student_name],
-    # )
-    # if exempt:
-    #     app.fee_exempt = True
+    from ..services.fee_exempt import lookup_fee_exempt
 
-    if False:  # fee_exempt disabled
-        lot_assignment = ""
-        if app.assigned_lot:
-            lot_assignment = app.assigned_lot
-        elif pt.lot_assignments:
-            lot_assignment = ",".join(pt.lot_assignments)
+    exempt = await lookup_fee_exempt(
+        db,
+        user,
+        extra_emails=[app.student_email],
+        extra_names=[app.student_name],
+    )
+    if exempt:
+        app.fee_exempt = True
 
-        reason = exempt.entry.reason if exempt else "Fee Exempt"
-        new_permit = Permit(
-            permit_number=await next_permit_number(db),
-            name=app.student_name,
-            email=app.student_email or None,
-            plates=[app.plate],
-            permit_type=pt.code,
-            lot_assignment=lot_assignment,
-            start_date=today_local(),
-            end_date=today_local() + timedelta(days=pt.valid_days),
-            status="active",
-        )
-        db.add(new_permit)
-
-        payment = Payment(
-            amount=Decimal("0.00"),
-            method="fee_exempt",
-            payment_type="lottery_permit",
-            payer_name=app.student_name or None,
-            payer_email=app.student_email or None,
-            plate=app.plate or None,
-            description=f"Fee-Exempt Permit ({pt.code}) — {app.plate} [{reason}]",
-        )
-        db.add(payment)
-
-        app.status = "accepted"
-        await db.flush()
-
-        return {
-            "status": "accepted",
-            "fee_exempt": True,
-            "message": "Thank you — your permit has been issued at no charge.",
-        }
+    # RA discount: apply flat $X off, still route through Stripe
+    discounted_price = pt.price
+    discount_note = ""
+    if app.fee_exempt:
+        ra_amount = Decimal(str(settings.ra_discount_amount))
+        ra_price = max(Decimal("0.00"), pt.price - ra_amount)
+        if ra_price < discounted_price:
+            discounted_price = ra_price
+            discount_note = f" | RA Discount: −${ra_amount:.0f}"
 
     # Standard payment path via Stripe
     if not settings.stripe_secret_key:
@@ -521,9 +489,9 @@ async def accept_offer(
                 "currency": "usd",
                 "product_data": {
                     "name": f"{pt.label} Parking Permit",
-                    "description": f"Plate: {app.plate} | Valid for {pt.valid_days} days",
+                    "description": f"Plate: {app.plate} | Valid for {pt.valid_days} days" + discount_note,
                 },
-                "unit_amount": int(pt.price * 100),
+                "unit_amount": int(discounted_price * 100),
             },
             "quantity": 1,
         }],
