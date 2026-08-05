@@ -1297,6 +1297,56 @@ async def repair_draw(
         raise HTTPException(400, str(e)) from e
 
 
+@router.post("/cycles/{cycle_id}/advance-waitlist")
+async def advance_cycle_waitlist(
+    cycle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Manually advance the waitlist: expire overdue offers and promote next applicant(s).
+    
+    Ignores auto_advance_waitlist toggle — this is an explicit admin action.
+    """
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+    if cycle.status != "drawn":
+        raise HTTPException(400, "Can only advance waitlist on drawn cycles")
+
+    now = datetime.now(timezone.utc)
+
+    # Expire overdue offers
+    expired_result = await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.cycle_id == cycle_id,
+            LotteryV2Application.status == "selected",
+            LotteryV2Application.offer_expires_at.isnot(None),
+            LotteryV2Application.offer_expires_at < now,
+        )
+    )
+    expired = expired_result.scalars().all()
+    for app in expired:
+        app.status = "expired"
+        app.assigned_permit_type_id = None
+        app.assigned_lot = None
+    await db.flush()
+
+    # Promote from waitlist (force=True bypasses auto_advance_waitlist)
+    promoted_count = 0
+    for _ in range(len(expired) or 1):
+        promoted = await promote_from_waitlist(db, cycle_id, force=True)
+        if promoted:
+            promoted_count += 1
+        else:
+            break
+
+    await db.commit()
+    return {
+        "expired": len(expired),
+        "advanced": promoted_count,
+    }
+
+
 @router.post("/cycles/{cycle_id}/notify-waitlist")
 async def notify_waitlist(
     cycle_id: uuid.UUID,

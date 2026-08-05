@@ -312,6 +312,24 @@ export default function LotteryV2Manager() {
     });
   }
 
+  function confirmAdvanceWaitlist() {
+    if (!active) return;
+    modal.confirm({
+      title: "Advance waitlist?",
+      content:
+        "Expires any overdue offers and promotes the next waitlisted applicant(s) into open seats. This ignores the auto-advance toggle.",
+      okText: "Advance now",
+      onOk: async () => {
+        const data = await postAction(`/api/lottery-v2/cycles/${active.id}/advance-waitlist`);
+        if (data) {
+          message.success(
+            `Expired ${data.expired} offer(s), advanced ${data.advanced} from waitlist`,
+          );
+        }
+      },
+    });
+  }
+
   function confirmBump(app: Application) {
     modal.confirm({
       title: `Move ${app.student_name} to #1 on the waitlist?`,
@@ -863,6 +881,12 @@ export default function LotteryV2Manager() {
                 onClick={confirmNotifyWaitlist}
               >
                 Email waitlist
+              </Button>
+              <Button
+                disabled={busy || active.status !== "drawn"}
+                onClick={confirmAdvanceWaitlist}
+              >
+                Advance waitlist
               </Button>
               <Button disabled={busy} onClick={loadCapacityAudit}>
                 Capacity audit

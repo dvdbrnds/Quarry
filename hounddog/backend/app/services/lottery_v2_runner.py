@@ -1046,8 +1046,12 @@ async def manual_select_application(
 async def promote_from_waitlist(
     db: AsyncSession,
     cycle_id: uuid.UUID,
+    force: bool = False,
 ) -> LotteryV2Application | None:
-    """After a decline, try to place the next waitlisted applicant via waterfall."""
+    """After a decline, try to place the next waitlisted applicant via waterfall.
+    
+    If force=True, ignores auto_advance_waitlist flag (for manual admin advances).
+    """
     cycle = await db.get(LotteryV2Cycle, cycle_id)
     if not cycle:
         return None
@@ -1080,13 +1084,14 @@ async def promote_from_waitlist(
 
     tiers = await _tiers_with_offers_reserved(db, cycle_id)
 
-    # Exclude tiers that have auto-advance disabled
-    pts_all = (
-        await db.execute(select(PermitType).where(PermitType.auto_advance_waitlist.is_(False)))
-    ).scalars().all()
-    frozen_type_ids = {pt.id for pt in pts_all}
-    for tid in frozen_type_ids:
-        tiers.pop(tid, None)
+    # Exclude tiers that have auto-advance disabled (unless forced by admin)
+    if not force:
+        pts_all = (
+            await db.execute(select(PermitType).where(PermitType.auto_advance_waitlist.is_(False)))
+        ).scalars().all()
+        frozen_type_ids = {pt.id for pt in pts_all}
+        for tid in frozen_type_ids:
+            tiers.pop(tid, None)
 
     promoted: LotteryV2Application | None = None
     remaining_waitlist = list(waitlisted)
