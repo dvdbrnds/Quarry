@@ -11,7 +11,7 @@ logger = logging.getLogger("quarry.payments")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from pydantic import BaseModel
-from sqlalchemy import case, select, func
+from sqlalchemy import case, select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user, require_admin
@@ -407,6 +407,10 @@ async def standalone_permit_purchase(
     data: StandalonePermitPurchaseRequest, db: AsyncSession = Depends(get_db)
 ):
     """Public endpoint — purchase a permit directly (no ticket context). Used by /permits/buy."""
+    # Advisory lock to prevent duplicate checkout sessions from rapid clicks
+    lock_key = hash(f"standalone:{data.email}:{data.permit_type_id}") % (2**31)
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+
     permit_type = await db.get(PermitType, data.permit_type_id)
     if not permit_type:
         raise HTTPException(404, "Permit type not found")
@@ -415,6 +419,7 @@ async def standalone_permit_purchase(
     if permit_type.requires_lottery:
         raise HTTPException(400, "This permit type requires a lottery application")
 
+    from ..models.lottery_v2 import LotteryV2Application
     active_count_result = await db.execute(
         select(func.count()).select_from(Permit).where(
             Permit.permit_type == permit_type.code,
@@ -423,7 +428,13 @@ async def standalone_permit_purchase(
         )
     )
     active_count = active_count_result.scalar() or 0
-    if active_count >= permit_type.max_capacity:
+    lottery_reserved = (await db.execute(
+        select(func.count()).select_from(LotteryV2Application).where(
+            LotteryV2Application.assigned_permit_type_id == permit_type.id,
+            LotteryV2Application.status == "selected",
+        )
+    )).scalar() or 0
+    if (active_count + lottery_reserved) >= permit_type.max_capacity:
         raise HTTPException(409, "No permits of this type are currently available")
 
     if not settings.stripe_secret_key:

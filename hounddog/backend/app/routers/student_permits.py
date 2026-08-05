@@ -582,6 +582,10 @@ async def direct_purchase(
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Buy an always-available permit directly via Stripe (no lottery)."""
+    # Advisory lock to prevent duplicate checkout sessions from rapid clicks
+    lock_key = hash(f"purchase:{user.sub}:{data.permit_type_id}") % (2**31)
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+
     pt = await db.get(PermitType, data.permit_type_id)
     if not pt or not pt.is_active:
         raise HTTPException(404, "Permit type not found")

@@ -748,7 +748,14 @@ async def accept_offer(
     user: OktaUser = Depends(get_current_user),
 ):
     """Accept a v2 lottery offer — Stripe checkout or fee-exempt issuance."""
-    app = await db.get(LotteryV2Application, application_id)
+    # Lock the row to prevent concurrent double-accept from rapid clicks
+    app = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(LotteryV2Application.id == application_id)
+            .with_for_update(nowait=False)
+        )
+    ).scalar_one_or_none()
     if not app:
         raise HTTPException(404, "Application not found")
     if app.student_sub != user.sub:
