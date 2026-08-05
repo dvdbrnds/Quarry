@@ -678,7 +678,7 @@ async def my_application(
         ),
     )[0]
 
-    # Live roster check so Res Life Staff see "Claim free" before paying
+    # Live roster check so RAs see discount info before paying
     if not best.fee_exempt:
         from ..services.fee_exempt import lookup_fee_exempt
 
@@ -802,54 +802,8 @@ async def accept_offer(
     if exempt:
         app.fee_exempt = True
 
-    if app.fee_exempt:
-        lot_assignment = app.assigned_lot or (
-            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
-        )
-        reason = exempt.entry.reason if exempt else "Fee Exempt"
-        display_name = (
-            (user.display_name if user.display_name and "@" not in user.display_name else None)
-            or (f"{user.given_name} {user.family_name}".strip() or None)
-            or app.student_name
-        )
-        new_permit = Permit(
-            permit_number=await next_permit_number(db),
-            name=display_name,
-            email=app.student_email or user.email or None,
-            phone=app.phone or "",
-            sms_opt_in=bool(app.sms_opt_in),
-            plates=[app.plate],
-            permit_type=pt.code,
-            lot_assignment=lot_assignment,
-            start_date=today_local(),
-            end_date=today_local() + timedelta(days=pt.valid_days),
-            status="active",
-        )
-        db.add(new_permit)
-        db.add(
-            Payment(
-                amount=Decimal("0.00"),
-                method="fee_exempt",
-                payment_type="lottery_v2_permit",
-                payer_name=display_name or None,
-                payer_email=app.student_email or user.email or None,
-                plate=app.plate or None,
-                description=f"Fee-Exempt Permit ({pt.code}) — {app.plate} [{reason}]",
-            )
-        )
-        app.status = "accepted"
-        app.student_name = display_name
-        note = (
-            f"Fee-exempt claim by {user.email or user.sub} at "
-            f"{datetime.now(timezone.utc).isoformat()} — {pt.label} (no payment)"
-        )
-        app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
-        await db.flush()
-        return {
-            "status": "accepted",
-            "fee_exempt": True,
-            "message": "Thank you — your permit has been issued at no charge.",
-        }
+    # RA discount: 50% off (no longer fully exempt)
+    ra_discount_pct = Decimal("0.50")
 
     # ── Program discount (ABSN) + optional voucher ────────────────────────────
     from ..models.voucher import Voucher
@@ -861,6 +815,13 @@ async def accept_offer(
     applied_voucher: Voucher | None = None
     voucher_code = (body or {}).get("voucher_code", "")
     discount_note = f" | {prog_discount.label}: −${prog_discount.amount:.0f}" if prog_discount else ""
+
+    # RA roster discount (50% off) — stacks if better than program discount
+    if app.fee_exempt:
+        ra_price = pt.price * ra_discount_pct
+        if ra_price < discounted_price:
+            discounted_price = ra_price
+            discount_note = " | RA Discount: 50% off"
 
     if voucher_code:
         voucher_result = await db.execute(

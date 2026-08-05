@@ -991,14 +991,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       <p className="m-0 font-medium text-green-900">
                         {application.assigned_permit_type_label}
                         {application.fee_exempt ? (
-                          <span className="text-green-700"> — No charge</span>
+                          <span className="text-green-700"> — 50% RA Discount</span>
                         ) : application.assigned_permit_type_price != null ? (
                           <span className="text-green-700"> — ${application.assigned_permit_type_price}</span>
                         ) : null}
                       </p>
                       {application.fee_exempt && (
                         <p className="m-0 text-sm text-green-800">
-                          You are on the fee-exempt roster (Res Life Staff). Claim your permit below — no payment required.
+                          You are on the RA roster — 50% discount applied at checkout.
                         </p>
                       )}
                       {((application.assigned_permit_type_lots && application.assigned_permit_type_lots.length > 0)
@@ -1018,7 +1018,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                       <Space>
                         <Button type="primary" loading={accepting} onClick={acceptOffer}>
-                          {application.fee_exempt ? "Claim Permit (Free)" : "Accept & Pay"}
+                          Accept & Pay{application.fee_exempt ? " (50% RA Discount)" : ""}
                         </Button>
                         <Button onClick={declineOffer}>Decline</Button>
                       </Space>
@@ -1027,7 +1027,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                   {application.status === "accepted" && application.fee_exempt && (
                     <div className="rounded-lg bg-green-50 border border-green-200 p-4">
-                      <p className="m-0 font-medium text-green-900">Thank you — your permit is active at no charge.</p>
+                      <p className="m-0 font-medium text-green-900">Thank you — your RA-discounted permit is active.</p>
                     </div>
                   )}
 

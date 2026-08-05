@@ -692,7 +692,7 @@ export default function Permits() {
           },
           {
             key: "fee-exempt",
-            label: "Fee Exempt",
+            label: "RA Roster",
             children: <FeeExemptRoster />,
           },
           {

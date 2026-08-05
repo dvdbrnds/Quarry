@@ -118,7 +118,7 @@ export default function StudentPermits() {
                       {app.status === "waitlisted" && !app.waitlist_message && app.waitlist_position != null && <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>}
                       {app.status === "selected" && app.offer_expires_at && (
                         <div className="text-xs text-green-700 mt-1">
-                          {app.fee_exempt && <span className="font-semibold">No charge — </span>}
+                          {app.fee_exempt && <span className="font-semibold">50% RA Discount — </span>}
                           Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                         </div>
                       )}
@@ -128,7 +128,7 @@ export default function StudentPermits() {
                       {app.status === "selected" && (
                         <>
                           <Button type="primary" size="small" onClick={() => handleAccept(app.id)}>
-                            {app.fee_exempt ? "Claim Permit (Free)" : "Accept & Pay"}
+                            {app.fee_exempt ? "Accept & Pay (50% RA Discount)" : "Accept & Pay"}
                           </Button>
                           <Button size="small" onClick={() => handleDecline(app.id)}>Decline</Button>
                         </>

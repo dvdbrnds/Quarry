@@ -16,7 +16,7 @@ class FeeExemptRoster(Base):
     email: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     first_name: Mapped[str] = mapped_column(String(256), default="")
     last_name: Mapped[str] = mapped_column(String(256), default="")
-    reason: Mapped[str] = mapped_column(String(256), default="Res Life Staff")
+    reason: Mapped[str] = mapped_column(String(256), default="RA")
     building: Mapped[str | None] = mapped_column(String(256), nullable=True)
     room: Mapped[str | None] = mapped_column(String(128), nullable=True)
     academic_year: Mapped[str | None] = mapped_column(String(16), nullable=True)

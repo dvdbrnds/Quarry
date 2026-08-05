@@ -291,13 +291,13 @@ export function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload,
         method: "POST", headers: await authHeaders(), body: JSON.stringify({ fee_exempt: checked }),
       });
       if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Failed"); }
-      msg.success(checked ? "Marked fee-exempt" : "Fee-exempt removed");
+      msg.success(checked ? "Marked as RA (50% discount)" : "RA discount removed");
       load();
     } catch (e: any) { msg.error(e.message); } finally { setTogglingFeeExempt(null); }
   }
 
   const appColumns: ColumnsType<Application> = [
-    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}{a.fee_exempt && <Tag color="green" className="ml-1.5 text-[10px]">FREE</Tag>}</> },
+    { title: "Name", dataIndex: "student_name", key: "name", render: (v, a) => <><span className="font-medium">{v}</span>{a.is_test_entry && <Tag color="orange" className="ml-1.5 text-[10px]">TEST</Tag>}{a.fee_exempt && <Tag color="green" className="ml-1.5 text-[10px]">RA 50%</Tag>}</> },
     { title: "Email", dataIndex: "student_email", key: "email", ellipsis: true },
     { title: "Class", dataIndex: "class_year", key: "class" },
     { title: "Plate", dataIndex: "plate", key: "plate", render: (_v, r: Application) => <span className="font-mono text-xs">{r.plate}{r.plate_state ? ` (${r.plate_state})` : ""}</span> },
@@ -333,7 +333,7 @@ export function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload,
         : <span className="text-green-700 font-medium">{v}</span>;
     }},
     { title: "Applied", dataIndex: "created_at", key: "applied", render: d => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) },
-    { title: "Fee Exempt", key: "fee_exempt", width: 90, align: "center" as const, render: (_, a) => (
+    { title: "RA Discount", key: "fee_exempt", width: 90, align: "center" as const, render: (_, a) => (
       <Switch size="small" checked={a.fee_exempt} loading={togglingFeeExempt === a.id}
         onChange={(checked) => handleToggleFeeExempt(a.id, checked)} />
     )},

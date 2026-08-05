@@ -54,7 +54,7 @@ export default function FeeExemptRoster() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("reason", "Res Life Staff");
+      formData.append("reason", "RA");
       formData.append("academic_year", "2026-2027");
       formData.append("replace", replace ? "true" : "false");
 
@@ -177,7 +177,7 @@ export default function FeeExemptRoster() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold m-0">Fee-Exempt Roster</h3>
+          <h3 className="text-lg font-semibold m-0">RA Roster (50% Discount)</h3>
           <p className="text-sm text-gray-500 m-0">
             Students on this list receive their permit at no charge (RAs, RDs, etc.)
             {entries.length > 0 && (
@@ -317,7 +317,7 @@ export default function FeeExemptRoster() {
       </div>
 
       <Modal
-        title="Add Person to Exempt Roster"
+        title="Add Person to RA Roster"
         open={addModalOpen}
         onCancel={() => { setAddModalOpen(false); addForm.resetFields(); }}
         onOk={() => addForm.submit()}
@@ -347,7 +347,7 @@ export default function FeeExemptRoster() {
               <Input />
             </Form.Item>
           </div>
-          <Form.Item name="reason" label="Reason" initialValue="Res Life Staff">
+          <Form.Item name="reason" label="Reason" initialValue="RA">
             <Input />
           </Form.Item>
         </Form>
