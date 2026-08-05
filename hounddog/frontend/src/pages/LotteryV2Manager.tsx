@@ -174,6 +174,7 @@ export default function LotteryV2Manager() {
   const [selectNotify, setSelectNotify] = useState(true);
   const [selectForceCapacity, setSelectForceCapacity] = useState(false);
   const [capacityAudit, setCapacityAudit] = useState<any | null>(null);
+  const [dupesReport, setDupesReport] = useState<any | null>(null);
 
   const [deskQuery, setDeskQuery] = useState("");
   const [deskFilter, setDeskFilter] = useState<DeskFilter>("all");
@@ -419,6 +420,25 @@ export default function LotteryV2Manager() {
         throw new Error(err.detail || "Capacity audit failed");
       }
       setCapacityAudit(await res.json());
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadDupesReport() {
+    if (!activeId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/lottery-v2/cycles/${activeId}/duplicates-report`, {
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Duplicates report failed");
+      }
+      setDupesReport(await res.json());
     } catch (e: any) {
       message.error(e.message);
     } finally {
@@ -925,6 +945,9 @@ export default function LotteryV2Manager() {
               <Button onClick={() => { setRecoverOpen(true); setRecoverResults(null); setRecoverEmail(""); }}>
                 Recover student
               </Button>
+              <Button disabled={busy} onClick={loadDupesReport}>
+                Duplicates report
+              </Button>
               <Button
                 disabled={busy || !activeId}
                 onClick={() => activeId && loadDetail(activeId)}
@@ -995,6 +1018,105 @@ export default function LotteryV2Manager() {
                     <strong>Committed</strong> = Active permits + Pending payment offers. <strong>Truly open</strong> = Capacity − Committed. A negative means over-committed.
                   </p>
                 </div>
+              </div>
+            )}
+
+            {dupesReport && (
+              <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-md text-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium m-0">Duplicates report — {dupesReport.cycle_name}</h4>
+                  <Button type="link" size="small" onClick={() => setDupesReport(null)}>Dismiss</Button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <h5 className="text-xs font-semibold uppercase text-gray-500 mt-2 mb-1">Per-tier capacity impact</h5>
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="text-left border-b">
+                        <th className="py-1.5 pr-3">Tier</th>
+                        <th className="py-1.5 pr-3 text-right">Cap</th>
+                        <th className="py-1.5 pr-3 text-right">Active</th>
+                        <th className="py-1.5 pr-3 text-right">Selected</th>
+                        <th className="py-1.5 pr-3 text-right">Committed</th>
+                        <th className="py-1.5 pr-3 text-right">Over by</th>
+                        <th className="py-1.5 pr-3 text-right">Dupe emails</th>
+                        <th className="py-1.5 pr-3">Already have permit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(dupesReport.tiers || []).map((t: any) => (
+                        <tr key={t.code} className={`border-b ${t.over_capacity_by > 0 ? "bg-red-50" : ""}`}>
+                          <td className="py-1.5 pr-3 font-medium">{t.label}</td>
+                          <td className="py-1.5 pr-3 text-right">{t.max_capacity}</td>
+                          <td className="py-1.5 pr-3 text-right">{t.active_permits}</td>
+                          <td className="py-1.5 pr-3 text-right">{t.selected_offers}</td>
+                          <td className="py-1.5 pr-3 text-right font-bold">{t.committed}</td>
+                          <td className="py-1.5 pr-3 text-right">
+                            {t.over_capacity_by > 0
+                              ? <span className="text-red-600 font-bold">+{t.over_capacity_by}</span>
+                              : <span className="text-green-600">0</span>}
+                          </td>
+                          <td className="py-1.5 pr-3 text-right">
+                            {t.duplicate_emails_in_tier > 0
+                              ? <span className="text-red-600">{t.duplicate_emails_in_tier}</span>
+                              : "0"}
+                          </td>
+                          <td className="py-1.5 pr-3 text-xs">
+                            {(t.selected_but_already_have_permit || []).length > 0
+                              ? <span className="text-red-600">{t.selected_but_already_have_permit.join(", ")}</span>
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {dupesReport.duplicates?.length > 0 && (
+                  <div>
+                    <h5 className="text-xs font-semibold uppercase text-gray-500 mt-3 mb-1">
+                      Students with multiple offers ({dupesReport.total_duplicate_students})
+                    </h5>
+                    <div className="max-h-64 overflow-y-auto border rounded">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-purple-50">
+                          <tr className="text-left border-b">
+                            <th className="py-1 px-2">Email</th>
+                            <th className="py-1 px-2">Name</th>
+                            <th className="py-1 px-2">Status</th>
+                            <th className="py-1 px-2">Tier</th>
+                            <th className="py-1 px-2">Lot</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dupesReport.duplicates.map((d: any) =>
+                            d.applications.map((app: any, i: number) => (
+                              <tr key={app.id} className={`border-b ${i === 0 ? "border-t-2 border-t-purple-300" : ""}`}>
+                                {i === 0 && (
+                                  <td className="py-1 px-2 font-medium align-top" rowSpan={d.applications.length}>
+                                    {d.email}
+                                  </td>
+                                )}
+                                <td className="py-1 px-2">{app.name}</td>
+                                <td className="py-1 px-2">
+                                  <Tag color={app.status === "accepted" ? "green" : "blue"} className="text-[10px]">
+                                    {app.status}
+                                  </Tag>
+                                </td>
+                                <td className="py-1 px-2">{app.tier || "—"}</td>
+                                <td className="py-1 px-2">{app.lot || "—"}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {dupesReport.duplicates?.length === 0 && (
+                  <p className="text-green-700 font-medium m-0">No duplicate offers found.</p>
+                )}
               </div>
             )}
 

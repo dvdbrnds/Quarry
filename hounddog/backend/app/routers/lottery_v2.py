@@ -1737,6 +1737,142 @@ async def capacity_audit(
     }
 
 
+@router.get("/cycles/{cycle_id}/duplicates-report")
+async def duplicates_report(
+    cycle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Read-only report: who holds duplicate offers or permits in this cycle, per tier."""
+    from ..models.permit import Permit
+
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+
+    pts = (
+        await db.execute(
+            select(PermitType).where(
+                PermitType.code.in_(LOTTERY_TIER_CODES),
+                PermitType.is_active.is_(True),
+            )
+        )
+    ).scalars().all()
+    pt_by_id = {pt.id: pt for pt in pts}
+
+    apps = (
+        await db.execute(
+            select(LotteryV2Application).where(LotteryV2Application.cycle_id == cycle_id)
+        )
+    ).scalars().all()
+
+    # Group all selected/accepted apps by email
+    winners = [a for a in apps if a.status in ("selected", "accepted")]
+    by_email: dict[str, list] = {}
+    for a in winners:
+        key = (a.student_email or "").strip().lower()
+        if key:
+            by_email.setdefault(key, []).append(a)
+
+    # Find emails with multiple offers
+    duplicate_entries = []
+    for email, group in sorted(by_email.items()):
+        if len(group) < 2:
+            continue
+        rows = []
+        for a in sorted(group, key=lambda x: x.created_at or datetime.min):
+            pt = pt_by_id.get(a.assigned_permit_type_id) if a.assigned_permit_type_id else None
+            rows.append({
+                "id": str(a.id),
+                "status": a.status,
+                "tier": pt.label if pt else None,
+                "tier_code": pt.code if pt else None,
+                "lot": a.assigned_lot,
+                "class_year": a.class_year,
+                "name": a.student_name,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "offer_expires_at": a.offer_expires_at.isoformat() if a.offer_expires_at else None,
+            })
+        duplicate_entries.append({
+            "email": email,
+            "count": len(group),
+            "applications": rows,
+        })
+
+    # Per-tier breakdown: how many selected offers exceed remaining capacity
+    tier_report = []
+    for pt in sorted(pts, key=lambda p: p.sort_order):
+        active_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(Permit)
+                .where(
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalar() or 0
+
+        tier_apps = [a for a in apps if a.assigned_permit_type_id == pt.id]
+        selected = [a for a in tier_apps if a.status == "selected"]
+        accepted = [a for a in tier_apps if a.status == "accepted"]
+
+        # Emails with multiple offers assigned to THIS tier
+        tier_by_email: dict[str, list] = {}
+        for a in tier_apps:
+            if a.status in ("selected", "accepted"):
+                key = (a.student_email or "").strip().lower()
+                if key:
+                    tier_by_email.setdefault(key, []).append(a)
+        tier_dupes = {e: g for e, g in tier_by_email.items() if len(g) > 1}
+
+        # People who also have an active permit already (double-issued)
+        selected_emails = [(a.student_email or "").strip().lower() for a in selected]
+        already_have_permit = []
+        for email in set(selected_emails):
+            existing = (
+                await db.execute(
+                    select(Permit).where(
+                        func.lower(Permit.email) == email,
+                        Permit.permit_type == pt.code,
+                        Permit.status == "active",
+                        Permit.deleted_at.is_(None),
+                    )
+                )
+            ).scalars().first()
+            if existing:
+                already_have_permit.append(email)
+
+        max_cap = pt.max_capacity or 0
+        committed = active_count + len(selected)
+        over_by = max(0, committed - max_cap)
+
+        tier_report.append({
+            "code": pt.code,
+            "label": pt.label,
+            "max_capacity": max_cap,
+            "active_permits": active_count,
+            "selected_offers": len(selected),
+            "accepted_apps": len(accepted),
+            "committed": committed,
+            "over_capacity_by": over_by,
+            "duplicate_emails_in_tier": len(tier_dupes),
+            "duplicate_detail": [
+                {"email": e, "count": len(g)} for e, g in sorted(tier_dupes.items())
+            ],
+            "selected_but_already_have_permit": already_have_permit,
+        })
+
+    return {
+        "cycle_id": str(cycle_id),
+        "cycle_name": cycle.name,
+        "total_duplicate_students": len(duplicate_entries),
+        "duplicates": duplicate_entries,
+        "tiers": tier_report,
+    }
+
+
 @router.get("/cycles/{cycle_id}/results")
 async def get_results(
     cycle_id: uuid.UUID,
