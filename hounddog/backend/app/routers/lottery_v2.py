@@ -1635,27 +1635,28 @@ async def capacity_audit(
         ]
         first_choice_apps = [a for a in apps if first_choice(a, pt)]
         any_pref_apps = [a for a in apps if has_pref(a, pt)]
+        active = active_by_code.get(pt.code, 0)
+        selected_count = len(selected_only)
+        accepted_count = len(accepted_only)
+        max_cap = pt.max_capacity or 0
+        committed = active + selected_count
+        truly_open = max(0, max_cap - committed)
+        over_by = max(0, committed - max_cap)
+
         tier_rows.append({
             "code": pt.code,
             "label": pt.label,
             "lot_assignments": list(pt.lot_assignments or []),
-            "max_capacity": pt.max_capacity,
-            "active_permits": active_by_code.get(pt.code, 0),
-            "selected_pending_payment": len(selected_only),
-            "accepted_paid": len(accepted_only),
-            "remaining_at_audit": tier.remaining if tier else None,
-            "remaining_formula": f"{pt.max_capacity or 0} cap - {active_by_code.get(pt.code, 0)} active - {len(selected_only)} selected = {max(0, (pt.max_capacity or 0) - active_by_code.get(pt.code, 0) - len(selected_only))} open",
-            "is_active": pt.is_active,
+            "max_capacity": max_cap,
+            "active_permits": active,
+            "selected_pending_payment": selected_count,
+            "accepted_paid": accepted_count,
+            "committed": committed,
+            "truly_open": truly_open,
+            "over_capacity_by": over_by,
             "auto_advance_waitlist": pt.auto_advance_waitlist,
-            "min_class_year": pt.min_class_year,
-            "allow_freshmen": pt.allow_freshmen,
-            "apps_with_any_pref": len(any_pref_apps),
-            "apps_first_choice": len(first_choice_apps),
-            "selected_or_accepted": len(selected_to_tier),
             "waitlisted_with_pref": len(waitlisted_with_pref),
-            "pending_with_pref": len(pending_with_pref),
-            "unique_emails_selected": len({(a.student_email or "").lower() for a in selected_to_tier}),
-            "duplicate_emails_in_selected": len(selected_to_tier) - len({(a.student_email or "").lower() for a in selected_to_tier}),
+            "apps_first_choice": len(first_choice_apps),
         })
 
     # South / U deep dive

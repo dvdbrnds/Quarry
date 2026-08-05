@@ -950,34 +950,39 @@ export default function LotteryV2Manager() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs border-collapse">
                     <thead>
-                      <tr className="text-left border-b">
-                        <th className="py-1 pr-2">Tier</th>
-                        <th className="py-1 pr-2">Max</th>
-                        <th className="py-1 pr-2">Active</th>
-                        <th className="py-1 pr-2">Selected (pending)</th>
-                        <th className="py-1 pr-2">Accepted (paid)</th>
-                        <th className="py-1 pr-2">Open</th>
-                        <th className="py-1 pr-2">1st choice</th>
-                        <th className="py-1 pr-2">WL w/ pref</th>
-                        <th className="py-1 pr-2">Auto-advance</th>
+                      <tr className="text-left border-b font-medium">
+                        <th className="py-1.5 pr-3">Tier</th>
+                        <th className="py-1.5 pr-3 text-right">Capacity</th>
+                        <th className="py-1.5 pr-3 text-right">Active permits</th>
+                        <th className="py-1.5 pr-3 text-right">Pending payment</th>
+                        <th className="py-1.5 pr-3 text-right">= Committed</th>
+                        <th className="py-1.5 pr-3 text-right">Truly open</th>
+                        <th className="py-1.5 pr-3 text-right">Waitlisted</th>
+                        <th className="py-1.5 pr-3">Auto-advance</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(capacityAudit.tiers || []).map((t: any) => (
-                        <tr key={t.code} className="border-b border-amber-100">
-                          <td className="py-1 pr-2 font-medium">{t.label || t.code}</td>
-                          <td className="py-1 pr-2">{t.max_capacity}</td>
-                          <td className="py-1 pr-2">{t.active_permits}</td>
-                          <td className="py-1 pr-2">
-                            <span className="text-blue-600 font-medium">{t.selected_pending_payment ?? "—"}</span>
+                        <tr key={t.code} className={`border-b border-amber-100 ${t.over_capacity_by > 0 ? "bg-red-50" : ""}`}>
+                          <td className="py-1.5 pr-3 font-medium">{t.label || t.code}</td>
+                          <td className="py-1.5 pr-3 text-right">{t.max_capacity}</td>
+                          <td className="py-1.5 pr-3 text-right">{t.active_permits}</td>
+                          <td className="py-1.5 pr-3 text-right">
+                            <span className="text-blue-600 font-medium">{t.selected_pending_payment}</span>
                           </td>
-                          <td className="py-1 pr-2">
-                            <span className="text-green-600 font-medium">{t.accepted_paid ?? "—"}</span>
+                          <td className="py-1.5 pr-3 text-right font-bold">
+                            {t.committed}
+                            {t.over_capacity_by > 0 && (
+                              <span className="text-red-600 ml-1">(+{t.over_capacity_by} over)</span>
+                            )}
                           </td>
-                          <td className="py-1 pr-2">{t.remaining_formula}</td>
-                          <td className="py-1 pr-2">{t.apps_first_choice}</td>
-                          <td className="py-1 pr-2">{t.waitlisted_with_pref}</td>
-                          <td className="py-1 pr-2">
+                          <td className="py-1.5 pr-3 text-right">
+                            {t.truly_open > 0
+                              ? <span className="text-green-600 font-medium">{t.truly_open}</span>
+                              : <span className="text-red-500 font-medium">0</span>}
+                          </td>
+                          <td className="py-1.5 pr-3 text-right">{t.waitlisted_with_pref}</td>
+                          <td className="py-1.5 pr-3">
                             {t.auto_advance_waitlist === false
                               ? <Tag color="red" className="text-[10px]">OFF</Tag>
                               : <Tag color="green" className="text-[10px]">ON</Tag>}
@@ -986,6 +991,9 @@ export default function LotteryV2Manager() {
                       ))}
                     </tbody>
                   </table>
+                  <p className="text-[11px] text-gray-500 mt-2 m-0">
+                    <strong>Committed</strong> = Active permits + Pending payment offers. <strong>Truly open</strong> = Capacity − Committed. A negative means over-committed.
+                  </p>
                 </div>
               </div>
             )}
