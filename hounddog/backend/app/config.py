@@ -127,6 +127,13 @@ class Settings(BaseSettings):
     sis_hold_api_url: str = ""
     sis_hold_api_key: str = ""
 
+    # SIS SQL Server (Colleague) — student data lookup
+    sis_mssql_host: str = ""
+    sis_mssql_port: int = 1433
+    sis_mssql_user: str = "svc_parking"
+    sis_mssql_password: str = ""
+    sis_mssql_database: str = ""
+
     # NWS Weather Auto-Triggers
     nws_alerts_enabled: bool = False
     nws_zone_id: str = "PAC077"

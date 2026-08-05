@@ -1987,3 +1987,23 @@ async def get_results(
         "waitlisted": [x.model_dump(mode="json") for x in waitlisted],
         "applications": [a.model_dump(mode="json") for a in apps],
     }
+
+
+@router.get("/sis-lookup/{id_num}")
+async def sis_student_lookup(
+    id_num: str,
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Look up a student's housing status and division from SIS (Colleague)."""
+    from ..services.sis_student_data import lookup_student_parking_data
+
+    data = await lookup_student_parking_data(id_num)
+    if not data:
+        raise HTTPException(404, "Student not found in SIS or SIS not configured")
+    return {
+        "id_num": data.id_num,
+        "division_code": data.division_code,
+        "housing_status": data.housing_status,
+        "housing_label": data.housing_label,
+        "accel_nursing": data.accel_nursing,
+    }
