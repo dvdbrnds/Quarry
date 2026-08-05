@@ -1098,8 +1098,7 @@ async def promote_from_waitlist(
     for app in waitlisted:
         email = _email_key(app)
         if email in winner_emails:
-            app.status = "superseded"
-            app.waitlist_position = None
+            # Skip without superseding — leave their waitlist row intact
             remaining_waitlist = [a for a in remaining_waitlist if a.id != app.id]
             continue
         applicant = WaterfallApplicant(
