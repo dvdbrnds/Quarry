@@ -179,6 +179,10 @@ export default function LotteryV2Manager() {
   const [deskFilter, setDeskFilter] = useState<DeskFilter>("all");
   const [deskTier, setDeskTier] = useState<string | null>(null);
   const [caseApp, setCaseApp] = useState<Application | null>(null);
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [recoverEmail, setRecoverEmail] = useState("");
+  const [recoverResults, setRecoverResults] = useState<Application[] | null>(null);
+  const [recoverLoading, setRecoverLoading] = useState(false);
 
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
@@ -365,6 +369,25 @@ export default function LotteryV2Manager() {
     setSelectPermitId(prefs[0]);
     setSelectNotify(true);
     setSelectForceCapacity(false);
+  }
+
+  async function recoverSearch() {
+    if (!recoverEmail.trim()) return;
+    setRecoverLoading(true);
+    try {
+      const res = await fetch(
+        `/api/lottery-v2/applications/search?email=${encodeURIComponent(recoverEmail.trim())}`,
+        { headers: await authHeaders() },
+      );
+      if (!res.ok) throw new Error("Search failed");
+      const data: Application[] = await res.json();
+      setRecoverResults(data);
+      if (data.length === 0) message.info("No applications found for that email");
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setRecoverLoading(false);
+    }
   }
 
   async function confirmManualSelect() {
@@ -627,6 +650,11 @@ export default function LotteryV2Manager() {
             </Button>
           )}
           {r.status === "superseded" && (
+            <Button type="link" size="small" className="px-1" disabled={busy} onClick={() => openManualSelect(r)}>
+              Select
+            </Button>
+          )}
+          {r.status === "superseded" && (
             <Button type="link" size="small" className="px-1" disabled={busy} onClick={() => confirmRestore(r)}>
               Restore
             </Button>
@@ -726,6 +754,9 @@ export default function LotteryV2Manager() {
             <Space size={0} wrap>
               <Button type="link" size="small" onClick={() => setCaseApp(r)}>
                 Case
+              </Button>
+              <Button type="link" size="small" disabled={busy} onClick={() => openManualSelect(r)}>
+                Select
               </Button>
               <Button type="link" size="small" disabled={busy} onClick={() => confirmRestore(r)}>
                 Restore
@@ -890,6 +921,9 @@ export default function LotteryV2Manager() {
               </Button>
               <Button disabled={busy} onClick={loadCapacityAudit}>
                 Capacity audit
+              </Button>
+              <Button onClick={() => { setRecoverOpen(true); setRecoverResults(null); setRecoverEmail(""); }}>
+                Recover student
               </Button>
               <Button
                 disabled={busy || !activeId}
@@ -1330,7 +1364,10 @@ export default function LotteryV2Manager() {
             )}
             {caseApp.status === "superseded" && (
               <Space>
-                <Button type="primary" disabled={busy} onClick={() => confirmRestore(caseApp)}>
+                <Button type="primary" disabled={busy} onClick={() => openManualSelect(caseApp)}>
+                  Select & offer
+                </Button>
+                <Button disabled={busy} onClick={() => confirmRestore(caseApp)}>
                   Restore to waitlist
                 </Button>
               </Space>
@@ -1389,6 +1426,87 @@ export default function LotteryV2Manager() {
             </label>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="Recover student"
+        open={recoverOpen}
+        onCancel={() => setRecoverOpen(false)}
+        footer={null}
+        destroyOnClose
+        width={640}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 m-0">
+            Search for a student by email to find their application(s) across all cycles — including superseded, expired, or declined entries.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="student@moravian.edu"
+              value={recoverEmail}
+              onChange={(e) => setRecoverEmail(e.target.value)}
+              onPressEnter={recoverSearch}
+            />
+            <Button type="primary" onClick={recoverSearch} loading={recoverLoading}>
+              Search
+            </Button>
+          </div>
+          {recoverResults && recoverResults.length > 0 && (
+            <div className="border rounded overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Name</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">Assigned</th>
+                    <th className="px-3 py-2 text-left font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recoverResults.map((app) => (
+                    <tr key={app.id} className="border-t">
+                      <td className="px-3 py-2">{app.student_name}</td>
+                      <td className="px-3 py-2">
+                        <Tag color={
+                          app.status === "selected" ? "blue" :
+                          app.status === "accepted" ? "green" :
+                          app.status === "waitlisted" ? "orange" :
+                          app.status === "superseded" ? "purple" :
+                          "default"
+                        }>{app.status}</Tag>
+                      </td>
+                      <td className="px-3 py-2">{app.assigned_permit_type_label || "—"}</td>
+                      <td className="px-3 py-2">
+                        <Space size={4}>
+                          {["superseded", "expired", "declined"].includes(app.status) && (
+                            <Button
+                              type="link"
+                              size="small"
+                              disabled={busy}
+                              onClick={() => { setRecoverOpen(false); openManualSelect(app); }}
+                            >
+                              Select & offer
+                            </Button>
+                          )}
+                          {app.status === "waitlisted" && (
+                            <Button
+                              type="link"
+                              size="small"
+                              disabled={busy}
+                              onClick={() => { setRecoverOpen(false); openManualSelect(app); }}
+                            >
+                              Select
+                            </Button>
+                          )}
+                        </Space>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );
