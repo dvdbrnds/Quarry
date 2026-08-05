@@ -60,6 +60,9 @@ FACULTY_STAFF_OKTA_GROUPS = frozenset({
     "_Bethlehem - All - Faculty",
     "_Bethlehem - All - Staff",
     "_MU - Faculty, Adjunct",
+    "Faculty & Staff",
+    "_MU - All - Faculty",
+    "_MU - All - Staff",
 })
 
 
@@ -93,7 +96,11 @@ class OktaUser:
         """True for Quarry staff/admin or Moravian faculty/staff Okta groups."""
         if self.is_admin or settings.staff_okta_groups in self.groups:
             return True
-        return bool(set(self.groups) & FACULTY_STAFF_OKTA_GROUPS)
+        if set(self.groups) & FACULTY_STAFF_OKTA_GROUPS:
+            return True
+        # Catch-all: any group containing "faculty" or "staff" (case-insensitive)
+        lower_groups = [g.lower() for g in self.groups]
+        return any("faculty" in g or "staff" in g for g in lower_groups)
 
     @property
     def role(self) -> str:
@@ -162,7 +169,7 @@ async def verify_token_string(token: str) -> OktaUser:
                 cy = userinfo.get(settings.okta_class_year_claim)
                 class_year = int(cy) if cy else None
 
-        return OktaUser(
+        user = OktaUser(
             sub=payload.get("sub", ""),
             email=email,
             groups=groups,
@@ -172,6 +179,8 @@ async def verify_token_string(token: str) -> OktaUser:
             class_year=class_year,
             profile=userinfo or payload,
         )
+        log.debug("Auth resolved: %s → role=%s, groups=%s", email, user.role, groups)
+        return user
     except JWTError as e:
         raise ValueError(f"Token verification failed: {e}")
 
