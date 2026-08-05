@@ -24,6 +24,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   sms: "SMS (Twilio)", email: "Email (SMTP)", voice: "Voice Calls (Twilio)",
   signage: "Digital Signage", banner: "Website Banner", teams: "Microsoft Teams",
   extron: "Extron Scheduling Panels", pa: "PA / Siren (Q-SYS)", zoom_phone: "Zoom Phone Paging",
+  rss: "RSS Feed",
 };
 
 const CHANNEL_DESCRIPTIONS: Record<string, string> = {
@@ -32,6 +33,7 @@ const CHANNEL_DESCRIPTIONS: Record<string, string> = {
   banner: "Website banner via polling", teams: "Adaptive Card to Teams webhook",
   extron: "Override Extron TouchLink panels", pa: "Siren + TTS via Q-SYS QRC",
   zoom_phone: "Page all Zoom phones via paging group",
+  rss: "Public XML feed at /alerts/feed.xml",
 };
 
 const CHANNEL_ENV_HINTS: Record<string, string> = {
@@ -40,6 +42,7 @@ const CHANNEL_ENV_HINTS: Record<string, string> = {
   signage: "Always on", banner: "Always on", teams: "TEAMS_WEBHOOK_URL",
   extron: "EXTRON_ROOM_AGENT_URL", pa: "QSYS_CORE_HOST",
   zoom_phone: "ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ...",
+  rss: "Always on",
 };
 
 const GROUP_TYPE_LABELS: Record<string, string> = {

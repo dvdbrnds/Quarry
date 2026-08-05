@@ -180,6 +180,7 @@ def init_channels():
     from .channels.extron_channel import ExtronChannel
     from .channels.pa_channel import PaChannel
     from .channels.zoom_phone_channel import ZoomPhoneChannel
+    from .channels.rss_channel import RssChannel
 
     register_channel(SmsChannel())
     register_channel(EmailChannel())
@@ -190,6 +191,7 @@ def init_channels():
     register_channel(ExtronChannel())
     register_channel(PaChannel())
     register_channel(ZoomPhoneChannel())
+    register_channel(RssChannel())
 
     configured = [c.name for c in get_registry() if c.is_configured()]
     logger.info("Alert channels initialized. Configured: %s", configured)

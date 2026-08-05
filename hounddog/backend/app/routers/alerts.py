@@ -4,7 +4,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select, func, or_, cast
 from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,6 +138,47 @@ async def get_active_alert(db: AsyncSession = Depends(get_db)):
     return JSONResponse(
         content=ActiveAlertRead.model_validate(alert).model_dump(mode="json"),
         headers=cors_headers,
+    )
+
+
+@public_router.get("/feed.xml")
+async def rss_feed():
+    """Public RSS 2.0 feed of recent alerts."""
+    from xml.sax.saxutils import escape
+    from ..services.channels.rss_channel import get_feed_items
+
+    items_xml = ""
+    for item in get_feed_items():
+        items_xml += (
+            "<item>"
+            f"<title>{escape(item['subject'])}</title>"
+            f"<description>{escape(item.get('body_text', ''))}</description>"
+            f"<category>{escape(item['category'])}</category>"
+            f"<pubDate>{escape(item.get('sent_at', ''))}</pubDate>"
+            f"<guid isPermaLink=\"false\">{escape(item['id'])}</guid>"
+            "</item>"
+        )
+
+    feed_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0">'
+        "<channel>"
+        f"<title>{escape(settings.rss_feed_title)}</title>"
+        f"<link>{escape(settings.public_url)}/alerts</link>"
+        f"<description>{escape(settings.rss_feed_description)}</description>"
+        f"{items_xml}"
+        "</channel>"
+        "</rss>"
+    )
+
+    return Response(
+        content=feed_xml,
+        media_type="application/rss+xml",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Cache-Control": "no-cache",
+        },
     )
 
 

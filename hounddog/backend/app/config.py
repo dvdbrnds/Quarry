@@ -148,6 +148,10 @@ class Settings(BaseSettings):
     sis_subscriber_sync_url: str = ""
     sis_subscriber_sync_key: str = ""
 
+    # RSS Feed
+    rss_feed_title: str = "Campus Parking Alerts"
+    rss_feed_description: str = "Real-time campus parking and emergency alerts"
+
     # Google Drive Backup
     google_drive_credentials_json: str = ""  # service account JSON (entire file contents or path)
 
