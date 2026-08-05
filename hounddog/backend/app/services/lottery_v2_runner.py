@@ -246,7 +246,7 @@ async def build_tier_capacities(
     db: AsyncSession,
     permit_types: list[PermitType],
 ) -> dict[uuid.UUID, TierCapacity]:
-    """Build remaining capacity map from live permit types and active permits."""
+    """Build remaining capacity map from live permit types, active permits, AND outstanding lottery offers."""
     tiers: dict[uuid.UUID, TierCapacity] = {}
     for pt in permit_types:
         active_count = (
@@ -260,7 +260,20 @@ async def build_tier_capacities(
                 )
             )
         ).scalar() or 0
-        remaining = max(0, (pt.max_capacity or 0) - active_count)
+
+        offer_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(LotteryV2Application)
+                .where(
+                    LotteryV2Application.assigned_permit_type_id == pt.id,
+                    LotteryV2Application.status == "selected",
+                )
+            )
+        ).scalar() or 0
+
+        committed = active_count + offer_count
+        remaining = max(0, (pt.max_capacity or 0) - committed)
         lots = list(pt.lot_assignments or [])
         lot_caps = distribute_capacity(remaining, lots) if lots else {}
         tiers[pt.id] = TierCapacity(
@@ -466,18 +479,18 @@ async def run_waterfall_draw(
         await _notify_selected(selected_for_notify, offer_expires)
         await _notify_waitlisted(waitlisted_for_notify)
 
-    # Undersubscribed tiers → open for direct purchase until full
+    # Log undersubscribed tiers — admin can manually open direct purchase if desired
     for pt in pts:
         tier = tiers.get(pt.id)
         if not tier:
             continue
-        # Spots remain after placing all applicants
-        if tier.remaining > 0 and not pt.is_purchasable_online:
-            pt.is_purchasable_online = True
-            pt.requires_lottery = False
+        if tier.remaining > 0:
             logger.info(
-                "Tier %s has %d spots remaining after draw — enabled direct purchase",
+                "Tier %s has %d spots remaining after draw — admin may open direct purchase manually",
                 pt.code, tier.remaining,
+            )
+            warnings.append(
+                f"{pt.label} has {tier.remaining} spot(s) remaining after placing all applicants."
             )
     await db.flush()
 
@@ -507,7 +520,8 @@ async def _tiers_with_offers_reserved(
     db: AsyncSession,
     cycle_id: uuid.UUID,
 ) -> dict[uuid.UUID, TierCapacity]:
-    """Live remaining capacity minus seats already offered (selected/accepted)."""
+    """Live remaining capacity — build_tier_capacities already accounts for
+    active permits AND all selected offers globally, so no further adjustment needed."""
     pts = (
         await db.execute(
             select(PermitType).where(
@@ -516,33 +530,7 @@ async def _tiers_with_offers_reserved(
             )
         )
     ).scalars().all()
-    tiers = await build_tier_capacities(db, list(pts))
-
-    selected_apps = (
-        await db.execute(
-            select(LotteryV2Application).where(
-                LotteryV2Application.cycle_id == cycle_id,
-                LotteryV2Application.status.in_(["selected", "accepted"]),
-            )
-        )
-    ).scalars().all()
-    for app in selected_apps:
-        ptid = _as_uuid(app.assigned_permit_type_id)
-        if not ptid:
-            continue
-        tier = tiers.get(ptid)
-        if not tier:
-            continue
-        # Accepted apps already created an active Permit — counted in build_tier_capacities.
-        # Only reserve seats still held as un-accepted offers.
-        if app.status == "accepted":
-            continue
-        tier.remaining = max(0, tier.remaining - 1)
-        if app.assigned_lot and app.assigned_lot in tier.lot_remaining:
-            tier.lot_remaining[app.assigned_lot] = max(
-                0, tier.lot_remaining[app.assigned_lot] - 1
-            )
-    return tiers
+    return await build_tier_capacities(db, list(pts))
 
 
 async def _renumber_waitlist(db: AsyncSession, cycle_id: uuid.UUID) -> None:

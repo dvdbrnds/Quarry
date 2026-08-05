@@ -903,6 +903,30 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
     if app.assigned_lot:
         lot_assignment = app.assigned_lot
 
+    # Final capacity guard for lottery permits
+    guard_pt = None
+    permit_type_id = metadata.get("permit_type_id")
+    if permit_type_id:
+        guard_pt = await db.get(PT, uuid.UUID(permit_type_id))
+    elif app.assigned_permit_type_id:
+        guard_pt = await db.get(PT, app.assigned_permit_type_id)
+    if guard_pt and guard_pt.max_capacity:
+        active_count = (await db.execute(
+            select(func.count()).select_from(Permit).where(
+                Permit.permit_type == guard_pt.code,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            )
+        )).scalar() or 0
+        if active_count >= guard_pt.max_capacity:
+            logger.error(
+                "CAPACITY BREACH BLOCKED (lottery): %s at %d/%d active permits. "
+                "Student %s payment succeeded but permit not issued — refund required.",
+                guard_pt.code, active_count, guard_pt.max_capacity,
+                app.student_email,
+            )
+            return False
+
     new_permit = Permit(
         permit_number=await next_permit_number(db),
         name=student_name or app.student_name,
@@ -959,10 +983,29 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
 
     lot_assignment = ""
     permit_type_id = metadata.get("permit_type_id")
+    pt = None
     if permit_type_id:
         pt = await db.get(PermitType, uuid.UUID(permit_type_id))
         if pt and pt.lot_assignments:
             lot_assignment = ",".join(pt.lot_assignments)
+
+    # Final capacity guard — prevent over-issue even if the purchase was valid when initiated
+    if pt and pt.max_capacity:
+        from ..models.lottery_v2 import LotteryV2Application
+        active_count = (await db.execute(
+            select(func.count()).select_from(Permit).where(
+                Permit.permit_type == pt.code,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            )
+        )).scalar() or 0
+        if active_count >= pt.max_capacity:
+            logger.error(
+                "CAPACITY BREACH BLOCKED: %s at %d/%d active permits. "
+                "Student %s payment succeeded but permit not issued — refund required.",
+                pt.code, active_count, pt.max_capacity, email,
+            )
+            return False
 
     new_permit = Permit(
         permit_number=await next_permit_number(db),

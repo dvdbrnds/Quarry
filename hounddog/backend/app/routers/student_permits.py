@@ -157,6 +157,8 @@ async def available_permit_types(
     from ..services.group_discount import resolve_program_discount, apply_flat_discount
     prog_discount = await resolve_program_discount(db, user)
 
+    from ..models.lottery_v2 import LotteryV2Application
+
     out: list[AvailablePermitType] = []
     for pt in types:
         active_count = (await db.execute(
@@ -166,7 +168,15 @@ async def available_permit_types(
                 Permit.deleted_at.is_(None),
             )
         )).scalar() or 0
-        remaining = max(0, pt.max_capacity - active_count)
+
+        lottery_reserved = (await db.execute(
+            select(func.count()).select_from(LotteryV2Application).where(
+                LotteryV2Application.assigned_permit_type_id == pt.id,
+                LotteryV2Application.status == "selected",
+            )
+        )).scalar() or 0
+
+        remaining = max(0, pt.max_capacity - active_count - lottery_reserved)
 
         current_applicants = None
         approximate_odds = None
@@ -585,9 +595,22 @@ async def direct_purchase(
             Permit.deleted_at.is_(None),
         )
     )).scalar() or 0
-    remaining = max(0, pt.max_capacity - active_count)
+
+    from ..models.lottery_v2 import LotteryV2Application
+    lottery_reserved = (await db.execute(
+        select(func.count()).select_from(LotteryV2Application).where(
+            LotteryV2Application.assigned_permit_type_id == pt.id,
+            LotteryV2Application.status == "selected",
+        )
+    )).scalar() or 0
+
+    total_committed = active_count + lottery_reserved
+    remaining = max(0, pt.max_capacity - total_committed)
     if remaining <= 0:
-        raise HTTPException(400, "No permits remaining for this type")
+        raise HTTPException(
+            400,
+            f"This permit type is at capacity ({active_count} active + {lottery_reserved} pending lottery offers)."
+        )
 
     if pt.min_class_year and data.class_year > pt.min_class_year:
         raise HTTPException(
