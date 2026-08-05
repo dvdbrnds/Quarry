@@ -177,7 +177,7 @@ export default function FeeExemptRoster() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold m-0">RA Roster ($250 Discount)</h3>
+          <h3 className="text-lg font-semibold m-0">RA Roster (Discount Disabled)</h3>
           <p className="text-sm text-gray-500 m-0">
             Students on this list receive their permit at no charge (RAs, RDs, etc.)
             {entries.length > 0 && (

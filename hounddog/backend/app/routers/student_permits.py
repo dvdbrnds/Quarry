@@ -452,19 +452,19 @@ async def accept_offer(
     if not pt:
         raise HTTPException(404, "Permit type not found")
 
-    # Fee-exempt path: roster match or admin flag — issue at $0, skip Stripe
-    from ..services.fee_exempt import lookup_fee_exempt
+    # Fee-exempt path: DISABLED pending clarity from Student Life
+    # from ..services.fee_exempt import lookup_fee_exempt
+    #
+    # exempt = await lookup_fee_exempt(
+    #     db,
+    #     user,
+    #     extra_emails=[app.student_email],
+    #     extra_names=[app.student_name],
+    # )
+    # if exempt:
+    #     app.fee_exempt = True
 
-    exempt = await lookup_fee_exempt(
-        db,
-        user,
-        extra_emails=[app.student_email],
-        extra_names=[app.student_name],
-    )
-    if exempt:
-        app.fee_exempt = True
-
-    if app.fee_exempt:
+    if False:  # fee_exempt disabled
         lot_assignment = ""
         if app.assigned_lot:
             lot_assignment = app.assigned_lot
@@ -654,16 +654,17 @@ async def direct_purchase(
     if data.sms_opt_in and data.phone:
         await _opt_in_alerts(db, data.student_name, user.email, data.phone)
 
-    # Fee-exempt roster check: issue permit at $0 without Stripe
-    from ..services.fee_exempt import lookup_fee_exempt
+    # Fee-exempt roster check: DISABLED pending clarity from Student Life
+    # from ..services.fee_exempt import lookup_fee_exempt
+    #
+    # exempt = await lookup_fee_exempt(
+    #     db,
+    #     user,
+    #     extra_names=[data.student_name],
+    # )
 
-    exempt = await lookup_fee_exempt(
-        db,
-        user,
-        extra_names=[data.student_name],
-    )
-
-    if exempt:
+    if False:  # fee_exempt disabled
+        exempt = None
         lot_assignment = data.lot_preference or (
             ",".join(pt.lot_assignments) if pt.lot_assignments else ""
         )

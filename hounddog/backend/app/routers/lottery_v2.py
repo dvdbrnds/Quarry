@@ -802,8 +802,8 @@ async def accept_offer(
     if exempt:
         app.fee_exempt = True
 
-    # RA discount: flat $250 off (no longer fully exempt)
-    ra_discount_amount = Decimal("250.00")
+    # RA discount: DISABLED pending clarity from Student Life
+    # ra_discount_amount = Decimal("250.00")
 
     # ── Program discount (ABSN) + optional voucher ────────────────────────────
     from ..models.voucher import Voucher
@@ -816,12 +816,12 @@ async def accept_offer(
     voucher_code = (body or {}).get("voucher_code", "")
     discount_note = f" | {prog_discount.label}: −${prog_discount.amount:.0f}" if prog_discount else ""
 
-    # RA roster discount ($250 flat) — applies if better than program discount
-    if app.fee_exempt:
-        ra_price = max(Decimal("0.00"), pt.price - ra_discount_amount)
-        if ra_price < discounted_price:
-            discounted_price = ra_price
-            discount_note = " | RA Discount: −$250"
+    # RA roster discount — DISABLED pending clarity from Student Life
+    # if app.fee_exempt:
+    #     ra_price = max(Decimal("0.00"), pt.price - ra_discount_amount)
+    #     if ra_price < discounted_price:
+    #         discounted_price = ra_price
+    #         discount_note = " | RA Discount: −$250"
 
     if voucher_code:
         voucher_result = await db.execute(
