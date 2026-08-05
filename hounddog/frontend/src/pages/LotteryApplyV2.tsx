@@ -825,18 +825,25 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     : null;
 
   // Intake residents: uniform yellow. South: university + third-party colors. Commuter: access. Rank: tiers (+ external amber).
+  const doneDefaultLots =
+    application?.assigned_permit_type_lots?.length
+      ? application.assigned_permit_type_lots
+      : application?.assigned_lot
+        ? [application.assigned_lot]
+        : [];
+
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
-      : application?.assigned_lot && step === "done"
-        ? [application.assigned_lot]
+      : step === "done" && doneDefaultLots.length > 0
+        ? doneDefaultLots
         : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
           ? eligibleLotNames
           : [];
 
   const lotsForMap =
-    step === "done" && application?.assigned_lot
-      ? lots.filter((l) => normalizeLotKey(l.name) === normalizeLotKey(application.assigned_lot!))
+    step === "done" && doneDefaultLots.length > 0
+      ? lots.filter((l) => doneDefaultLots.some((d) => normalizeLotKey(d) === normalizeLotKey(l.name)))
       : mapLots.length > 0
         ? mapLots
         : [];
