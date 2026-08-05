@@ -26,6 +26,7 @@ class PermitTypeBase(BaseModel):
     offer_window_days: int = 5
     eligible_groups: list[str] = []
     allow_multiple: bool = False
+    auto_advance_waitlist: bool = True
 
 
 class PermitTypeCreate(PermitTypeBase):
@@ -53,6 +54,7 @@ class PermitTypeUpdate(BaseModel):
     offer_window_days: int | None = None
     eligible_groups: list[str] | None = None
     allow_multiple: bool | None = None
+    auto_advance_waitlist: bool | None = None
 
 
 class PermitTypeRead(PermitTypeBase):

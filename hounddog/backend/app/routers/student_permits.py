@@ -972,6 +972,9 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
     if not pt:
         return
 
+    if not pt.auto_advance_waitlist:
+        return
+
     next_app = (await db.execute(
         select(PermitApplication)
         .where(

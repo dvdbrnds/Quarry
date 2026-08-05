@@ -36,6 +36,7 @@ class PermitType(Base):
     application_closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     offer_window_days: Mapped[int] = mapped_column(Integer, default=5)
     lottery_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_advance_waitlist: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

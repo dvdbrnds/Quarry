@@ -321,6 +321,13 @@ async def _expire_lottery_offers():
             if not pt:
                 continue
 
+            if not pt.auto_advance_waitlist:
+                logger.info(
+                    "Skipping auto-advance for %s — auto_advance_waitlist disabled",
+                    pt.code,
+                )
+                continue
+
             next_app = (await db.execute(
                 select(PermitApplication)
                 .where(

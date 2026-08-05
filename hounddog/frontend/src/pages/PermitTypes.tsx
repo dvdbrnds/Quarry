@@ -28,6 +28,7 @@ interface PermitTypeRow {
   is_active: boolean; sort_order: number; active_count: number; remaining: number;
   requires_lottery: boolean; lottery_strategy: string; min_class_year: number | null;
   allow_freshmen: boolean; eligible_groups: string[]; allow_multiple: boolean;
+  auto_advance_waitlist: boolean;
   application_opens_at: string | null; application_closes_at: string | null;
   offer_window_days: number; lottery_run_at: string | null;
 }
@@ -96,6 +97,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       sort_order: values.sort_order ?? 0,
       eligible_groups: values.eligible_groups || [],
       allow_multiple: values.allow_multiple ?? false,
+      auto_advance_waitlist: values.auto_advance_waitlist ?? true,
       min_class_year: values.min_class_year ? parseInt(values.min_class_year) : null,
       application_opens_at: values.application_opens_at?.toISOString() ?? null,
       application_closes_at: values.application_closes_at?.toISOString() ?? null,
@@ -180,6 +182,13 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             <Checkbox>
               <Tooltip title="When enabled, a person can register multiple permits of this type (e.g. faculty with multiple vehicles). When disabled, each person is limited to one permit.">
                 Allow multiple permits per person
+              </Tooltip>
+            </Checkbox>
+          </Form.Item>
+          <Form.Item name="auto_advance_waitlist" valuePropName="checked" noStyle>
+            <Checkbox>
+              <Tooltip title="When enabled, waitlisted applicants are automatically promoted when a spot opens (offer declined/expired). Disable to freeze the waitlist and advance manually.">
+                Auto-advance waitlist
               </Tooltip>
             </Checkbox>
           </Form.Item>

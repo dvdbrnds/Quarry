@@ -1080,6 +1080,14 @@ async def promote_from_waitlist(
 
     tiers = await _tiers_with_offers_reserved(db, cycle_id)
 
+    # Exclude tiers that have auto-advance disabled
+    pts_all = (
+        await db.execute(select(PermitType).where(PermitType.auto_advance_waitlist.is_(False)))
+    ).scalars().all()
+    frozen_type_ids = {pt.id for pt in pts_all}
+    for tid in frozen_type_ids:
+        tiers.pop(tid, None)
+
     promoted: LotteryV2Application | None = None
     remaining_waitlist = list(waitlisted)
     for app in waitlisted:
