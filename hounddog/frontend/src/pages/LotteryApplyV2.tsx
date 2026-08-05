@@ -1067,7 +1067,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       return (
                         <div
                           key={tier.id}
-                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
+                          onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
+                          onMouseLeave={() => setHighlightedLots([])}
                         >
                           <div>
                             <span className="font-medium">{tier.label}</span>
@@ -1144,7 +1146,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       return (
                         <div
                           key={tier.id}
-                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
+                          onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
+                          onMouseLeave={() => setHighlightedLots([])}
                         >
                           <div>
                             <span className="font-medium">{tier.label}</span>
