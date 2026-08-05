@@ -13,9 +13,14 @@ logger = logging.getLogger("quarry.channels.voice")
 class VoiceChannel(AlertChannel):
     name = "voice"
     emergency_only = True
+    default_categories = ["emergency"]
 
     def is_configured(self) -> bool:
-        return bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_from_number)
+        return bool(
+            self.get_setting("account_sid", settings.twilio_account_sid)
+            and self.get_setting("auth_token", settings.twilio_auth_token)
+            and self.get_setting("from_number", settings.twilio_from_number)
+        )
 
     async def send(self, alert, subscribers) -> ChannelResult:
         client = _get_client()

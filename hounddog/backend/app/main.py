@@ -561,6 +561,18 @@ async def lifespan(app: FastAPI):
     from .services.alert_dispatcher import init_channels
     init_channels()
 
+    # Load channel config cache and seed missing channels
+    try:
+        from .database import async_session as _async_session
+        from .services.channel_config_cache import load_config, seed_missing_channels
+        async with _async_session() as _cc_session:
+            await load_config(_cc_session)
+            await seed_missing_channels(_cc_session)
+            await _cc_session.commit()
+        logger.info("Channel config cache loaded.")
+    except Exception as exc:
+        logger.warning("Channel config cache load failed (non-fatal): %s", exc)
+
     # Seed default violation types and permit types if none exist
     try:
         from .database import async_session

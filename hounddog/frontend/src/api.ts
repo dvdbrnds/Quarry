@@ -281,6 +281,29 @@ export interface AlertChannelInfo {
   emergency_only: boolean;
 }
 
+export interface ChannelSettingsField {
+  key: string;
+  label: string;
+  type: string;
+  required: boolean;
+}
+
+export interface ChannelConfig {
+  name: string;
+  enabled: boolean;
+  configured: boolean;
+  emergency_only: boolean;
+  settings: Record<string, any>;
+  categories: string[];
+  settings_schema: ChannelSettingsField[];
+}
+
+export interface ChannelConfigUpdate {
+  enabled?: boolean;
+  settings?: Record<string, any>;
+  categories?: string[];
+}
+
 export interface AlertTestSendResult {
   alert_id: string;
   channel: string;
@@ -717,6 +740,9 @@ export const api = {
         return data as ActiveAlert | null;
       }),
     channels: () => request<AlertChannelInfo[]>("/alerts/channels"),
+    channelsConfig: () => request<ChannelConfig[]>("/alerts/channels/config"),
+    updateChannelConfig: (name: string, data: ChannelConfigUpdate) =>
+      request<ChannelConfig>(`/alerts/channels/${name}/config`, { method: "PUT", body: JSON.stringify(data) }),
     history: (params?: { limit?: number; offset?: number; include_tests?: boolean }) => {
       const qs = new URLSearchParams();
       if (params?.limit) qs.set("limit", String(params.limit));

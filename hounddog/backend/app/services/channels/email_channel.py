@@ -11,9 +11,20 @@ logger = logging.getLogger("quarry.channels.email")
 class EmailChannel(AlertChannel):
     name = "email"
     emergency_only = False
+    settings_schema = [
+        {"key": "smtp_host", "label": "SMTP Host", "type": "string", "required": True},
+        {"key": "smtp_port", "label": "SMTP Port", "type": "number", "required": False},
+        {"key": "smtp_user", "label": "SMTP Username", "type": "string", "required": False},
+        {"key": "smtp_password", "label": "SMTP Password", "type": "password", "required": False},
+        {"key": "from_address", "label": "From Address", "type": "string", "required": True},
+        {"key": "from_name", "label": "From Name", "type": "string", "required": False},
+    ]
 
     def is_configured(self) -> bool:
-        return bool(settings.smtp_host and settings.smtp_from_address)
+        return bool(
+            self.get_setting("smtp_host", settings.smtp_host)
+            and self.get_setting("from_address", settings.smtp_from_address)
+        )
 
     async def send(self, alert, subscribers) -> ChannelResult:
         email_recipients = [s for s in subscribers if s.email and s.email_enabled]

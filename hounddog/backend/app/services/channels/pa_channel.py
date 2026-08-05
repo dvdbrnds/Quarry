@@ -109,9 +109,16 @@ def _build_alert_commands(alert) -> list[dict]:
 class PaChannel(AlertChannel):
     name = "pa"
     emergency_only = True
+    default_categories = ["emergency"]
+    settings_schema = [
+        {"key": "core_host", "label": "Q-SYS Core Host", "type": "string", "required": True},
+        {"key": "core_port", "label": "Q-SYS Core Port", "type": "number", "required": False},
+        {"key": "core_username", "label": "Q-SYS Username", "type": "string", "required": False},
+        {"key": "core_password", "label": "Q-SYS Password", "type": "password", "required": False},
+    ]
 
     def is_configured(self) -> bool:
-        return bool(settings.qsys_core_host)
+        return bool(self.get_setting("core_host", settings.qsys_core_host))
 
     async def send(self, alert, subscribers) -> ChannelResult:
         commands = _build_alert_commands(alert)

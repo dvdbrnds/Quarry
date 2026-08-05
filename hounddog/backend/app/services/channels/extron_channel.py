@@ -29,11 +29,16 @@ SEVERITY_MAP = {
 class ExtronChannel(AlertChannel):
     name = "extron"
     emergency_only = True
+    default_categories = ["emergency"]
+    settings_schema = [
+        {"key": "room_agent_url", "label": "Room Agent URL", "type": "string", "required": True},
+    ]
 
     def is_configured(self) -> bool:
-        return bool(settings.extron_room_agent_url)
+        return bool(self.get_setting("room_agent_url", settings.extron_room_agent_url))
 
     async def send(self, alert, subscribers) -> ChannelResult:
+        url = self.get_setting("room_agent_url", settings.extron_room_agent_url)
         payload = {
             "message": f"{alert.subject}\n{alert.body_text}".strip(),
             "severity": SEVERITY_MAP.get(alert.category, "warning"),
@@ -44,10 +49,7 @@ class ExtronChannel(AlertChannel):
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(
-                    settings.extron_room_agent_url,
-                    json=payload,
-                )
+                resp = await client.post(url, json=payload)
                 resp.raise_for_status()
             return ChannelResult(channel=self.name, sent=1)
         except Exception as e:
@@ -58,6 +60,7 @@ class ExtronChannel(AlertChannel):
         if not self.is_configured():
             return
 
+        url = self.get_setting("room_agent_url", settings.extron_room_agent_url)
         payload = {
             "message": "All clear",
             "severity": "info",
@@ -68,10 +71,7 @@ class ExtronChannel(AlertChannel):
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(
-                    settings.extron_room_agent_url,
-                    json=payload,
-                )
+                resp = await client.post(url, json=payload)
                 resp.raise_for_status()
         except Exception as e:
             logger.error("Extron Room Agent clear failed: %s", e)

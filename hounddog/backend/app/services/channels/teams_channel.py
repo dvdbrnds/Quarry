@@ -22,9 +22,12 @@ CATEGORY_COLORS = {
 class TeamsChannel(AlertChannel):
     name = "teams"
     emergency_only = False
+    settings_schema = [
+        {"key": "webhook_url", "label": "Webhook URL", "type": "string", "required": True},
+    ]
 
     def is_configured(self) -> bool:
-        return bool(settings.teams_webhook_url)
+        return bool(self.get_setting("webhook_url", settings.teams_webhook_url))
 
     async def send(self, alert, subscribers) -> ChannelResult:
         color = CATEGORY_COLORS.get(alert.category, "default")
@@ -70,8 +73,9 @@ class TeamsChannel(AlertChannel):
         }
 
         try:
+            url = self.get_setting("webhook_url", settings.teams_webhook_url)
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(settings.teams_webhook_url, json=card)
+                resp = await client.post(url, json=card)
                 resp.raise_for_status()
             return ChannelResult(channel=self.name, sent=1)
         except Exception as e:

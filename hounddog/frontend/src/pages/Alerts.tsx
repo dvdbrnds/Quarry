@@ -5,10 +5,11 @@ import {
   AlertTemplate, AlertResponseSummary, AlertResponseEntry, CheckInStatus,
   SubscriberGroup, AlertScenario, ScenarioStep, RunningScenario,
   AlertAnalyticsDashboard, AfterActionReport, WeatherAlertConfig, SisSubscriberSyncConfig,
+  ChannelConfig,
 } from "../api";
 import {
   Tabs, Table, Button, Input, Select, Checkbox, Tag, Card, Form, Alert, Space, App, Spin, Empty, Modal, Segmented,
-  InputNumber, Progress, Statistic,
+  InputNumber, Progress, Statistic, Switch,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
@@ -983,30 +984,125 @@ function SubscriberForm({ initial, onSave, onCancel }: { initial?: AlertSubscrib
 // Channels Section (unchanged)
 // ===========================================================================
 
+function ChannelCard({ ch, onUpdate }: { ch: ChannelConfig; onUpdate: () => void }) {
+  const { message } = App.useApp();
+  const [saving, setSaving] = useState(false);
+  const [localSettings, setLocalSettings] = useState<Record<string, any>>({ ...ch.settings });
+  const [localCategories, setLocalCategories] = useState<string[]>(ch.categories);
+  const [expanded, setExpanded] = useState(false);
+
+  const hasSchema = ch.settings_schema.length > 0;
+  const dirty = JSON.stringify(localSettings) !== JSON.stringify(ch.settings)
+    || JSON.stringify(localCategories) !== JSON.stringify(ch.categories);
+
+  async function handleToggle(enabled: boolean) {
+    try {
+      await api.alerts.updateChannelConfig(ch.name, { enabled });
+      onUpdate();
+    } catch (err: any) { message.error(err.message); }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await api.alerts.updateChannelConfig(ch.name, { settings: localSettings, categories: localCategories });
+      message.success("Saved");
+      onUpdate();
+    } catch (err: any) { message.error(err.message); }
+    finally { setSaving(false); }
+  }
+
+  const borderColor = !ch.enabled ? "!border-l-gray-300" : ch.configured ? "!border-l-green-500" : "!border-l-amber-400";
+
+  return (
+    <Card size="small" className={`!border-l-4 ${borderColor}`}>
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="font-medium text-sm">{CHANNEL_LABELS[ch.name] ?? ch.name}</h4>
+        <div className="flex items-center gap-2">
+          {ch.emergency_only && <Tag color="red" className="!text-[10px]">Emergency Only</Tag>}
+          <Tag color={ch.configured ? "green" : "default"}>{ch.configured ? "Ready" : "Not Configured"}</Tag>
+          <Switch size="small" checked={ch.enabled} onChange={handleToggle} />
+        </div>
+      </div>
+      <p className="text-xs text-ink-mute mb-2">{CHANNEL_DESCRIPTIONS[ch.name] ?? ""}</p>
+
+      {(hasSchema || true) && (
+        <button type="button" onClick={() => setExpanded(e => !e)}
+          className="text-xs text-blue-600 hover:text-blue-800 mb-2">
+          {expanded ? "Hide settings" : "Show settings"}
+        </button>
+      )}
+
+      {expanded && (
+        <div className="space-y-3 pt-2 border-t border-gray-100">
+          {hasSchema && (
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-ink-mute">Settings</label>
+              {ch.settings_schema.map(field => (
+                <div key={field.key}>
+                  <label className="block text-[11px] text-ink-mute mb-0.5">
+                    {field.label}{field.required && <span className="text-red-500"> *</span>}
+                  </label>
+                  {field.type === "number" ? (
+                    <InputNumber size="small" className="!w-full"
+                      value={localSettings[field.key] ?? ""}
+                      onChange={v => setLocalSettings(s => ({ ...s, [field.key]: v }))} />
+                  ) : (
+                    <Input size="small"
+                      type={field.type === "password" ? "password" : "text"}
+                      placeholder={field.type === "password" && ch.settings[field.key] ? "••••••••" : ""}
+                      value={localSettings[field.key] === "••••••••" ? "" : (localSettings[field.key] ?? "")}
+                      onChange={e => setLocalSettings(s => ({ ...s, [field.key]: e.target.value }))} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-1">Category Routing</label>
+            <p className="text-[11px] text-ink-mute mb-1">Uncheck all for every category.</p>
+            <Checkbox.Group value={localCategories}
+              onChange={vals => setLocalCategories(vals as string[])}
+              className="flex flex-wrap gap-x-3 gap-y-1">
+              {CATEGORIES.map(c => (
+                <Checkbox key={c.id} value={c.id} className="!text-xs">{c.label}</Checkbox>
+              ))}
+            </Checkbox.Group>
+          </div>
+
+          <Button size="small" type="primary" disabled={!dirty} loading={saving} onClick={handleSave}>
+            Save
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ChannelsSection() {
-  const [channels, setChannels] = useState<AlertChannelInfo[]>([]);
+  const [channels, setChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { api.alerts.channels().then(setChannels).finally(() => setLoading(false)); }, []);
+  const load = useCallback(() => {
+    api.alerts.channelsConfig().then(setChannels).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const enabled = channels.filter(c => c.enabled);
+  const configured = channels.filter(c => c.configured);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Alert Channels</h3>
-        <span className="text-xs text-ink-mute">{channels.filter(c => c.configured).length}/{channels.length} configured</span>
+        <span className="text-xs text-ink-mute">{enabled.length} enabled, {configured.length}/{channels.length} configured</span>
       </div>
       <Spin spinning={loading}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {channels.map(ch => (
-            <Card key={ch.name} size="small" className={`!border-l-4 ${ch.configured ? "!border-l-green-500" : "!border-l-gray-300"}`}>
-              <div className="flex items-center justify-between mb-1">
-                <h4 className="font-medium text-sm">{CHANNEL_LABELS[ch.name] ?? ch.name}</h4>
-                <Tag color={ch.configured ? "green" : "default"}>{ch.configured ? "Configured" : "Not Configured"}</Tag>
-              </div>
-              <p className="text-xs text-ink-mute mb-1">{CHANNEL_DESCRIPTIONS[ch.name] ?? ""}</p>
-              {ch.emergency_only && <Tag color="red" className="!text-[10px]">Emergency Only</Tag>}
-              {!ch.configured && <p className="text-[10px] text-ink-mute font-mono mt-1 break-all">{CHANNEL_ENV_HINTS[ch.name] ?? ""}</p>}
-            </Card>
+            <ChannelCard key={ch.name} ch={ch} onUpdate={load} />
           ))}
         </div>
       </Spin>

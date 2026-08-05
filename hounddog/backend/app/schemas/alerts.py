@@ -161,6 +161,29 @@ class AlertChannelRead(BaseModel):
     emergency_only: bool
 
 
+class ChannelSettingsField(BaseModel):
+    key: str
+    label: str
+    type: str
+    required: bool = False
+
+
+class ChannelConfigRead(BaseModel):
+    name: str
+    enabled: bool
+    configured: bool
+    emergency_only: bool
+    settings: dict = {}
+    categories: list[str] = []
+    settings_schema: list[ChannelSettingsField] = []
+
+
+class ChannelConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    settings: dict | None = None
+    categories: list[str] | None = None
+
+
 # --- Alert Template schemas ---
 
 

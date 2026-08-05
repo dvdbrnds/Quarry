@@ -11,9 +11,18 @@ logger = logging.getLogger("quarry.channels.sms")
 class SmsChannel(AlertChannel):
     name = "sms"
     emergency_only = False
+    settings_schema = [
+        {"key": "account_sid", "label": "Twilio Account SID", "type": "string", "required": True},
+        {"key": "auth_token", "label": "Twilio Auth Token", "type": "password", "required": True},
+        {"key": "from_number", "label": "From Phone Number", "type": "string", "required": True},
+    ]
 
     def is_configured(self) -> bool:
-        return bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_from_number)
+        return bool(
+            self.get_setting("account_sid", settings.twilio_account_sid)
+            and self.get_setting("auth_token", settings.twilio_auth_token)
+            and self.get_setting("from_number", settings.twilio_from_number)
+        )
 
     async def send(self, alert, subscribers) -> ChannelResult:
         sms_recipients = [s for s in subscribers if s.phone and s.sms_enabled]

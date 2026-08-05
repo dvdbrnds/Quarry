@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.alert_log import AlertLog
 from ..models.alert_subscriber import AlertSubscriber
+from .channel_config_cache import get_channel_categories, is_channel_enabled
 from .channels import ChannelResult, get_registry
 
 logger = logging.getLogger("quarry.dispatcher")
@@ -99,12 +100,21 @@ async def dispatch_alert(
 
     registry = get_registry()
 
-    eligible = [
-        ch for ch in registry
-        if (not channels or ch.name in channels)
-        and ch.is_configured()
-        and (not ch.emergency_only or alert.category == "emergency")
-    ]
+    def _is_eligible(ch):
+        if channels and ch.name not in channels:
+            return False
+        if not is_channel_enabled(ch.name):
+            return False
+        if not ch.is_configured():
+            return False
+        if ch.emergency_only and alert.category != "emergency":
+            return False
+        cat_list = get_channel_categories(ch.name)
+        if cat_list and alert.category not in cat_list:
+            return False
+        return True
+
+    eligible = [ch for ch in registry if _is_eligible(ch)]
 
     async def _run_channel(channel):
         try:

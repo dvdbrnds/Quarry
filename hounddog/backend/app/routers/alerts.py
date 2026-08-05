@@ -39,7 +39,10 @@ from ..schemas.alerts import (
     AlertTestRequest,
     AlertTestSendRequest,
     AlertTestSendResult,
+    ChannelConfigRead,
+    ChannelConfigUpdate,
     ChannelDeliveryStats,
+    ChannelSettingsField,
     CheckInStatus,
     GroupMembersBatch,
     PublicSubscribeRequest,
@@ -447,6 +450,76 @@ async def list_channels():
             emergency_only=ch.emergency_only,
         ))
     return result
+
+
+@admin_router.get("/channels/config", response_model=list[ChannelConfigRead])
+async def get_channels_config():
+    """Full channel config with settings schema for the admin UI."""
+    from ..services.channel_config_cache import get_channel_config
+
+    result = []
+    for ch in get_registry():
+        cfg = get_channel_config(ch.name) or {}
+        raw_settings = cfg.get("settings", {})
+
+        masked = {}
+        password_keys = {f["key"] for f in ch.settings_schema if f.get("type") == "password"}
+        for k, v in raw_settings.items():
+            if k in password_keys and v:
+                masked[k] = "••••••••"
+            else:
+                masked[k] = v
+
+        result.append(ChannelConfigRead(
+            name=ch.name,
+            enabled=cfg.get("enabled", True),
+            configured=ch.is_configured(),
+            emergency_only=ch.emergency_only,
+            settings=masked,
+            categories=cfg.get("categories", []),
+            settings_schema=[ChannelSettingsField(**f) for f in ch.settings_schema],
+        ))
+    return result
+
+
+@admin_router.put("/channels/{channel_name}/config", response_model=ChannelConfigRead)
+async def update_channel_config(
+    channel_name: str,
+    data: ChannelConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Update a single channel's config (enable/disable, settings, categories)."""
+    from ..services.channel_config_cache import get_channel_config, save_channel_config
+
+    registry = get_registry()
+    ch = next((c for c in registry if c.name == channel_name), None)
+    if not ch:
+        raise HTTPException(404, f"Unknown channel: {channel_name}")
+
+    update_data = data.model_dump(exclude_unset=True)
+    await save_channel_config(channel_name, update_data, user.email, db)
+
+    cfg = get_channel_config(channel_name) or {}
+    raw_settings = cfg.get("settings", {})
+
+    masked = {}
+    password_keys = {f["key"] for f in ch.settings_schema if f.get("type") == "password"}
+    for k, v in raw_settings.items():
+        if k in password_keys and v:
+            masked[k] = "••••••••"
+        else:
+            masked[k] = v
+
+    return ChannelConfigRead(
+        name=ch.name,
+        enabled=cfg.get("enabled", True),
+        configured=ch.is_configured(),
+        emergency_only=ch.emergency_only,
+        settings=masked,
+        categories=cfg.get("categories", []),
+        settings_schema=[ChannelSettingsField(**f) for f in ch.settings_schema],
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ from .alert_scenario import AlertScenario
 from .alert_subscriber import AlertSubscriber
 from .alert_template import AlertTemplate
 from .audit_log import AuditLog
+from .channel_config import ChannelConfig
 from .voucher import Voucher
 from .voucher_usage import VoucherUsage
 from .device import Device
@@ -39,6 +40,7 @@ __all__ = [
     "AlertSubscriber",
     "AlertTemplate",
     "AuditLog",
+    "ChannelConfig",
     "Voucher",
     "VoucherUsage",
     "Device",

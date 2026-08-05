@@ -58,13 +58,20 @@ async def _get_access_token() -> str:
 class ZoomPhoneChannel(AlertChannel):
     name = "zoom_phone"
     emergency_only = True
+    default_categories = ["emergency"]
+    settings_schema = [
+        {"key": "account_id", "label": "Zoom Account ID", "type": "string", "required": True},
+        {"key": "client_id", "label": "Zoom Client ID", "type": "string", "required": True},
+        {"key": "client_secret", "label": "Zoom Client Secret", "type": "password", "required": True},
+        {"key": "paging_group_id", "label": "Paging Group ID", "type": "string", "required": True},
+    ]
 
     def is_configured(self) -> bool:
         return bool(
-            settings.zoom_account_id
-            and settings.zoom_client_id
-            and settings.zoom_client_secret
-            and settings.zoom_paging_group_id
+            self.get_setting("account_id", settings.zoom_account_id)
+            and self.get_setting("client_id", settings.zoom_client_id)
+            and self.get_setting("client_secret", settings.zoom_client_secret)
+            and self.get_setting("paging_group_id", settings.zoom_paging_group_id)
         )
 
     async def send(self, alert, subscribers) -> ChannelResult:

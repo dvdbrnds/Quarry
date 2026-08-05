@@ -32,6 +32,9 @@ class AlertChannel:
     name: str = "base"
     emergency_only: bool = False
 
+    settings_schema: list[dict] = []
+    default_categories: list[str] = []
+
     async def send(self, alert: AlertLog, subscribers: list) -> ChannelResult:
         raise NotImplementedError
 
@@ -43,6 +46,18 @@ class AlertChannel:
     def is_configured(self) -> bool:
         """Return True if this channel has the necessary config to operate."""
         return False
+
+    def get_setting(self, key: str, fallback: str = "") -> str:
+        """Read a channel setting from the DB config cache, falling back
+        to the provided value (typically the env-var default)."""
+        from ..channel_config_cache import get_channel_config
+
+        cfg = get_channel_config(self.name)
+        if cfg and cfg.get("settings"):
+            val = cfg["settings"].get(key)
+            if val is not None and val != "":
+                return str(val)
+        return fallback
 
 
 REGISTRY: list[AlertChannel] = []
