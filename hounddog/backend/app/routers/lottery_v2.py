@@ -1089,6 +1089,24 @@ async def admin_restore_waitlist(
     return await _app_to_read(db, app)
 
 
+@router.get("/applications/search", response_model=list[ApplicationRead])
+async def admin_search_applications(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Search applications by student email across all cycles and statuses."""
+    apps = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(LotteryV2Application.student_email.ilike(f"%{email}%"))
+            .order_by(LotteryV2Application.created_at.desc())
+        )
+    ).scalars().all()
+    pt_by_id = await _permit_type_map(db)
+    return [await _app_to_read(db, a, pt_by_id) for a in apps]
+
+
 @router.post("/applications/{application_id}/manual-select", response_model=ApplicationRead)
 async def admin_manual_select(
     application_id: uuid.UUID,
