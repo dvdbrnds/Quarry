@@ -440,6 +440,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       ) {
         setApplication(appBody);
         setStep("done");
+        if (appBody.campus) loadTiers(appBody.campus, appBody.class_year);
       } else {
         setApplication(null);
         setStep("intake");
@@ -1034,6 +1035,83 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       You're entered. Results appear here after the draw runs.
                     </p>
                   )}
+                </div>
+              </Card>
+            )}
+
+            {application && application.status === "waitlisted" && tiers.length > 0 && (
+              <Card className="mt-4">
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold m-0">Join Other Waitlists</h3>
+                  <p className="text-sm text-gray-600 m-0">
+                    Want to try for a different permit too? Join additional waitlists below.
+                    You'll be notified if a spot opens for any of them.
+                  </p>
+                  {(() => {
+                    const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
+                    const otherTiers = tiers.filter((t) => t.id !== currentTierId);
+                    if (otherTiers.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-400 m-0">
+                          No other permit types available for your campus.
+                        </p>
+                      );
+                    }
+                    return otherTiers.map((tier) => {
+                      const alreadyOn = upgradeApps.some(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const existingApp = upgradeApps.find(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const soldOut = tier.remaining <= 0;
+                      return (
+                        <div
+                          key={tier.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+                        >
+                          <div>
+                            <span className="font-medium">{tier.label}</span>
+                            <span className="text-sm text-gray-500 ml-2">
+                              ${Number(tier.price).toFixed(0)}
+                              {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
+                            </span>
+                            {soldOut && <Tag className="ml-2">Full</Tag>}
+                            {!soldOut && <Tag color="green" className="ml-2">{tier.remaining} open</Tag>}
+                            {existingApp?.status === "waitlisted" && existingApp.waitlist_position && (
+                              <Tag color="blue" className="ml-2">
+                                #{existingApp.waitlist_position} on waitlist
+                              </Tag>
+                            )}
+                            {existingApp?.status === "selected" && (
+                              <Tag color="green" className="ml-2">Offer available!</Tag>
+                            )}
+                          </div>
+                          <div>
+                            {existingApp?.status === "selected" ? (
+                              <Button
+                                type="primary"
+                                size="small"
+                                loading={accepting}
+                                onClick={() => acceptUpgradeOffer(existingApp)}
+                              >
+                                Accept Offer
+                              </Button>
+                            ) : (
+                              <Button
+                                size="small"
+                                disabled={alreadyOn}
+                                loading={joiningUpgrade === tier.id}
+                                onClick={() => joinUpgradeWaitlist(tier.id)}
+                              >
+                                {alreadyOn ? "On Waitlist" : soldOut ? "Join Waitlist" : "Request / Waitlist"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </Card>
             )}
