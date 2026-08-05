@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_role
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -16,9 +16,7 @@ from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 
 
-_require_staff = require_role("admin", "staff")
-
-router = APIRouter(dependencies=[Depends(_require_staff)])
+router = APIRouter()
 
 
 STAFF_PERMIT_CODE = "faculty_staff"
