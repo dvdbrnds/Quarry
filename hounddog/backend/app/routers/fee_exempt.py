@@ -658,13 +658,29 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
     )
     all_permits = perm_result.scalars().all()
 
-    # Filter to only RA permits: match by email, student_id, or name
+    # Filter to only RA permits: match by email, student_id, name, or email username
     def _name_matches_roster(permit_name: str) -> bool:
         pn = permit_name.lower().strip()
+        if not pn:
+            return False
         if pn in ra_names:
             return True
         for first, last in ra_first_last:
             if first and last and first in pn and last in pn:
+                return True
+        return False
+
+    def _email_matches_roster(email: str) -> bool:
+        """Check if email username matches 'lastname + first_initial' pattern."""
+        if not email or "@" not in email:
+            return False
+        username = email.split("@")[0].lower().rstrip("0123456789")
+        for first, last in ra_first_last:
+            if not last or not first:
+                continue
+            # Match patterns like "davisk" = "davis" + "k"(atelyn)
+            candidate = last + first[0]
+            if username == candidate:
                 return True
         return False
 
@@ -677,6 +693,8 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
         elif p_sid in ra_student_ids:
             permits.append(p)
         elif _name_matches_roster(p.name or ""):
+            permits.append(p)
+        elif _email_matches_roster(p_email):
             permits.append(p)
 
     if not permits:
