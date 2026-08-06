@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Descriptions, Space, App, Timeline } from "antd";
+import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 interface PermitHistory {
@@ -134,15 +134,15 @@ export default function PermitDetail() {
               <h2 className="text-2xl font-bold">{p.name}</h2>
               {p.permit_number && <span className="font-mono text-sm bg-brand-primary/10 rounded px-2 py-0.5">{p.permit_number}</span>}
             </div>
-            <Descriptions size="small" className="mt-2" column={{ xs: 1, sm: 2, md: 4 }}>
-              <Descriptions.Item label="Student ID">{p.student_id || "N/A"}</Descriptions.Item>
-              <Descriptions.Item label="Plates"><span className="font-mono">{p.plates?.join(", ")}</span></Descriptions.Item>
-              <Descriptions.Item label="Type"><span className="capitalize">{p.permit_type?.replace(/_/g, " ")}</span></Descriptions.Item>
-              <Descriptions.Item label="SMS">{p.sms_opt_in ? <Tag color="green">Opted In</Tag> : <Tag>Not opted in</Tag>}</Descriptions.Item>
-              <Descriptions.Item label="Lot" span={2}>{p.lot_assignment}</Descriptions.Item>
-              <Descriptions.Item label="Email">{p.email || <span className="text-ink-mute italic">No email on file</span>}</Descriptions.Item>
-              <Descriptions.Item label="Phone">{p.phone || <span className="text-ink-mute">—</span>}</Descriptions.Item>
-            </Descriptions>
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-ink-mute">Student ID:</span> {p.student_id || "N/A"}</div>
+              <div><span className="text-ink-mute">Plates:</span> <span className="font-mono">{p.plates?.join(", ")}</span></div>
+              <div><span className="text-ink-mute">Type:</span> <span className="capitalize">{p.permit_type?.replace(/_/g, " ")}</span></div>
+              <div><span className="text-ink-mute">SMS:</span> {p.sms_opt_in ? <Tag color="green">Opted In</Tag> : <Tag>Not opted in</Tag>}</div>
+              <div className="col-span-2"><span className="text-ink-mute">Lot:</span> {p.lot_assignment}</div>
+              <div><span className="text-ink-mute">Email:</span> {p.email || <span className="text-ink-mute italic">No email</span>}</div>
+              <div><span className="text-ink-mute">Phone:</span> {p.phone || "—"}</div>
+            </div>
             <Space className="mt-3">
               <Tag color={p.status === "active" ? "green" : p.status === "expired" || p.status === "renewed" ? "default" : "red"}>{p.status}</Tag>
               {data.has_hold && <Tag color="red">HOLD — ${data.unpaid_amount} unpaid</Tag>}
