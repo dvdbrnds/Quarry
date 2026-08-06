@@ -638,6 +638,12 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
         for r in roster_rows
         if r[2] and r[3]
     }
+    # Also build first/last pairs for fuzzy matching (permit name may have middle name)
+    ra_first_last = [
+        ((r[2] or "").strip().lower(), (r[3] or "").strip().lower())
+        for r in roster_rows
+        if r[2] and r[3]
+    ]
 
     if not ra_emails and not ra_student_ids and not ra_names:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
@@ -653,16 +659,24 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
     all_permits = perm_result.scalars().all()
 
     # Filter to only RA permits: match by email, student_id, or name
+    def _name_matches_roster(permit_name: str) -> bool:
+        pn = permit_name.lower().strip()
+        if pn in ra_names:
+            return True
+        for first, last in ra_first_last:
+            if first and last and first in pn and last in pn:
+                return True
+        return False
+
     permits = []
     for p in all_permits:
         p_email = (p.email or "").lower()
         p_sid = (p.student_id or "").strip()
-        p_name = (p.name or "").lower().strip()
         if p_email in ra_emails:
             permits.append(p)
         elif p_sid in ra_student_ids:
             permits.append(p)
-        elif p_name in ra_names:
+        elif _name_matches_roster(p.name or ""):
             permits.append(p)
 
     if not permits:
