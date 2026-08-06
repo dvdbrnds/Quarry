@@ -443,27 +443,29 @@ async def submit_application(
         )
     ).scalars().all()
 
-    # Upgrade path: student already has an accepted app and wants to join a higher-tier waitlist
+    # Upgrade / additional waitlist path
     accepted_app = next((a for a in existing if a.status == "accepted"), None)
+    waitlisted_app = next((a for a in existing if a.status == "waitlisted"), None)
     if data.is_upgrade:
-        if not accepted_app:
-            raise HTTPException(400, "You must have an accepted permit to join an upgrade waitlist")
-        # Validate that the target tier(s) are more expensive than current
-        pt_map = await _permit_type_map(db)
-        current_pt = pt_map.get(accepted_app.assigned_permit_type_id)
-        if not current_pt:
-            raise HTTPException(400, "Cannot determine your current permit type")
-        for tid in data.tier_preferences:
-            target_pt = pt_map.get(tid)
-            if not target_pt or target_pt.price <= current_pt.price:
-                raise HTTPException(400, f"Upgrade waitlist is only for higher-priced tiers")
-        # Block duplicate upgrade waitlist for the same tier
+        if not accepted_app and not waitlisted_app:
+            raise HTTPException(400, "You must have an existing application to join another waitlist")
+        # For accepted students, only allow higher-priced tiers (no refunds)
+        if accepted_app:
+            pt_map = await _permit_type_map(db)
+            current_pt = pt_map.get(accepted_app.assigned_permit_type_id)
+            if not current_pt:
+                raise HTTPException(400, "Cannot determine your current permit type")
+            for tid in data.tier_preferences:
+                target_pt = pt_map.get(tid)
+                if not target_pt or target_pt.price <= current_pt.price:
+                    raise HTTPException(400, "Upgrade waitlist is only for higher-priced tiers")
+        # Block duplicate waitlist for the same tier
         existing_upgrade = next(
             (a for a in existing if a.is_upgrade and set(a.tier_preferences or []) & set(data.tier_preferences)),
             None,
         )
         if existing_upgrade:
-            raise HTTPException(400, "You are already on the upgrade waitlist for this tier")
+            raise HTTPException(400, "You are already on the waitlist for this tier")
     else:
         # Standard path: only one non-upgrade application allowed
         non_upgrade = [a for a in existing if not a.is_upgrade]

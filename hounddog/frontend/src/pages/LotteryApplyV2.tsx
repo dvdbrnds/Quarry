@@ -771,7 +771,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || "Failed to join waitlist");
       }
-      message.success("Joined upgrade waitlist");
+      message.success("Joined waitlist");
       await load();
     } catch (e: any) {
       message.error(e.message || "Failed to join waitlist");
