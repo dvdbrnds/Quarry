@@ -1280,6 +1280,225 @@ async def admin_manual_select(
     return await _app_to_read(db, app)
 
 
+class AdminUpgradeRequest(BaseModel):
+    permit_type_id: uuid.UUID
+    send_notification: bool = True
+
+
+@router.post("/applications/{application_id}/admin-upgrade")
+async def admin_upgrade_permit(
+    application_id: uuid.UUID,
+    data: AdminUpgradeRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Admin-initiated upgrade for a student who already purchased a permit.
+
+    Creates a Stripe checkout for the price difference and transitions the
+    application so the existing accept -> webhook -> complete_upgrade pipeline
+    handles the rest.
+    """
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app.status != "accepted":
+        raise HTTPException(400, f"Can only upgrade an accepted application (status is '{app.status}')")
+
+    # Look up the student's current permit type from the accepted application
+    if not app.assigned_permit_type_id:
+        raise HTTPException(400, "Application has no assigned permit type")
+    old_pt = await db.get(PermitType, app.assigned_permit_type_id)
+    if not old_pt:
+        raise HTTPException(400, "Current permit type not found")
+
+    new_pt = await db.get(PermitType, data.permit_type_id)
+    if not new_pt or not new_pt.is_active:
+        raise HTTPException(400, "Target permit type not found or inactive")
+
+    if new_pt.price <= old_pt.price:
+        raise HTTPException(400, f"Target tier ({new_pt.label}: ${new_pt.price}) must cost more than current ({old_pt.label}: ${old_pt.price})")
+
+    # Apply any applicable discounts to the new price
+    from ..services.group_discount import resolve_program_discount, apply_flat_discount
+
+    admin_as_user = OktaUser(sub=app.student_sub, email=app.student_email)
+    prog_discount = await resolve_program_discount(db, admin_as_user)
+    new_discounted = apply_flat_discount(new_pt.price, prog_discount)
+    old_discounted = apply_flat_discount(old_pt.price, prog_discount)
+
+    from ..services.fee_exempt import lookup_fee_exempt
+
+    exempt = await lookup_fee_exempt(
+        db, admin_as_user,
+        extra_emails=[app.student_email],
+        extra_names=[app.student_name],
+    )
+    if exempt:
+        ra_amount = Decimal(str(settings.ra_discount_amount))
+        new_ra_price = max(Decimal("0.00"), new_pt.price - ra_amount)
+        old_ra_price = max(Decimal("0.00"), old_pt.price - ra_amount)
+        if new_ra_price < new_discounted:
+            new_discounted = new_ra_price
+        if old_ra_price < old_discounted:
+            old_discounted = old_ra_price
+
+    charge_amount = max(Decimal("0.00"), new_discounted - old_discounted)
+
+    # Transition the application for the upgrade pipeline
+    app.is_upgrade = True
+    app.existing_permit_type_id = old_pt.id
+    app.upgrade_credit = float(old_discounted)
+    app.assigned_permit_type_id = new_pt.id
+    app.assigned_lot = ", ".join(new_pt.lot_assignments) if new_pt.lot_assignments else None
+    app.status = "selected"
+    app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+    note = (
+        f"Admin upgrade initiated by {admin.email or admin.sub} at "
+        f"{datetime.now(timezone.utc).isoformat()} — "
+        f"{old_pt.label} (${old_discounted}) → {new_pt.label} (${new_discounted}), "
+        f"charge: ${charge_amount}"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+
+    if charge_amount <= 0:
+        from ..services.lottery_v2_runner import complete_upgrade
+        await complete_upgrade(db, app, new_pt)
+        await db.flush()
+        return {
+            "status": "upgraded",
+            "charge_amount": "0.00",
+            "old_type": old_pt.label,
+            "new_type": new_pt.label,
+        }
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+
+    stripe.api_key = settings.stripe_secret_key
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+
+    product_name = f"Upgrade to {new_pt.label}"
+    product_desc = f"Plate: {app.plate} | Difference: {old_pt.label} → {new_pt.label}"
+
+    session = stripe.checkout.Session.create(
+        customer_email=app.student_email,
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": product_name,
+                        "description": product_desc,
+                    },
+                    "unit_amount": int(charge_amount * 100),
+                },
+                "quantity": 1,
+            }
+        ],
+        mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK UPGRADE",
+            "metadata": {
+                "type": "lottery_v2_permit",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "permit_type_code": new_pt.code,
+                "permit_type_label": new_pt.label,
+                "permit_price": str(new_pt.price),
+                "permit_valid_days": str(new_pt.valid_days),
+                "plate": app.plate,
+                "student_name": app.student_name,
+                "student_email": app.student_email,
+                "class_year": str(app.class_year) if app.class_year else "",
+                "application_id": str(app.id),
+                "is_upgrade": "true",
+                "institution": settings.school_name or "moravian",
+            },
+        },
+        success_url=f"{base_url}/parking?upgraded={application_id}&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}/parking",
+        metadata={
+            "type": "lottery_v2_permit",
+            "application_id": str(app.id),
+            "permit_type_id": str(new_pt.id),
+            "permit_type_code": new_pt.code,
+            "student_name": app.student_name,
+            "plate": app.plate,
+            "email": app.student_email,
+            "valid_days": str(new_pt.valid_days),
+            "is_upgrade": "true",
+        },
+    )
+
+    stripe_note = (
+        f"Upgrade payment link created (Stripe {session.id}) — ${charge_amount}"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{stripe_note}".strip() if app.admin_notes else stripe_note
+    await db.flush()
+
+    # Send the student an email with the payment link
+    if data.send_notification and app.student_email:
+        from ..services.email import send_email, branded_email_shell
+        from ..services.lottery_v2_runner import extract_first_name
+
+        first_name = extract_first_name(app.student_name)
+        school = settings.school_name or "Campus"
+        inner = (
+            f'<h2 style="color:{settings.brand_primary_color};margin:0 0 8px;font-size:20px;">'
+            f"Parking Permit Upgrade Available</h2>"
+            f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name}, '
+            f"you have been offered an upgrade from <strong>{old_pt.label}</strong> to "
+            f"<strong>{new_pt.label}</strong>.</p>"
+            '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;'
+            'border-radius:8px;margin:20px 0;">'
+            '<tr><td colspan="2" style="padding:12px 16px 4px;font-size:11px;color:#999;'
+            'text-transform:uppercase;letter-spacing:1px;">Upgrade Details</td></tr>'
+            '<tr style="border-bottom:1px solid #eee;">'
+            '<td style="padding:10px 16px;color:#666;font-size:14px;">New Permit</td>'
+            f'<td style="padding:10px 16px;font-weight:600;font-size:16px;'
+            f'color:{settings.brand_primary_color};">{new_pt.label}</td></tr>'
+            '<tr style="border-bottom:1px solid #eee;">'
+            '<td style="padding:10px 16px;color:#666;font-size:14px;">Amount Due</td>'
+            f'<td style="padding:10px 16px;font-weight:600;font-size:16px;">'
+            f'${charge_amount:.2f}</td></tr>'
+            "</table>"
+            f'<p style="color:#333;font-size:14px;line-height:1.6;">Click below to pay the '
+            f"difference and complete your upgrade. This offer expires on "
+            f"{app.offer_expires_at.strftime('%B %d, %Y') if app.offer_expires_at else 'soon'}.</p>"
+            '<div style="text-align:center;margin:24px 0;">'
+            f'<a href="{session.url}" style="background:{settings.brand_primary_color};'
+            'color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;'
+            f'font-weight:600;font-size:16px;">Pay ${charge_amount:.2f} &amp; Upgrade</a>'
+            "</div>"
+        )
+        body_html = await branded_email_shell(school, inner)
+        body_text = (
+            f"PARKING PERMIT UPGRADE\n\n"
+            f"Dear {first_name},\n\n"
+            f"You have been offered an upgrade from {old_pt.label} to {new_pt.label}.\n"
+            f"Amount due: ${charge_amount:.2f}\n\n"
+            f"Pay here: {session.url}\n\n"
+            f"This offer expires on {app.offer_expires_at.strftime('%B %d, %Y') if app.offer_expires_at else 'soon'}."
+        )
+        await send_email(
+            to=[app.student_email],
+            subject=f"Parking Permit Upgrade — {new_pt.label}",
+            body_html=body_html,
+            body_text=body_text,
+        )
+
+    return {
+        "status": "upgrade_pending",
+        "checkout_url": session.url,
+        "charge_amount": str(charge_amount),
+        "old_type": old_pt.label,
+        "new_type": new_pt.label,
+    }
+
+
 # ── Admin endpoints ──────────────────────────────────────────────────
 
 

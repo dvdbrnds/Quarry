@@ -192,6 +192,12 @@ export default function LotteryV2Manager() {
   const [addWaitlistTierId, setAddWaitlistTierId] = useState<string | undefined>(undefined);
   const [addWaitlistLoading, setAddWaitlistLoading] = useState(false);
 
+  const [upgradeTarget, setUpgradeTarget] = useState<Application | null>(null);
+  const [upgradeTierId, setUpgradeTierId] = useState<string | undefined>(undefined);
+  const [upgradeNotify, setUpgradeNotify] = useState(true);
+  const [upgradeTiers, setUpgradeTiers] = useState<{ id: string; label: string; price: number }[]>([]);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
 
@@ -431,6 +437,56 @@ export default function LotteryV2Manager() {
       message.error(e.message);
     } finally {
       setAddWaitlistLoading(false);
+    }
+  }
+
+  async function openUpgradeModal(app: Application) {
+    setUpgradeTarget(app);
+    setUpgradeNotify(true);
+    setUpgradeTierId(undefined);
+    try {
+      const res = await fetch("/api/permit-types?all=true", { headers: await authHeaders() });
+      if (res.ok) {
+        const types: any[] = await res.json();
+        const currentPrice = Number(app.assigned_permit_type_price || 0);
+        const higher = types
+          .filter((t: any) => t.is_active && Number(t.price) > currentPrice)
+          .map((t: any) => ({ id: t.id, label: t.label, price: Number(t.price) }))
+          .sort((a, b) => a.price - b.price);
+        setUpgradeTiers(higher);
+        if (higher.length) setUpgradeTierId(higher[0].id);
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function confirmUpgrade() {
+    if (!upgradeTarget || !upgradeTierId) return;
+    setUpgradeLoading(true);
+    try {
+      const res = await fetch(`/api/lottery-v2/applications/${upgradeTarget.id}/admin-upgrade`, {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          permit_type_id: upgradeTierId,
+          send_notification: upgradeNotify,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Upgrade failed");
+      if (data.status === "upgraded") {
+        message.success(`${upgradeTarget.student_name} upgraded to ${data.new_type} — no charge`);
+      } else {
+        message.success(
+          `Upgrade to ${data.new_type} initiated — $${data.charge_amount} payment link sent`,
+        );
+      }
+      setUpgradeTarget(null);
+      setCaseApp(null);
+      if (activeId) loadDetail(activeId);
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setUpgradeLoading(false);
     }
   }
 
@@ -1560,6 +1616,13 @@ export default function LotteryV2Manager() {
                 </Button>
               </Space>
             )}
+            {caseApp.status === "accepted" && (
+              <Space>
+                <Button type="primary" disabled={busy} onClick={() => openUpgradeModal(caseApp)}>
+                  Upgrade permit
+                </Button>
+              </Space>
+            )}
           </div>
         )}
       </Drawer>
@@ -1745,6 +1808,68 @@ export default function LotteryV2Manager() {
             />
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        title={upgradeTarget ? `Upgrade permit — ${upgradeTarget.student_name}` : "Upgrade permit"}
+        open={!!upgradeTarget}
+        onCancel={() => setUpgradeTarget(null)}
+        onOk={confirmUpgrade}
+        okText="Send upgrade & payment link"
+        confirmLoading={upgradeLoading}
+        okButtonProps={{ disabled: !upgradeTierId }}
+        destroyOnClose
+      >
+        {upgradeTarget && (() => {
+          const currentPrice = Number(upgradeTarget.assigned_permit_type_price || 0);
+          const selected = upgradeTiers.find((t) => t.id === upgradeTierId);
+          const diff = selected ? selected.price - currentPrice : 0;
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 m-0">
+                Upgrade this student to a higher-priced permit. They will be emailed a payment link
+                for only the price difference. Their old permit will be revoked once they pay.
+              </p>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Current permit</div>
+                <div className="font-semibold">
+                  {upgradeTarget.assigned_permit_type_label} — ${currentPrice.toFixed(0)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">Upgrade to</div>
+                <Select
+                  className="w-full"
+                  value={upgradeTierId}
+                  onChange={setUpgradeTierId}
+                  options={upgradeTiers.map((t) => ({
+                    value: t.id,
+                    label: `${t.label} — $${t.price.toFixed(0)}`,
+                  }))}
+                />
+              </div>
+              {selected && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Amount to charge</div>
+                  <div className="text-xl font-bold text-blue-700">
+                    ${diff.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    ${selected.price.toFixed(0)} (new) − ${currentPrice.toFixed(0)} (current)
+                  </div>
+                </div>
+              )}
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={upgradeNotify}
+                  onChange={(e) => setUpgradeNotify(e.target.checked)}
+                />
+                Email the student the payment link
+              </label>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );
