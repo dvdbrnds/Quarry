@@ -405,47 +405,6 @@ export default function DataManagement() {
           </Button>
         </Card>
 
-        {canClearPermits && (
-        <Card style={{ flex: 1, minWidth: 280 }}>
-          <Title level={5} style={{ marginTop: 0 }}>
-            <DeleteOutlined style={{ marginRight: 8 }} />
-            Clear All Permits
-          </Title>
-          <p className="text-ink-mute text-sm mb-4">
-            Delete all {permitCount.toLocaleString()} permits, {appCount.toLocaleString()} applications, and related payments. Use before going live.
-          </p>
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            onClick={handleClearPermits}
-            loading={clearing}
-            disabled={permitCount === 0}
-            size="large"
-          >
-            Clear All Permits
-          </Button>
-        </Card>
-        )}
-
-        <Card style={{ flex: 1, minWidth: 280 }}>
-          <Title level={5} style={{ marginTop: 0 }}>
-            <DeleteOutlined style={{ marginRight: 8 }} />
-            Clear Test Tickets
-          </Title>
-          <p className="text-ink-mute text-sm mb-4">
-            Delete all {ticketCount.toLocaleString()} tickets and associated payments. Use before going live.
-          </p>
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            onClick={handleClearTickets}
-            loading={clearing}
-            disabled={ticketCount === 0}
-            size="large"
-          >
-            Clear All Tickets
-          </Button>
-        </Card>
       </div>
 
       {/* Scheduled Backup Card */}
