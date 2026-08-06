@@ -25,7 +25,6 @@ from app.services.email import (
     send_email,
     send_lottery_selection_email,
 )
-from app.services.lot_assignment import resolve_lot_code
 from app.services.lottery import distribute_capacity
 
 logger = logging.getLogger(__name__)
@@ -1297,7 +1296,7 @@ async def complete_upgrade(
             old_permit.notes = f"{old_permit.notes or ''}\n{note}".strip()
 
     # Issue the new permit
-    lot_assignment = resolve_lot_code(app.assigned_lot, list(new_pt.lot_assignments or []))
+    lot_assignment = ", ".join(new_pt.lot_assignments) if new_pt.lot_assignments else ""
     new_permit = Permit(
         permit_number=await next_permit_number(db),
         name=app.student_name,

@@ -412,14 +412,15 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET total_spaces = 25 WHERE name = 'W. Locust St'",
             "UPDATE parking_lots SET total_spaces = 50 WHERE name = 'Lehigh St'",
             "UPDATE parking_lots SET total_spaces = 100 WHERE name = 'Spring St'",
-            # Fix permits with comma-joined lot values — each permit should have a single lot code.
-            # Split on comma and keep only the first value for any permit that has commas.
-            """UPDATE permits SET lot_assignment = TRIM(SPLIT_PART(lot_assignment, ',', 1))
-               WHERE lot_assignment LIKE '%,%' AND status = 'active'
-               AND permit_type NOT IN ('faculty_staff')""",
-            # Fix permits with "Lot " prefix (e.g. "Lot I" -> "I")
-            """UPDATE permits SET lot_assignment = TRIM(REPLACE(lot_assignment, 'Lot ', ''))
-               WHERE lot_assignment LIKE 'Lot %' AND status = 'active'""",
+            # Sync every active permit's lot_assignment to match its permit type's current config
+            """UPDATE permits p
+               SET lot_assignment = ARRAY_TO_STRING(pt.lot_assignments, ', ')
+               FROM permit_types pt
+               WHERE p.permit_type = pt.code
+               AND p.status = 'active'
+               AND pt.lot_assignments IS NOT NULL
+               AND ARRAY_LENGTH(pt.lot_assignments, 1) > 0
+               AND p.lot_assignment IS DISTINCT FROM ARRAY_TO_STRING(pt.lot_assignments, ', ')""",
             # Update COMMUTER_EVENING_SCHEDULE on all FSC lots (change 07:00 to 06:00)
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb

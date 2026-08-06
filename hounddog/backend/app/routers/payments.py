@@ -23,7 +23,6 @@ from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
 from ..models.ticket import Ticket
-from ..services.lot_assignment import resolve_lot_code
 from ..services.permit_numbering import next_permit_number
 from ..schemas.payment import (
     AvailablePermitsResponse,
@@ -738,12 +737,12 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     if not ticket:
         return False
 
-    lot_assignment = metadata.get("assigned_lot") or metadata.get("lot_assignment") or ""
+    lot_assignment = metadata.get("lot_assignment") or ""
     permit_type_id = metadata.get("permit_type_id")
     if not lot_assignment and permit_type_id:
         pt = await db.get(PermitType, uuid.UUID(permit_type_id))
         if pt and pt.lot_assignments:
-            lot_assignment = resolve_lot_code(None, list(pt.lot_assignments))
+            lot_assignment = ", ".join(pt.lot_assignments)
 
     new_permit = Permit(
         permit_number=await next_permit_number(db),
@@ -808,12 +807,12 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
     valid_days = int(metadata.get("valid_days", "365"))
     email = metadata.get("email", "")
 
-    lot_assignment = metadata.get("assigned_lot") or metadata.get("lot_assignment") or ""
+    lot_assignment = metadata.get("lot_assignment") or ""
     permit_type_id = metadata.get("permit_type_id")
     if not lot_assignment and permit_type_id:
         pt = await db.get(PT, uuid.UUID(permit_type_id))
         if pt and pt.lot_assignments:
-            lot_assignment = resolve_lot_code(None, list(pt.lot_assignments))
+            lot_assignment = ", ".join(pt.lot_assignments)
 
     new_permit = Permit(
         permit_number=await next_permit_number(db),
@@ -898,21 +897,19 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
     valid_days = int(metadata.get("valid_days", "365"))
     email = metadata.get("email", "") or metadata.get("student_email", "")
 
-    lot_assignment = metadata.get("assigned_lot") or metadata.get("lot_assignment") or ""
+    lot_assignment = metadata.get("lot_assignment") or ""
     if not lot_assignment:
         permit_type_id = metadata.get("permit_type_id")
         if permit_type_id:
             pt = await db.get(PT, uuid.UUID(permit_type_id))
-            if pt:
-                lot_assignment = resolve_lot_code(None, list(pt.lot_assignments or []))
+            if pt and pt.lot_assignments:
+                lot_assignment = ", ".join(pt.lot_assignments)
         elif app.assigned_permit_type_id:
             pt = await db.get(PT, app.assigned_permit_type_id)
             if pt:
                 permit_type_code = permit_type_code or pt.code
-                lot_assignment = resolve_lot_code(app.assigned_lot, list(pt.lot_assignments or []))
-
-    if app.assigned_lot:
-        lot_assignment = app.assigned_lot
+                if pt.lot_assignments:
+                    lot_assignment = ", ".join(pt.lot_assignments)
 
     # Final capacity guard for lottery permits
     guard_pt = None
@@ -998,7 +995,7 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
     if not lot_assignment and permit_type_id:
         pt = await db.get(PermitType, uuid.UUID(permit_type_id))
         if pt and pt.lot_assignments:
-            lot_assignment = resolve_lot_code(None, list(pt.lot_assignments))
+            lot_assignment = ", ".join(pt.lot_assignments)
     elif permit_type_id:
         pt = await db.get(PermitType, uuid.UUID(permit_type_id))
 
