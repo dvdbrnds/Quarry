@@ -647,22 +647,52 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
         for pt in pt_result.scalars().all():
             pt_by_code[pt.code] = pt
 
-    # Find permit purchase payments for these emails
+    # Find permit purchase payments — broad search by email, plate, or stripe session
+    permit_types_for_pay = [
+        "lottery_v2_permit", "lottery_permit",
+        "permit_purchase", "standalone_permit_purchase",
+        "direct_permit_purchase", "admin_permit_charge",
+    ]
     payment_by_email: dict[str, Payment] = {}
+
+    # Search by email
     pay_result = await db.execute(
         select(Payment).where(
             func.lower(Payment.payer_email).in_(ra_emails),
-            Payment.payment_type.in_([
-                "lottery_v2_permit", "lottery_permit",
-                "permit_purchase", "standalone_permit_purchase",
-                "direct_permit_purchase",
-            ]),
+            Payment.payment_type.in_(permit_types_for_pay),
         )
     )
     for p in pay_result.scalars().all():
         key = (p.payer_email or "").lower()
         if key not in payment_by_email or p.amount > payment_by_email[key].amount:
             payment_by_email[key] = p
+
+    # Also search by plate for permits with no email-matched payment
+    all_plates = {plate for perm in permits for plate in (perm.plates or [])}
+    if all_plates:
+        plate_pay_result = await db.execute(
+            select(Payment).where(
+                Payment.plate.in_(all_plates),
+                Payment.payment_type.in_(permit_types_for_pay),
+            )
+        )
+        plate_payment_map: dict[str, Payment] = {}
+        for p in plate_pay_result.scalars().all():
+            if p.plate:
+                plate_payment_map[p.plate] = p
+
+    # Also try matching by stripe_session_id on the permit
+    stripe_sessions = {perm.stripe_session_id for perm in permits if perm.stripe_session_id}
+    session_payment_map: dict[str, Payment] = {}
+    if stripe_sessions:
+        sess_pay_result = await db.execute(
+            select(Payment).where(
+                Payment.stripe_payment_id.in_(stripe_sessions),
+            )
+        )
+        for p in sess_pay_result.scalars().all():
+            if p.stripe_payment_id:
+                session_payment_map[p.stripe_payment_id] = p
 
     # Check for refund notes on lottery apps (if any exist)
     refund_notes: dict[str, bool] = {}
@@ -689,7 +719,15 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
             continue
 
         expected_price = max(Decimal("0.00"), pt.price - ra_discount)
+        # Try email match, then plate match, then stripe session match
         payment = payment_by_email.get(email_key)
+        if not payment:
+            for plate in (permit.plates or []):
+                payment = plate_payment_map.get(plate)
+                if payment:
+                    break
+        if not payment and permit.stripe_session_id:
+            payment = session_payment_map.get(permit.stripe_session_id)
         if not payment:
             continue
 
