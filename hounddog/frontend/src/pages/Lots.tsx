@@ -757,7 +757,7 @@ export default function Lots() {
         <div className="space-y-3">
           <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
             <Switch size="small" checked={closeImmediate} onChange={setCloseImmediate} />
-            <span className="text-sm">{closeImmediate ? "Close immediately (emergency)" : "Schedule for a future date"}</span>
+            <span className={`text-sm ${closeImmediate ? "text-red-600 font-medium" : "text-ink-mute"}`}>Close immediately (emergency)</span>
           </div>
           <p className="text-sm text-ink-mute">
             {closeImmediate
