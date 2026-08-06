@@ -592,7 +592,7 @@ async def send_balance_payment(
 
 
 class RefundDueRow(BaseModel):
-    application_id: str
+    application_id: str  # permit ID (or app ID for legacy)
     student_name: str
     email: str
     permit_type: str
@@ -613,7 +613,7 @@ class RefundDueResponse(BaseModel):
 
 @router.get("/refund-due", response_model=RefundDueResponse)
 async def get_refund_due(db: AsyncSession = Depends(get_db)):
-    """RAs who paid full price and are owed a partial refund for the $50 discount."""
+    """RAs who paid more than (list_price - $50 discount). Works from permits + payments."""
     from ..models.fee_exempt_roster import FeeExemptRoster
     from ..models.permit import Permit
 
@@ -625,95 +625,93 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
     if not ra_emails:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
 
-    # Find all accepted applications from RAs (by roster OR fee_exempt flag)
-    apps_result = await db.execute(
-        select(LotteryV2Application).where(
-            LotteryV2Application.status == "accepted",
-            LotteryV2Application.assigned_permit_type_id.isnot(None),
-            func.lower(LotteryV2Application.student_email).in_(ra_emails)
-            | (LotteryV2Application.fee_exempt == True),  # noqa: E712
+    # Find active permits held by RAs
+    perm_result = await db.execute(
+        select(Permit).where(
+            func.lower(Permit.email).in_(ra_emails),
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
         )
     )
-    apps = apps_result.scalars().all()
-    if not apps:
+    permits = perm_result.scalars().all()
+    if not permits:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
 
-    # Only keep apps whose email is on the RA roster or flagged fee_exempt
-    apps = [a for a in apps if (a.student_email or "").lower() in ra_emails or a.fee_exempt]
-
-    pt_ids = {a.assigned_permit_type_id for a in apps if a.assigned_permit_type_id}
-    pt_map: dict[uuid.UUID, PermitType] = {}
-    if pt_ids:
-        pt_result = await db.execute(select(PermitType).where(PermitType.id.in_(pt_ids)))
+    # Resolve permit types by code
+    pt_codes = {p.permit_type for p in permits if p.permit_type}
+    pt_by_code: dict[str, PermitType] = {}
+    if pt_codes:
+        pt_result = await db.execute(
+            select(PermitType).where(PermitType.code.in_(pt_codes))
+        )
         for pt in pt_result.scalars().all():
-            pt_map[pt.id] = pt
+            pt_by_code[pt.code] = pt
 
-    emails = {(a.student_email or "").lower() for a in apps if a.student_email}
+    # Find permit purchase payments for these emails
     payment_by_email: dict[str, Payment] = {}
-    if emails:
-        pay_result = await db.execute(
-            select(Payment).where(
-                func.lower(Payment.payer_email).in_(emails),
-                Payment.payment_type.in_([
-                    "lottery_v2_permit", "lottery_permit",
-                    "permit_purchase", "standalone_permit_purchase",
-                    "direct_permit_purchase",
-                ]),
-            )
+    pay_result = await db.execute(
+        select(Payment).where(
+            func.lower(Payment.payer_email).in_(ra_emails),
+            Payment.payment_type.in_([
+                "lottery_v2_permit", "lottery_permit",
+                "permit_purchase", "standalone_permit_purchase",
+                "direct_permit_purchase",
+            ]),
         )
-        for p in pay_result.scalars().all():
-            key = (p.payer_email or "").lower()
-            if key not in payment_by_email or p.amount > payment_by_email[key].amount:
-                payment_by_email[key] = p
+    )
+    for p in pay_result.scalars().all():
+        key = (p.payer_email or "").lower()
+        if key not in payment_by_email or p.amount > payment_by_email[key].amount:
+            payment_by_email[key] = p
 
-    permit_by_email: dict[str, Permit] = {}
-    if emails:
-        perm_result = await db.execute(
-            select(Permit).where(
-                func.lower(Permit.email).in_(emails),
-                Permit.status == "active",
-            )
+    # Check for refund notes on lottery apps (if any exist)
+    refund_notes: dict[str, bool] = {}
+    apps_result = await db.execute(
+        select(LotteryV2Application.student_email, LotteryV2Application.admin_notes).where(
+            func.lower(LotteryV2Application.student_email).in_(ra_emails),
         )
-        for pm in perm_result.scalars().all():
-            permit_by_email[(pm.email or "").lower()] = pm
+    )
+    for email, notes in apps_result.all():
+        if notes and "refund_issued" in notes:
+            refund_notes[(email or "").lower()] = True
 
     rows: list[RefundDueRow] = []
     total = Decimal("0.00")
+    seen_emails: set[str] = set()
 
-    for app in apps:
-        pt = pt_map.get(app.assigned_permit_type_id) if app.assigned_permit_type_id else None
+    for permit in permits:
+        email_key = (permit.email or "").lower()
+        if email_key in seen_emails:
+            continue
+
+        pt = pt_by_code.get(permit.permit_type)
         if not pt:
             continue
 
         expected_price = max(Decimal("0.00"), pt.price - ra_discount)
-        email_key = (app.student_email or "").lower()
         payment = payment_by_email.get(email_key)
         if not payment:
             continue
 
         amount_paid = payment.amount
         overpaid = amount_paid - expected_price
-
         if overpaid <= 0:
             continue
 
-        permit = permit_by_email.get(email_key)
-        refund_issued = bool(
-            app.admin_notes and "refund_issued" in app.admin_notes
-        )
+        seen_emails.add(email_key)
 
         rows.append(RefundDueRow(
-            application_id=str(app.id),
-            student_name=app.student_name,
-            email=app.student_email,
+            application_id=str(permit.id),
+            student_name=permit.name,
+            email=permit.email or "",
             permit_type=pt.label,
             list_price=str(pt.price),
             expected_price=str(expected_price),
             amount_paid=str(amount_paid),
             refund_amount=str(overpaid),
-            permit_number=permit.permit_number if permit else None,
+            permit_number=permit.permit_number,
             stripe_payment_id=payment.stripe_payment_id,
-            refund_issued=refund_issued,
+            refund_issued=refund_notes.get(email_key, False),
         ))
         total += overpaid
 
@@ -724,22 +722,25 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/refund-due/{app_id}/issue-refund")
+@router.post("/refund-due/{permit_id}/issue-refund")
 async def issue_refund(
-    app_id: uuid.UUID,
+    permit_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     admin: OktaUser = Depends(require_admin()),
 ):
     """Issue a partial Stripe refund for the RA discount amount."""
+    from ..models.permit import Permit
+
     ra_discount = Decimal(str(settings.ra_discount_amount))
 
-    app = await db.get(LotteryV2Application, app_id)
-    if not app:
-        raise HTTPException(404, "Application not found")
-    if not app.fee_exempt or app.status != "accepted":
-        raise HTTPException(400, "Application is not an accepted RA entry")
+    permit = await db.get(Permit, permit_id)
+    if not permit:
+        raise HTTPException(404, "Permit not found")
 
-    pt = await db.get(PermitType, app.assigned_permit_type_id) if app.assigned_permit_type_id else None
+    pt_result = await db.execute(
+        select(PermitType).where(PermitType.code == permit.permit_type)
+    )
+    pt = pt_result.scalars().first()
     if not pt:
         raise HTTPException(404, "Permit type not found")
 
@@ -747,8 +748,12 @@ async def issue_refund(
 
     pay_result = await db.execute(
         select(Payment).where(
-            func.lower(Payment.payer_email) == app.student_email.lower(),
-            Payment.payment_type.in_(["lottery_v2_permit", "lottery_permit"]),
+            func.lower(Payment.payer_email) == (permit.email or "").lower(),
+            Payment.payment_type.in_([
+                "lottery_v2_permit", "lottery_permit",
+                "permit_purchase", "standalone_permit_purchase",
+                "direct_permit_purchase",
+            ]),
         ).order_by(Payment.amount.desc()).limit(1)
     )
     payment = pay_result.scalar()
@@ -768,8 +773,6 @@ async def issue_refund(
     import stripe
     stripe.api_key = settings.stripe_secret_key
 
-    # Stripe stores payment intents as pi_xxx; checkout sessions may store cs_xxx
-    # Try to refund via payment intent first
     stripe_id = payment.stripe_payment_id
     try:
         if stripe_id.startswith("cs_"):
@@ -782,8 +785,8 @@ async def issue_refund(
             reason="requested_by_customer",
             metadata={
                 "type": "ra_discount_refund",
-                "application_id": str(app.id),
-                "student_email": app.student_email,
+                "permit_id": str(permit.id),
+                "student_email": permit.email,
                 "refund_amount": str(overpaid),
                 "admin": admin.email or admin.sub,
             },
@@ -791,13 +794,22 @@ async def issue_refund(
     except stripe.StripeError as e:
         raise HTTPException(400, f"Stripe refund failed: {e.user_message or str(e)}")
 
-    notes = app.admin_notes or ""
-    app.admin_notes = f"{notes}\nrefund_issued:{refund.id} ${overpaid:.2f} by {admin.email}".strip()
+    # Mark refund on lottery app if one exists
+    app_result = await db.execute(
+        select(LotteryV2Application).where(
+            func.lower(LotteryV2Application.student_email) == (permit.email or "").lower(),
+        ).limit(1)
+    )
+    app = app_result.scalars().first()
+    if app:
+        notes = app.admin_notes or ""
+        app.admin_notes = f"{notes}\nrefund_issued:{refund.id} ${overpaid:.2f} by {admin.email}".strip()
+
     await db.flush()
 
     logger.info(
         "Refund %s issued for %s (%s): $%s by %s",
-        refund.id, app.student_name, app.student_email, overpaid, admin.email,
+        refund.id, permit.name, permit.email, overpaid, admin.email,
     )
 
     return {
