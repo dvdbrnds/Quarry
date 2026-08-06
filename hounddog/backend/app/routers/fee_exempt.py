@@ -620,32 +620,55 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
 
     ra_discount = Decimal(str(settings.ra_discount_amount))
 
-    # Get all RA identifiers from the roster (email + student_id)
+    # Get all RA identifiers from the roster
     roster_result = await db.execute(
-        select(FeeExemptRoster.email, FeeExemptRoster.student_id)
+        select(
+            FeeExemptRoster.email,
+            FeeExemptRoster.student_id,
+            FeeExemptRoster.first_name,
+            FeeExemptRoster.last_name,
+        )
     )
     roster_rows = roster_result.all()
     ra_emails = {(r[0] or "").lower() for r in roster_rows if r[0]}
     ra_student_ids = {r[1] for r in roster_rows if r[1]}
+    # Build name set for fallback matching (lowercase "first last")
+    ra_names = {
+        f"{(r[2] or '').strip()} {(r[3] or '').strip()}".lower()
+        for r in roster_rows
+        if r[2] and r[3]
+    }
 
-    if not ra_emails and not ra_student_ids:
+    if not ra_emails and not ra_student_ids and not ra_names:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
 
-    # Find active permits held by RAs (match by email OR student_id)
-    email_filter = func.lower(Permit.email).in_(ra_emails) if ra_emails else False
-    sid_filter = Permit.student_id.in_(ra_student_ids) if ra_student_ids else False
+    # Find ALL active student permits (we'll filter RA membership in Python
+    # because email/student_id formats may not match between roster and permits)
     perm_result = await db.execute(
         select(Permit).where(
-            (email_filter) | (sid_filter),
             Permit.status == "active",
             Permit.deleted_at.is_(None),
         )
     )
-    permits = perm_result.scalars().all()
+    all_permits = perm_result.scalars().all()
+
+    # Filter to only RA permits: match by email, student_id, or name
+    permits = []
+    for p in all_permits:
+        p_email = (p.email or "").lower()
+        p_sid = (p.student_id or "").strip()
+        p_name = (p.name or "").lower().strip()
+        if p_email in ra_emails:
+            permits.append(p)
+        elif p_sid in ra_student_ids:
+            permits.append(p)
+        elif p_name in ra_names:
+            permits.append(p)
+
     if not permits:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
 
-    # Expand ra_emails to include permit emails found via student_id match
+    # Expand ra_emails to include permit emails found via other matches
     for p in permits:
         if p.email:
             ra_emails.add(p.email.lower())
