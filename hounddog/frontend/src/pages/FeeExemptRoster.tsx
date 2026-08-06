@@ -33,6 +33,20 @@ interface BalanceDueRow {
   payment_link_sent: boolean;
 }
 
+interface RefundDueRow {
+  application_id: string;
+  student_name: string;
+  email: string;
+  permit_type: string;
+  list_price: string;
+  expected_price: string;
+  amount_paid: string;
+  refund_amount: string;
+  permit_number: string | null;
+  stripe_payment_id: string | null;
+  refund_issued: boolean;
+}
+
 type PermitFilter = "all" | "issued" | "missing";
 
 export default function FeeExemptRoster() {
@@ -50,6 +64,10 @@ export default function FeeExemptRoster() {
   const [balanceTotal, setBalanceTotal] = useState("0.00");
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [sendingPayment, setSendingPayment] = useState<string | null>(null);
+  const [refundRows, setRefundRows] = useState<RefundDueRow[]>([]);
+  const [refundTotal, setRefundTotal] = useState("0.00");
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [issuingRefund, setIssuingRefund] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("roster");
 
   const load = useCallback(async () => {
@@ -80,8 +98,23 @@ export default function FeeExemptRoster() {
     }
   }, [message]);
 
+  const loadRefundDue = useCallback(async () => {
+    setRefundLoading(true);
+    try {
+      const res = await fetch("/api/admin/fee-exempt/refund-due", { headers: await authHeaders() });
+      if (!res.ok) throw new Error("Failed to load refund data");
+      const data = await res.json();
+      setRefundRows(data.rows);
+      setRefundTotal(data.total_refundable);
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setRefundLoading(false);
+    }
+  }, [message]);
+
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { if (activeTab === "balance") loadBalanceDue(); }, [activeTab, loadBalanceDue]);
+  useEffect(() => { if (activeTab === "balance") { loadBalanceDue(); loadRefundDue(); } }, [activeTab, loadBalanceDue, loadRefundDue]);
 
   async function handleUpload(file: File, replace: boolean) {
     setUploading(true);
@@ -213,6 +246,27 @@ export default function FeeExemptRoster() {
       message.error(e.message);
     } finally {
       setSendingPayment(null);
+    }
+  }
+
+  async function handleIssueRefund(appId: string) {
+    setIssuingRefund(appId);
+    try {
+      const res = await fetch(`/api/admin/fee-exempt/refund-due/${appId}/issue-refund`, {
+        method: "POST",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to issue refund");
+      }
+      const data = await res.json();
+      message.success(`Refund of $${data.refund_amount} issued (${data.refund_id})`);
+      loadRefundDue();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setIssuingRefund(null);
     }
   }
 
@@ -498,6 +552,106 @@ export default function FeeExemptRoster() {
           },
         ]}
       />
+
+      <div className="mt-8 border-t pt-6">
+        <h4 className="text-base font-semibold mb-1">Refund Due — RAs who paid without discount</h4>
+        <p className="text-sm text-gray-500 mb-3">
+          These RAs paid full price before the $50 discount was applied. Issue a partial Stripe refund to return the difference.
+        </p>
+
+        {refundRows.length > 0 && (
+          <div className="flex gap-6 mb-4">
+            <Statistic title="RAs owed refund" value={refundRows.length} />
+            <Statistic title="Total refundable" value={`$${parseFloat(refundTotal).toFixed(2)}`} />
+          </div>
+        )}
+
+        {refundRows.length === 0 && !refundLoading && (
+          <div className="text-center py-6 text-gray-400">
+            No RAs overpaid. All discounts were applied correctly or no payments found.
+          </div>
+        )}
+
+        <Table
+          dataSource={refundRows}
+          loading={refundLoading}
+          rowKey="application_id"
+          size="small"
+          pagination={false}
+          columns={[
+            {
+              title: "Name",
+              dataIndex: "student_name",
+              key: "name",
+              render: (v: string) => <span className="font-medium">{v}</span>,
+            },
+            { title: "Email", dataIndex: "email", key: "email", ellipsis: true },
+            { title: "Permit Type", dataIndex: "permit_type", key: "permit_type" },
+            {
+              title: "List Price",
+              dataIndex: "list_price",
+              key: "list_price",
+              render: (v: string) => `$${parseFloat(v).toFixed(2)}`,
+            },
+            {
+              title: "Should Have Paid",
+              dataIndex: "expected_price",
+              key: "expected_price",
+              render: (v: string) => `$${parseFloat(v).toFixed(2)}`,
+            },
+            {
+              title: "Actually Paid",
+              dataIndex: "amount_paid",
+              key: "amount_paid",
+              render: (v: string) => `$${parseFloat(v).toFixed(2)}`,
+            },
+            {
+              title: "Refund",
+              dataIndex: "refund_amount",
+              key: "refund_amount",
+              render: (v: string) => <span className="font-semibold text-green-600">${parseFloat(v).toFixed(2)}</span>,
+            },
+            {
+              title: "Permit #",
+              dataIndex: "permit_number",
+              key: "permit_number",
+              render: (v: string | null) => v || "—",
+            },
+            {
+              title: "Status",
+              key: "status",
+              render: (_, r: RefundDueRow) =>
+                r.refund_issued ? (
+                  <Tag color="green">Refunded</Tag>
+                ) : r.stripe_payment_id ? (
+                  <Tag>Ready</Tag>
+                ) : (
+                  <Tag color="orange">No Stripe ID</Tag>
+                ),
+            },
+            {
+              title: "",
+              key: "action",
+              width: 160,
+              render: (_, r: RefundDueRow) =>
+                r.refund_issued ? (
+                  <Tag color="green">Done</Tag>
+                ) : (
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<DollarOutlined />}
+                    loading={issuingRefund === r.application_id}
+                    disabled={!r.stripe_payment_id}
+                    onClick={() => handleIssueRefund(r.application_id)}
+                  >
+                    Issue Refund
+                  </Button>
+                ),
+            },
+          ]}
+        />
+      </div>
     </div>
       )},
     ]} />

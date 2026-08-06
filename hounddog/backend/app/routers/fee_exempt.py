@@ -586,3 +586,204 @@ async def send_balance_payment(
         "balance_due": str(balance),
         "email_sent": True,
     }
+
+
+# ── Refund Due (RAs who paid full price without their discount) ──────
+
+
+class RefundDueRow(BaseModel):
+    application_id: str
+    student_name: str
+    email: str
+    permit_type: str
+    list_price: str
+    expected_price: str
+    amount_paid: str
+    refund_amount: str
+    permit_number: str | None = None
+    stripe_payment_id: str | None = None
+    refund_issued: bool = False
+
+
+class RefundDueResponse(BaseModel):
+    rows: list[RefundDueRow]
+    total_refundable: str
+    count: int
+
+
+@router.get("/refund-due", response_model=RefundDueResponse)
+async def get_refund_due(db: AsyncSession = Depends(get_db)):
+    """RAs who paid full price and are owed a partial refund for the $50 discount."""
+    ra_discount = Decimal(str(settings.ra_discount_amount))
+
+    apps_result = await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.fee_exempt == True,  # noqa: E712
+            LotteryV2Application.status == "accepted",
+        )
+    )
+    apps = apps_result.scalars().all()
+    if not apps:
+        return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
+
+    pt_ids = {a.assigned_permit_type_id for a in apps if a.assigned_permit_type_id}
+    pt_map: dict[uuid.UUID, PermitType] = {}
+    if pt_ids:
+        pt_result = await db.execute(select(PermitType).where(PermitType.id.in_(pt_ids)))
+        for pt in pt_result.scalars().all():
+            pt_map[pt.id] = pt
+
+    emails = {a.student_email.lower() for a in apps if a.student_email}
+    payment_by_email: dict[str, Payment] = {}
+    if emails:
+        pay_result = await db.execute(
+            select(Payment).where(
+                func.lower(Payment.payer_email).in_(emails),
+                Payment.payment_type.in_(["lottery_v2_permit", "lottery_permit"]),
+            )
+        )
+        for p in pay_result.scalars().all():
+            key = (p.payer_email or "").lower()
+            if key not in payment_by_email or p.amount > payment_by_email[key].amount:
+                payment_by_email[key] = p
+
+    from ..models.permit import Permit
+    permit_by_email: dict[str, Permit] = {}
+    if emails:
+        perm_result = await db.execute(
+            select(Permit).where(
+                func.lower(Permit.email).in_(emails),
+                Permit.status == "active",
+            )
+        )
+        for pm in perm_result.scalars().all():
+            permit_by_email[(pm.email or "").lower()] = pm
+
+    rows: list[RefundDueRow] = []
+    total = Decimal("0.00")
+
+    for app in apps:
+        pt = pt_map.get(app.assigned_permit_type_id) if app.assigned_permit_type_id else None
+        if not pt:
+            continue
+
+        expected_price = max(Decimal("0.00"), pt.price - ra_discount)
+        email_key = (app.student_email or "").lower()
+        payment = payment_by_email.get(email_key)
+        if not payment:
+            continue
+
+        amount_paid = payment.amount
+        overpaid = amount_paid - expected_price
+
+        if overpaid <= 0:
+            continue
+
+        permit = permit_by_email.get(email_key)
+        refund_issued = bool(
+            app.admin_notes and "refund_issued" in app.admin_notes
+        )
+
+        rows.append(RefundDueRow(
+            application_id=str(app.id),
+            student_name=app.student_name,
+            email=app.student_email,
+            permit_type=pt.label,
+            list_price=str(pt.price),
+            expected_price=str(expected_price),
+            amount_paid=str(amount_paid),
+            refund_amount=str(overpaid),
+            permit_number=permit.permit_number if permit else None,
+            stripe_payment_id=payment.stripe_payment_id,
+            refund_issued=refund_issued,
+        ))
+        total += overpaid
+
+    return RefundDueResponse(
+        rows=rows,
+        total_refundable=str(total),
+        count=len(rows),
+    )
+
+
+@router.post("/refund-due/{app_id}/issue-refund")
+async def issue_refund(
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Issue a partial Stripe refund for the RA discount amount."""
+    ra_discount = Decimal(str(settings.ra_discount_amount))
+
+    app = await db.get(LotteryV2Application, app_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if not app.fee_exempt or app.status != "accepted":
+        raise HTTPException(400, "Application is not an accepted RA entry")
+
+    pt = await db.get(PermitType, app.assigned_permit_type_id) if app.assigned_permit_type_id else None
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    expected_price = max(Decimal("0.00"), pt.price - ra_discount)
+
+    pay_result = await db.execute(
+        select(Payment).where(
+            func.lower(Payment.payer_email) == app.student_email.lower(),
+            Payment.payment_type.in_(["lottery_v2_permit", "lottery_permit"]),
+        ).order_by(Payment.amount.desc()).limit(1)
+    )
+    payment = pay_result.scalar()
+    if not payment:
+        raise HTTPException(400, "No payment found for this student")
+
+    overpaid = payment.amount - expected_price
+    if overpaid <= 0:
+        raise HTTPException(400, "Student did not overpay — no refund needed")
+
+    if not payment.stripe_payment_id:
+        raise HTTPException(400, "No Stripe payment ID on record — manual refund required")
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    # Stripe stores payment intents as pi_xxx; checkout sessions may store cs_xxx
+    # Try to refund via payment intent first
+    stripe_id = payment.stripe_payment_id
+    try:
+        if stripe_id.startswith("cs_"):
+            session = stripe.checkout.Session.retrieve(stripe_id)
+            stripe_id = session.payment_intent
+
+        refund = stripe.Refund.create(
+            payment_intent=stripe_id,
+            amount=int(overpaid * 100),
+            reason="requested_by_customer",
+            metadata={
+                "type": "ra_discount_refund",
+                "application_id": str(app.id),
+                "student_email": app.student_email,
+                "refund_amount": str(overpaid),
+                "admin": admin.email or admin.sub,
+            },
+        )
+    except stripe.StripeError as e:
+        raise HTTPException(400, f"Stripe refund failed: {e.user_message or str(e)}")
+
+    notes = app.admin_notes or ""
+    app.admin_notes = f"{notes}\nrefund_issued:{refund.id} ${overpaid:.2f} by {admin.email}".strip()
+    await db.flush()
+
+    logger.info(
+        "Refund %s issued for %s (%s): $%s by %s",
+        refund.id, app.student_name, app.student_email, overpaid, admin.email,
+    )
+
+    return {
+        "refund_id": refund.id,
+        "refund_amount": str(overpaid),
+        "status": refund.status,
+    }
