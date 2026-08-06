@@ -609,9 +609,10 @@ class RefundDueResponse(BaseModel):
     rows: list[RefundDueRow]
     total_refundable: str
     count: int
+    debug: dict | None = None
 
 
-@router.get("/refund-due", response_model=RefundDueResponse)
+@router.get("/refund-due")
 async def get_refund_due(db: AsyncSession = Depends(get_db)):
     """RAs who paid more than (list_price - $50 discount). Works from permits + payments."""
     from ..models.fee_exempt_roster import FeeExemptRoster
@@ -773,8 +774,42 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
         ))
         total += overpaid
 
+    # Debug: trace every RA permit and why it was included or skipped
+    debug_permits = []
+    for permit in permits:
+        ek = (permit.email or "").lower()
+        pt = pt_by_code.get(permit.permit_type)
+        pay = payment_by_email.get(ek)
+        plate_pay = None
+        for plate in (permit.plates or []):
+            plate_pay = plate_payment_map.get(plate)
+            if plate_pay:
+                break
+        sess_pay = session_payment_map.get(permit.stripe_session_id) if permit.stripe_session_id else None
+        debug_permits.append({
+            "name": permit.name,
+            "email": permit.email,
+            "student_id": permit.student_id,
+            "permit_type": permit.permit_type,
+            "permit_number": permit.permit_number,
+            "stripe_session_id": permit.stripe_session_id,
+            "pt_found": pt is not None,
+            "pt_price": str(pt.price) if pt else None,
+            "payment_by_email": bool(pay),
+            "payment_by_plate": bool(plate_pay),
+            "payment_by_session": bool(sess_pay),
+            "pay_amount": str(pay.amount) if pay else (str(plate_pay.amount) if plate_pay else (str(sess_pay.amount) if sess_pay else None)),
+        })
+
     return RefundDueResponse(
         rows=rows,
+        debug={
+            "ra_roster_emails": sorted(list(ra_emails))[:20],
+            "ra_roster_student_ids": sorted(list(ra_student_ids))[:20],
+            "permits_found": len(permits),
+            "payments_found": len(payment_by_email),
+            "permit_details": debug_permits,
+        },
         total_refundable=str(total),
         count=len(rows),
     )

@@ -67,6 +67,7 @@ export default function FeeExemptRoster() {
   const [refundRows, setRefundRows] = useState<RefundDueRow[]>([]);
   const [refundTotal, setRefundTotal] = useState("0.00");
   const [refundLoading, setRefundLoading] = useState(false);
+  const [refundDebug, setRefundDebug] = useState<any>(null);
   const [issuingRefund, setIssuingRefund] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("roster");
 
@@ -106,6 +107,7 @@ export default function FeeExemptRoster() {
       const data = await res.json();
       setRefundRows(data.rows);
       setRefundTotal(data.total_refundable);
+      setRefundDebug(data.debug);
     } catch (e: any) {
       message.error(e.message);
     } finally {
@@ -570,6 +572,13 @@ export default function FeeExemptRoster() {
           <div className="text-center py-6 text-gray-400">
             No RAs overpaid. All discounts were applied correctly or no payments found.
           </div>
+        )}
+
+        {refundDebug && (
+          <details className="mt-4 text-xs border rounded p-3 bg-gray-50">
+            <summary className="cursor-pointer font-medium text-gray-500">Debug Info (temporary)</summary>
+            <pre className="mt-2 overflow-auto max-h-96 text-[10px]">{JSON.stringify(refundDebug, null, 2)}</pre>
+          </details>
         )}
 
         <Table
