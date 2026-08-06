@@ -1543,6 +1543,13 @@ export default function LotteryV2Manager() {
                 </Button>
               </Space>
             )}
+            {caseApp.status === "selected" && (
+              <Space>
+                <Button type="primary" disabled={busy} onClick={() => openManualSelect(caseApp)}>
+                  Reassign permit type
+                </Button>
+              </Space>
+            )}
             {caseApp.status === "superseded" && (
               <Space>
                 <Button type="primary" disabled={busy} onClick={() => openManualSelect(caseApp)}>
