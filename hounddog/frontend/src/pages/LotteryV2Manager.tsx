@@ -185,6 +185,13 @@ export default function LotteryV2Manager() {
   const [recoverResults, setRecoverResults] = useState<Application[] | null>(null);
   const [recoverLoading, setRecoverLoading] = useState(false);
 
+  const [addWaitlistOpen, setAddWaitlistOpen] = useState(false);
+  const [addWaitlistEmail, setAddWaitlistEmail] = useState("");
+  const [addWaitlistCampus, setAddWaitlistCampus] = useState("north");
+  const [addWaitlistTiers, setAddWaitlistTiers] = useState<{ id: string; label: string; price: number }[]>([]);
+  const [addWaitlistTierId, setAddWaitlistTierId] = useState<string | undefined>(undefined);
+  const [addWaitlistLoading, setAddWaitlistLoading] = useState(false);
+
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
 
@@ -388,6 +395,42 @@ export default function LotteryV2Manager() {
       message.error(e.message);
     } finally {
       setRecoverLoading(false);
+    }
+  }
+
+  async function loadAddWaitlistTiers(campus: string) {
+    try {
+      const res = await fetch(`/api/lottery-v2/eligible-tiers?campus=${campus}`, { headers: await authHeaders() });
+      if (res.ok) {
+        const tiers = await res.json();
+        setAddWaitlistTiers(tiers.map((t: any) => ({ id: t.id, label: t.label, price: Number(t.price) })));
+        setAddWaitlistTierId(tiers[0]?.id);
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function confirmAddWaitlist() {
+    if (!addWaitlistEmail.trim() || !addWaitlistTierId) return;
+    setAddWaitlistLoading(true);
+    try {
+      const res = await fetch("/api/lottery-v2/applications/admin-add", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: addWaitlistEmail.trim(),
+          permit_type_id: addWaitlistTierId,
+          campus: addWaitlistCampus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to add");
+      message.success(`${data.student_name} added to waitlist at position ${data.waitlist_position}`);
+      setAddWaitlistOpen(false);
+      if (activeId) loadDetail(activeId);
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setAddWaitlistLoading(false);
     }
   }
 
@@ -944,6 +987,9 @@ export default function LotteryV2Manager() {
               </Button>
               <Button onClick={() => { setRecoverOpen(true); setRecoverResults(null); setRecoverEmail(""); }}>
                 Recover student
+              </Button>
+              <Button onClick={() => { setAddWaitlistOpen(true); setAddWaitlistEmail(""); loadAddWaitlistTiers("north"); setAddWaitlistCampus("north"); }}>
+                Add to waitlist
               </Button>
               <Button disabled={busy} onClick={loadDupesReport}>
                 Duplicates report
@@ -1641,6 +1687,56 @@ export default function LotteryV2Manager() {
               </table>
             </div>
           )}
+        </div>
+      </Modal>
+
+      <Modal
+        title="Add student to waitlist"
+        open={addWaitlistOpen}
+        onCancel={() => setAddWaitlistOpen(false)}
+        onOk={confirmAddWaitlist}
+        okText="Add"
+        confirmLoading={addWaitlistLoading}
+        okButtonProps={{ disabled: !addWaitlistEmail.trim() || !addWaitlistTierId }}
+        destroyOnClose
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 m-0">
+            Create a new waitlist entry for a student. Their identity will be resolved automatically.
+          </p>
+          <div>
+            <div className="text-sm font-medium mb-1">Student email</div>
+            <Input
+              placeholder="student@moravian.edu"
+              value={addWaitlistEmail}
+              onChange={(e) => setAddWaitlistEmail(e.target.value)}
+            />
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-1">Campus</div>
+            <Select
+              className="w-full"
+              value={addWaitlistCampus}
+              onChange={(v) => { setAddWaitlistCampus(v); loadAddWaitlistTiers(v); }}
+              options={[
+                { value: "north", label: "North" },
+                { value: "south", label: "South" },
+                { value: "commuter", label: "Commuter" },
+              ]}
+            />
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-1">Permit type</div>
+            <Select
+              className="w-full"
+              value={addWaitlistTierId}
+              onChange={setAddWaitlistTierId}
+              options={addWaitlistTiers.map((t) => ({
+                value: t.id,
+                label: `${t.label} — $${t.price}`,
+              }))}
+            />
+          </div>
         </div>
       </Modal>
     </div>

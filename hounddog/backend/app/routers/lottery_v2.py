@@ -1106,6 +1106,158 @@ async def admin_search_applications(
     return [await _app_to_read(db, a, pt_by_id) for a in apps]
 
 
+class AdminAddApplication(BaseModel):
+    email: str
+    permit_type_id: uuid.UUID
+    campus: str = "north"
+
+
+@router.post("/applications/admin-add", response_model=ApplicationRead, status_code=201)
+async def admin_add_to_waitlist(
+    data: AdminAddApplication,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Admin: create a new waitlist entry for a student by email + permit type."""
+    import httpx
+    from sqlalchemy import text
+
+    email = data.email.strip().lower()
+    if not email:
+        raise HTTPException(400, "Email is required")
+
+    # Resolve student identity (Okta first, then DB fallback)
+    sub = ""
+    name = email
+    class_year: int | None = None
+
+    if settings.okta_domain and settings.okta_api_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                user_res = await client.get(
+                    f"https://{settings.okta_domain}/api/v1/users/{email}",
+                    headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                    timeout=10,
+                )
+                if user_res.status_code == 200:
+                    okta_user = user_res.json()
+                    sub = okta_user.get("id", "")
+                    profile = okta_user.get("profile", {})
+                    name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip() or email
+                    cy = profile.get(settings.okta_class_year_claim)
+                    if cy:
+                        try:
+                            class_year = int(cy)
+                        except (ValueError, TypeError):
+                            pass
+        except Exception:
+            pass
+
+    # DB fallback: check existing lottery apps or permits
+    if not sub:
+        app_row = (await db.execute(text("""
+            SELECT student_sub, student_name, class_year
+            FROM lottery_v2_applications
+            WHERE LOWER(student_email) = :email
+            ORDER BY created_at DESC LIMIT 1
+        """), {"email": email})).mappings().first()
+        if app_row:
+            sub = app_row["student_sub"] or ""
+            name = app_row["student_name"] or email
+            class_year = app_row["class_year"]
+        else:
+            perm_row = (await db.execute(text("""
+                SELECT student_id as sub, name FROM permits
+                WHERE LOWER(email) = :email AND deleted_at IS NULL
+                ORDER BY created_at DESC LIMIT 1
+            """), {"email": email})).mappings().first()
+            if perm_row:
+                sub = perm_row["sub"] or ""
+                name = perm_row["name"] or email
+
+    if not sub:
+        sub = f"admin-added:{email}"
+
+    # Get the active/drawn cycle
+    cycle = (
+        await db.execute(
+            select(LotteryV2Cycle)
+            .where(LotteryV2Cycle.status.in_(["open", "drawn"]))
+            .order_by(LotteryV2Cycle.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not cycle:
+        raise HTTPException(400, "No active lottery cycle")
+
+    # Validate permit type
+    pt = await db.get(PermitType, data.permit_type_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    # Check for duplicate non-upgrade app
+    existing = (await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.cycle_id == cycle.id,
+            LotteryV2Application.student_sub == sub,
+            LotteryV2Application.is_upgrade.is_(False),
+            LotteryV2Application.status.notin_(["superseded", "declined", "expired"]),
+        )
+    )).scalars().all()
+    if existing:
+        raise HTTPException(400, f"{name} already has an active application in this cycle")
+
+    # Pull plate/phone from most recent app if available
+    prev_app = (await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.student_sub == sub,
+        ).order_by(LotteryV2Application.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    plate = prev_app.plate if prev_app else "ADMIN-ADDED"
+    plate_state = prev_app.plate_state if prev_app else ""
+    phone = prev_app.phone if prev_app else ""
+    if not class_year and prev_app:
+        class_year = prev_app.class_year
+
+    # Calculate waitlist position
+    max_pos = (
+        await db.execute(
+            select(func.max(LotteryV2Application.waitlist_position)).where(
+                LotteryV2Application.cycle_id == cycle.id
+            )
+        )
+    ).scalar() or 0
+
+    app = LotteryV2Application(
+        cycle_id=cycle.id,
+        student_sub=sub,
+        student_email=email,
+        student_name=name,
+        class_year=class_year or 2027,
+        campus=data.campus,
+        plate=plate,
+        plate_state=plate_state,
+        phone=phone or "",
+        tier_preferences=[data.permit_type_id],
+        assigned_permit_type_id=data.permit_type_id,
+        status="waitlisted",
+        waitlist_position=max_pos + 1,
+        admin_notes=f"Added by {admin.email}",
+    )
+    db.add(app)
+
+    # Check fee-exempt roster
+    from ..services.fee_exempt import lookup_fee_exempt
+    temp_user = OktaUser(sub=sub, email=email, groups=[], given_name=name.split(" ", 1)[0], family_name=name.split(" ", 1)[1] if " " in name else "")
+    exempt = await lookup_fee_exempt(db, temp_user, extra_emails=[email], extra_names=[name])
+    if exempt:
+        app.fee_exempt = True
+
+    await db.flush()
+    logger.info("Admin %s added %s (%s) to waitlist pos %d for %s", admin.email, name, email, app.waitlist_position, pt.label)
+    return await _app_to_read(db, app)
+
+
 @router.post("/applications/{application_id}/manual-select", response_model=ApplicationRead)
 async def admin_manual_select(
     application_id: uuid.UUID,
