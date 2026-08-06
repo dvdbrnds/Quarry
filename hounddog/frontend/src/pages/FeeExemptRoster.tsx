@@ -487,6 +487,7 @@ export default function FeeExemptRoster() {
         rowKey="application_id"
         size="small"
         pagination={false}
+        scroll={{ x: 900 }}
         columns={[
           {
             title: "Name",
@@ -574,12 +575,6 @@ export default function FeeExemptRoster() {
           </div>
         )}
 
-        {refundDebug && (
-          <details className="mt-4 text-xs border rounded p-3 bg-gray-50">
-            <summary className="cursor-pointer font-medium text-gray-500">Debug Info (temporary)</summary>
-            <pre className="mt-2 overflow-auto max-h-96 text-[10px]">{JSON.stringify(refundDebug, null, 2)}</pre>
-          </details>
-        )}
 
         <Table
           dataSource={refundRows}
@@ -587,6 +582,7 @@ export default function FeeExemptRoster() {
           rowKey="application_id"
           size="small"
           pagination={false}
+          scroll={{ x: 900 }}
           columns={[
             {
               title: "Name",
