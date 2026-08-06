@@ -32,6 +32,7 @@ interface PermitStats {
   expired: number;
   expiring_soon: number;
   revoked: number;
+  unique_users: number;
 }
 
 interface PermitTypeOption { code: string; label: string; price: number; lot_assignments: string[]; }
@@ -513,6 +514,7 @@ export default function Permits() {
   const statCards = stats ? [
     { label: "Total", value: stats.total, filter: "", color: undefined as string | undefined },
     { label: "Active", value: stats.active, filter: "active", color: "#22C55E" },
+    { label: "Unique People", value: stats.unique_users, filter: "", color: "#6366F1" },
     { label: "Expiring Soon", value: stats.expiring_soon, filter: "expiring_soon", color: "#F59E0B" },
     { label: "Expired", value: stats.expired, filter: "expired", color: "#EF4444" },
     { label: "Revoked", value: stats.revoked, filter: "revoked", color: undefined },
@@ -548,7 +550,7 @@ export default function Permits() {
                 </div>
 
                 {stats && (
-                  <div className="grid grid-cols-5 gap-3 mb-4">
+                  <div className="grid grid-cols-6 gap-3 mb-4">
                     {statCards.map(sc => (
                       <Card key={sc.label} size="small" hoverable
                         className={filterStatus === sc.filter ? "!border-brand-primary !shadow-md" : ""}

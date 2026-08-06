@@ -186,10 +186,19 @@ async def get_permit_stats(db: AsyncSession) -> dict:
         select(func.count()).select_from(base.subquery())
     )).scalar() or 0
 
+    unique_users = (await db.execute(
+        select(func.count(func.distinct(Permit.email))).where(
+            Permit.deleted_at.is_(None),
+            Permit.status == "active",
+            Permit.email.isnot(None),
+        )
+    )).scalar() or 0
+
     return {
         "total": total_count,
         "active": active_count,
         "expired": expired_count,
         "expiring_soon": expiring_soon_count,
         "revoked": revoked_count,
+        "unique_users": unique_users,
     }

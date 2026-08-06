@@ -588,7 +588,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ permits }),
       }),
-    stats: () => request<{ total: number; active: number; expired: number; expiring_soon: number; revoked: number }>("/permits/stats"),
+    stats: () => request<{ total: number; active: number; expired: number; expiring_soon: number; revoked: number; unique_users: number }>("/permits/stats"),
     bulkStatus: (ids: string[], status: string) =>
       request<{ updated: number }>("/permits/bulk-status", {
         method: "POST",
