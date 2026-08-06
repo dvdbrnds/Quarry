@@ -39,7 +39,7 @@ from ..services.lottery_v2_runner import (
 )
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
-from ..services.lot_assignment import permit_lot_matches
+from ..services.lot_assignment import permit_lot_matches, resolve_lot_code
 
 logger = logging.getLogger("quarry.lottery_v2")
 
@@ -847,9 +847,7 @@ async def accept_offer(
             applied_voucher = None
 
     if discounted_price <= 0:
-        lot_assignment = app.assigned_lot or (
-            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
-        )
+        lot_assignment = resolve_lot_code(app.assigned_lot, list(pt.lot_assignments or []))
         new_permit = Permit(
             permit_number=await next_permit_number(db),
             name=app.student_name,

@@ -18,6 +18,7 @@ from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
+from ..services.lot_assignment import resolve_lot_code
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 
@@ -633,9 +634,7 @@ async def direct_purchase(
 
     if False:  # fee_exempt disabled
         exempt = None
-        lot_assignment = data.lot_preference or (
-            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
-        )
+        lot_assignment = resolve_lot_code(data.lot_preference, list(pt.lot_assignments or []))
         new_permit = Permit(
             permit_number=await next_permit_number(db),
             student_id=user.sub,
@@ -719,9 +718,7 @@ async def direct_purchase(
 
     # Full waiver at $0 without Stripe
     if discounted_price <= 0:
-        lot_assignment = data.lot_preference or (
-            ",".join(pt.lot_assignments) if pt.lot_assignments else ""
-        )
+        lot_assignment = resolve_lot_code(data.lot_preference, list(pt.lot_assignments or []))
         new_permit = Permit(
             permit_number=await next_permit_number(db),
             student_id=user.sub,
@@ -773,9 +770,7 @@ async def direct_purchase(
 
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
 
-    lot_assignment = data.lot_preference or (
-        ",".join(pt.lot_assignments) if pt.lot_assignments else ""
-    )
+    lot_assignment = resolve_lot_code(data.lot_preference, list(pt.lot_assignments or []))
 
     session = stripe.checkout.Session.create(
         customer_email=user.email,

@@ -22,6 +22,7 @@ from ..database import async_session
 from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
+from ..services.lot_assignment import resolve_lot_code
 from ..services.permit_numbering import next_permit_number
 from .timeutils import today_local
 
@@ -75,14 +76,14 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
             try:
                 pt = await db.get(PermitType, uuid.UUID(permit_type_id))
                 if pt and pt.lot_assignments:
-                    lot_assignment = ",".join(pt.lot_assignments)
+                    lot_assignment = resolve_lot_code(None, list(pt.lot_assignments))
             except (ValueError, TypeError):
                 pass
 
     if not lot_assignment:
         lot_from_meta = metadata.get("lot_assignments", "")
         if lot_from_meta:
-            lot_assignment = lot_from_meta
+            lot_assignment = lot_from_meta.split(",")[0].strip() if lot_from_meta else ""
 
     amount_total = session_data.get("amount_total", 0)
 

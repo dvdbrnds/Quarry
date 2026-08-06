@@ -412,6 +412,8 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET total_spaces = 25 WHERE name = 'W. Locust St'",
             "UPDATE parking_lots SET total_spaces = 50 WHERE name = 'Lehigh St'",
             "UPDATE parking_lots SET total_spaces = 100 WHERE name = 'Spring St'",
+            # Fix north_premium_resident: remove street name, keep lot code only
+            "UPDATE permit_types SET lot_assignments = '{I}' WHERE code = 'north_premium_resident' AND lot_assignments @> ARRAY['W. Laurel St']",
             # Update COMMUTER_EVENING_SCHEDULE on all FSC lots (change 07:00 to 06:00)
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
@@ -657,7 +659,7 @@ async def lifespan(app: FastAPI):
                     {"code": "commuter_undergrad", "label": "Regular Commuter (Undergrad)", "eligible": "Commuter undergrads", "price": 100, "max_capacity": 264, "valid_days": 365, "lot_assignments": ["X", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 1},
                     {"code": "commuter_grad", "label": "Regular Commuter (Grad)", "eligible": "Grad/seminary/continuing ed", "price": 100, "max_capacity": 112, "valid_days": 365, "lot_assignments": ["W", "A", "F", "H", "M", "N", "O", "R", "S"], "is_purchasable_online": True, "sort_order": 2},
                     {"code": "premium_commuter", "label": "Extended Premium Commuter", "eligible": "Commuter students", "price": 150, "max_capacity": 200, "valid_days": 365, "lot_assignments": ["Main St", "Iron St.", "Monocacy St.", "Lenox Ave", "W. Greenwich St.", "Lorain Ave.", "W. Elizabeth", "W. Locust St"], "is_purchasable_online": True, "sort_order": 3},
-                    {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 58, "valid_days": 365, "lot_assignments": ["I", "W. Laurel St"], "is_purchasable_online": False, "sort_order": 4},
+                    {"code": "north_premium_resident", "label": "North Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 58, "valid_days": 365, "lot_assignments": ["I"], "is_purchasable_online": False, "sort_order": 4},
                     {"code": "north_guaranteed_resident", "label": "North Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 218, "valid_days": 365, "lot_assignments": ["B", "C", "D", "G", "P", "T"], "is_purchasable_online": False, "sort_order": 5},
                     {"code": "steel_field_resident", "label": "Steel Field Resident", "eligible": "Resident students", "price": 75, "max_capacity": 42, "valid_days": 365, "lot_assignments": ["Q"], "is_purchasable_online": True, "sort_order": 6},
                     {"code": "south_premium_resident", "label": "South Premium Resident", "eligible": "Resident students (seniority-based)", "price": 400, "max_capacity": 40, "valid_days": 365, "lot_assignments": ["Z"], "is_purchasable_online": False, "sort_order": 7},

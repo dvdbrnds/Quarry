@@ -44,6 +44,16 @@ def effective_lot_assignment(
     return format_lot_assignment(type_defaults)
 
 
+def resolve_lot_code(assigned_lot: str | None, type_lots: list[str]) -> str:
+    """Pick the single lot code for a permit: explicit assignment wins,
+    otherwise first lot from the type config."""
+    if assigned_lot:
+        return assigned_lot
+    if type_lots:
+        return type_lots[0]
+    return ""
+
+
 def permit_lot_matches(lot: str) -> ColumnElement[bool]:
     """Match permits assigned to exactly this lot or including it in a CSV list."""
     lot = (lot or "").strip()
