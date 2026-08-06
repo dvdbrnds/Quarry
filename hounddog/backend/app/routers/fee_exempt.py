@@ -848,16 +848,34 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
         for r in roster_rows
     ]
 
+    # Direct search for "davis" in all permits and payments
+    davis_permits = [
+        {"name": p.name, "email": p.email, "student_id": p.student_id,
+         "permit_type": p.permit_type, "permit_number": p.permit_number,
+         "status": p.status, "plates": p.plates}
+        for p in all_permits
+        if "davis" in (p.name or "").lower() or "davisk" in (p.email or "").lower()
+    ]
+    davis_payments_result = await db.execute(
+        select(Payment).where(
+            func.lower(Payment.payer_email).like("%davis%")
+            | func.lower(Payment.payer_email).like("%davisk%")
+        )
+    )
+    davis_payments = [
+        {"email": p.payer_email, "amount": str(p.amount), "type": p.payment_type,
+         "plate": p.plate, "stripe_id": p.stripe_payment_id, "desc": p.description}
+        for p in davis_payments_result.scalars().all()
+    ]
+
     return RefundDueResponse(
         rows=rows,
         debug={
-            "ra_roster_names": sorted(list(ra_names)),
-            "ra_roster_entries": roster_detail,
-            "ra_roster_emails": sorted(list(ra_emails))[:30],
+            "davis_permits": davis_permits,
+            "davis_payments": davis_payments,
             "permits_found": len(permits),
             "all_active_permits_checked": len(all_permits),
             "payments_found": len(payment_by_email),
-            "permit_details": debug_permits,
         },
         total_refundable=str(total),
         count=len(rows),
