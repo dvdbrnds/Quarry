@@ -1138,31 +1138,49 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
             sub = perm_row["sub"] or ""
             name = perm_row["name"] or email
 
-    # Determine role: check for student indicators first (class year or
-    # student applications exist), since students can also appear in
-    # faculty/staff Okta groups (e.g. RAs in "Res Life Staff").
+    # Determine role: check for student indicators first (class year,
+    # applications, or student-type permits), since students can also
+    # appear in faculty/staff Okta groups (e.g. RAs in "Res Life Staff").
     has_student_record = False
+
+    stu_check = await db.execute(text("""
+        SELECT 1 FROM lottery_v2_applications
+        WHERE LOWER(student_email) = :email LIMIT 1
+    """), {"email": email})
+    has_student_record = stu_check.scalar() is not None
+
     if not has_student_record:
-        stu_check = await db.execute(text("""
-            SELECT 1 FROM lottery_v2_applications
+        stu_check2 = await db.execute(text("""
+            SELECT 1 FROM permit_applications
             WHERE LOWER(student_email) = :email LIMIT 1
         """), {"email": email})
-        has_student_record = stu_check.scalar() is not None
+        has_student_record = stu_check2.scalar() is not None
 
-    if class_year or has_student_record:
+    if not has_student_record:
+        stu_permit = await db.execute(text("""
+            SELECT 1 FROM permits
+            WHERE LOWER(email) = :email AND deleted_at IS NULL
+            AND permit_type NOT IN ('faculty_staff')
+            LIMIT 1
+        """), {"email": email})
+        has_student_record = stu_permit.scalar() is not None
+
+    # Check if they have an actual faculty_staff permit
+    has_staff_permit = False
+    staff_perm_check = await db.execute(text("""
+        SELECT 1 FROM permits
+        WHERE LOWER(email) = :email AND deleted_at IS NULL
+        AND permit_type = 'faculty_staff' AND status = 'active'
+        LIMIT 1
+    """), {"email": email})
+    has_staff_permit = staff_perm_check.scalar() is not None
+
+    if has_staff_permit:
+        role = "employee"
+    elif class_year or has_student_record:
         role = "student"
     else:
-        from .auth.okta import OktaUser
-        temp_user = OktaUser(
-            sub=sub or f"impersonated:{email}",
-            email=email,
-            groups=groups,
-            given_name=name.split(" ", 1)[0],
-            family_name=name.split(" ", 1)[1] if " " in name else "",
-            display_name=name,
-            class_year=class_year,
-        )
-        role = temp_user.role if temp_user.role != "none" else "student"
+        role = "student"
 
     return {
         "sub": sub or f"impersonated:{email}",
