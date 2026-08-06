@@ -14,10 +14,30 @@ from pathlib import Path
 from sqlalchemy import text, inspect as sa_inspect
 
 from ..database import engine, async_session
+from ..models.audit_log import AuditLog
 
 logger = logging.getLogger("quarry.backup_scheduler")
 
 BACKUP_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "backups"
+
+
+async def _audit(summary: str, action: str = "POST", details: dict | None = None):
+    """Write a system-level audit entry visible in the Activity Log."""
+    try:
+        async with async_session() as db:
+            async with db.begin():
+                db.add(AuditLog(
+                    user_email="system:backup_scheduler",
+                    user_sub="system",
+                    action=action,
+                    resource_type="backup",
+                    endpoint="/system/backup_scheduler",
+                    summary=summary,
+                    response_status=200,
+                    changes=details,
+                ))
+    except Exception as e:
+        logger.warning("Failed to write backup audit entry: %s", e)
 SCHEDULE_FILE = BACKUP_DIR / "_schedule.json"
 SKIP_TABLES = {"alembic_version", "backup_snapshots"}
 
@@ -362,6 +382,11 @@ async def process_scheduled_backups():
         await _write_schedule(config)
         logger.info("Backup scheduler: next_run updated to %s", config["next_run"])
 
+        await _audit(
+            f"Scheduled backup completed: {filename}",
+            details={"filename": filename, "next_run": config["next_run"]},
+        )
+
         drive_folder_id = config.get("google_drive_folder_id")
         if drive_folder_id:
             filepath = BACKUP_DIR / filename
@@ -378,12 +403,15 @@ async def process_scheduled_backups():
                     config["last_drive_file_id"] = file_id
                     await _write_schedule(config)
                     logger.info("Backup uploaded to Google Drive: %s", file_id)
+                    await _audit(f"Backup uploaded to Google Drive: {file_id}")
                 else:
                     logger.warning("Google Drive upload returned no file ID")
             except Exception as e:
                 logger.error("Google Drive upload failed (backup still saved in DB): %s", e)
+                await _audit(f"Google Drive upload failed: {e}", action="DELETE")
 
         _cleanup_old_backups(retention)
         await _cleanup_old_backups_db(retention)
     except Exception as e:
         logger.error("Scheduled backup failed: %s", e, exc_info=True)
+        await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")

@@ -20,7 +20,7 @@ const ACTION_COLORS: Record<string, string> = {
 const RESOURCE_TYPES = [
   "tickets", "permits", "lots", "devices", "sync", "violation_types",
   "permit_types", "academic_calendar", "settings", "payments", "auth", "audit",
-  "lottery_v2",
+  "lottery_v2", "backup",
 ];
 
 function ExpandedDetails({ entry }: { entry: AuditEntry }) {
