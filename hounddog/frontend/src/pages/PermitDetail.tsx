@@ -55,9 +55,10 @@ export default function PermitDetail() {
   ];
 
   const paymentCols: ColumnsType<any> = [
-    { title: "Date", dataIndex: "created_at", key: "date", render: v => v ? new Date(v).toLocaleDateString() : "—" },
+    { title: "Date", dataIndex: "paid_at", key: "date", render: v => v ? new Date(v).toLocaleDateString() : "—" },
+    { title: "Description", dataIndex: "description", key: "desc", render: (v: string, r: any) => v || r.payment_type?.replace(/_/g, " ") || "Payment" },
     { title: "Amount", dataIndex: "amount", key: "amount", render: v => `$${v}` },
-    { title: "Status", dataIndex: "status", key: "status", render: v => <span className="capitalize">{v}</span> },
+    { title: "Method", dataIndex: "method", key: "method", render: v => <span className="capitalize">{v?.replace(/_/g, " ")}</span> },
   ];
 
   const relatedCols: ColumnsType<any> = [
@@ -101,14 +102,21 @@ export default function PermitDetail() {
       key: "timeline", label: "Timeline",
       children: data.audit_log.length === 0
         ? <Empty description="No activity recorded" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        : <Timeline items={data.audit_log.map((entry: any) => ({
-            children: (
-              <div className="flex gap-3 items-start">
-                <div className="flex-1"><div className="text-sm">{entry.summary}</div><div className="text-xs text-ink-mute">{new Date(entry.timestamp).toLocaleString()} by {entry.user_email}</div></div>
-                <Tag color={entry.action === "POST" ? "green" : entry.action === "DELETE" ? "red" : "blue"}>{entry.action}</Tag>
-              </div>
-            ),
-          }))} />,
+        : <Timeline items={data.audit_log.map((entry: any) => {
+            const actionColors: Record<string, string> = {
+              CREATE: "green", APPLY: "blue", PAYMENT: "gold",
+              UPDATE: "cyan", POST: "green", PUT: "cyan",
+              PATCH: "cyan", DELETE: "red",
+            };
+            return {
+              children: (
+                <div className="flex gap-3 items-start">
+                  <div className="flex-1"><div className="text-sm">{entry.summary}</div><div className="text-xs text-ink-mute">{new Date(entry.timestamp).toLocaleString()} — {entry.user_email}</div></div>
+                  <Tag color={actionColors[entry.action] || "default"}>{entry.action}</Tag>
+                </div>
+              ),
+            };
+          })} />,
     },
     {
       key: "related", label: "Related",

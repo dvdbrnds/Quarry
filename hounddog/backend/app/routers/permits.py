@@ -621,6 +621,8 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
 
 @router.get("/{permit_id}/history")
 async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from ..models.lottery_v2 import LotteryV2Application
+
     permit = await db.get(Permit, permit_id)
     if not permit or permit.deleted_at:
         raise HTTPException(404, "Permit not found")
@@ -634,20 +636,92 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
     )
     tickets = tickets_result.scalars().all()
 
+    ticket_ids = [t.id for t in tickets]
+    ticket_payment_filter = Payment.ticket_id.in_(ticket_ids) if ticket_ids else False
+
+    permit_payment_types = (
+        "permit_purchase", "lottery_permit", "lottery_v2_permit",
+        "standalone_permit_purchase", "direct_permit_purchase",
+        "admin_permit_charge",
+    )
+    permit_payment_filter = or_(
+        Payment.payer_email == permit.email,
+        Payment.plate.in_(permit.plates),
+    ) if permit.email else Payment.plate.in_(permit.plates)
+
     payments_result = await db.execute(
         select(Payment).where(
-            Payment.ticket_id.in_([t.id for t in tickets])
+            or_(
+                ticket_payment_filter,
+                (Payment.payment_type.in_(permit_payment_types)) & permit_payment_filter,
+            )
         ).order_by(desc(Payment.created_at))
     )
     payments = payments_result.scalars().all()
 
+    # Build timeline from lifecycle events instead of raw audit log
+    timeline: list[dict] = []
+
+    # Permit creation
+    if permit.created_at:
+        timeline.append({
+            "timestamp": permit.created_at.isoformat(),
+            "summary": "Permit created",
+            "action": "CREATE",
+            "user_email": permit.email or "system",
+        })
+
+    # Lottery application lifecycle
+    app_result = await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.student_email == permit.email,
+            LotteryV2Application.plate == (permit.plates[0] if permit.plates else ""),
+            LotteryV2Application.status.in_(["accepted", "selected", "waitlisted", "paid"]),
+        ).order_by(desc(LotteryV2Application.created_at)).limit(1)
+    )
+    app = app_result.scalars().first()
+    if app:
+        timeline.append({
+            "timestamp": app.created_at.isoformat(),
+            "summary": "Application submitted",
+            "action": "APPLY",
+            "user_email": app.student_email,
+        })
+        if app.status in ("selected", "accepted", "paid") and app.updated_at and app.updated_at != app.created_at:
+            timeline.append({
+                "timestamp": app.updated_at.isoformat(),
+                "summary": f"Application status: {app.status}",
+                "action": "UPDATE",
+                "user_email": "system",
+            })
+
+    # Payment events
+    for pay in payments:
+        label = pay.description or pay.payment_type or "Payment"
+        timeline.append({
+            "timestamp": (pay.paid_at or pay.created_at).isoformat(),
+            "summary": f"{label} — ${pay.amount}",
+            "action": "PAYMENT",
+            "user_email": pay.payer_email or permit.email or "—",
+        })
+
+    # Status changes from audit log (only meaningful mutations, not GETs)
     audit_result = await db.execute(
         select(AuditLog).where(
             AuditLog.resource_type == "permits",
             AuditLog.resource_id == str(permit_id),
+            AuditLog.action.in_(["POST", "PUT", "PATCH", "DELETE"]),
         ).order_by(desc(AuditLog.timestamp)).limit(50)
     )
-    audit_entries = audit_result.scalars().all()
+    for a in audit_result.scalars().all():
+        timeline.append({
+            "timestamp": a.timestamp.isoformat(),
+            "summary": a.summary,
+            "action": a.action,
+            "user_email": a.user_email,
+        })
+
+    timeline.sort(key=lambda e: e["timestamp"])
 
     prior_result = await db.execute(
         select(Permit).where(
@@ -683,26 +757,18 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
         "payments": [
             {
                 "id": str(p.id),
-                "ticket_id": str(p.ticket_id),
+                "ticket_id": str(p.ticket_id) if p.ticket_id else None,
                 "amount": str(p.amount),
                 "method": p.method,
+                "payment_type": p.payment_type,
+                "description": p.description,
                 "status": "paid",
                 "paid_at": p.paid_at.isoformat() if p.paid_at else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in payments
         ],
-        "audit_log": [
-            {
-                "id": str(a.id),
-                "timestamp": a.timestamp.isoformat(),
-                "user_email": a.user_email,
-                "action": a.action,
-                "summary": a.summary,
-                "changes": a.changes,
-            }
-            for a in audit_entries
-        ],
+        "audit_log": timeline,
         "prior_permits": [
             {
                 "id": str(p.id),
