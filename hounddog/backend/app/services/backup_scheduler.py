@@ -324,11 +324,26 @@ async def process_scheduled_backups():
             logger.warning("Backup scheduler: invalid next_run '%s', recomputing", next_run_str)
             next_run = _compute_next_run(frequency, time_str)
     else:
-        next_run = _compute_next_run(frequency, time_str)
-        config["next_run"] = next_run.isoformat()
-        await _write_schedule(config)
-        logger.info("Backup scheduler: no next_run set, initialized to %s", next_run.isoformat())
-        return
+        # No next_run yet — check if we've ever run. If not, or if last_run
+        # is older than the frequency interval, run now (catch-up).
+        last_run_str = config.get("last_run")
+        if last_run_str:
+            try:
+                last_run = datetime.fromisoformat(last_run_str)
+                if last_run.tzinfo is None:
+                    last_run = last_run.replace(tzinfo=timezone.utc)
+                delta = FREQUENCY_DELTAS.get(frequency, timedelta(days=1))
+                if now - last_run < delta:
+                    next_run = _compute_next_run(frequency, time_str)
+                    config["next_run"] = next_run.isoformat()
+                    await _write_schedule(config)
+                    logger.info("Backup scheduler: last_run recent (%s), next at %s", last_run_str, next_run.isoformat())
+                    return
+            except (ValueError, TypeError):
+                pass
+        # Never run or overdue — fall through to run now
+        logger.info("Backup scheduler: no next_run and overdue (last_run=%s), running now", config.get("last_run"))
+        next_run = now  # Force immediate run
 
     logger.info(
         "Backup scheduler: now=%s, next_run=%s, due=%s",
