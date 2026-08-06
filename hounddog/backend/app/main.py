@@ -413,7 +413,7 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET total_spaces = 50 WHERE name = 'Lehigh St'",
             "UPDATE parking_lots SET total_spaces = 100 WHERE name = 'Spring St'",
             # Fix north_premium_resident: remove street name, keep lot code only
-            "UPDATE permit_types SET lot_assignments = '{I}' WHERE code = 'north_premium_resident' AND lot_assignments @> ARRAY['W. Laurel St']",
+            "UPDATE permit_types SET lot_assignments = '{I}'::varchar[] WHERE code = 'north_premium_resident' AND lot_assignments::text[] @> ARRAY['W. Laurel St']",
             # Update COMMUTER_EVENING_SCHEDULE on all FSC lots (change 07:00 to 06:00)
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
