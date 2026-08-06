@@ -824,12 +824,24 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
             "pay_amount": str(pay.amount) if pay else (str(plate_pay.amount) if plate_pay else (str(sess_pay.amount) if sess_pay else None)),
         })
 
+    # Build roster detail for debug
+    roster_detail = [
+        {
+            "first": r[2], "last": r[3],
+            "email": r[0], "sid": r[1],
+            "match_name": f"{(r[2] or '').strip()} {(r[3] or '').strip()}".lower(),
+        }
+        for r in roster_rows
+    ]
+
     return RefundDueResponse(
         rows=rows,
         debug={
-            "ra_roster_emails": sorted(list(ra_emails))[:20],
-            "ra_roster_student_ids": sorted(list(ra_student_ids))[:20],
+            "ra_roster_names": sorted(list(ra_names)),
+            "ra_roster_entries": roster_detail,
+            "ra_roster_emails": sorted(list(ra_emails))[:30],
             "permits_found": len(permits),
+            "all_active_permits_checked": len(all_permits),
             "payments_found": len(payment_by_email),
             "permit_details": debug_permits,
         },
