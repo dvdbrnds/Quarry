@@ -1321,7 +1321,7 @@ async def admin_upgrade_permit(
     # Apply any applicable discounts to the new price
     from ..services.group_discount import resolve_program_discount, apply_flat_discount
 
-    admin_as_user = OktaUser(sub=app.student_sub, email=app.student_email)
+    admin_as_user = OktaUser(sub=app.student_sub, email=app.student_email, groups=[])
     prog_discount = await resolve_program_discount(db, admin_as_user)
     new_discounted = apply_flat_discount(new_pt.price, prog_discount)
     old_discounted = apply_flat_discount(old_pt.price, prog_discount)
