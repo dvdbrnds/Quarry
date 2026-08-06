@@ -619,16 +619,23 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
 
     ra_discount = Decimal(str(settings.ra_discount_amount))
 
-    # Get all RA emails from the roster
-    roster_result = await db.execute(select(FeeExemptRoster.email))
-    ra_emails = {(r[0] or "").lower() for r in roster_result.all() if r[0]}
-    if not ra_emails:
+    # Get all RA identifiers from the roster (email + student_id)
+    roster_result = await db.execute(
+        select(FeeExemptRoster.email, FeeExemptRoster.student_id)
+    )
+    roster_rows = roster_result.all()
+    ra_emails = {(r[0] or "").lower() for r in roster_rows if r[0]}
+    ra_student_ids = {r[1] for r in roster_rows if r[1]}
+
+    if not ra_emails and not ra_student_ids:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
 
-    # Find active permits held by RAs
+    # Find active permits held by RAs (match by email OR student_id)
+    email_filter = func.lower(Permit.email).in_(ra_emails) if ra_emails else False
+    sid_filter = Permit.student_id.in_(ra_student_ids) if ra_student_ids else False
     perm_result = await db.execute(
         select(Permit).where(
-            func.lower(Permit.email).in_(ra_emails),
+            (email_filter) | (sid_filter),
             Permit.status == "active",
             Permit.deleted_at.is_(None),
         )
@@ -636,6 +643,11 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
     permits = perm_result.scalars().all()
     if not permits:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
+
+    # Expand ra_emails to include permit emails found via student_id match
+    for p in permits:
+        if p.email:
+            ra_emails.add(p.email.lower())
 
     # Resolve permit types by code
     pt_codes = {p.permit_type for p in permits if p.permit_type}
@@ -728,10 +740,18 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
                     break
         if not payment and permit.stripe_session_id:
             payment = session_payment_map.get(permit.stripe_session_id)
-        if not payment:
+
+        # If no Payment record found but permit exists with a stripe session,
+        # the RA paid the full list price (permit wouldn't exist otherwise)
+        if payment:
+            amount_paid = payment.amount
+            stripe_id = payment.stripe_payment_id
+        elif permit.stripe_session_id:
+            amount_paid = pt.price
+            stripe_id = permit.stripe_session_id
+        else:
             continue
 
-        amount_paid = payment.amount
         overpaid = amount_paid - expected_price
         if overpaid <= 0:
             continue
@@ -748,7 +768,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
             amount_paid=str(amount_paid),
             refund_amount=str(overpaid),
             permit_number=permit.permit_number,
-            stripe_payment_id=payment.stripe_payment_id,
+            stripe_payment_id=stripe_id,
             refund_issued=refund_notes.get(email_key, False),
         ))
         total += overpaid
@@ -790,19 +810,26 @@ async def issue_refund(
             Payment.payment_type.in_([
                 "lottery_v2_permit", "lottery_permit",
                 "permit_purchase", "standalone_permit_purchase",
-                "direct_permit_purchase",
+                "direct_permit_purchase", "admin_permit_charge",
             ]),
         ).order_by(Payment.amount.desc()).limit(1)
     )
     payment = pay_result.scalar()
-    if not payment:
+
+    if payment:
+        amount_paid = payment.amount
+        stripe_id = payment.stripe_payment_id
+    elif permit.stripe_session_id:
+        amount_paid = pt.price
+        stripe_id = permit.stripe_session_id
+    else:
         raise HTTPException(400, "No payment found for this student")
 
-    overpaid = payment.amount - expected_price
+    overpaid = amount_paid - expected_price
     if overpaid <= 0:
         raise HTTPException(400, "Student did not overpay — no refund needed")
 
-    if not payment.stripe_payment_id:
+    if not stripe_id:
         raise HTTPException(400, "No Stripe payment ID on record — manual refund required")
 
     if not settings.stripe_secret_key:
