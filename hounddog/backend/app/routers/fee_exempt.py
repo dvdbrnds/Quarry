@@ -614,17 +614,32 @@ class RefundDueResponse(BaseModel):
 @router.get("/refund-due", response_model=RefundDueResponse)
 async def get_refund_due(db: AsyncSession = Depends(get_db)):
     """RAs who paid full price and are owed a partial refund for the $50 discount."""
+    from ..models.fee_exempt_roster import FeeExemptRoster
+    from ..models.permit import Permit
+
     ra_discount = Decimal(str(settings.ra_discount_amount))
 
+    # Get all RA emails from the roster
+    roster_result = await db.execute(select(FeeExemptRoster.email))
+    ra_emails = {(r[0] or "").lower() for r in roster_result.all() if r[0]}
+    if not ra_emails:
+        return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
+
+    # Find all accepted applications from RAs (by roster OR fee_exempt flag)
     apps_result = await db.execute(
         select(LotteryV2Application).where(
-            LotteryV2Application.fee_exempt == True,  # noqa: E712
             LotteryV2Application.status == "accepted",
+            LotteryV2Application.assigned_permit_type_id.isnot(None),
+            func.lower(LotteryV2Application.student_email).in_(ra_emails)
+            | (LotteryV2Application.fee_exempt == True),  # noqa: E712
         )
     )
     apps = apps_result.scalars().all()
     if not apps:
         return RefundDueResponse(rows=[], total_refundable="0.00", count=0)
+
+    # Only keep apps whose email is on the RA roster or flagged fee_exempt
+    apps = [a for a in apps if (a.student_email or "").lower() in ra_emails or a.fee_exempt]
 
     pt_ids = {a.assigned_permit_type_id for a in apps if a.assigned_permit_type_id}
     pt_map: dict[uuid.UUID, PermitType] = {}
@@ -633,13 +648,17 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
         for pt in pt_result.scalars().all():
             pt_map[pt.id] = pt
 
-    emails = {a.student_email.lower() for a in apps if a.student_email}
+    emails = {(a.student_email or "").lower() for a in apps if a.student_email}
     payment_by_email: dict[str, Payment] = {}
     if emails:
         pay_result = await db.execute(
             select(Payment).where(
                 func.lower(Payment.payer_email).in_(emails),
-                Payment.payment_type.in_(["lottery_v2_permit", "lottery_permit"]),
+                Payment.payment_type.in_([
+                    "lottery_v2_permit", "lottery_permit",
+                    "permit_purchase", "standalone_permit_purchase",
+                    "direct_permit_purchase",
+                ]),
             )
         )
         for p in pay_result.scalars().all():
@@ -647,7 +666,6 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
             if key not in payment_by_email or p.amount > payment_by_email[key].amount:
                 payment_by_email[key] = p
 
-    from ..models.permit import Permit
     permit_by_email: dict[str, Permit] = {}
     if emails:
         perm_result = await db.execute(
