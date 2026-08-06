@@ -630,7 +630,7 @@ export const api = {
         return request<LotClosure[]>(`/lots/closures/all${qs}`);
       },
       listForLot: (lotId: string) => request<LotClosure[]>(`/lots/${lotId}/closures`),
-      schedule: (data: { lot_id: string; reason?: string; closes_at: string; reopens_at?: string; is_immediate?: boolean }) =>
+      schedule: (data: { lot_id: string; reason?: string; closes_at: string; reopens_at?: string; is_immediate?: boolean; recipients?: string[] }) =>
         request<LotClosure>("/lots/closures", { method: "POST", body: JSON.stringify(data) }),
       update: (closureId: string, data: Partial<LotClosure>) =>
         request<LotClosure>(`/lots/closures/${closureId}`, { method: "PUT", body: JSON.stringify(data) }),

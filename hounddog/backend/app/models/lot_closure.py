@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Text, Boolean, func, ForeignKey
+from sqlalchemy import String, DateTime, Text, Boolean, func, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,7 @@ class LotClosure(Base):
     is_immediate: Mapped[bool] = mapped_column(Boolean, default=False)
     notification_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     reopen_notification_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    extra_recipients: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str] = mapped_column(String(256), default="")
     status: Mapped[str] = mapped_column(String(32), default="scheduled")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -3,7 +3,7 @@ import { api, Coordinate, Lot, LotZone, ParkingSpot } from "../api";
 import { loadConfig } from "../auth";
 import LotMap from "../components/LotMap";
 import {
-  Button, Input, InputNumber, Select, Checkbox, Modal, Form, DatePicker, Tag, Space, App, Empty, Segmented, Spin,
+  Button, Input, InputNumber, Select, Checkbox, Modal, Form, DatePicker, Tag, Space, App, Empty, Segmented, Spin, Switch,
 } from "antd";
 import dayjs from "dayjs";
 
@@ -502,8 +502,10 @@ export default function Lots() {
   const [selectedType, setSelectedType] = useState<string>("all");
 
   const [closeReason, setCloseReason] = useState("");
+  const [closeClosesAt, setCloseClosesAt] = useState<dayjs.Dayjs | null>(null);
   const [closeReopensAt, setCloseReopensAt] = useState<dayjs.Dayjs | null>(null);
   const [closeRecipients, setCloseRecipients] = useState("");
+  const [closeImmediate, setCloseImmediate] = useState(false);
   const [closeSubmitting, setCloseSubmitting] = useState(false);
 
   const filteredLots = useMemo(() => {
@@ -588,16 +590,28 @@ export default function Lots() {
 
   async function handleCloseLot() {
     if (!closingLot) return;
+    if (!closeImmediate && !closeClosesAt) { message.error("Select a closure date"); return; }
     setCloseSubmitting(true);
     try {
       const recipients = closeRecipients.split(",").map(e => e.trim()).filter(Boolean);
-      await api.lots.close(closingLot.id, {
-        reason: closeReason,
-        reopens_at: closeReopensAt ? closeReopensAt.toISOString() : undefined,
-        recipients,
-      });
-      message.success(`${closingLot.name} closed`);
-      setClosingLot(null); setCloseReason(""); setCloseReopensAt(null); setCloseRecipients("");
+      if (closeImmediate) {
+        await api.lots.close(closingLot.id, {
+          reason: closeReason,
+          reopens_at: closeReopensAt ? closeReopensAt.toISOString() : undefined,
+          recipients,
+        });
+        message.success(`${closingLot.name} closed immediately`);
+      } else {
+        await api.lots.closures.schedule({
+          lot_id: closingLot.id,
+          reason: closeReason,
+          closes_at: closeClosesAt!.toISOString(),
+          reopens_at: closeReopensAt ? closeReopensAt.toISOString() : undefined,
+          recipients,
+        });
+        message.success(`Closure scheduled for ${closingLot.name}`);
+      }
+      setClosingLot(null); setCloseReason(""); setCloseClosesAt(null); setCloseReopensAt(null); setCloseRecipients(""); setCloseImmediate(false);
       load();
     } catch { message.error("Failed to close lot"); } finally { setCloseSubmitting(false); }
   }
@@ -735,17 +749,31 @@ export default function Lots() {
           onSelectSpot={setSelectedSpotId} placingSpot={placingSpot} onPlaceSpot={handlePlaceSpot} />
       </div>
 
-      <Modal open={!!closingLot} title={<span className="text-red-600">Close {closingLot?.name}</span>}
-        okText="Close Lot Now" okButtonProps={{ danger: true }} confirmLoading={closeSubmitting}
-        onOk={handleCloseLot} onCancel={() => setClosingLot(null)}>
-        <p className="text-sm text-ink-mute mb-4">
-          This will immediately close the lot and send notification emails to all permit holders assigned to this lot.
-        </p>
+      <Modal open={!!closingLot} title={closeImmediate ? <span className="text-red-600">Close {closingLot?.name} Now</span> : `Schedule Closure — ${closingLot?.name}`}
+        okText={closeImmediate ? "Close Lot Now" : "Schedule Closure"}
+        okButtonProps={closeImmediate ? { danger: true } : {}}
+        confirmLoading={closeSubmitting}
+        onOk={handleCloseLot} onCancel={() => { setClosingLot(null); setCloseImmediate(false); setCloseClosesAt(null); setCloseReopensAt(null); setCloseReason(""); setCloseRecipients(""); }}>
         <div className="space-y-3">
+          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+            <Switch size="small" checked={closeImmediate} onChange={setCloseImmediate} />
+            <span className="text-sm">{closeImmediate ? "Close immediately (emergency)" : "Schedule for a future date"}</span>
+          </div>
+          <p className="text-sm text-ink-mute">
+            {closeImmediate
+              ? "This will immediately close the lot and send notification emails to all permit holders."
+              : "Schedule a closure that will automatically activate at the specified time. It will appear on the Operations Calendar."}
+          </p>
           <div>
             <label className="block text-xs font-medium text-ink-mute mb-1">Reason</label>
             <Input value={closeReason} onChange={e => setCloseReason(e.target.value)} placeholder="Snow removal, event, maintenance..." />
           </div>
+          {!closeImmediate && (
+            <div>
+              <label className="block text-xs font-medium text-ink-mute mb-1">Closes At</label>
+              <DatePicker showTime value={closeClosesAt} onChange={setCloseClosesAt} className="w-full" />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-ink-mute mb-1">Reopens At (optional)</label>
             <DatePicker showTime value={closeReopensAt} onChange={setCloseReopensAt} className="w-full" />

@@ -173,6 +173,7 @@ async def schedule_closure(
         closes_at=data.closes_at,
         reopens_at=data.reopens_at,
         is_immediate=data.is_immediate,
+        extra_recipients=data.recipients if data.recipients else None,
         status="scheduled",
         created_by=user.email,
     )

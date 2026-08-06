@@ -108,7 +108,11 @@ async def _process_closures():
             closure.status = "active"
 
             if not closure.notification_sent:
+                extra = list(closure.extra_recipients or []) if hasattr(closure, "extra_recipients") and closure.extra_recipients else []
                 recipients = await _get_recipients_for_lot(lot.name, db)
+                for e in extra:
+                    if e and e not in recipients:
+                        recipients.append(e)
                 reopens_str = (
                     closure.reopens_at.strftime("%b %d, %Y %I:%M %p")
                     if closure.reopens_at

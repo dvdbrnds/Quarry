@@ -10,6 +10,7 @@ class LotClosureCreate(BaseModel):
     closes_at: datetime
     reopens_at: datetime | None = None
     is_immediate: bool = False
+    recipients: list[str] = []
 
 
 class LotClosureUpdate(BaseModel):
@@ -30,6 +31,7 @@ class LotClosureRead(BaseModel):
     is_immediate: bool
     notification_sent: bool
     reopen_notification_sent: bool
+    extra_recipients: list[str] | None = None
     created_by: str
     status: str
     created_at: datetime

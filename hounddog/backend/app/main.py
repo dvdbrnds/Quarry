@@ -97,6 +97,8 @@ async def lifespan(app: FastAPI):
         try:
             migrations = [
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
+            # Lot closure extra recipients
+            "ALTER TABLE lot_closures ADD COLUMN IF NOT EXISTS extra_recipients JSONB",
             # Ticket enhancements
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_category VARCHAR(32) DEFAULT 'parking'",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS offense_number INTEGER DEFAULT 1",
