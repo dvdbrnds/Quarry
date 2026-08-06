@@ -50,9 +50,13 @@ async def _read_schedule_from_db() -> dict | None:
             )
             row = result.scalar()
             if row:
-                return row if isinstance(row, dict) else json.loads(row)
-    except Exception:
-        pass
+                parsed = row if isinstance(row, dict) else json.loads(row)
+                logger.debug("Backup schedule from DB: %s", parsed)
+                return parsed
+            else:
+                logger.warning("Backup schedule: no row found in app_config for 'backup_schedule'")
+    except Exception as e:
+        logger.warning("Backup schedule: failed to read from DB: %s", e)
     return None
 
 
@@ -295,7 +299,12 @@ async def _cleanup_old_backups_db(retention_days: int):
 async def process_scheduled_backups():
     """Check if a scheduled backup is due and execute it."""
     config = await _read_schedule()
+    logger.info(
+        "Backup scheduler tick — enabled=%s, config_keys=%s",
+        config.get("enabled"), list(config.keys()),
+    )
     if not config.get("enabled"):
+        logger.info("Backup scheduler: disabled, skipping")
         return
 
     frequency = config.get("frequency", "daily")
@@ -312,26 +321,35 @@ async def process_scheduled_backups():
                 from .timeutils import campus_tz
                 next_run = next_run.replace(tzinfo=campus_tz())
         except (ValueError, TypeError):
+            logger.warning("Backup scheduler: invalid next_run '%s', recomputing", next_run_str)
             next_run = _compute_next_run(frequency, time_str)
     else:
         next_run = _compute_next_run(frequency, time_str)
         config["next_run"] = next_run.isoformat()
         await _write_schedule(config)
+        logger.info("Backup scheduler: no next_run set, initialized to %s", next_run.isoformat())
         return
+
+    logger.info(
+        "Backup scheduler: now=%s, next_run=%s, due=%s",
+        now.isoformat(), next_run.isoformat(), now >= next_run,
+    )
 
     if now < next_run:
         return
 
     try:
+        logger.info("Backup scheduler: starting scheduled backup")
         filename = await _create_backup_file()
+        logger.info("Backup scheduler: backup created — %s", filename)
         config["last_run"] = now.isoformat()
         config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
         await _write_schedule(config)
+        logger.info("Backup scheduler: next_run updated to %s", config["next_run"])
 
         drive_folder_id = config.get("google_drive_folder_id")
         if drive_folder_id:
             filepath = BACKUP_DIR / filename
-            # Ensure disk copy exists for Drive upload
             if not filepath.exists():
                 content = await get_persisted_backup_content(filename)
                 if content:
