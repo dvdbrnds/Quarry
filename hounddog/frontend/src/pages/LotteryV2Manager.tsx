@@ -198,6 +198,9 @@ export default function LotteryV2Manager() {
   const [upgradeTiers, setUpgradeTiers] = useState<{ id: string; label: string; price: number }[]>([]);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
 
+  const [tierDetail, setTierDetail] = useState<any | null>(null);
+  const [tierDetailLoading, setTierDetailLoading] = useState(false);
+
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
 
@@ -523,6 +526,24 @@ export default function LotteryV2Manager() {
       message.error(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadTierDetail(code: string) {
+    setTierDetailLoading(true);
+    try {
+      const res = await fetch(`/api/lottery-v2/tier-detail/${code}`, {
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to load tier detail");
+      }
+      setTierDetail(await res.json());
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setTierDetailLoading(false);
     }
   }
 
@@ -1089,7 +1110,11 @@ export default function LotteryV2Manager() {
                     <tbody>
                       {(capacityAudit.tiers || []).map((t: any) => (
                         <tr key={t.code} className={`border-b border-amber-100 ${t.over_capacity_by > 0 ? "bg-red-50" : ""}`}>
-                          <td className="py-1.5 pr-3 font-medium">{t.label || t.code}</td>
+                          <td className="py-1.5 pr-3 font-medium">
+                            <Button type="link" size="small" className="p-0 h-auto text-xs font-medium" onClick={() => loadTierDetail(t.code)}>
+                              {t.label || t.code}
+                            </Button>
+                          </td>
                           <td className="py-1.5 pr-3 text-right">{t.max_capacity}</td>
                           <td className="py-1.5 pr-3 text-right">{t.active_permits}</td>
                           <td className="py-1.5 pr-3 text-right">
@@ -1928,6 +1953,124 @@ export default function LotteryV2Manager() {
           );
         })()}
       </Modal>
+
+      <Drawer
+        title={tierDetail ? `${tierDetail.permit_type?.label} — Detail` : "Tier detail"}
+        open={!!tierDetail}
+        onClose={() => setTierDetail(null)}
+        width={720}
+        destroyOnClose
+      >
+        {tierDetail && (
+          <div className="space-y-6 text-sm">
+            <div className="flex gap-4">
+              <div className="p-3 bg-gray-50 rounded flex-1">
+                <div className="text-xs text-gray-500 uppercase">Capacity</div>
+                <div className="text-xl font-bold">{tierDetail.permit_type?.max_capacity}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded flex-1">
+                <div className="text-xs text-gray-500 uppercase">Active permits</div>
+                <div className="text-xl font-bold">{tierDetail.summary?.active_permit_count}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded flex-1">
+                <div className="text-xs text-gray-500 uppercase">Selected</div>
+                <div className="text-xl font-bold text-blue-600">{tierDetail.summary?.selected_count}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded flex-1">
+                <div className="text-xs text-gray-500 uppercase">Price</div>
+                <div className="text-xl font-bold">${tierDetail.permit_type?.price}</div>
+              </div>
+            </div>
+
+            <Collapse
+              defaultActiveKey={["selections", "permits"]}
+              items={[
+                {
+                  key: "selections",
+                  label: `Selections (${tierDetail.selections?.length || 0})`,
+                  children: (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="text-left border-b font-medium">
+                            <th className="py-1 pr-2">Name</th>
+                            <th className="py-1 pr-2">Email</th>
+                            <th className="py-1 pr-2">Status</th>
+                            <th className="py-1 pr-2">Plate</th>
+                            <th className="py-1 pr-2">Upgrade</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(tierDetail.selections || []).map((s: any, i: number) => (
+                            <tr key={i} className="border-b border-gray-100">
+                              <td className="py-1 pr-2">{s.name}</td>
+                              <td className="py-1 pr-2 text-gray-600">{s.email}</td>
+                              <td className="py-1 pr-2">
+                                <Tag color={s.status === "accepted" ? "lime" : "green"} className="text-[10px]">
+                                  {s.status}
+                                </Tag>
+                              </td>
+                              <td className="py-1 pr-2 font-mono">{s.plate}</td>
+                              <td className="py-1 pr-2">{s.is_upgrade ? "Yes" : ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ),
+                },
+                {
+                  key: "permits",
+                  label: `Active Permits (${tierDetail.active_permits?.length || 0})`,
+                  children: (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="text-left border-b font-medium">
+                            <th className="py-1 pr-2">Name</th>
+                            <th className="py-1 pr-2">Email</th>
+                            <th className="py-1 pr-2">Plate</th>
+                            <th className="py-1 pr-2">Permit #</th>
+                            <th className="py-1 pr-2">Has app</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(tierDetail.active_permits || []).map((p: any, i: number) => (
+                            <tr key={i} className={`border-b border-gray-100 ${!p.has_application ? "bg-amber-50" : ""}`}>
+                              <td className="py-1 pr-2">{p.name}</td>
+                              <td className="py-1 pr-2 text-gray-600">{p.email}</td>
+                              <td className="py-1 pr-2 font-mono">{p.plate}</td>
+                              <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
+                              <td className="py-1 pr-2">{p.has_application ? "Yes" : <span className="text-amber-600 font-medium">No</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+
+            {(tierDetail.summary?.permits_without_app?.length > 0 || tierDetail.summary?.apps_without_permit?.length > 0) && (
+              <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs space-y-1">
+                {tierDetail.summary.permits_without_app?.length > 0 && (
+                  <div>
+                    <strong className="text-amber-700">Permits with no application:</strong>{" "}
+                    {tierDetail.summary.permits_without_app.join(", ")}
+                  </div>
+                )}
+                {tierDetail.summary.apps_without_permit?.length > 0 && (
+                  <div>
+                    <strong className="text-amber-700">Accepted apps with no active permit:</strong>{" "}
+                    {tierDetail.summary.apps_without_permit.join(", ")}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }
