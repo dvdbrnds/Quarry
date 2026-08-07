@@ -1650,12 +1650,32 @@ export default function LotteryV2Manager() {
                 <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">
                   All rows for this email ({caseSiblings.length})
                 </div>
-                <ul className="m-0 pl-5 space-y-1">
+                <ul className="m-0 pl-5 space-y-1.5">
                   {caseSiblings.map((s) => (
-                    <li key={s.id}>
-                      <Tag color={STATUS_COLORS[s.status] || "default"}>{s.status}</Tag>{" "}
-                      {s.assigned_permit_type_label || s.first_choice_label || "—"}
-                      {s.id === caseApp.id ? " (this case)" : ""}
+                    <li key={s.id} className="flex items-center gap-2">
+                      <Tag color={STATUS_COLORS[s.status] || "default"}>{s.status}</Tag>
+                      <span className="flex-1">
+                        {s.assigned_permit_type_label || s.first_choice_label || "—"}
+                        {s.id === caseApp.id ? " (this case)" : ""}
+                      </span>
+                      {s.status !== "superseded" && (
+                        <Button
+                          type="link"
+                          danger
+                          size="small"
+                          className="p-0 h-auto text-[11px]"
+                          disabled={busy}
+                          onClick={async () => {
+                            const data = await postAction(`/api/lottery-v2/applications/${s.id}/dismiss`);
+                            if (data) {
+                              message.success(`Dismissed ${s.assigned_permit_type_label || "application"}`);
+                              if (s.id === caseApp.id) setCaseApp(null);
+                            }
+                          }}
+                        >
+                          Dismiss
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>

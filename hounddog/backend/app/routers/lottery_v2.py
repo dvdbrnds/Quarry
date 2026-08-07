@@ -1086,6 +1086,34 @@ async def admin_restore_waitlist(
     return await _app_to_read(db, app)
 
 
+@router.post("/applications/{application_id}/dismiss", response_model=ApplicationRead)
+async def admin_dismiss_application(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Dismiss/remove a duplicate or unwanted application by setting it to superseded."""
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app.status == "superseded":
+        raise HTTPException(400, "Application is already superseded")
+
+    old_status = app.status
+    app.status = "superseded"
+    app.assigned_permit_type_id = None
+    app.assigned_lot = None
+    app.offer_expires_at = None
+    app.waitlist_position = None
+    note = (
+        f"Dismissed by {admin.email or admin.sub} at "
+        f"{datetime.now(timezone.utc).isoformat()} (was {old_status})"
+    )
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+    await db.flush()
+    return await _app_to_read(db, app)
+
+
 @router.get("/applications/search", response_model=list[ApplicationRead])
 async def admin_search_applications(
     email: str,
@@ -2031,9 +2059,10 @@ async def capacity_audit(
         selected_count = len(selected_only)
         accepted_count = len(accepted_only)
         max_cap = pt.max_capacity or 0
-        committed = active + selected_count
-        truly_open = max(0, max_cap - committed)
-        over_by = max(0, committed - max_cap)
+        over_by = max(0, active - max_cap)
+        truly_open = max(0, max_cap - active)
+        projected = active + selected_count
+        projected_over = max(0, projected - max_cap)
 
         tier_rows.append({
             "code": pt.code,
@@ -2042,10 +2071,10 @@ async def capacity_audit(
             "max_capacity": max_cap,
             "active_permits": active,
             "selected_pending_payment": selected_count,
-            "accepted_paid": accepted_count,
-            "committed": committed,
-            "truly_open": truly_open,
             "over_capacity_by": over_by,
+            "truly_open": truly_open,
+            "projected": projected,
+            "projected_over": projected_over,
             "auto_advance_waitlist": pt.auto_advance_waitlist,
             "waitlisted_with_pref": len(waitlisted_with_pref),
             "apps_first_choice": len(first_choice_apps),
