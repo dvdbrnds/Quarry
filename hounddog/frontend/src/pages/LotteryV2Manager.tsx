@@ -1666,14 +1666,27 @@ export default function LotteryV2Manager() {
                           className="p-0 h-auto text-[11px]"
                           disabled={busy}
                           onClick={async () => {
-                            const data = await postAction(`/api/lottery-v2/applications/${s.id}/dismiss`);
-                            if (data) {
-                              message.success(`Dismissed ${s.assigned_permit_type_label || "application"}`);
+                            setBusy(true);
+                            try {
+                              const res = await fetch(`/api/lottery-v2/applications/${s.id}`, {
+                                method: "DELETE",
+                                headers: await authHeaders(),
+                              });
+                              if (!res.ok) {
+                                const err = await res.json().catch(() => ({}));
+                                throw new Error(err.detail || "Delete failed");
+                              }
+                              message.success(`Deleted ${s.assigned_permit_type_label || "application"}`);
                               if (s.id === caseApp.id) setCaseApp(null);
+                              if (activeId) loadDetail(activeId);
+                            } catch (e: any) {
+                              message.error(e.message);
+                            } finally {
+                              setBusy(false);
                             }
                           }}
                         >
-                          Dismiss
+                          Delete
                         </Button>
                       )}
                     </li>

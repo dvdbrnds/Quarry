@@ -1086,32 +1086,30 @@ async def admin_restore_waitlist(
     return await _app_to_read(db, app)
 
 
-@router.post("/applications/{application_id}/dismiss", response_model=ApplicationRead)
-async def admin_dismiss_application(
+@router.delete("/applications/{application_id}")
+async def admin_delete_application(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     admin: OktaUser = Depends(require_admin()),
 ):
-    """Dismiss/remove a duplicate or unwanted application by setting it to superseded."""
+    """Permanently delete a duplicate application."""
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise HTTPException(404, "Application not found")
-    if app.status == "superseded":
-        raise HTTPException(400, "Application is already superseded")
 
-    old_status = app.status
-    app.status = "superseded"
-    app.assigned_permit_type_id = None
-    app.assigned_lot = None
-    app.offer_expires_at = None
-    app.waitlist_position = None
-    note = (
-        f"Dismissed by {admin.email or admin.sub} at "
-        f"{datetime.now(timezone.utc).isoformat()} (was {old_status})"
-    )
-    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+    email = app.student_email
+    name = app.student_name
+    status = app.status
+    tier = app.assigned_permit_type_id
+
+    await db.delete(app)
     await db.flush()
-    return await _app_to_read(db, app)
+
+    logger.info(
+        "Admin %s deleted application %s (%s / %s / was %s)",
+        admin.email or admin.sub, application_id, name, email, status,
+    )
+    return {"deleted": True, "id": str(application_id), "name": name, "email": email}
 
 
 @router.get("/applications/search", response_model=list[ApplicationRead])
