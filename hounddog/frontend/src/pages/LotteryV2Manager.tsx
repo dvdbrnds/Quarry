@@ -1120,18 +1120,33 @@ export default function LotteryV2Manager() {
                     <strong>Committed</strong> = Active permits + Pending payment offers. <strong>Truly open</strong> = Capacity − Committed. A negative means over-committed.
                   </p>
                 </div>
-                {(capacityAudit.stale_permits?.length > 0) && (
+                {(capacityAudit.stale_count > 0) && (
                   <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <strong className="text-red-700">
-                          {capacityAudit.stale_permits.length} student{capacityAudit.stale_permits.length === 1 ? "" : "s"} with multiple active lottery permits (upgrade did not revoke old permit):
+                          {capacityAudit.stale_count} stale entr{capacityAudit.stale_count === 1 ? "y" : "ies"} inflating committed counts:
                         </strong>
-                        <ul className="mt-1 mb-0 pl-4 space-y-0.5">
-                          {capacityAudit.stale_permits.map((s: any) => (
-                            <li key={s.email}>{s.email} — {s.active_count} active permits: {s.types?.join(", ")}</li>
-                          ))}
-                        </ul>
+                        {capacityAudit.stale_permits?.length > 0 && (
+                          <>
+                            <div className="mt-1 font-semibold text-red-600">Duplicate active permits:</div>
+                            <ul className="mt-0.5 mb-0 pl-4 space-y-0.5">
+                              {capacityAudit.stale_permits.map((s: any) => (
+                                <li key={s.email}>{s.email} — {s.active_count} active: {s.types?.join(", ")}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        {capacityAudit.stale_selections?.length > 0 && (
+                          <>
+                            <div className="mt-1 font-semibold text-red-600">Stale &quot;selected&quot; offers (student already has permit):</div>
+                            <ul className="mt-0.5 mb-0 pl-4 space-y-0.5">
+                              {capacityAudit.stale_selections.map((s: any) => (
+                                <li key={s.email}>{s.email} ({s.name}) — {s.tier}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
                       </div>
                       <Button
                         danger
@@ -1146,7 +1161,9 @@ export default function LotteryV2Manager() {
                             });
                             const data = await res.json();
                             if (!res.ok) throw new Error(data.detail || "Cleanup failed");
-                            message.success(`Revoked ${data.revoked_count} stale permit(s)`);
+                            message.success(
+                              `Fixed: ${data.revoked_permits} stale permit(s), ${data.cleared_selections} stale selection(s)`
+                            );
                             if (activeId) loadCapacityAudit();
                           } catch (e: any) {
                             message.error(e.message);

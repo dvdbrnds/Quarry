@@ -2107,6 +2107,33 @@ async def capacity_audit(
         for row in multi_permit_rows
     ]
 
+    # Detect stale selections: apps still "selected" but student already has
+    # an active permit for that tier (upgrade completed, selection not cleared)
+    selected_apps = [a for a in apps if a.status == "selected" and a.assigned_permit_type_id]
+    stale_selections = []
+    for a in selected_apps:
+        pt = pt_by_id.get(a.assigned_permit_type_id)
+        if not pt:
+            continue
+        has_permit = (
+            await db.execute(
+                select(Permit.id).where(
+                    func.lower(Permit.email) == (a.student_email or "").lower(),
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if has_permit:
+            stale_selections.append({
+                "email": a.student_email,
+                "name": a.student_name,
+                "tier": pt.label,
+            })
+
+    stale_count = len(stale_permits) + len(stale_selections)
+
     return {
         "cycle": {
             "id": str(cycle.id),
@@ -2118,6 +2145,8 @@ async def capacity_audit(
         "lot_active_permits": lot_active,
         "tiers": tier_rows,
         "stale_permits": stale_permits,
+        "stale_selections": stale_selections,
+        "stale_count": stale_count,
         "south": {
             "total_apps": len(south_apps),
             "unique_emails": len(south_unique_emails),
@@ -2156,17 +2185,15 @@ async def cleanup_stale_permits(
     db: AsyncSession = Depends(get_db),
     admin: OktaUser = Depends(require_admin()),
 ):
-    """Revoke old permits for students who have multiple active lottery permits.
-
-    This happens when an upgrade didn't properly revoke the old permit.
-    For each student with 2+ active lottery permits, keep only the newest one.
+    """Clean up stale data from upgrades:
+    1. Revoke old permits for students with multiple active lottery permits
+    2. Clear stale 'selected' applications where the student already has
+       an active permit for the assigned tier (upgrade completed via
+       another path, or admin already fixed them)
     """
-    lottery_codes = list(LOTTERY_TIER_CODES)
-    # Also include commuter codes
-    lottery_codes += list(ALL_V2_TIER_CODES)
-    lottery_codes = list(set(lottery_codes))
+    lottery_codes = list(set(ALL_V2_TIER_CODES))
 
-    # Find students with multiple active lottery permits
+    # ── 1. Stale permits: students with multiple active lottery permits ──
     multi = (
         await db.execute(
             select(Permit.email)
@@ -2181,7 +2208,7 @@ async def cleanup_stale_permits(
         )
     ).scalars().all()
 
-    revoked = []
+    revoked_permits = []
     for email in multi:
         permits = (
             await db.execute(
@@ -2196,21 +2223,61 @@ async def cleanup_stale_permits(
             )
         ).scalars().all()
 
-        # Keep the newest, revoke the rest
         for old in permits[1:]:
             old.status = "upgraded"
-            revoked.append({
+            revoked_permits.append({
                 "email": email,
                 "revoked_type": old.permit_type,
                 "kept_type": permits[0].permit_type,
             })
 
-    if revoked:
+    # ── 2. Stale selections: 'selected' apps where student already has permit ──
+    stale_selected = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.status == "selected",
+                LotteryV2Application.assigned_permit_type_id.isnot(None),
+            )
+        )
+    ).scalars().all()
+
+    pt_map = await _permit_type_map(db)
+    cleared_selections = []
+    for app in stale_selected:
+        pt = pt_map.get(app.assigned_permit_type_id)
+        if not pt:
+            continue
+        has_permit = (
+            await db.execute(
+                select(Permit.id).where(
+                    func.lower(Permit.email) == (app.student_email or "").lower(),
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if has_permit:
+            app.status = "accepted"
+            note = (
+                f"Cleanup: marked accepted — active {pt.label} permit already exists. "
+                f"By {admin.email or admin.sub} at {datetime.now(timezone.utc).isoformat()}"
+            )
+            app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+            cleared_selections.append({
+                "email": app.student_email,
+                "name": app.student_name,
+                "tier": pt.label,
+            })
+
+    if revoked_permits or cleared_selections:
         await db.flush()
 
     return {
-        "revoked_count": len(revoked),
-        "detail": revoked,
+        "revoked_permits": len(revoked_permits),
+        "cleared_selections": len(cleared_selections),
+        "permit_detail": revoked_permits,
+        "selection_detail": cleared_selections,
         "admin": admin.email or admin.sub,
     }
 
