@@ -2151,6 +2151,70 @@ async def capacity_audit(
     }
 
 
+@router.post("/cleanup-stale-permits")
+async def cleanup_stale_permits(
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Revoke old permits for students who have multiple active lottery permits.
+
+    This happens when an upgrade didn't properly revoke the old permit.
+    For each student with 2+ active lottery permits, keep only the newest one.
+    """
+    lottery_codes = list(LOTTERY_TIER_CODES)
+    # Also include commuter codes
+    lottery_codes += list(ALL_V2_TIER_CODES)
+    lottery_codes = list(set(lottery_codes))
+
+    # Find students with multiple active lottery permits
+    multi = (
+        await db.execute(
+            select(Permit.email)
+            .where(
+                Permit.permit_type.in_(lottery_codes),
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+                Permit.email.isnot(None),
+            )
+            .group_by(Permit.email)
+            .having(func.count() > 1)
+        )
+    ).scalars().all()
+
+    revoked = []
+    for email in multi:
+        permits = (
+            await db.execute(
+                select(Permit)
+                .where(
+                    Permit.email == email,
+                    Permit.permit_type.in_(lottery_codes),
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+                .order_by(Permit.created_at.desc())
+            )
+        ).scalars().all()
+
+        # Keep the newest, revoke the rest
+        for old in permits[1:]:
+            old.status = "upgraded"
+            revoked.append({
+                "email": email,
+                "revoked_type": old.permit_type,
+                "kept_type": permits[0].permit_type,
+            })
+
+    if revoked:
+        await db.flush()
+
+    return {
+        "revoked_count": len(revoked),
+        "detail": revoked,
+        "admin": admin.email or admin.sub,
+    }
+
+
 @router.get("/cycles/{cycle_id}/duplicates-report")
 async def duplicates_report(
     cycle_id: uuid.UUID,

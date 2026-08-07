@@ -1122,14 +1122,42 @@ export default function LotteryV2Manager() {
                 </div>
                 {(capacityAudit.stale_permits?.length > 0) && (
                   <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
-                    <strong className="text-red-700">
-                      {capacityAudit.stale_permits.length} student{capacityAudit.stale_permits.length === 1 ? "" : "s"} with multiple active lottery permits (upgrade did not revoke old permit):
-                    </strong>
-                    <ul className="mt-1 mb-0 pl-4 space-y-0.5">
-                      {capacityAudit.stale_permits.map((s: any) => (
-                        <li key={s.email}>{s.email} — {s.active_count} active permits: {s.types?.join(", ")}</li>
-                      ))}
-                    </ul>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <strong className="text-red-700">
+                          {capacityAudit.stale_permits.length} student{capacityAudit.stale_permits.length === 1 ? "" : "s"} with multiple active lottery permits (upgrade did not revoke old permit):
+                        </strong>
+                        <ul className="mt-1 mb-0 pl-4 space-y-0.5">
+                          {capacityAudit.stale_permits.map((s: any) => (
+                            <li key={s.email}>{s.email} — {s.active_count} active permits: {s.types?.join(", ")}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <Button
+                        danger
+                        size="small"
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            const res = await fetch("/api/lottery-v2/cleanup-stale-permits", {
+                              method: "POST",
+                              headers: await authHeaders(),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.detail || "Cleanup failed");
+                            message.success(`Revoked ${data.revoked_count} stale permit(s)`);
+                            if (activeId) loadCapacityAudit();
+                          } catch (e: any) {
+                            message.error(e.message);
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        Fix now
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
