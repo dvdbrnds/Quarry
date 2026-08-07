@@ -1120,6 +1120,18 @@ export default function LotteryV2Manager() {
                     <strong>Committed</strong> = Active permits + Pending payment offers. <strong>Truly open</strong> = Capacity − Committed. A negative means over-committed.
                   </p>
                 </div>
+                {(capacityAudit.stale_permits?.length > 0) && (
+                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
+                    <strong className="text-red-700">
+                      {capacityAudit.stale_permits.length} student{capacityAudit.stale_permits.length === 1 ? "" : "s"} with multiple active lottery permits (upgrade did not revoke old permit):
+                    </strong>
+                    <ul className="mt-1 mb-0 pl-4 space-y-0.5">
+                      {capacityAudit.stale_permits.map((s: any) => (
+                        <li key={s.email}>{s.email} — {s.active_count} active permits: {s.types?.join(", ")}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 

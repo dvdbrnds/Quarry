@@ -1276,24 +1276,43 @@ async def complete_upgrade(
     from app.services.permit_numbering import next_permit_number
     from app.services.timeutils import today_local
 
-    # Find and revoke the old permit
-    old_permit = (
-        await db.execute(
-            select(Permit).where(
-                Permit.email == app.student_email,
-                Permit.status == "active",
-                Permit.deleted_at.is_(None),
-            ).order_by(Permit.created_at.desc())
-        )
-    ).scalars().first()
+    # Resolve the old permit type code for targeted search
+    old_pt_code: str | None = None
+    if app.existing_permit_type_id:
+        old_pt_obj = await db.get(PermitType, app.existing_permit_type_id)
+        if old_pt_obj:
+            old_pt_code = old_pt_obj.code
+
+    # Find and revoke the old permit — prefer matching by type code for accuracy
+    old_permit = None
+    if old_pt_code:
+        old_permit = (
+            await db.execute(
+                select(Permit).where(
+                    Permit.email == app.student_email,
+                    Permit.permit_type == old_pt_code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                ).order_by(Permit.created_at.desc())
+            )
+        ).scalars().first()
+
+    # Fallback: any active permit for this email
+    if not old_permit:
+        old_permit = (
+            await db.execute(
+                select(Permit).where(
+                    Permit.email == app.student_email,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                ).order_by(Permit.created_at.desc())
+            )
+        ).scalars().first()
 
     old_permit_type_code = None
     if old_permit:
         old_permit_type_code = old_permit.permit_type
         old_permit.status = "upgraded"
-        note = f"Upgraded to {new_pt.label} at {datetime.now(timezone.utc).isoformat()}"
-        if hasattr(old_permit, "notes"):
-            old_permit.notes = f"{old_permit.notes or ''}\n{note}".strip()
 
     # Issue the new permit
     lot_assignment = ", ".join(new_pt.lot_assignments) if new_pt.lot_assignments else ""

@@ -2062,6 +2062,27 @@ async def capacity_audit(
         email_counts[e] = email_counts.get(e, 0) + 1
     duplicate_emails = {e: n for e, n in email_counts.items() if n > 1 and e}
 
+    # Detect students with multiple active permits across tiers (stale permits
+    # from upgrades where the old permit wasn't revoked).
+    lottery_codes = [pt.code for pt in pts]
+    multi_permit_rows = (
+        await db.execute(
+            select(Permit.email, func.count().label("cnt"), func.array_agg(Permit.permit_type).label("types"))
+            .where(
+                Permit.permit_type.in_(lottery_codes),
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+                Permit.email.isnot(None),
+            )
+            .group_by(Permit.email)
+            .having(func.count() > 1)
+        )
+    ).all()
+    stale_permits = [
+        {"email": row.email, "active_count": row.cnt, "types": row.types}
+        for row in multi_permit_rows
+    ]
+
     return {
         "cycle": {
             "id": str(cycle.id),
@@ -2072,6 +2093,7 @@ async def capacity_audit(
         },
         "lot_active_permits": lot_active,
         "tiers": tier_rows,
+        "stale_permits": stale_permits,
         "south": {
             "total_apps": len(south_apps),
             "unique_emails": len(south_unique_emails),
