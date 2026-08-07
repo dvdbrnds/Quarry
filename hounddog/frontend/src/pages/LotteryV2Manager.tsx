@@ -1955,70 +1955,45 @@ export default function LotteryV2Manager() {
       </Modal>
 
       <Drawer
-        title={tierDetail ? `${tierDetail.permit_type?.label} — Detail` : "Tier detail"}
+        title={tierDetail ? `${tierDetail.permit_type?.label}` : "Tier detail"}
         open={!!tierDetail}
         onClose={() => setTierDetail(null)}
         width={720}
         destroyOnClose
       >
         {tierDetail && (
-          <div className="space-y-6 text-sm">
-            <div className="flex gap-4">
-              <div className="p-3 bg-gray-50 rounded flex-1">
-                <div className="text-xs text-gray-500 uppercase">Capacity</div>
+          <div className="space-y-5 text-sm">
+            <div className="flex gap-3 flex-wrap">
+              <div className="p-3 bg-gray-50 rounded flex-1 min-w-[100px]">
+                <div className="text-[10px] text-gray-500 uppercase">Capacity</div>
                 <div className="text-xl font-bold">{tierDetail.permit_type?.max_capacity}</div>
               </div>
-              <div className="p-3 bg-gray-50 rounded flex-1">
-                <div className="text-xs text-gray-500 uppercase">Active permits</div>
+              <div className="p-3 bg-gray-50 rounded flex-1 min-w-[100px]">
+                <div className="text-[10px] text-gray-500 uppercase">Active permits</div>
                 <div className="text-xl font-bold">{tierDetail.summary?.active_permit_count}</div>
               </div>
-              <div className="p-3 bg-gray-50 rounded flex-1">
-                <div className="text-xs text-gray-500 uppercase">Selected</div>
-                <div className="text-xl font-bold text-blue-600">{tierDetail.summary?.selected_count}</div>
+              <div className="p-3 bg-gray-50 rounded flex-1 min-w-[100px]">
+                <div className="text-[10px] text-gray-500 uppercase">Pending payment</div>
+                <div className="text-xl font-bold text-blue-600">{tierDetail.summary?.pending_count}</div>
               </div>
-              <div className="p-3 bg-gray-50 rounded flex-1">
-                <div className="text-xs text-gray-500 uppercase">Price</div>
-                <div className="text-xl font-bold">${tierDetail.permit_type?.price}</div>
+              <div className={`p-3 rounded flex-1 min-w-[100px] ${tierDetail.summary?.over_by > 0 ? "bg-red-50" : "bg-green-50"}`}>
+                <div className="text-[10px] text-gray-500 uppercase">Committed</div>
+                <div className="text-xl font-bold">
+                  {tierDetail.summary?.committed}
+                  {tierDetail.summary?.over_by > 0 && (
+                    <span className="text-red-600 text-sm ml-1">(+{tierDetail.summary.over_by} over)</span>
+                  )}
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded flex-1 min-w-[100px]">
+                <div className="text-[10px] text-gray-500 uppercase">Unique people</div>
+                <div className="text-xl font-bold">{tierDetail.summary?.unique_people}</div>
               </div>
             </div>
 
             <Collapse
-              defaultActiveKey={["selections", "permits"]}
+              defaultActiveKey={["permits"]}
               items={[
-                {
-                  key: "selections",
-                  label: `Selections (${tierDetail.selections?.length || 0})`,
-                  children: (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs border-collapse">
-                        <thead>
-                          <tr className="text-left border-b font-medium">
-                            <th className="py-1 pr-2">Name</th>
-                            <th className="py-1 pr-2">Email</th>
-                            <th className="py-1 pr-2">Status</th>
-                            <th className="py-1 pr-2">Plate</th>
-                            <th className="py-1 pr-2">Upgrade</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(tierDetail.selections || []).map((s: any, i: number) => (
-                            <tr key={i} className="border-b border-gray-100">
-                              <td className="py-1 pr-2">{s.name}</td>
-                              <td className="py-1 pr-2 text-gray-600">{s.email}</td>
-                              <td className="py-1 pr-2">
-                                <Tag color={s.status === "accepted" ? "lime" : "green"} className="text-[10px]">
-                                  {s.status}
-                                </Tag>
-                              </td>
-                              <td className="py-1 pr-2 font-mono">{s.plate}</td>
-                              <td className="py-1 pr-2">{s.is_upgrade ? "Yes" : ""}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ),
-                },
                 {
                   key: "permits",
                   label: `Active Permits (${tierDetail.active_permits?.length || 0})`,
@@ -2031,17 +2006,15 @@ export default function LotteryV2Manager() {
                             <th className="py-1 pr-2">Email</th>
                             <th className="py-1 pr-2">Plate</th>
                             <th className="py-1 pr-2">Permit #</th>
-                            <th className="py-1 pr-2">Has app</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(tierDetail.active_permits || []).map((p: any, i: number) => (
-                            <tr key={i} className={`border-b border-gray-100 ${!p.has_application ? "bg-amber-50" : ""}`}>
+                            <tr key={i} className="border-b border-gray-100">
                               <td className="py-1 pr-2">{p.name}</td>
                               <td className="py-1 pr-2 text-gray-600">{p.email}</td>
                               <td className="py-1 pr-2 font-mono">{p.plate}</td>
                               <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
-                              <td className="py-1 pr-2">{p.has_application ? "Yes" : <span className="text-amber-600 font-medium">No</span>}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -2049,21 +2022,58 @@ export default function LotteryV2Manager() {
                     </div>
                   ),
                 },
+                ...(tierDetail.pending_offers?.length > 0 ? [{
+                  key: "pending",
+                  label: `Pending Payment (${tierDetail.pending_offers.length})`,
+                  children: (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="text-left border-b font-medium">
+                            <th className="py-1 pr-2">Name</th>
+                            <th className="py-1 pr-2">Email</th>
+                            <th className="py-1 pr-2">Plate</th>
+                            <th className="py-1 pr-2">Upgrade</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tierDetail.pending_offers.map((s: any, i: number) => (
+                            <tr key={i} className="border-b border-gray-100">
+                              <td className="py-1 pr-2">{s.name}</td>
+                              <td className="py-1 pr-2 text-gray-600">{s.email}</td>
+                              <td className="py-1 pr-2 font-mono">{s.plate}</td>
+                              <td className="py-1 pr-2">{s.is_upgrade ? <Tag color="purple" className="text-[10px]">Upgrade</Tag> : ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ),
+                }] : []),
               ]}
             />
 
-            {(tierDetail.summary?.permits_without_app?.length > 0 || tierDetail.summary?.apps_without_permit?.length > 0) && (
-              <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs space-y-1">
-                {tierDetail.summary.permits_without_app?.length > 0 && (
+            {(tierDetail.issues?.accepted_no_permit?.length > 0 || tierDetail.issues?.permits_no_app?.length > 0) && (
+              <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs space-y-2">
+                <strong className="text-amber-700">Data issues</strong>
+                {tierDetail.issues.accepted_no_permit?.length > 0 && (
                   <div>
-                    <strong className="text-amber-700">Permits with no application:</strong>{" "}
-                    {tierDetail.summary.permits_without_app.join(", ")}
+                    <div className="font-medium text-amber-700">Accepted apps with no active permit ({tierDetail.issues.accepted_no_permit.length}):</div>
+                    <ul className="mt-0.5 mb-0 pl-4">
+                      {tierDetail.issues.accepted_no_permit.map((a: any, i: number) => (
+                        <li key={i}>{a.name} — {a.email}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
-                {tierDetail.summary.apps_without_permit?.length > 0 && (
+                {tierDetail.issues.permits_no_app?.length > 0 && (
                   <div>
-                    <strong className="text-amber-700">Accepted apps with no active permit:</strong>{" "}
-                    {tierDetail.summary.apps_without_permit.join(", ")}
+                    <div className="font-medium text-amber-700">Permits with no lottery application ({tierDetail.issues.permits_no_app.length}):</div>
+                    <ul className="mt-0.5 mb-0 pl-4">
+                      {tierDetail.issues.permits_no_app.map((p: any, i: number) => (
+                        <li key={i}>{p.name} — {p.email} (#{p.permit_number})</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>

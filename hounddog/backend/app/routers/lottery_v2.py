@@ -2216,8 +2216,23 @@ async def tier_detail(
         )
     ).scalars().all()
 
-    app_emails = {(a.student_email or "").lower() for a in apps}
     permit_emails = {(p.email or "").lower() for p in permits}
+    selected_apps = [a for a in apps if a.status == "selected"]
+    accepted_apps = [a for a in apps if a.status == "accepted"]
+
+    # Pending offers: selected apps that DON'T yet have an active permit
+    pending = [a for a in selected_apps if (a.student_email or "").lower() not in permit_emails]
+    # Accepted apps whose email doesn't match any active permit (data issue)
+    accepted_no_permit = [
+        a for a in accepted_apps
+        if (a.student_email or "").lower() not in permit_emails
+    ]
+    # Permits without a matching application (direct purchase or data issue)
+    app_emails = {(a.student_email or "").lower() for a in apps}
+    permits_no_app = [p for p in permits if (p.email or "").lower() not in app_emails]
+
+    unique_people = len(permit_emails | {(a.student_email or "").lower() for a in selected_apps})
+    committed = len(permits) + len(pending)
 
     return {
         "permit_type": {
@@ -2226,18 +2241,13 @@ async def tier_detail(
             "price": str(pt.price),
             "max_capacity": pt.max_capacity,
         },
-        "selections": [
-            {
-                "name": a.student_name,
-                "email": a.student_email,
-                "status": a.status,
-                "is_upgrade": bool(a.is_upgrade),
-                "plate": a.plate,
-                "created_at": a.created_at.isoformat() if a.created_at else None,
-                "admin_notes": a.admin_notes,
-            }
-            for a in apps
-        ],
+        "summary": {
+            "active_permit_count": len(permits),
+            "pending_count": len(pending),
+            "committed": committed,
+            "unique_people": unique_people,
+            "over_by": max(0, committed - (pt.max_capacity or 0)),
+        },
         "active_permits": [
             {
                 "name": p.name,
@@ -2245,21 +2255,27 @@ async def tier_detail(
                 "plate": ", ".join(p.plates) if p.plates else "",
                 "permit_number": p.permit_number,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
-                "has_application": (p.email or "").lower() in app_emails,
             }
             for p in permits
         ],
-        "summary": {
-            "selected_count": len([a for a in apps if a.status == "selected"]),
-            "accepted_count": len([a for a in apps if a.status == "accepted"]),
-            "active_permit_count": len(permits),
-            "permits_without_app": [
-                p.email for p in permits
-                if (p.email or "").lower() not in app_emails
+        "pending_offers": [
+            {
+                "name": a.student_name,
+                "email": a.student_email,
+                "is_upgrade": bool(a.is_upgrade),
+                "plate": a.plate,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in pending
+        ],
+        "issues": {
+            "accepted_no_permit": [
+                {"name": a.student_name, "email": a.student_email}
+                for a in accepted_no_permit
             ],
-            "apps_without_permit": [
-                a.student_email for a in apps
-                if a.status == "accepted" and (a.student_email or "").lower() not in permit_emails
+            "permits_no_app": [
+                {"name": p.name, "email": p.email, "permit_number": p.permit_number}
+                for p in permits_no_app
             ],
         },
     }
