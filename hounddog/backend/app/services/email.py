@@ -303,6 +303,9 @@ async def send_lottery_selection_email(
     lot_assignments: list[str] | None = None,
     school_name: str | None = None,
 ) -> bool:
+    if not settings.selection_emails_enabled:
+        logger.info("Selection email suppressed (disabled) for %s: %s", recipient_email, permit_type_label)
+        return True
     b = await _load_branding()
     school = school_name or settings.school_name or "Campus"
     first_name = extract_first_name(student_name)

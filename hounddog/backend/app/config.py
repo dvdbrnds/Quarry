@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     smtp_from_address: str = ""
     smtp_from_name: str = "Quarry Parking"
     smtp_use_tls: bool = True
+    selection_emails_enabled: bool = True
     lot_closure_mailing_list: str = ""
     citation_from_address: str = ""
 
