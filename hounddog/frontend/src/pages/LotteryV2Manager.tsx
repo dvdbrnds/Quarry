@@ -1993,6 +1993,36 @@ export default function LotteryV2Manager() {
         onClose={() => setTierDetail(null)}
         width={720}
         destroyOnClose
+        extra={tierDetail && (
+          <Button size="small" onClick={() => {
+            const d = tierDetail;
+            const w = window.open("", "_blank");
+            if (!w) return;
+            const rows = (list: any[], cols: string[], keys: string[]) =>
+              list.map((r: any) =>
+                `<tr>${keys.map(k => `<td style="padding:4px 10px;border-bottom:1px solid #eee;">${r[k] ?? ""}</td>`).join("")}</tr>`
+              ).join("");
+            w.document.write(`<!DOCTYPE html><html><head><title>${d.permit_type.label} Report</title>
+              <style>body{font-family:system-ui,sans-serif;padding:24px;font-size:13px;color:#222;}
+              h1{font-size:20px;margin:0 0 4px;}h2{font-size:15px;margin:24px 0 6px;border-bottom:2px solid #333;padding-bottom:4px;}
+              .meta{color:#666;font-size:12px;margin-bottom:16px;}
+              table{border-collapse:collapse;width:100%;}th{text-align:left;padding:4px 10px;border-bottom:2px solid #333;font-size:11px;text-transform:uppercase;color:#666;}
+              @media print{body{padding:0;}}</style></head><body>
+              <h1>${d.permit_type.label}</h1>
+              <div class="meta">Price: $${d.permit_type.price} · Capacity: ${d.permit_type.max_capacity} · Active permits: ${d.summary.active_permit_count} · Pending: ${d.summary.pending_count} · Printed: ${new Date().toLocaleString()}</div>
+              <h2>Active Permits (${d.active_permits.length})</h2>
+              <table><thead><tr><th>Name</th><th>Email</th><th>Plate</th><th>Permit #</th></tr></thead>
+              <tbody>${rows(d.active_permits, [], ["name","email","plate","permit_number"])}</tbody></table>
+              ${d.pending_offers?.length ? `<h2>Pending Payment (${d.pending_offers.length})</h2>
+              <table><thead><tr><th>Name</th><th>Email</th><th>Plate</th><th>Upgrade</th></tr></thead>
+              <tbody>${rows(d.pending_offers, [], ["name","email","plate","is_upgrade"])}</tbody></table>` : ""}
+              </body></html>`);
+            w.document.close();
+            w.print();
+          }}>
+            Print report
+          </Button>
+        )}
       >
         {tierDetail && (
           <div className="space-y-5 text-sm">
