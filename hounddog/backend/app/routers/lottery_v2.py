@@ -2180,6 +2180,91 @@ async def capacity_audit(
     }
 
 
+@router.get("/tier-detail/{permit_type_code}")
+async def tier_detail(
+    permit_type_code: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Return all lottery applications and active permits for a specific tier."""
+    pt = (
+        await db.execute(
+            select(PermitType).where(PermitType.code == permit_type_code)
+        )
+    ).scalar_one_or_none()
+    if not pt:
+        raise HTTPException(404, f"Permit type '{permit_type_code}' not found")
+
+    # All applications assigned to this tier
+    apps = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.assigned_permit_type_id == pt.id,
+                LotteryV2Application.status.in_(["selected", "accepted"]),
+            ).order_by(LotteryV2Application.status, LotteryV2Application.student_name)
+        )
+    ).scalars().all()
+
+    # All active permits for this tier
+    permits = (
+        await db.execute(
+            select(Permit).where(
+                Permit.permit_type == pt.code,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            ).order_by(Permit.name)
+        )
+    ).scalars().all()
+
+    app_emails = {(a.student_email or "").lower() for a in apps}
+    permit_emails = {(p.email or "").lower() for p in permits}
+
+    return {
+        "permit_type": {
+            "code": pt.code,
+            "label": pt.label,
+            "price": str(pt.price),
+            "max_capacity": pt.max_capacity,
+        },
+        "selections": [
+            {
+                "name": a.student_name,
+                "email": a.student_email,
+                "status": a.status,
+                "is_upgrade": bool(a.is_upgrade),
+                "plate": a.plate,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "admin_notes": a.admin_notes,
+            }
+            for a in apps
+        ],
+        "active_permits": [
+            {
+                "name": p.name,
+                "email": p.email,
+                "plate": ", ".join(p.plates) if p.plates else "",
+                "permit_number": p.permit_number,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "has_application": (p.email or "").lower() in app_emails,
+            }
+            for p in permits
+        ],
+        "summary": {
+            "selected_count": len([a for a in apps if a.status == "selected"]),
+            "accepted_count": len([a for a in apps if a.status == "accepted"]),
+            "active_permit_count": len(permits),
+            "permits_without_app": [
+                p.email for p in permits
+                if (p.email or "").lower() not in app_emails
+            ],
+            "apps_without_permit": [
+                a.student_email for a in apps
+                if a.status == "accepted" and (a.student_email or "").lower() not in permit_emails
+            ],
+        },
+    }
+
+
 @router.post("/cleanup-stale-permits")
 async def cleanup_stale_permits(
     db: AsyncSession = Depends(get_db),
