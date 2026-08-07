@@ -1668,8 +1668,8 @@ export default function LotteryV2Manager() {
                           onClick={async () => {
                             setBusy(true);
                             try {
-                              const res = await fetch(`/api/lottery-v2/applications/${s.id}`, {
-                                method: "DELETE",
+                              const res = await fetch(`/api/lottery-v2/applications/${s.id}/remove`, {
+                                method: "POST",
                                 headers: await authHeaders(),
                               });
                               if (!res.ok) {

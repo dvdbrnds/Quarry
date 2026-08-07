@@ -1086,7 +1086,7 @@ async def admin_restore_waitlist(
     return await _app_to_read(db, app)
 
 
-@router.delete("/applications/{application_id}")
+@router.post("/applications/{application_id}/remove")
 async def admin_delete_application(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
