@@ -1309,7 +1309,8 @@ async def complete_upgrade(
             )
         ).scalars().first()
 
-    old_permit_type_code = None
+    # Revoke old permit if still active (may already be revoked by admin-upgrade)
+    old_permit_type_code = old_pt_code
     if old_permit:
         old_permit_type_code = old_permit.permit_type
         old_permit.status = "upgraded"
@@ -1343,13 +1344,12 @@ async def complete_upgrade(
 
     # Advance the waitlist on the OLD tier (the vacated seat)
     if old_permit_type_code:
-        old_pt = (
+        old_pt_for_waitlist = (
             await db.execute(
                 select(PermitType).where(PermitType.code == old_permit_type_code)
             )
         ).scalar_one_or_none()
-        if old_pt:
-            # Try to promote next waitlisted person for that tier
+        if old_pt_for_waitlist:
             await promote_from_waitlist(db, app.cycle_id)
 
     await db.flush()

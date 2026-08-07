@@ -1344,6 +1344,30 @@ async def admin_upgrade_permit(
 
     charge_amount = max(Decimal("0.00"), new_discounted - old_discounted)
 
+    # Revoke the old permit immediately so it stops counting as "active"
+    old_permit = (
+        await db.execute(
+            select(Permit).where(
+                Permit.email == app.student_email,
+                Permit.permit_type == old_pt.code,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            ).order_by(Permit.created_at.desc())
+        )
+    ).scalars().first()
+    if not old_permit:
+        old_permit = (
+            await db.execute(
+                select(Permit).where(
+                    Permit.email == app.student_email,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                ).order_by(Permit.created_at.desc())
+            )
+        ).scalars().first()
+    if old_permit:
+        old_permit.status = "upgraded"
+
     # Transition the application for the upgrade pipeline
     app.is_upgrade = True
     app.existing_permit_type_id = old_pt.id
