@@ -369,6 +369,20 @@ async def _expire_lottery_offers():
 
 async def _run_loop():
     logger.info("Closure scheduler started (60s interval)")
+
+    # One-time startup: prune backup history to last 7 entries
+    try:
+        from .backup_scheduler import (
+            _cleanup_old_backups_disk, _cleanup_old_backups_db,
+            MAX_KEEP_COUNT, _check_backup_dir_size,
+        )
+        _cleanup_old_backups_disk(MAX_KEEP_COUNT)
+        await _cleanup_old_backups_db(MAX_KEEP_COUNT)
+        _check_backup_dir_size()
+        logger.info("Startup backup cleanup completed (kept last %d)", MAX_KEEP_COUNT)
+    except Exception as e:
+        logger.error("Startup backup cleanup failed: %s", e, exc_info=True)
+
     while True:
         try:
             await _process_closures()
