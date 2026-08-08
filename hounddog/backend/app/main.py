@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth.okta import require_admin
 from .config import settings
 from .database import get_db
+
+
+def _sentry_before_send(event, hint):
+    """Filter out noisy or expected errors before sending to Sentry."""
+    if "exc_info" in hint:
+        _exc_type, exc_value, _ = hint["exc_info"]
+        if isinstance(exc_value, HTTPException) and exc_value.status_code in (401, 403, 404):
+            return None
+    return event
+
+
+if settings.sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.1,
+        send_default_pii=False,
+        before_send=_sentry_before_send,
+    )
 from .routers import (
     academic_calendar,
     alerts,
@@ -1221,6 +1242,14 @@ async def health():
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_message(
+                f"Health check DEGRADED: {exc}",
+                level="error",
+            )
+        except Exception:
+            pass
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,

@@ -474,6 +474,11 @@ async def process_scheduled_backups():
 
     except Exception as e:
         logger.error("Scheduled backup failed: %s", e, exc_info=True)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(e)
+        except Exception:
+            pass
         await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")
         config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
         await _write_schedule(config)
