@@ -4,10 +4,14 @@ Scheduled backup processor.
 Runs inside the existing closure_scheduler loop every 60s.
 Checks the schedule config from the database (with disk fallback) and creates
 a JSON backup file when due. Also handles retention cleanup of old backup files.
+
+SAFETY: A minimum interval of 1 hour is enforced between backups regardless
+of config to prevent runaway backup loops from filling disk.
 """
 
 import json
 import logging
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,6 +23,9 @@ from ..models.audit_log import AuditLog
 logger = logging.getLogger("quarry.backup_scheduler")
 
 BACKUP_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "backups"
+MIN_BACKUP_INTERVAL = timedelta(hours=1)
+MIN_FREE_DISK_GB = 2.0
+MAX_KEEP_COUNT = 7
 
 
 async def _audit(summary: str, action: str = "POST", details: dict | None = None):
@@ -197,12 +204,17 @@ async def _persist_backup(filename: str, content: str, source: str = "scheduled"
 
 async def create_backup_now(source: str = "manual") -> str:
     """Create and persist a backup immediately. Returns filename."""
+    if not _check_disk_space():
+        raise RuntimeError(
+            f"Insufficient disk space (need ≥{MIN_FREE_DISK_GB}GB free). Backup aborted."
+        )
     filename, content, backup = await _create_backup_payload()
     backup["source"] = source
-    # Re-serialize with updated source
     content = json.dumps(backup, indent=2, default=str)
-    # Fix filename prefix for manual if desired — keep timestamp name
-    return await _persist_backup(filename, content, source=source)
+    result = await _persist_backup(filename, content, source=source)
+    _cleanup_old_backups_disk(MAX_KEEP_COUNT)
+    await _cleanup_old_backups_db(MAX_KEEP_COUNT)
+    return result
 
 
 async def _create_backup_file() -> str:
@@ -288,52 +300,109 @@ async def delete_persisted_backup(filename: str) -> bool:
     return deleted
 
 
-def _cleanup_old_backups(retention_days: int):
-    """Delete backup files/rows older than retention_days."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-
-    # Disk cleanup
-    for f in BACKUP_DIR.glob("quarry_backup_*.json"):
+def _cleanup_old_backups_disk(keep: int = MAX_KEEP_COUNT):
+    """Keep only the most recent N backup files on disk."""
+    if not BACKUP_DIR.exists():
+        return
+    backups = sorted(
+        BACKUP_DIR.glob("quarry_backup_*.json"),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    deleted = 0
+    for old_file in backups[keep:]:
         try:
-            mtime = datetime.utcfromtimestamp(f.stat().st_mtime).replace(tzinfo=timezone.utc)
-            if mtime < cutoff:
-                f.unlink()
-                logger.info("Deleted old backup: %s", f.name)
+            old_file.unlink()
+            deleted += 1
+            logger.info("Deleted old backup: %s", old_file.name)
         except Exception as e:
-            logger.warning("Failed to delete old backup %s: %s", f.name, e)
+            logger.warning("Failed to delete old backup %s: %s", old_file.name, e)
+    if deleted:
+        logger.info("Backup retention: kept %d, deleted %d on disk", min(keep, len(backups)), deleted)
 
 
-async def _cleanup_old_backups_db(retention_days: int):
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+async def _cleanup_old_backups_db(keep: int = MAX_KEEP_COUNT):
+    """Keep only the most recent N backup rows in the database."""
     try:
         async with async_session() as db:
-            await db.execute(
-                text("DELETE FROM backup_snapshots WHERE created_at < :cutoff"),
-                {"cutoff": cutoff},
-            )
+            await db.execute(text("""
+                DELETE FROM backup_snapshots
+                WHERE filename NOT IN (
+                    SELECT filename FROM backup_snapshots
+                    ORDER BY created_at DESC LIMIT :keep
+                )
+            """), {"keep": keep})
             await db.commit()
     except Exception as e:
         logger.warning("Failed to prune DB backups: %s", e)
 
 
+def _check_disk_space() -> bool:
+    """Return False if disk has less than MIN_FREE_DISK_GB available."""
+    try:
+        usage = shutil.disk_usage(str(BACKUP_DIR.parent))
+        free_gb = usage.free / (1024 ** 3)
+        if free_gb < MIN_FREE_DISK_GB:
+            logger.error(
+                "DISK SPACE CRITICAL: %.1fGB free (minimum %.1fGB). Backup skipped.",
+                free_gb, MIN_FREE_DISK_GB,
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.warning("Disk space check failed: %s — proceeding with backup", e)
+        return True
+
+
+def _check_backup_dir_size():
+    """Log a warning if the backup directory is getting large."""
+    if not BACKUP_DIR.exists():
+        return
+    total = sum(f.stat().st_size for f in BACKUP_DIR.glob("*") if f.is_file())
+    total_gb = total / (1024 ** 3)
+    if total_gb > 1.0:
+        logger.warning("Backup directory is %.1fGB — check retention policy", total_gb)
+
+
 async def process_scheduled_backups():
-    """Check if a scheduled backup is due and execute it."""
+    """Check if a scheduled backup is due and execute it.
+
+    Called every 60s from the closure_scheduler loop.  All scheduling
+    decisions happen here — a backup only runs when the wall-clock time
+    passes the configured daily window AND at least MIN_BACKUP_INTERVAL
+    has elapsed since the last run (hard safety floor).
+    """
     config = await _read_schedule()
-    logger.info(
+    logger.debug(
         "Backup scheduler tick — enabled=%s, config_keys=%s",
         config.get("enabled"), list(config.keys()),
     )
     if not config.get("enabled"):
-        logger.info("Backup scheduler: disabled, skipping")
         return
 
     frequency = config.get("frequency", "daily")
     time_str = config.get("time", "02:00")
-    retention = config.get("retention_days", 30)
-    next_run_str = config.get("next_run")
-
     now = datetime.now(timezone.utc)
 
+    # ── Hard safety floor: never run more often than MIN_BACKUP_INTERVAL ──
+    last_run_str = config.get("last_run")
+    if last_run_str:
+        try:
+            last_run = datetime.fromisoformat(last_run_str)
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=timezone.utc)
+            elapsed = now - last_run
+            if elapsed < MIN_BACKUP_INTERVAL:
+                logger.debug(
+                    "Backup scheduler: last run was %s ago (min interval %s), skipping",
+                    elapsed, MIN_BACKUP_INTERVAL,
+                )
+                return
+        except (ValueError, TypeError):
+            pass
+
+    # ── Determine next_run ──
+    next_run_str = config.get("next_run")
     if next_run_str:
         try:
             next_run = datetime.fromisoformat(next_run_str)
@@ -344,35 +413,23 @@ async def process_scheduled_backups():
             logger.warning("Backup scheduler: invalid next_run '%s', recomputing", next_run_str)
             next_run = _compute_next_run(frequency, time_str)
     else:
-        # No next_run yet — check if we've ever run. If not, or if last_run
-        # is older than the frequency interval, run now (catch-up).
-        last_run_str = config.get("last_run")
-        if last_run_str:
-            try:
-                last_run = datetime.fromisoformat(last_run_str)
-                if last_run.tzinfo is None:
-                    last_run = last_run.replace(tzinfo=timezone.utc)
-                delta = FREQUENCY_DELTAS.get(frequency, timedelta(days=1))
-                if now - last_run < delta:
-                    next_run = _compute_next_run(frequency, time_str)
-                    config["next_run"] = next_run.isoformat()
-                    await _write_schedule(config)
-                    logger.info("Backup scheduler: last_run recent (%s), next at %s", last_run_str, next_run.isoformat())
-                    return
-            except (ValueError, TypeError):
-                pass
-        # Never run or overdue — fall through to run now
-        logger.info("Backup scheduler: no next_run and overdue (last_run=%s), running now", config.get("last_run"))
-        next_run = now  # Force immediate run
-
-    logger.info(
-        "Backup scheduler: now=%s, next_run=%s, due=%s",
-        now.isoformat(), next_run.isoformat(), now >= next_run,
-    )
+        # First boot or missing next_run — compute the next window
+        next_run = _compute_next_run(frequency, time_str)
+        config["next_run"] = next_run.isoformat()
+        await _write_schedule(config)
+        logger.info("Backup scheduler: initialised next_run to %s", next_run.isoformat())
 
     if now < next_run:
         return
 
+    # ── Pre-flight: disk space check ──
+    if not _check_disk_space():
+        await _audit("Backup SKIPPED: insufficient disk space", action="DELETE")
+        config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
+        await _write_schedule(config)
+        return
+
+    # ── Run the backup ──
     try:
         logger.info("Backup scheduler: starting scheduled backup")
         filename = await _create_backup_file()
@@ -410,8 +467,13 @@ async def process_scheduled_backups():
                 logger.error("Google Drive upload failed (backup still saved in DB): %s", e)
                 await _audit(f"Google Drive upload failed: {e}", action="DELETE")
 
-        _cleanup_old_backups(retention)
-        await _cleanup_old_backups_db(retention)
+        # ── Post-backup: retention cleanup (keep last 7) ──
+        _cleanup_old_backups_disk(MAX_KEEP_COUNT)
+        await _cleanup_old_backups_db(MAX_KEEP_COUNT)
+        _check_backup_dir_size()
+
     except Exception as e:
         logger.error("Scheduled backup failed: %s", e, exc_info=True)
         await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")
+        config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
+        await _write_schedule(config)
