@@ -568,7 +568,7 @@ export default function DataManagement() {
             dataSource={history}
             loading={historyLoading}
             size="small"
-            pagination={{ pageSize: 5, size: "small" }}
+            pagination={{ defaultPageSize: 5, showSizeChanger: true, size: "small" }}
             locale={{ emptyText: "No backups yet — click “Run backup now” or wait for the scheduled time" }}
             rowKey="filename"
             columns={[

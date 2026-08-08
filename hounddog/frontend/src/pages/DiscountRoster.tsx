@@ -253,7 +253,7 @@ export default function DiscountRoster() {
         loading={loading}
         rowKey="id"
         size="small"
-        pagination={{ pageSize: 25, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 25, showSizeChanger: true }}
         columns={[
           { title: "ID", dataIndex: "student_id", key: "student_id", width: 100 },
           {

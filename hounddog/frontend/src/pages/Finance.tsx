@@ -517,7 +517,7 @@ export default function Finance() {
                   />
                 )}
                 <Table dataSource={stripe?.transactions || []} columns={stripeColumns} rowKey="id" size="small"
-                  pagination={{ pageSize: 25, showSizeChanger: false, showTotal: t => `${t} transactions` }}
+                  pagination={{ defaultPageSize: 25, showSizeChanger: true, showTotal: t => `${t} transactions` }}
                   locale={{ emptyText: <Empty description="No Stripe transactions found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                   expandable={{
                     expandedRowRender: t => {

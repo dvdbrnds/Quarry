@@ -505,7 +505,7 @@ function HistorySection() {
             {responseDetails.length > 0 && (
               <div>
                 <h4 className="font-medium text-sm mb-2">Individual Responses</h4>
-                <Table dataSource={responseDetails} rowKey="id" size="small" pagination={{ pageSize: 20 }}
+                <Table dataSource={responseDetails} rowKey="id" size="small" pagination={{ defaultPageSize: 20, showSizeChanger: true }}
                   columns={[
                     { title: "Phone", dataIndex: "phone", key: "phone", render: v => <span className="font-mono text-xs">{v || "—"}</span> },
                     { title: "Response", dataIndex: "response_text", key: "response" },
@@ -606,7 +606,7 @@ function GroupsSection() {
             />
             <Button type="primary" onClick={handleAddMembers} disabled={addIds.length === 0}>Add</Button>
           </div>
-          <Table dataSource={members} rowKey="id" size="small" pagination={{ pageSize: 20 }}
+          <Table dataSource={members} rowKey="id" size="small" pagination={{ defaultPageSize: 20, showSizeChanger: true }}
             columns={[
               { title: "Name", dataIndex: "name", key: "name" },
               { title: "Email", dataIndex: "email", key: "email", ellipsis: true, render: v => v || "—" },
@@ -929,7 +929,7 @@ function SubscribersSection() {
         <span className="text-sm text-ink-mute">{subscribers.length} subscribers</span>
       </Space>
       {(creating || editing) && <SubscriberForm initial={editing ?? undefined} onSave={() => { setCreating(false); setEditing(null); load(); }} onCancel={() => { setCreating(false); setEditing(null); }} />}
-      <Table dataSource={subscribers} columns={columns} rowKey="id" loading={loading} size="small" pagination={{ pageSize: 50 }} />
+      <Table dataSource={subscribers} columns={columns} rowKey="id" loading={loading} size="small" pagination={{ defaultPageSize: 50, showSizeChanger: true }} />
     </div>
   );
 }

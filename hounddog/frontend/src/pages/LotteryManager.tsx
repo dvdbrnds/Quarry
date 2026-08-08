@@ -521,7 +521,7 @@ export function ManageView({ permitType, onBack, onSimulate, onGoLive, onReload,
       )}
 
       <Table dataSource={displayedApps} columns={appColumns} rowKey="id" loading={loading} size="small"
-        pagination={{ pageSize: 50 }}
+        pagination={{ defaultPageSize: 50, showSizeChanger: true }}
         locale={{ emptyText: <Empty description="No applications yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
 

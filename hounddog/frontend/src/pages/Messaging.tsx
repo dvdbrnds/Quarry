@@ -290,7 +290,7 @@ function PreferencesSection() {
         <Select value={filterOptIn} onChange={v => setFilterOptIn(v)} style={{ width: 130 }}
           options={[{ label: "All", value: "all" }, { label: "Opted In", value: "opted_in" }, { label: "Not Opted In", value: "opted_out" }]} />
       </Space>
-      <Table dataSource={filtered} columns={columns} rowKey="permit_id" loading={loading} size="small" pagination={{ pageSize: 50, showTotal: t => `${t} holders` }} />
+      <Table dataSource={filtered} columns={columns} rowKey="permit_id" loading={loading} size="small" pagination={{ defaultPageSize: 50, showSizeChanger: true, showTotal: t => `${t} holders` }} />
     </div>
   );
 }

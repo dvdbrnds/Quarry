@@ -382,7 +382,7 @@ export default function VoucherManager() {
         rowKey="id"
         loading={usagesLoading}
         size="small"
-        pagination={{ pageSize: 15, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 15, showSizeChanger: true }}
         columns={[
           {
             title: "Date",

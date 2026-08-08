@@ -1514,7 +1514,7 @@ export default function LotteryV2Manager() {
                 loading={loading}
                 dataSource={deskFiltered}
                 columns={deskColumns}
-                pagination={{ pageSize: 25, showSizeChanger: true }}
+                pagination={{ defaultPageSize: 25, showSizeChanger: true }}
                 locale={{
                   emptyText: deskQuery
                     ? "No students match that lookup"
@@ -1540,7 +1540,7 @@ export default function LotteryV2Manager() {
               loading={loading}
               dataSource={apps}
               columns={columns}
-              pagination={{ pageSize: 20 }}
+              pagination={{ defaultPageSize: 20, showSizeChanger: true }}
             />
           </Card>
         </>
