@@ -19,4 +19,4 @@ google-auth~=2.36.0
 google-api-python-client~=2.159.0
 python-dateutil~=2.9.0
 pymssql~=2.3.0
-sentry-sdk[fastapi]~=2.0
+sentry-sdk[fastapi]>=2.44.0
