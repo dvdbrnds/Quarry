@@ -1,8 +1,11 @@
 """Public visitor/vendor parking permit portal — no authentication required."""
 
+import logging
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
+
+logger = logging.getLogger("quarry.visitor_permits")
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
@@ -303,7 +306,7 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         db.add(approval)
         await db.flush()
 
-        await _send_sponsor_approval_email(
+        email_sent = await _send_sponsor_approval_email(
             sponsor_email=data.sponsor_email.strip(),
             sponsor_name=data.sponsor_name.strip(),
             visitor_name=data.name.strip(),
@@ -314,10 +317,17 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
             end_date=end.isoformat(),
             token=token,
         )
-        message = (
-            "Your permit request has been submitted and is pending approval from "
-            f"{data.sponsor_name.strip()}. You will receive confirmation once approved."
-        )
+        if email_sent:
+            message = (
+                "Your permit request has been submitted and is pending approval from "
+                f"{data.sponsor_name.strip()}. You will receive confirmation once approved."
+            )
+        else:
+            message = (
+                "Your permit request has been submitted, but we could not send the approval "
+                f"email to {data.sponsor_email.strip()}. Please contact them directly or "
+                "reach out to the parking office for assistance."
+            )
     else:
         await _notify_permit_change("created", 1)
         if data.email:
@@ -410,8 +420,8 @@ async def _send_sponsor_approval_email(
     start_date: str,
     end_date: str,
     token: str,
-):
-    """Send an approval request email to the department sponsor."""
+) -> bool:
+    """Send an approval request email to the department sponsor. Returns True if sent."""
     try:
         from ..services.email import send_email, branded_email_shell
         school = settings.school_name or "Campus"
@@ -436,10 +446,22 @@ async def _send_sponsor_approval_email(
             f'<p style="color:#999;font-size:13px;">This link expires in 7 days. If you did not expect this request, you can ignore this email.</p>'
         )
         body_html = await branded_email_shell(school, inner)
-        await send_email(
+        sent = await send_email(
             [sponsor_email],
             f"Vendor Parking Permit Approval — {company_name}",
             body_html,
         )
-    except Exception:
-        pass
+        if not sent:
+            logger.error(
+                "Sponsor approval email FAILED to send to %s for visitor %s",
+                sponsor_email, visitor_name,
+            )
+        return sent
+    except Exception as e:
+        logger.error("Sponsor approval email error: %s", e, exc_info=True)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(e)
+        except Exception:
+            pass
+        return False
