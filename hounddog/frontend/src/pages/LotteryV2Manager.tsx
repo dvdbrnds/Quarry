@@ -1082,7 +1082,14 @@ export default function LotteryV2Manager() {
             {capacityAudit && (
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium m-0">Capacity audit</h4>
+                  <h4 className="font-medium m-0">
+                    Capacity audit
+                    {capacityAudit.generated_at && (
+                      <span className="font-normal text-xs text-gray-400 ml-2">
+                        as of {new Date(capacityAudit.generated_at).toLocaleString()}
+                      </span>
+                    )}
+                  </h4>
                   <Button type="link" size="small" onClick={() => setCapacityAudit(null)}>Dismiss</Button>
                 </div>
                 <p className="m-0 text-gray-600">

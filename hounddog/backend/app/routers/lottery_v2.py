@@ -2161,7 +2161,11 @@ async def capacity_audit(
 
     stale_count = len(stale_permits) + len(stale_selections)
 
+    from datetime import datetime, timezone
+    generated_at = datetime.now(timezone.utc).isoformat()
+
     return {
+        "generated_at": generated_at,
         "cycle": {
             "id": str(cycle.id),
             "name": cycle.name,
