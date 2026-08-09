@@ -2101,7 +2101,7 @@ export default function LotteryV2Manager() {
                                 <td className="py-1 pr-2">{p.name}</td>
                                 <td className="py-1 pr-2 text-gray-600">{p.email}</td>
                                 <td className="py-1 pr-2">{yearLabel}</td>
-                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{p.applied_at ? new Date(p.applied_at).toLocaleDateString() : "—"}</td>
+                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{p.applied_at ? new Date(p.applied_at).toLocaleString() : "—"}</td>
                                 <td className="py-1 pr-2 font-mono">{p.plate}</td>
                                 <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
                               </tr>
@@ -2140,7 +2140,7 @@ export default function LotteryV2Manager() {
                                 <td className="py-1 pr-2">{s.name}</td>
                                 <td className="py-1 pr-2 text-gray-600">{s.email}</td>
                                 <td className="py-1 pr-2">{yearLabel}</td>
-                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{s.applied_at ? new Date(s.applied_at).toLocaleDateString() : "—"}</td>
+                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{s.applied_at ? new Date(s.applied_at).toLocaleString() : "—"}</td>
                                 <td className="py-1 pr-2 font-mono">{s.plate}</td>
                                 <td className="py-1 pr-2">{s.is_upgrade ? <Tag color="purple" className="text-[10px]">Upgrade</Tag> : ""}</td>
                               </tr>
