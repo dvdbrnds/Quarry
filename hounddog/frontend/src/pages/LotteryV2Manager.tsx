@@ -2083,19 +2083,30 @@ export default function LotteryV2Manager() {
                           <tr className="text-left border-b font-medium">
                             <th className="py-1 pr-2">Name</th>
                             <th className="py-1 pr-2">Email</th>
+                            <th className="py-1 pr-2">Year</th>
+                            <th className="py-1 pr-2">Applied</th>
                             <th className="py-1 pr-2">Plate</th>
                             <th className="py-1 pr-2">Permit #</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(tierDetail.active_permits || []).map((p: any, i: number) => (
-                            <tr key={i} className="border-b border-gray-100">
-                              <td className="py-1 pr-2">{p.name}</td>
-                              <td className="py-1 pr-2 text-gray-600">{p.email}</td>
-                              <td className="py-1 pr-2 font-mono">{p.plate}</td>
-                              <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
-                            </tr>
-                          ))}
+                          {(tierDetail.active_permits || []).map((p: any, i: number) => {
+                            const cy = p.class_year;
+                            const now = new Date();
+                            const acadStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+                            const diff = cy ? cy - acadStart : null;
+                            const yearLabel = diff === null ? "—" : diff <= 1 ? "Sr" : diff === 2 ? "Jr" : diff === 3 ? "So" : "Fr";
+                            return (
+                              <tr key={i} className="border-b border-gray-100">
+                                <td className="py-1 pr-2">{p.name}</td>
+                                <td className="py-1 pr-2 text-gray-600">{p.email}</td>
+                                <td className="py-1 pr-2">{yearLabel}</td>
+                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{p.applied_at ? new Date(p.applied_at).toLocaleDateString() : "—"}</td>
+                                <td className="py-1 pr-2 font-mono">{p.plate}</td>
+                                <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -2111,19 +2122,30 @@ export default function LotteryV2Manager() {
                           <tr className="text-left border-b font-medium">
                             <th className="py-1 pr-2">Name</th>
                             <th className="py-1 pr-2">Email</th>
+                            <th className="py-1 pr-2">Year</th>
+                            <th className="py-1 pr-2">Applied</th>
                             <th className="py-1 pr-2">Plate</th>
                             <th className="py-1 pr-2">Upgrade</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {tierDetail.pending_offers.map((s: any, i: number) => (
-                            <tr key={i} className="border-b border-gray-100">
-                              <td className="py-1 pr-2">{s.name}</td>
-                              <td className="py-1 pr-2 text-gray-600">{s.email}</td>
-                              <td className="py-1 pr-2 font-mono">{s.plate}</td>
-                              <td className="py-1 pr-2">{s.is_upgrade ? <Tag color="purple" className="text-[10px]">Upgrade</Tag> : ""}</td>
-                            </tr>
-                          ))}
+                          {tierDetail.pending_offers.map((s: any, i: number) => {
+                            const cy = s.class_year;
+                            const now = new Date();
+                            const acadStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+                            const diff = cy ? cy - acadStart : null;
+                            const yearLabel = diff === null ? "—" : diff <= 1 ? "Sr" : diff === 2 ? "Jr" : diff === 3 ? "So" : "Fr";
+                            return (
+                              <tr key={i} className="border-b border-gray-100">
+                                <td className="py-1 pr-2">{s.name}</td>
+                                <td className="py-1 pr-2 text-gray-600">{s.email}</td>
+                                <td className="py-1 pr-2">{yearLabel}</td>
+                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{s.applied_at ? new Date(s.applied_at).toLocaleDateString() : "—"}</td>
+                                <td className="py-1 pr-2 font-mono">{s.plate}</td>
+                                <td className="py-1 pr-2">{s.is_upgrade ? <Tag color="purple" className="text-[10px]">Upgrade</Tag> : ""}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

@@ -2270,6 +2270,13 @@ async def tier_detail(
         )
     ).scalars().all()
 
+    # Build lookup: email → application created_at (submission timestamp)
+    app_by_email: dict[str, LotteryV2Application] = {}
+    for a in apps:
+        key = (a.student_email or "").lower()
+        if key and key not in app_by_email:
+            app_by_email[key] = a
+
     permit_emails = {(p.email or "").lower() for p in permits}
     selected_apps = [a for a in apps if a.status == "selected"]
     accepted_apps = [a for a in apps if a.status == "accepted"]
@@ -2308,7 +2315,18 @@ async def tier_detail(
                 "email": p.email,
                 "plate": ", ".join(p.plates) if p.plates else "",
                 "permit_number": p.permit_number,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "permit_issued_at": p.created_at.isoformat() if p.created_at else None,
+                "applied_at": (
+                    app_by_email[ek].created_at.isoformat()
+                    if (ek := (p.email or "").lower()) in app_by_email
+                    and app_by_email[ek].created_at
+                    else None
+                ),
+                "class_year": (
+                    app_by_email[ek].class_year
+                    if (ek := (p.email or "").lower()) in app_by_email
+                    else None
+                ),
             }
             for p in permits
         ],
@@ -2318,7 +2336,8 @@ async def tier_detail(
                 "email": a.student_email,
                 "is_upgrade": bool(a.is_upgrade),
                 "plate": a.plate,
-                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "applied_at": a.created_at.isoformat() if a.created_at else None,
+                "class_year": a.class_year,
             }
             for a in pending
         ],
