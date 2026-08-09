@@ -2031,6 +2031,29 @@ async def capacity_audit(
         p = prefs(app)
         return bool(pt and p and p[0] == pt.id)
 
+    def _class_year_label(cy: int | None) -> str:
+        if cy is None:
+            return "Unknown"
+        now_year = datetime.now(timezone.utc).year
+        academic_start = now_year if datetime.now(timezone.utc).month >= 7 else now_year - 1
+        diff = cy - academic_start
+        if diff <= 1:
+            return "Senior"
+        elif diff == 2:
+            return "Junior"
+        elif diff == 3:
+            return "Sophomore"
+        elif diff >= 4:
+            return "Freshman"
+        return "Other"
+
+    def _class_year_breakdown(app_list: list) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for a in app_list:
+            label = _class_year_label(a.class_year)
+            counts[label] = counts.get(label, 0) + 1
+        return counts
+
     tier_rows = []
     for code in LOTTERY_TIER_CODES:
         pt = pt_by_code.get(code)
@@ -2076,6 +2099,7 @@ async def capacity_audit(
             "auto_advance_waitlist": pt.auto_advance_waitlist,
             "waitlisted_with_pref": len(waitlisted_with_pref),
             "apps_first_choice": len(first_choice_apps),
+            "class_year_breakdown": _class_year_breakdown(selected_to_tier),
         })
 
     # South / U deep dive

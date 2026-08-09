@@ -1111,6 +1111,7 @@ export default function LotteryV2Manager() {
                         <th className="py-1.5 pr-3 text-right">= Committed</th>
                         <th className="py-1.5 pr-3 text-right">Truly open</th>
                         <th className="py-1.5 pr-3 text-right">Waitlisted</th>
+                        <th className="py-1.5 pr-3">Class year</th>
                         <th className="py-1.5 pr-3">Auto-advance</th>
                       </tr>
                     </thead>
@@ -1139,6 +1140,14 @@ export default function LotteryV2Manager() {
                               : <span className="text-red-500 font-medium">0</span>}
                           </td>
                           <td className="py-1.5 pr-3 text-right">{t.waitlisted_with_pref}</td>
+                          <td className="py-1.5 pr-3 text-[10px] text-gray-600 whitespace-nowrap">
+                            {t.class_year_breakdown && Object.keys(t.class_year_breakdown).length > 0
+                              ? ["Senior", "Junior", "Sophomore", "Freshman", "Other", "Unknown"]
+                                  .filter(k => t.class_year_breakdown[k])
+                                  .map(k => `${k.slice(0, 2)}: ${t.class_year_breakdown[k]}`)
+                                  .join(" · ")
+                              : "—"}
+                          </td>
                           <td className="py-1.5 pr-3">
                             {t.auto_advance_waitlist === false
                               ? <Tag color="red" className="text-[10px]">OFF</Tag>
