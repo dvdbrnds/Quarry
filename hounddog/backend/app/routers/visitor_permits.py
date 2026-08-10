@@ -128,7 +128,7 @@ async def list_pending_visitor_permits(
             "permit_number": p.permit_number,
             "name": p.name,
             "plates": p.plates,
-            "company_name": _extract_metadata(p, "company_name"),
+            "company_name": _extract_metadata(p, "company_name") or p.student_id or "",
             "sponsor_email": token_row.sponsor_email if token_row else "",
             "sponsor_name": token_row.sponsor_name if token_row else "",
             "created_at": p.created_at.isoformat() if p.created_at else "",
@@ -196,7 +196,7 @@ async def get_approval_info(token: str, db: AsyncSession = Depends(get_db)):
         permit_id=str(permit.id),
         permit_number=permit.permit_number,
         name=permit.name,
-        company_name=_extract_metadata(permit, "company_name"),
+        company_name=_extract_metadata(permit, "company_name") or permit.student_id or "",
         plate=permit.plates[0] if permit.plates else "",
         work_description=_extract_metadata(permit, "work_description"),
         sponsor_department=_extract_metadata(permit, "sponsor_department"),
@@ -236,7 +236,7 @@ async def resend_sponsor_email(
         sponsor_email=approval.sponsor_email,
         sponsor_name=approval.sponsor_name,
         visitor_name=permit.name,
-        company_name=_extract_metadata(permit, "company_name") or "Visitor",
+        company_name=_extract_metadata(permit, "company_name") or permit.student_id or "Visitor",
         plate=permit.plates[0] if permit.plates else "",
         work_description=_extract_metadata(permit, "work_description") or "",
         start_date=permit.start_date.isoformat() if permit.start_date else "",
@@ -354,12 +354,6 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
     )
     status = "pending_approval" if is_long_term else "active"
 
-    metadata_parts = [
-        f"company_name:{data.company_name.strip()}",
-        f"sponsor_department:{data.sponsor_department.strip()}",
-        f"work_description:{data.work_description.strip()}",
-    ]
-
     permit = Permit(
         permit_number=await next_permit_number(db),
         name=data.name.strip(),
@@ -371,7 +365,7 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         start_date=start,
         end_date=end,
         status=status,
-        student_id="|".join(metadata_parts),
+        student_id=data.company_name.strip()[:64] if data.company_name.strip() else "",
     )
     db.add(permit)
     await db.flush()
