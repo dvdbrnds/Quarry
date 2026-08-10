@@ -14,6 +14,7 @@ import LiveMonitor from "./LiveMonitor";
 import FeeExemptRoster from "./FeeExemptRoster";
 import DiscountRoster from "./DiscountRoster";
 import VoucherManager from "./VoucherManager";
+import VisitorPresets from "./VisitorPresets";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -686,6 +687,11 @@ export default function Permits() {
             key: "types",
             label: "Manage Permits",
             children: <PermitTypes />,
+          },
+          {
+            key: "visitor-presets",
+            label: "Visitor Presets",
+            children: <VisitorPresets />,
           },
           {
             key: "lottery",
