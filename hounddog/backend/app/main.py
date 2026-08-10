@@ -1023,6 +1023,30 @@ async def notification_health(user=Depends(require_admin())):
     }
 
 
+@app.post("/api/admin/smtp-test", tags=["admin"])
+async def smtp_test(user=Depends(require_admin())):
+    """Test SMTP connectivity and auth without sending an email."""
+    import aiosmtplib
+    from .config import settings as s
+    if not s.smtp_host:
+        return {"ok": False, "error": "SMTP_HOST not configured"}
+    try:
+        client = aiosmtplib.SMTP(
+            hostname=s.smtp_host,
+            port=s.smtp_port,
+            use_tls=s.smtp_use_tls,
+            start_tls=not s.smtp_use_tls,
+            timeout=10,
+        )
+        await client.connect()
+        if s.smtp_user and s.smtp_password:
+            await client.login(s.smtp_user, s.smtp_password)
+        await client.quit()
+        return {"ok": True, "host": s.smtp_host, "port": s.smtp_port, "user": s.smtp_user}
+    except Exception as e:
+        return {"ok": False, "host": s.smtp_host, "port": s.smtp_port, "user": s.smtp_user, "error": str(e)}
+
+
 @app.get("/api/admin/preflight", tags=["admin"])
 async def preflight_check(user=Depends(require_admin())):
     from .services.env_preflight import run_preflight
