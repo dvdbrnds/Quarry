@@ -538,17 +538,15 @@ function TicketsList() {
 }
 
 export default function Tickets() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get("tab");
-  const validTabs = ["tickets", "enforcement", "violations", "devices"];
-  const activeKey = validTabs.includes(tabParam || "") ? tabParam! : "tickets";
+  const [activeTab, setActiveTab] = useState("tickets");
 
   return (
     <div>
       <h2 className="text-2xl font-bold mb-4">Tickets & Enforcement</h2>
       <Tabs
-        activeKey={activeKey}
-        onChange={(key) => setSearchParams({ tab: key })}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        destroyInactiveTabPane
         items={[
           { key: "tickets", label: "Tickets", children: <TicketsList /> },
           { key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> },
