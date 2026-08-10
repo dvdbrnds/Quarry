@@ -92,7 +92,7 @@ const PERMIT_OPTIONS: PermitOption[] = [
     id: "semester",
     label: "Semester (contracted staff)",
     description:
-      "For contracted employees without a Moravian account (e.g., Standardized Patients). A department sponsor must approve.",
+      "For contracted employees without a Moravian account (e.g., Sodexo, Standardized Patients). A department sponsor must approve.",
     moreThanOneDay: true,
     duration: "semester",
   },
