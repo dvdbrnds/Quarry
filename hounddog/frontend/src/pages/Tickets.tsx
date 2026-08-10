@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm } from "antd";
+import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders } from "../auth";
 import { useCurrentUser } from "../UserContext";
+import EnforcementSettings from "./EnforcementSettings";
+import ViolationTypes from "./ViolationTypes";
+import Devices from "./Devices";
 
 interface Ticket {
   id: string;
@@ -45,7 +48,7 @@ const STATUS_COLORS: Record<string, string> = {
   voided: "default",
 };
 
-export default function Tickets() {
+function TicketsList() {
   const { modal, message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useCurrentUser();
@@ -530,6 +533,29 @@ export default function Tickets() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+export default function Tickets() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const validTabs = ["tickets", "enforcement", "violations", "devices"];
+  const activeKey = validTabs.includes(tabParam || "") ? tabParam! : "tickets";
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-4">Tickets & Enforcement</h2>
+      <Tabs
+        activeKey={activeKey}
+        onChange={(key) => setSearchParams({ tab: key })}
+        items={[
+          { key: "tickets", label: "Tickets", children: <TicketsList /> },
+          { key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> },
+          { key: "violations", label: "Violation Types", children: <ViolationTypes /> },
+          { key: "devices", label: "Devices", children: <Devices /> },
+        ]}
+      />
     </div>
   );
 }
