@@ -114,7 +114,8 @@ function AdminShell({ user }: { user: AuthUser }) {
 
   return (
     <div className="min-h-screen">
-      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-1 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-bone shadow-md">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-1">
         <div className="flex items-center gap-2 mr-3 shrink-0">
           <BrandMark />
           {brand.brandName && (
@@ -221,6 +222,7 @@ function AdminShell({ user }: { user: AuthUser }) {
             </div>
           )}
         </div>
+        </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
@@ -246,7 +248,8 @@ function StudentShell({ user }: { user: AuthUser }) {
   const brand = useBranding();
   return (
     <div className="min-h-screen">
-      <nav style={{ background: brand.primaryColor }} className="text-bone px-6 py-3 flex items-center gap-6 shadow-md">
+      <nav style={{ background: brand.primaryColor }} className="text-bone shadow-md">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-6">
         <div className="flex items-center gap-2 mr-4">
           <BrandMark />
           {brand.brandName && (
@@ -265,6 +268,7 @@ function StudentShell({ user }: { user: AuthUser }) {
           >
             Sign out
           </button>
+        </div>
         </div>
       </nav>
 
