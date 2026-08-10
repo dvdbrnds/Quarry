@@ -125,9 +125,9 @@ function AdminShell({ user }: { user: AuthUser }) {
         </div>
         <NavItem to="/dashboard">Dashboard</NavItem>
         <NavItem to="/permits">Permits</NavItem>
+        <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/lots">Lots</NavItem>
         <NavItem to="/calendar">Calendar</NavItem>
-        <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/finance">Finance</NavItem>
         <NavItem to="/alerts">Alerts</NavItem>
         <NavItem to="/settings">Settings</NavItem>
