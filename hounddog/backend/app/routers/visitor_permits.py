@@ -12,6 +12,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.okta import require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
@@ -99,6 +100,48 @@ class ApprovalDecision(BaseModel):
 # ── Endpoints ──
 
 
+@router.get("/admin/pending", tags=["admin"])
+async def list_pending_visitor_permits(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
+    """Admin: list all visitor permits awaiting sponsor approval."""
+    rows = (
+        await db.execute(
+            select(Permit)
+            .where(Permit.status == "pending_approval")
+            .where(Permit.deleted_at.is_(None))
+            .order_by(Permit.created_at.desc())
+        )
+    ).scalars().all()
+
+    results = []
+    for p in rows:
+        token_row = (
+            await db.execute(
+                select(VisitorApprovalToken)
+                .where(VisitorApprovalToken.permit_id == p.id)
+                .order_by(VisitorApprovalToken.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        results.append({
+            "id": str(p.id),
+            "permit_number": p.permit_number,
+            "name": p.name,
+            "plates": p.plates,
+            "company_name": _extract_metadata(p, "company_name"),
+            "sponsor_email": token_row.sponsor_email if token_row else "",
+            "sponsor_name": token_row.sponsor_name if token_row else "",
+            "created_at": p.created_at.isoformat() if p.created_at else "",
+            "start_date": p.start_date.isoformat() if p.start_date else "",
+            "end_date": p.end_date.isoformat() if p.end_date else "",
+            "token_expired": token_row.expires_at < datetime.now(timezone.utc) if token_row else True,
+        })
+    return results
+
+
 @router.post("", response_model=VisitorPermitResponse, status_code=201)
 async def create_visitor_permit(data: VisitorPermitCreate, db: AsyncSession = Depends(get_db)):
     """Create a visitor or vendor temporary parking permit (public, no auth)."""
@@ -159,6 +202,46 @@ async def get_approval_info(token: str, db: AsyncSession = Depends(get_db)):
         already_decided=approval.used_at is not None,
         decision=approval.decision,
     )
+
+
+@router.post("/resend-sponsor-email/{permit_id}", tags=["admin"])
+async def resend_sponsor_email(
+    permit_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
+    """Admin: resend the sponsor approval email for a pending visitor permit."""
+    permit = await db.get(Permit, permit_id)
+    if not permit:
+        raise HTTPException(404, "Permit not found")
+    if permit.status != "pending_approval":
+        raise HTTPException(400, f"Permit is '{permit.status}', not pending_approval")
+
+    approval = (
+        await db.execute(
+            select(VisitorApprovalToken)
+            .where(VisitorApprovalToken.permit_id == permit_id)
+            .order_by(VisitorApprovalToken.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not approval:
+        raise HTTPException(404, "No approval token found for this permit")
+
+    sent = await _send_sponsor_approval_email(
+        sponsor_email=approval.sponsor_email,
+        sponsor_name=approval.sponsor_name,
+        visitor_name=permit.name,
+        company_name=_extract_metadata(permit, "company_name") or "Visitor",
+        plate=permit.plates[0] if permit.plates else "",
+        work_description=_extract_metadata(permit, "work_description") or "",
+        start_date=permit.start_date.isoformat() if permit.start_date else "",
+        end_date=permit.end_date.isoformat() if permit.end_date else "",
+        token=approval.token,
+    )
+    if sent:
+        return {"status": "sent", "message": f"Approval email resent to {approval.sponsor_email}"}
+    raise HTTPException(500, f"Failed to send email to {approval.sponsor_email} — check server logs")
 
 
 @router.post("/approve/{token}")
@@ -406,8 +489,13 @@ async def _send_visitor_confirmation(permit: Permit):
         )
         body_html = await branded_email_shell(school, inner)
         await send_email([permit.email], f"Visitor Parking Permit — {plate}", body_html)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("Visitor confirmation email error: %s", e, exc_info=True)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(e)
+        except Exception:
+            pass
 
 
 async def _send_sponsor_approval_email(
@@ -422,10 +510,15 @@ async def _send_sponsor_approval_email(
     token: str,
 ) -> bool:
     """Send an approval request email to the department sponsor. Returns True if sent."""
+    logger.info(
+        "Sponsor approval email: starting — to=%s, visitor=%s, company=%s",
+        sponsor_email, visitor_name, company_name,
+    )
     try:
         from ..services.email import send_email, branded_email_shell
         school = settings.school_name or "Campus"
         approval_url = f"{settings.student_facing_url}/visitor/approve/{token}"
+        logger.info("Sponsor approval email: approval_url=%s", approval_url)
 
         inner = (
             f'<h2 style="color:#1a2744;margin:0 0 16px;">Vendor Parking Permit — Approval Required</h2>'
@@ -445,20 +538,26 @@ async def _send_sponsor_approval_email(
             f'</div>'
             f'<p style="color:#999;font-size:13px;">This link expires in 7 days. If you did not expect this request, you can ignore this email.</p>'
         )
+
+        logger.info("Sponsor approval email: building branded shell...")
         body_html = await branded_email_shell(school, inner)
+        logger.info("Sponsor approval email: branded shell built (%d chars), sending...", len(body_html))
+
         sent = await send_email(
             [sponsor_email],
             f"Vendor Parking Permit Approval — {company_name}",
             body_html,
         )
-        if not sent:
+        if sent:
+            logger.info("Sponsor approval email: SUCCESS — sent to %s", sponsor_email)
+        else:
             logger.error(
-                "Sponsor approval email FAILED to send to %s for visitor %s",
+                "Sponsor approval email: send_email returned False for %s (visitor=%s)",
                 sponsor_email, visitor_name,
             )
         return sent
     except Exception as e:
-        logger.error("Sponsor approval email error: %s", e, exc_info=True)
+        logger.error("Sponsor approval email EXCEPTION: %s", e, exc_info=True)
         try:
             import sentry_sdk
             sentry_sdk.capture_exception(e)
