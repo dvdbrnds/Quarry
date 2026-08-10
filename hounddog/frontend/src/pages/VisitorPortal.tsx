@@ -589,19 +589,26 @@ function MultiDayDetails({
       <Form.Item name="_preset_id" hidden><Input /></Form.Item>
 
       {presets.length > 0 && (
-        <Form.Item label="Who are you with?">
-          <Select
-            placeholder="Select your organization or choose Other"
-            value={selectedPreset ?? undefined}
-            onChange={handlePresetChange}
-            allowClear
-            onClear={() => { setSelectedPreset(null); form.setFieldsValue({ _preset_id: undefined, company_name: "" }); }}
-            options={[
-              ...presets.map((p) => ({ value: p.id, label: p.label })),
-              { value: "__other__", label: "Other / not listed" },
-            ]}
-          />
-        </Form.Item>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <Form.Item
+            label={<span className="text-base font-semibold">Who are you with?</span>}
+            className="mb-0"
+            extra="If your organization is listed, select it to speed up approval."
+          >
+            <Select
+              size="large"
+              placeholder="Select your organization or choose Other"
+              value={selectedPreset ?? undefined}
+              onChange={handlePresetChange}
+              allowClear
+              onClear={() => { setSelectedPreset(null); form.setFieldsValue({ _preset_id: undefined, company_name: "" }); }}
+              options={[
+                ...presets.map((p) => ({ value: p.id, label: p.label })),
+                { value: "__other__", label: "Other / not listed" },
+              ]}
+            />
+          </Form.Item>
+        </div>
       )}
 
       {usingPreset && (
