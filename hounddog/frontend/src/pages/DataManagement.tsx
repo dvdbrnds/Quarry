@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Table, App, Typography, Switch, Select, TimePicker, InputNumber, Space, Tag, Popconfirm, Input, Tooltip } from "antd";
-import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined, CloudOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { DownloadOutlined, UploadOutlined, DatabaseOutlined, WarningOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined, CloudOutlined, CheckCircleOutlined, MailOutlined, CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { api, BackupSchedule, BackupHistoryEntry } from "../api";
@@ -33,6 +33,29 @@ export default function DataManagement() {
   const [driveTestResult, setDriveTestResult] = useState<{ ok: boolean; folder_name?: string; error?: string } | null>(null);
   const [driveTesting, setDriveTesting] = useState(false);
   const [runningNow, setRunningNow] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  const [smtpResult, setSmtpResult] = useState<{ ok: boolean; host?: string; port?: number; user?: string; error?: string } | null>(null);
+
+  const handleSmtpTest = async () => {
+    setSmtpTesting(true);
+    setSmtpResult(null);
+    try {
+      const token = (await import("../auth")).getAccessToken();
+      const res = await fetch("/api/admin/smtp-test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await token}` },
+      });
+      const data = await res.json();
+      setSmtpResult(data);
+      if (data.ok) message.success("SMTP connection successful");
+      else message.error(`SMTP failed: ${data.error}`);
+    } catch (e: any) {
+      setSmtpResult({ ok: false, error: e.message || "Request failed" });
+      message.error("SMTP test request failed");
+    } finally {
+      setSmtpTesting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -406,6 +429,34 @@ export default function DataManagement() {
         </Card>
 
       </div>
+
+      {/* Email System */}
+      <Card size="small" className="mb-6">
+        <div className="flex items-center gap-4 flex-wrap">
+          <MailOutlined className="text-lg text-blue-500" />
+          <div className="flex-1 min-w-[200px]">
+            <div className="font-semibold text-sm">Email System (SMTP)</div>
+            <div className="text-xs text-gray-500">
+              Test connectivity to the mail server — verifies host, port, and credentials.
+            </div>
+          </div>
+          <Button
+            onClick={handleSmtpTest}
+            loading={smtpTesting}
+            icon={<MailOutlined />}
+          >
+            Test SMTP
+          </Button>
+          {smtpResult && (
+            <div className={`flex items-center gap-2 text-sm ${smtpResult.ok ? "text-green-600" : "text-red-600"}`}>
+              {smtpResult.ok
+                ? <><CheckCircleFilled /> Connected — {smtpResult.host}:{smtpResult.port} as {smtpResult.user}</>
+                : <><CloseCircleFilled /> {smtpResult.error}{smtpResult.host ? ` (${smtpResult.host}:${smtpResult.port})` : ""}</>
+              }
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Scheduled Backup Card */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
