@@ -5,7 +5,6 @@ import type { ColumnsType } from "antd/es/table";
 import { authHeaders } from "../auth";
 import { useCurrentUser } from "../UserContext";
 import EnforcementSettings from "./EnforcementSettings";
-import ViolationTypes from "./ViolationTypes";
 import Devices from "./Devices";
 
 interface Ticket {
@@ -550,8 +549,7 @@ export default function Tickets() {
         items={[
           { key: "tickets", label: "Tickets", children: <TicketsList /> },
           { key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> },
-          { key: "violations", label: "Violation Types", children: <ViolationTypes /> },
-          { key: "devices", label: "Devices", children: <Devices /> },
+          { key: "devices", label: "Enforcement Devices", children: <Devices /> },
         ]}
       />
     </div>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, AcademicSeason, Lot, LotClosure } from "../api";
 import { authHeaders } from "../auth";
-import { Button, Select, Modal, Input, Tag, Space, App, Descriptions, DatePicker, Empty } from "antd";
+import { Button, Select, Modal, Input, Tag, Space, App, Descriptions, DatePicker, Empty, Tabs } from "antd";
 import dayjs from "dayjs";
+import AcademicCalendar from "./AcademicCalendar";
 
 interface LotteryPermitType {
   id: string; code: string; label: string;
@@ -54,7 +55,7 @@ function seasonOverlapsMonth(s: AcademicSeason, y: number, m: number) {
 }
 function formatSeasonDate(iso: string) { return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
 
-export default function OperationsCalendar() {
+function LotClosureCalendar() {
   const { message } = App.useApp();
   const [lots, setLots] = useState<Lot[]>([]);
   const [closures, setClosures] = useState<LotClosure[]>([]);
@@ -333,6 +334,25 @@ export default function OperationsCalendar() {
             <DatePicker showTime value={editReopensAt} onChange={setEditReopensAt} className="w-full" /></div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+export default function OperationsCalendar() {
+  const [activeTab, setActiveTab] = useState("closures");
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-4">Calendar</h2>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        destroyInactiveTabPane
+        items={[
+          { key: "closures", label: "Lot Closures", children: <LotClosureCalendar /> },
+          { key: "academic", label: "Academic Calendar", children: <AcademicCalendar /> },
+        ]}
+      />
     </div>
   );
 }
