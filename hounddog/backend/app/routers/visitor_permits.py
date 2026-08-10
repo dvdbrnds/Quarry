@@ -462,21 +462,25 @@ async def _notify_permit_change(action: str, count: int):
 
 
 async def _send_visitor_confirmation(permit: Permit):
-    """Send a confirmation email to the visitor."""
+    """Send a confirmation email to the visitor. Never raises."""
     if not permit.email:
         return
-    from ..services.email import send_visitor_confirmation_email
-    end_str = permit.end_date.strftime("%B %d, %Y") if permit.end_date else "N/A"
-    start_str = permit.start_date.strftime("%B %d, %Y") if permit.start_date else "Today"
-    plate = permit.plates[0] if permit.plates else "N/A"
-    await send_visitor_confirmation_email(
-        recipient_email=permit.email,
-        visitor_name=permit.name,
-        permit_number=permit.permit_number or "",
-        plate=plate,
-        start_date=start_str,
-        end_date=end_str,
-    )
+    try:
+        from ..services.email import send_visitor_confirmation_email
+        end_str = permit.end_date.strftime("%B %d, %Y") if permit.end_date else "N/A"
+        start_str = permit.start_date.strftime("%B %d, %Y") if permit.start_date else "Today"
+        plate = permit.plates[0] if permit.plates else "N/A"
+        await send_visitor_confirmation_email(
+            recipient_email=permit.email,
+            visitor_name=permit.name,
+            permit_number=permit.permit_number or "",
+            plate=plate,
+            start_date=start_str,
+            end_date=end_str,
+        )
+    except Exception:
+        import logging
+        logging.getLogger("quarry.visitor_permits").exception("Visitor confirmation email failed")
 
 
 async def _send_sponsor_approval_email(
@@ -490,17 +494,22 @@ async def _send_sponsor_approval_email(
     end_date: str,
     token: str,
 ) -> bool:
-    """Send an approval request email to the department sponsor. Returns True if sent."""
-    from ..services.email import send_sponsor_approval_email
-    approval_url = f"{settings.student_facing_url}/visitor/approve/{token}"
-    return await send_sponsor_approval_email(
-        sponsor_email=sponsor_email,
-        sponsor_name=sponsor_name,
-        visitor_name=visitor_name,
-        company_name=company_name,
-        plate=plate,
-        work_description=work_description,
-        start_date=start_date,
-        end_date=end_date,
-        approval_url=approval_url,
-    )
+    """Send an approval request email to the department sponsor. Never raises."""
+    try:
+        from ..services.email import send_sponsor_approval_email
+        approval_url = f"{settings.student_facing_url}/visitor/approve/{token}"
+        return await send_sponsor_approval_email(
+            sponsor_email=sponsor_email,
+            sponsor_name=sponsor_name,
+            visitor_name=visitor_name,
+            company_name=company_name,
+            plate=plate,
+            work_description=work_description,
+            start_date=start_date,
+            end_date=end_date,
+            approval_url=approval_url,
+        )
+    except Exception:
+        import logging
+        logging.getLogger("quarry.visitor_permits").exception("Sponsor approval email failed")
+        return False
