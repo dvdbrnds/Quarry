@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.okta import require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
@@ -99,6 +100,7 @@ class ApprovalDecision(BaseModel):
 @router.get("/admin/pending", tags=["admin"])
 async def list_pending_visitor_permits(
     db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
 ):
     """Admin: list all visitor permits awaiting sponsor approval."""
     rows = (
@@ -203,6 +205,7 @@ async def get_approval_info(token: str, db: AsyncSession = Depends(get_db)):
 async def resend_sponsor_email(
     permit_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
 ):
     """Admin: resend the sponsor approval email for a pending visitor permit."""
     permit = await db.get(Permit, permit_id)
