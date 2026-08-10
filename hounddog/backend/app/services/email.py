@@ -431,6 +431,99 @@ async def send_waitlist_position_update_email(
     return await send_email([recipient_email], subject, body_html, body_text)
 
 
+async def send_sponsor_approval_email(
+    sponsor_email: str,
+    sponsor_name: str,
+    visitor_name: str,
+    company_name: str,
+    plate: str,
+    work_description: str,
+    start_date: str,
+    end_date: str,
+    approval_url: str,
+) -> bool:
+    """Send a vendor parking permit approval request to a department sponsor."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    primary = b["primary_color"]
+    department = b.get("department_name", "Parking Authority")
+    subject = f"Vendor Parking Permit Approval - {company_name}"
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 16px;">Vendor Parking Permit — Approval Required</h2>'
+        f'<p>Hello {sponsor_name},</p>'
+        f'<p>A vendor has requested a long-term parking permit and listed you as their campus sponsor. '
+        f'Please review the details below and approve or deny the request.</p>'
+        f'<table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f9f9f9;border-radius:8px;">'
+        f'<tr><td style="padding:10px 16px;color:#666;">Vendor</td><td style="padding:10px 16px;font-weight:600;">{visitor_name}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;">Company</td><td style="padding:10px 16px;font-weight:600;">{company_name}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;">Vehicle</td><td style="padding:10px 16px;font-weight:600;">{plate}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;">Work</td><td style="padding:10px 16px;">{work_description or "Not specified"}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;">Duration</td><td style="padding:10px 16px;font-weight:600;">{start_date} to {end_date}</td></tr>'
+        f'</table>'
+        f'<div style="text-align:center;margin:24px 0;">'
+        f'<a href="{approval_url}" style="display:inline-block;background:{primary};color:#ffffff;'
+        f'padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">Review &amp; Approve</a>'
+        f'</div>'
+        f'<p style="color:#999;font-size:13px;">This link expires in 7 days. If you did not expect this request, you can ignore this email.</p>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"VENDOR PARKING PERMIT — APPROVAL REQUIRED\n\n"
+        f"Hello {sponsor_name},\n\n"
+        f"A vendor has requested a long-term parking permit and listed you as their campus sponsor.\n\n"
+        f"Vendor: {visitor_name}\n"
+        f"Company: {company_name}\n"
+        f"Vehicle: {plate}\n"
+        f"Work: {work_description or 'Not specified'}\n"
+        f"Duration: {start_date} to {end_date}\n\n"
+        f"Review and approve: {approval_url}\n\n"
+        f"This link expires in 7 days.\n\n"
+        f"{school} {department}"
+    )
+    return await send_email([sponsor_email], subject, body_html, body_text)
+
+
+async def send_visitor_confirmation_email(
+    recipient_email: str,
+    visitor_name: str,
+    permit_number: str,
+    plate: str,
+    start_date: str,
+    end_date: str,
+) -> bool:
+    """Send confirmation to a visitor after their permit is created or approved."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    primary = b["primary_color"]
+    department = b.get("department_name", "Parking Authority")
+    subject = f"Visitor Parking Permit - {plate}"
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 16px;">Visitor Parking Permit Confirmed</h2>'
+        f'<p>Hello {visitor_name},</p>'
+        f'<p>Your temporary parking permit has been issued:</p>'
+        f'<table style="width:100%;border-collapse:collapse;margin:16px 0;">'
+        f'<tr><td style="padding:8px 0;color:#666;">Permit #</td><td style="padding:8px 0;font-weight:600;">{permit_number or "—"}</td></tr>'
+        f'<tr><td style="padding:8px 0;color:#666;">Vehicle</td><td style="padding:8px 0;font-weight:600;">{plate}</td></tr>'
+        f'<tr><td style="padding:8px 0;color:#666;">Valid</td><td style="padding:8px 0;font-weight:600;">{start_date} — {end_date}</td></tr>'
+        f'</table>'
+        f'<p style="color:#666;font-size:14px;">No physical permit is required. Your license plate has been registered in our system.</p>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"VISITOR PARKING PERMIT CONFIRMED\n\n"
+        f"Hello {visitor_name},\n\n"
+        f"Your temporary parking permit has been issued.\n\n"
+        f"Permit #: {permit_number or 'N/A'}\n"
+        f"Vehicle: {plate}\n"
+        f"Valid: {start_date} - {end_date}\n\n"
+        f"No physical permit is required. Your license plate has been registered in our system.\n\n"
+        f"{school} {department}"
+    )
+    return await send_email([recipient_email], subject, body_html, body_text)
+
+
 async def send_payment_link_email(
     recipient_email: str,
     recipient_name: str,

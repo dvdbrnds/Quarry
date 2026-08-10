@@ -1,11 +1,8 @@
 """Public visitor/vendor parking permit portal — no authentication required."""
 
-import logging
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
-
-logger = logging.getLogger("quarry.visitor_permits")
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
@@ -468,34 +465,18 @@ async def _send_visitor_confirmation(permit: Permit):
     """Send a confirmation email to the visitor."""
     if not permit.email:
         return
-    try:
-        from ..services.email import send_email, branded_email_shell
-        school = settings.school_name or "Campus"
-
-        end_str = permit.end_date.strftime("%B %d, %Y") if permit.end_date else "N/A"
-        start_str = permit.start_date.strftime("%B %d, %Y") if permit.start_date else "Today"
-        plate = permit.plates[0] if permit.plates else "N/A"
-
-        inner = (
-            f'<h2 style="color:#1a2744;margin:0 0 16px;">Visitor Parking Permit Confirmed</h2>'
-            f'<p>Hello {permit.name},</p>'
-            f'<p>Your temporary parking permit has been issued:</p>'
-            f'<table style="width:100%;border-collapse:collapse;margin:16px 0;">'
-            f'<tr><td style="padding:8px 0;color:#666;">Permit #</td><td style="padding:8px 0;font-weight:600;">{permit.permit_number or "—"}</td></tr>'
-            f'<tr><td style="padding:8px 0;color:#666;">Vehicle</td><td style="padding:8px 0;font-weight:600;">{plate}</td></tr>'
-            f'<tr><td style="padding:8px 0;color:#666;">Valid</td><td style="padding:8px 0;font-weight:600;">{start_str} — {end_str}</td></tr>'
-            f'</table>'
-            f'<p style="color:#666;font-size:14px;">No physical permit is required. Your license plate has been registered in our system.</p>'
-        )
-        body_html = await branded_email_shell(school, inner)
-        await send_email([permit.email], f"Visitor Parking Permit — {plate}", body_html)
-    except Exception as e:
-        logger.error("Visitor confirmation email error: %s", e, exc_info=True)
-        try:
-            import sentry_sdk
-            sentry_sdk.capture_exception(e)
-        except Exception:
-            pass
+    from ..services.email import send_visitor_confirmation_email
+    end_str = permit.end_date.strftime("%B %d, %Y") if permit.end_date else "N/A"
+    start_str = permit.start_date.strftime("%B %d, %Y") if permit.start_date else "Today"
+    plate = permit.plates[0] if permit.plates else "N/A"
+    await send_visitor_confirmation_email(
+        recipient_email=permit.email,
+        visitor_name=permit.name,
+        permit_number=permit.permit_number or "",
+        plate=plate,
+        start_date=start_str,
+        end_date=end_str,
+    )
 
 
 async def _send_sponsor_approval_email(
@@ -510,57 +491,16 @@ async def _send_sponsor_approval_email(
     token: str,
 ) -> bool:
     """Send an approval request email to the department sponsor. Returns True if sent."""
-    logger.info(
-        "Sponsor approval email: starting — to=%s, visitor=%s, company=%s",
-        sponsor_email, visitor_name, company_name,
+    from ..services.email import send_sponsor_approval_email
+    approval_url = f"{settings.student_facing_url}/visitor/approve/{token}"
+    return await send_sponsor_approval_email(
+        sponsor_email=sponsor_email,
+        sponsor_name=sponsor_name,
+        visitor_name=visitor_name,
+        company_name=company_name,
+        plate=plate,
+        work_description=work_description,
+        start_date=start_date,
+        end_date=end_date,
+        approval_url=approval_url,
     )
-    try:
-        from ..services.email import send_email, branded_email_shell
-        school = settings.school_name or "Campus"
-        approval_url = f"{settings.student_facing_url}/visitor/approve/{token}"
-        logger.info("Sponsor approval email: approval_url=%s", approval_url)
-
-        inner = (
-            f'<h2 style="color:#1a2744;margin:0 0 16px;">Vendor Parking Permit — Approval Required</h2>'
-            f'<p>Hello {sponsor_name},</p>'
-            f'<p>A vendor has requested a long-term parking permit and listed you as their campus sponsor. '
-            f'Please review the details below and approve or deny the request.</p>'
-            f'<table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f9f9f9;border-radius:8px;">'
-            f'<tr><td style="padding:10px 16px;color:#666;">Vendor</td><td style="padding:10px 16px;font-weight:600;">{visitor_name}</td></tr>'
-            f'<tr><td style="padding:10px 16px;color:#666;">Company</td><td style="padding:10px 16px;font-weight:600;">{company_name}</td></tr>'
-            f'<tr><td style="padding:10px 16px;color:#666;">Vehicle</td><td style="padding:10px 16px;font-weight:600;">{plate}</td></tr>'
-            f'<tr><td style="padding:10px 16px;color:#666;">Work</td><td style="padding:10px 16px;">{work_description or "Not specified"}</td></tr>'
-            f'<tr><td style="padding:10px 16px;color:#666;">Duration</td><td style="padding:10px 16px;font-weight:600;">{start_date} to {end_date}</td></tr>'
-            f'</table>'
-            f'<div style="text-align:center;margin:24px 0;">'
-            f'<a href="{approval_url}" style="display:inline-block;background:#1a2744;color:#ffffff;'
-            f'padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">Review &amp; Approve</a>'
-            f'</div>'
-            f'<p style="color:#999;font-size:13px;">This link expires in 7 days. If you did not expect this request, you can ignore this email.</p>'
-        )
-
-        logger.info("Sponsor approval email: building branded shell...")
-        body_html = await branded_email_shell(school, inner)
-        logger.info("Sponsor approval email: branded shell built (%d chars), sending...", len(body_html))
-
-        sent = await send_email(
-            [sponsor_email],
-            f"Vendor Parking Permit Approval — {company_name}",
-            body_html,
-        )
-        if sent:
-            logger.info("Sponsor approval email: SUCCESS — sent to %s", sponsor_email)
-        else:
-            logger.error(
-                "Sponsor approval email: send_email returned False for %s (visitor=%s)",
-                sponsor_email, visitor_name,
-            )
-        return sent
-    except Exception as e:
-        logger.error("Sponsor approval email EXCEPTION: %s", e, exc_info=True)
-        try:
-            import sentry_sdk
-            sentry_sdk.capture_exception(e)
-        except Exception:
-            pass
-        return False
