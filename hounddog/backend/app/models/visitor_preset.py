@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, Integer, DateTime, func
+from sqlalchemy import String, Boolean, Integer, DateTime, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,7 +11,7 @@ from ..database import Base
 class VisitorPreset(Base):
     __tablename__ = "visitor_presets"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
     label: Mapped[str] = mapped_column(String(256), nullable=False)
     company_name: Mapped[str] = mapped_column(String(256), default="")
     sponsor_name: Mapped[str] = mapped_column(String(256), default="")
