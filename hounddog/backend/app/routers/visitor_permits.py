@@ -148,12 +148,19 @@ async def create_visitor_permit(data: VisitorPermitCreate, db: AsyncSession = De
     if not data.name.strip():
         raise HTTPException(400, "Name is required")
 
-    if data.visitor_type == "day_guest":
-        return await _create_day_guest(data, plate, db)
-    elif data.visitor_type == "vendor":
-        return await _create_vendor(data, plate, db)
-    else:
-        raise HTTPException(400, "visitor_type must be 'day_guest' or 'vendor'")
+    try:
+        if data.visitor_type == "day_guest":
+            return await _create_day_guest(data, plate, db)
+        elif data.visitor_type == "vendor":
+            return await _create_vendor(data, plate, db)
+        else:
+            raise HTTPException(400, "visitor_type must be 'day_guest' or 'vendor'")
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.getLogger("quarry.visitor_permits").exception("Permit creation failed")
+        raise HTTPException(500, f"Permit creation error: {type(e).__name__}: {e}")
 
 
 @router.get("/{permit_id}", response_model=VisitorPermitStatus)
