@@ -14,6 +14,7 @@ from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.visitor_approval_token import VisitorApprovalToken
+from ..models.visitor_preset import VisitorPreset
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 
@@ -38,13 +39,14 @@ class VisitorPermitCreate(BaseModel):
     visiting_event: str = ""
     # Vendor fields
     company_name: str = ""
-    duration: str = "single_day"  # "single_day", "multi_day", "long_term_30", "long_term_60", "long_term_90", "semester"
+    duration: str = "single_day"
     start_date: date | None = None
     end_date: date | None = None
     sponsor_name: str = ""
     sponsor_email: str = ""
     sponsor_department: str = ""
     work_description: str = ""
+    preset_id: str | None = None
 
 
 class VisitorPermitResponse(BaseModel):
@@ -94,7 +96,131 @@ class ApprovalDecision(BaseModel):
     notes: str = ""
 
 
+class PresetCreate(BaseModel):
+    label: str
+    company_name: str = ""
+    sponsor_name: str = ""
+    sponsor_email: str = ""
+    sponsor_department: str = ""
+    default_duration: str = "semester"
+    sort_order: int = 0
+
+
+class PresetUpdate(BaseModel):
+    label: str | None = None
+    company_name: str | None = None
+    sponsor_name: str | None = None
+    sponsor_email: str | None = None
+    sponsor_department: str | None = None
+    default_duration: str | None = None
+    active: bool | None = None
+    sort_order: int | None = None
+
+
 # ── Endpoints ──
+
+
+@router.get("/presets")
+async def list_presets(db: AsyncSession = Depends(get_db)):
+    """Public: list active visitor presets for the portal dropdown."""
+    rows = (
+        await db.execute(
+            select(VisitorPreset)
+            .where(VisitorPreset.active.is_(True))
+            .order_by(VisitorPreset.sort_order, VisitorPreset.label)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "label": p.label,
+            "company_name": p.company_name,
+            "sponsor_name": p.sponsor_name,
+            "sponsor_email": p.sponsor_email,
+            "sponsor_department": p.sponsor_department,
+            "default_duration": p.default_duration,
+        }
+        for p in rows
+    ]
+
+
+@router.get("/presets/all", tags=["admin"])
+async def list_all_presets(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
+    """Admin: list all presets including inactive."""
+    rows = (
+        await db.execute(
+            select(VisitorPreset).order_by(VisitorPreset.sort_order, VisitorPreset.label)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "label": p.label,
+            "company_name": p.company_name,
+            "sponsor_name": p.sponsor_name,
+            "sponsor_email": p.sponsor_email,
+            "sponsor_department": p.sponsor_department,
+            "default_duration": p.default_duration,
+            "active": p.active,
+            "sort_order": p.sort_order,
+        }
+        for p in rows
+    ]
+
+
+@router.post("/presets", tags=["admin"], status_code=201)
+async def create_preset(
+    data: PresetCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
+    """Admin: create a visitor preset."""
+    preset = VisitorPreset(
+        label=data.label.strip(),
+        company_name=data.company_name.strip(),
+        sponsor_name=data.sponsor_name.strip(),
+        sponsor_email=data.sponsor_email.strip(),
+        sponsor_department=data.sponsor_department.strip(),
+        default_duration=data.default_duration,
+        sort_order=data.sort_order,
+    )
+    db.add(preset)
+    await db.flush()
+    await db.refresh(preset)
+    return {"id": str(preset.id), "label": preset.label}
+
+
+@router.put("/presets/{preset_id}", tags=["admin"])
+async def update_preset(
+    preset_id: uuid.UUID,
+    data: PresetUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
+    """Admin: update a visitor preset."""
+    preset = await db.get(VisitorPreset, preset_id)
+    if not preset:
+        raise HTTPException(404, "Preset not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(preset, field, value.strip() if isinstance(value, str) else value)
+    return {"id": str(preset.id), "label": preset.label}
+
+
+@router.post("/presets/{preset_id}/remove", tags=["admin"])
+async def delete_preset(
+    preset_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
+    """Admin: delete a visitor preset."""
+    preset = await db.get(VisitorPreset, preset_id)
+    if not preset:
+        raise HTTPException(404, "Preset not found")
+    await db.delete(preset)
+    return {"deleted": True}
 
 
 @router.get("/admin/pending", tags=["admin"])
@@ -324,6 +450,18 @@ async def _create_day_guest(data: VisitorPermitCreate, plate: str, db: AsyncSess
 
 
 async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession) -> VisitorPermitResponse:
+    # Resolve preset — fills in sponsor/company from the backend
+    if data.preset_id:
+        preset = await db.get(VisitorPreset, uuid.UUID(data.preset_id))
+        if not preset or not preset.active:
+            raise HTTPException(400, "Invalid or inactive preset")
+        data.company_name = data.company_name or preset.company_name
+        data.sponsor_name = preset.sponsor_name
+        data.sponsor_email = preset.sponsor_email
+        data.sponsor_department = preset.sponsor_department
+        if preset.default_duration and data.duration == "single_day":
+            data.duration = preset.default_duration
+
     if not data.company_name.strip():
         raise HTTPException(400, "Company name is required for vendor permits")
     if not data.sponsor_name.strip():
