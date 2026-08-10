@@ -1,7 +1,11 @@
-"""Fee-exempt roster matching (Res Life Staff and similar)."""
+"""Fee-exempt roster matching (Res Life Staff and similar).
+
+Checks the manual roster first, then falls back to SIS ResLifeStaff flag.
+"""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import func, or_, select
@@ -9,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser
 from ..models.fee_exempt_roster import FeeExemptRoster
+
+logger = logging.getLogger(__name__)
 
 _PROFILE_ID_FIELDS = (
     "employeeNumber",
@@ -104,24 +110,45 @@ async def lookup_fee_exempt(
     entry = (
         await db.execute(select(FeeExemptRoster).where(or_(*filters)).limit(1))
     ).scalar_one_or_none()
-    if not entry:
-        return None
+    if entry:
+        matched_by = "roster"
+        entry_email = _norm_email(entry.email)
+        if entry_email and entry_email in emails:
+            matched_by = "email"
+        elif entry.student_id and entry.student_id in student_ids:
+            matched_by = "student_id"
+        else:
+            entry_name = _norm_name(f"{entry.first_name} {entry.last_name}")
+            if entry_name and entry_name in names:
+                matched_by = "name"
 
-    matched_by = "roster"
-    entry_email = _norm_email(entry.email)
-    if entry_email and entry_email in emails:
-        matched_by = "email"
-    elif entry.student_id and entry.student_id in student_ids:
-        matched_by = "student_id"
-    else:
-        entry_name = _norm_name(f"{entry.first_name} {entry.last_name}")
-        if entry_name and entry_name in names:
-            matched_by = "name"
+        # Backfill missing roster email when we have a confident match
+        if not entry.email and emails:
+            preferred = next(iter(emails))
+            if preferred and "@" in preferred:
+                entry.email = preferred
 
-    # Backfill missing roster email when we have a confident match
-    if not entry.email and emails:
-        preferred = next(iter(emails))
-        if preferred and "@" in preferred:
-            entry.email = preferred
+        return FeeExemptMatch(entry=entry, matched_by=matched_by)
 
-    return FeeExemptMatch(entry=entry, matched_by=matched_by)
+    # Fallback: check SIS ResLifeStaff flag using student IDs from Okta profile
+    if student_ids:
+        from .sis_student_data import is_res_life_staff
+
+        for sid in student_ids:
+            if not sid or "@" in sid:
+                continue
+            try:
+                if await is_res_life_staff(sid):
+                    logger.info("SIS ResLifeStaff match for student_id=%s", sid)
+                    # Create a synthetic roster entry so callers get a consistent object
+                    synthetic = FeeExemptRoster(
+                        student_id=sid,
+                        first_name=user.given_name if user else "",
+                        last_name=user.family_name if user else "",
+                        email=user.email if user else (next(iter(emails)) if emails else ""),
+                    )
+                    return FeeExemptMatch(entry=synthetic, matched_by="sis_res_life_staff")
+            except Exception:
+                logger.exception("SIS ResLifeStaff lookup failed for %s", sid)
+
+    return None

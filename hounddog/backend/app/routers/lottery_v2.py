@@ -2054,6 +2054,54 @@ async def capacity_audit(
             counts[label] = counts.get(label, 0) + 1
         return counts
 
+    # SIS enrichment: load classification data for all active permits across tiers
+    from ..services.sis_student_data import lookup_student_parking_data_batch
+
+    all_tier_permits: dict[str, list[Permit]] = {}
+    for pt in pts:
+        tier_permits = (
+            await db.execute(
+                select(Permit).where(
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        all_tier_permits[pt.code] = list(tier_permits)
+
+    all_student_ids = []
+    for permit_list in all_tier_permits.values():
+        for p in permit_list:
+            if p.student_id and p.student_id.strip():
+                all_student_ids.append(p.student_id.strip())
+    sis_by_id = await lookup_student_parking_data_batch(all_student_ids)
+
+    def _sis_breakdown(permit_list: list[Permit]) -> dict:
+        housing: dict[str, int] = {}
+        res_life = 0
+        employee = 0
+        absn = 0
+        for p in permit_list:
+            sid = (p.student_id or "").strip()
+            data = sis_by_id.get(sid)
+            if not data:
+                continue
+            if data.housing_label:
+                housing[data.housing_label] = housing.get(data.housing_label, 0) + 1
+            if data.res_life_staff:
+                res_life += 1
+            if data.employee:
+                employee += 1
+            if data.accel_nursing:
+                absn += 1
+        return {
+            "housing_breakdown": housing,
+            "res_life_staff_count": res_life,
+            "employee_count": employee,
+            "accel_nursing_count": absn,
+        }
+
     tier_rows = []
     for code in LOTTERY_TIER_CODES:
         pt = pt_by_code.get(code)
@@ -2100,6 +2148,7 @@ async def capacity_audit(
             "waitlisted_with_pref": len(waitlisted_with_pref),
             "apps_first_choice": len(first_choice_apps),
             "class_year_breakdown": _class_year_breakdown(selected_to_tier),
+            **_sis_breakdown(all_tier_permits.get(pt.code, [])),
         })
 
     # South / U deep dive
@@ -2295,6 +2344,38 @@ async def tier_detail(
     unique_people = len(permit_emails | {(a.student_email or "").lower() for a in selected_apps})
     committed = len(permits) + len(pending)
 
+    # SIS enrichment: batch-lookup student classification data
+    from ..services.sis_student_data import lookup_student_parking_data_batch
+
+    all_student_ids = [p.student_id for p in permits if p.student_id and p.student_id.strip()]
+    sis_by_id = await lookup_student_parking_data_batch(all_student_ids)
+
+    def _sis_fields(student_id: str | None) -> dict:
+        sid = (student_id or "").strip()
+        data = sis_by_id.get(sid) if sid else None
+        if not data:
+            return {"housing_status": None, "housing_label": None, "division_code": None,
+                    "accel_nursing": None, "res_life_staff": None, "employee": None}
+        return {"housing_status": data.housing_status, "housing_label": data.housing_label,
+                "division_code": data.division_code, "accel_nursing": data.accel_nursing,
+                "res_life_staff": data.res_life_staff, "employee": data.employee}
+
+    # SIS summary counts
+    sis_housing: dict[str, int] = {}
+    sis_res_life = 0
+    sis_employee = 0
+    sis_absn = 0
+    for p in permits:
+        sf = _sis_fields(p.student_id)
+        if sf["housing_label"]:
+            sis_housing[sf["housing_label"]] = sis_housing.get(sf["housing_label"], 0) + 1
+        if sf["res_life_staff"]:
+            sis_res_life += 1
+        if sf["employee"]:
+            sis_employee += 1
+        if sf["accel_nursing"]:
+            sis_absn += 1
+
     return {
         "permit_type": {
             "code": pt.code,
@@ -2308,11 +2389,16 @@ async def tier_detail(
             "committed": committed,
             "unique_people": unique_people,
             "over_by": max(0, committed - (pt.max_capacity or 0)),
+            "housing_breakdown": sis_housing,
+            "res_life_staff_count": sis_res_life,
+            "employee_count": sis_employee,
+            "accel_nursing_count": sis_absn,
         },
         "active_permits": [
             {
                 "name": p.name,
                 "email": p.email,
+                "student_id": p.student_id,
                 "plate": ", ".join(p.plates) if p.plates else "",
                 "permit_number": p.permit_number,
                 "permit_issued_at": p.created_at.isoformat() if p.created_at else None,
@@ -2327,6 +2413,7 @@ async def tier_detail(
                     if (ek := (p.email or "").lower()) in app_by_email
                     else None
                 ),
+                **_sis_fields(p.student_id),
             }
             for p in permits
         ],
@@ -2725,4 +2812,6 @@ async def sis_student_lookup(
         "housing_status": data.housing_status,
         "housing_label": data.housing_label,
         "accel_nursing": data.accel_nursing,
+        "res_life_staff": data.res_life_staff,
+        "employee": data.employee,
     }

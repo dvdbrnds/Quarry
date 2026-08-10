@@ -1112,6 +1112,7 @@ export default function LotteryV2Manager() {
                         <th className="py-1.5 pr-3 text-right">Truly open</th>
                         <th className="py-1.5 pr-3 text-right">Waitlisted</th>
                         <th className="py-1.5 pr-3">Class year</th>
+                        <th className="py-1.5 pr-3">SIS breakdown</th>
                         <th className="py-1.5 pr-3">Auto-advance</th>
                       </tr>
                     </thead>
@@ -1146,6 +1147,16 @@ export default function LotteryV2Manager() {
                                   .filter(k => t.class_year_breakdown[k])
                                   .map(k => `${k.slice(0, 2)}: ${t.class_year_breakdown[k]}`)
                                   .join(" · ")
+                              : "—"}
+                          </td>
+                          <td className="py-1.5 pr-3 text-[10px] text-gray-600 whitespace-nowrap">
+                            {t.housing_breakdown && Object.keys(t.housing_breakdown).length > 0
+                              ? [
+                                  ...Object.entries(t.housing_breakdown as Record<string, number>).map(([k, v]) => `${k.slice(0, 3)}: ${v}`),
+                                  ...(t.res_life_staff_count > 0 ? [`RA: ${t.res_life_staff_count}`] : []),
+                                  ...(t.employee_count > 0 ? [`Emp: ${t.employee_count}`] : []),
+                                  ...(t.accel_nursing_count > 0 ? [`ABSN: ${t.accel_nursing_count}`] : []),
+                                ].join(" · ")
                               : "—"}
                           </td>
                           <td className="py-1.5 pr-3">
@@ -2070,6 +2081,26 @@ export default function LotteryV2Manager() {
               </div>
             </div>
 
+            {(tierDetail.summary?.housing_breakdown && Object.keys(tierDetail.summary.housing_breakdown).length > 0) && (
+              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded">
+                <div className="text-[10px] text-indigo-500 uppercase font-medium mb-2">SIS Classification</div>
+                <div className="flex gap-4 flex-wrap text-xs">
+                  {Object.entries(tierDetail.summary.housing_breakdown).map(([label, count]: [string, any]) => (
+                    <span key={label}><span className="font-medium">{count}</span> {label}</span>
+                  ))}
+                  {tierDetail.summary.res_life_staff_count > 0 && (
+                    <span><span className="font-medium">{tierDetail.summary.res_life_staff_count}</span> RA/RD</span>
+                  )}
+                  {tierDetail.summary.employee_count > 0 && (
+                    <span><span className="font-medium">{tierDetail.summary.employee_count}</span> Employee</span>
+                  )}
+                  {tierDetail.summary.accel_nursing_count > 0 && (
+                    <span><span className="font-medium">{tierDetail.summary.accel_nursing_count}</span> ABSN</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <Collapse
               defaultActiveKey={["permits"]}
               items={[
@@ -2084,6 +2115,8 @@ export default function LotteryV2Manager() {
                             <th className="py-1 pr-2">Name</th>
                             <th className="py-1 pr-2">Email</th>
                             <th className="py-1 pr-2">Year</th>
+                            <th className="py-1 pr-2">Housing</th>
+                            <th className="py-1 pr-2">RA/RD</th>
                             <th className="py-1 pr-2">Applied</th>
                             <th className="py-1 pr-2">Plate</th>
                             <th className="py-1 pr-2">Permit #</th>
@@ -2101,6 +2134,12 @@ export default function LotteryV2Manager() {
                                 <td className="py-1 pr-2">{p.name}</td>
                                 <td className="py-1 pr-2 text-gray-600">{p.email}</td>
                                 <td className="py-1 pr-2">{yearLabel}</td>
+                                <td className="py-1 pr-2">{p.housing_label || "—"}</td>
+                                <td className="py-1 pr-2">
+                                  {p.res_life_staff && <Tag color="green" className="text-[10px]">RA/RD</Tag>}
+                                  {p.employee && <Tag color="blue" className="text-[10px]">Employee</Tag>}
+                                  {p.accel_nursing && <Tag color="purple" className="text-[10px]">ABSN</Tag>}
+                                </td>
                                 <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{p.applied_at ? new Date(p.applied_at).toLocaleString() : "—"}</td>
                                 <td className="py-1 pr-2 font-mono">{p.plate}</td>
                                 <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
