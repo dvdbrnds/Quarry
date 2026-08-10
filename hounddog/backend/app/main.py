@@ -391,6 +391,13 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMPTZ DEFAULT now()
             )""",
             "ALTER TABLE visitor_presets ALTER COLUMN id SET DEFAULT gen_random_uuid()",
+            "ALTER TABLE visitor_presets ALTER COLUMN company_name SET DEFAULT ''",
+            "ALTER TABLE visitor_presets ALTER COLUMN sponsor_name SET DEFAULT ''",
+            "ALTER TABLE visitor_presets ALTER COLUMN sponsor_email SET DEFAULT ''",
+            "ALTER TABLE visitor_presets ALTER COLUMN sponsor_department SET DEFAULT ''",
+            "ALTER TABLE visitor_presets ALTER COLUMN default_duration SET DEFAULT 'semester'",
+            "ALTER TABLE visitor_presets ALTER COLUMN active SET DEFAULT true",
+            "ALTER TABLE visitor_presets ALTER COLUMN sort_order SET DEFAULT 0",
             """INSERT INTO visitor_presets (label, company_name, sponsor_name, sponsor_email, sponsor_department, default_duration, sort_order)
                SELECT 'Sodexo employee', 'Sodexo', 'Stacey Cesanek', 'cesaneks@moravian.edu', 'Food Services', 'semester', 0
                WHERE NOT EXISTS (SELECT 1 FROM visitor_presets WHERE label = 'Sodexo employee')""",
