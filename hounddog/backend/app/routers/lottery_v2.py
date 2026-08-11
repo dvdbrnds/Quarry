@@ -2054,6 +2054,63 @@ async def capacity_audit(
             counts[label] = counts.get(label, 0) + 1
         return counts
 
+    # SIS enrichment: resolve class years and classifications from Jenzabar
+    from ..services.sis_student_data import lookup_batch_by_emails
+
+    all_tier_permits: dict[str, list[Permit]] = {}
+    all_emails: list[str] = []
+    for pt in pts:
+        tier_permits = (
+            await db.execute(
+                select(Permit).where(
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        all_tier_permits[pt.code] = list(tier_permits)
+        for p in tier_permits:
+            if p.email:
+                all_emails.append(p.email)
+
+    sis_by_email = await lookup_batch_by_emails(all_emails)
+
+    def _sis_class_year_breakdown(permit_list: list[Permit]) -> dict[str, int]:
+        """Build class year breakdown from SIS ClassCode for active permits."""
+        counts: dict[str, int] = {}
+        for p in permit_list:
+            em = (p.email or "").strip().lower()
+            data = sis_by_email.get(em)
+            label = data.class_label if data and data.class_label else "Unknown"
+            counts[label] = counts.get(label, 0) + 1
+        return counts
+
+    def _sis_breakdown(permit_list: list[Permit]) -> dict:
+        housing: dict[str, int] = {}
+        res_life = 0
+        employee = 0
+        absn = 0
+        for p in permit_list:
+            em = (p.email or "").strip().lower()
+            data = sis_by_email.get(em)
+            if not data:
+                continue
+            if data.housing_label:
+                housing[data.housing_label] = housing.get(data.housing_label, 0) + 1
+            if data.res_life_staff:
+                res_life += 1
+            if data.employee:
+                employee += 1
+            if data.accel_nursing:
+                absn += 1
+        return {
+            "housing_breakdown": housing,
+            "res_life_staff_count": res_life,
+            "employee_count": employee,
+            "accel_nursing_count": absn,
+        }
+
     tier_rows = []
     for code in LOTTERY_TIER_CODES:
         pt = pt_by_code.get(code)
@@ -2085,6 +2142,7 @@ async def capacity_audit(
         projected = active + selected_count
         projected_over = max(0, projected - max_cap)
 
+        tier_permit_list = all_tier_permits.get(pt.code, [])
         tier_rows.append({
             "code": pt.code,
             "label": pt.label,
@@ -2099,7 +2157,8 @@ async def capacity_audit(
             "auto_advance_waitlist": pt.auto_advance_waitlist,
             "waitlisted_with_pref": len(waitlisted_with_pref),
             "apps_first_choice": len(first_choice_apps),
-            "class_year_breakdown": _class_year_breakdown(selected_to_tier),
+            "class_year_breakdown": _sis_class_year_breakdown(tier_permit_list) if tier_permit_list else _class_year_breakdown(selected_to_tier),
+            **_sis_breakdown(tier_permit_list),
         })
 
     # South / U deep dive

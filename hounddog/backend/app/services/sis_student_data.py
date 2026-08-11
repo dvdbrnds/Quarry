@@ -27,9 +27,11 @@ CLASS_CODE_LABELS = {
     "SR": "Senior",
 }
 
-# In-memory cache: email → (moravian_id, timestamp)
+# Cache: email → (StudentParkingData | None, timestamp)
+_sis_cache: dict[str, tuple[StudentParkingData | None, float]] = {}
+# Cache: email → (moravian_id | None, timestamp)
 _okta_id_cache: dict[str, tuple[str | None, float]] = {}
-_OKTA_CACHE_TTL = 600  # 10 minutes
+_CACHE_TTL = 600  # 10 minutes
 
 
 @dataclass
@@ -45,13 +47,25 @@ class StudentParkingData:
     employee: bool
 
 
-async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
-    """Call Mor_CUS_ParkingData stored procedure for a student ID.
+def _parse_row(row: dict, id_num: str) -> StudentParkingData:
+    housing = str(row.get("HousingStatus", "")).strip()
+    class_code = str(row.get("ClassCode", "")).strip().upper()
+    return StudentParkingData(
+        id_num=str(row.get("id_num", id_num)).strip(),
+        division_code=str(row.get("DivisionCode", "")).strip(),
+        housing_status=housing,
+        housing_label=HOUSING_LABELS.get(housing, housing),
+        class_code=class_code,
+        class_label=CLASS_CODE_LABELS.get(class_code, class_code),
+        accel_nursing=str(row.get("AccelNursing", "No")).strip().lower() == "yes",
+        res_life_staff=str(row.get("ResLifeStaff", "No")).strip().lower() == "yes",
+        employee=str(row.get("Employee", "No")).strip().lower() == "yes",
+    )
 
-    Returns None if SIS is not configured or student not found.
-    """
+
+async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
+    """Call Mor_CUS_ParkingData stored procedure for a single student ID."""
     if not settings.sis_mssql_host or not settings.sis_mssql_password:
-        logger.debug("SIS MSSQL not configured — skipping student data lookup")
         return None
 
     import pymssql  # type: ignore
@@ -70,39 +84,54 @@ async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
         cursor.execute("EXEC Mor_CUS_ParkingData @id_num=%s", (id_num,))
         row = cursor.fetchone()
         conn.close()
-
         if not row:
-            logger.info("SIS lookup: no data for id_num=%s", id_num)
             return None
-
-        housing = str(row.get("HousingStatus", "")).strip()
-        class_code = str(row.get("ClassCode", "")).strip().upper()
-        return StudentParkingData(
-            id_num=str(row.get("id_num", id_num)).strip(),
-            division_code=str(row.get("DivisionCode", "")).strip(),
-            housing_status=housing,
-            housing_label=HOUSING_LABELS.get(housing, housing),
-            class_code=class_code,
-            class_label=CLASS_CODE_LABELS.get(class_code, class_code),
-            accel_nursing=str(row.get("AccelNursing", "No")).strip().lower() == "yes",
-            res_life_staff=str(row.get("ResLifeStaff", "No")).strip().lower() == "yes",
-            employee=str(row.get("Employee", "No")).strip().lower() == "yes",
-        )
+        return _parse_row(row, id_num)
     except Exception as e:
         logger.error("SIS MSSQL lookup failed for id_num=%s: %s", id_num, e)
         return None
 
 
-async def lookup_student_parking_data_batch(id_nums: list[str]) -> dict[str, StudentParkingData]:
-    """Look up multiple students. Returns a dict keyed by id_num for those found."""
+def _sis_batch_query(id_nums: list[str]) -> dict[str, StudentParkingData]:
+    """Query SIS for multiple IDs using a single DB connection (sync, run in thread)."""
+    import pymssql  # type: ignore
+
     results: dict[str, StudentParkingData] = {}
-    for id_num in id_nums:
-        if not id_num or id_num in results:
-            continue
-        data = await lookup_student_parking_data(id_num)
-        if data:
-            results[data.id_num] = data
+    try:
+        conn = pymssql.connect(
+            server=settings.sis_mssql_host,
+            port=settings.sis_mssql_port,
+            user=settings.sis_mssql_user,
+            password=settings.sis_mssql_password,
+            database=settings.sis_mssql_database,
+            login_timeout=5,
+            timeout=30,
+        )
+        cursor = conn.cursor(as_dict=True)
+        for id_num in id_nums:
+            try:
+                cursor.execute("EXEC Mor_CUS_ParkingData @id_num=%s", (id_num,))
+                row = cursor.fetchone()
+                if row:
+                    data = _parse_row(row, id_num)
+                    results[data.id_num] = data
+            except Exception as e:
+                logger.debug("SIS query failed for id_num=%s: %s", id_num, e)
+        conn.close()
+    except Exception as e:
+        logger.error("SIS MSSQL batch connection failed: %s", e)
     return results
+
+
+async def lookup_student_parking_data_batch(id_nums: list[str]) -> dict[str, StudentParkingData]:
+    """Look up multiple students using a single connection. Returns dict keyed by id_num."""
+    if not settings.sis_mssql_host or not settings.sis_mssql_password:
+        return {}
+    unique = list({n for n in id_nums if n and n.strip()})
+    if not unique:
+        return {}
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _sis_batch_query, unique)
 
 
 async def is_res_life_staff(id_num: str) -> bool:
@@ -115,7 +144,6 @@ async def _resolve_moravian_ids_batch(emails: list[str]) -> dict[str, str]:
     """Resolve Moravian numeric IDs from Okta for a batch of emails.
 
     Uses an in-memory cache and concurrent HTTP requests (max 20 at a time).
-    Returns {lowercase_email: moravian_id} for those found.
     """
     if not settings.okta_domain or not settings.okta_api_token:
         return {}
@@ -129,7 +157,7 @@ async def _resolve_moravian_ids_batch(emails: list[str]) -> dict[str, str]:
         if not em or em in result:
             continue
         cached = _okta_id_cache.get(em)
-        if cached and (now - cached[1]) < _OKTA_CACHE_TTL:
+        if cached and (now - cached[1]) < _CACHE_TTL:
             if cached[0]:
                 result[em] = cached[0]
         else:
@@ -175,18 +203,40 @@ async def _resolve_moravian_ids_batch(emails: list[str]) -> dict[str, str]:
 async def lookup_batch_by_emails(emails: list[str]) -> dict[str, StudentParkingData]:
     """Resolve Moravian IDs from Okta emails, then batch-query SIS.
 
-    Returns a dict keyed by lowercase email for those found.
+    Returns a dict keyed by lowercase email. Uses a result cache so repeated
+    calls within 10 minutes are instant.
     """
-    email_to_id = await _resolve_moravian_ids_batch(emails)
-    if not email_to_id:
-        return {}
+    now = time.monotonic()
+    result: dict[str, StudentParkingData] = {}
+    need_resolve: list[str] = []
+
+    for email in emails:
+        em = (email or "").strip().lower()
+        if not em or em in result:
+            continue
+        cached = _sis_cache.get(em)
+        if cached and (now - cached[1]) < _CACHE_TTL:
+            if cached[0]:
+                result[em] = cached[0]
+        else:
+            need_resolve.append(em)
+
+    if not need_resolve:
+        logger.info("SIS batch: %d emails, all from cache", len(emails))
+        return result
+
+    email_to_id = await _resolve_moravian_ids_batch(need_resolve)
 
     unique_ids = list(set(email_to_id.values()))
-    sis_by_id = await lookup_student_parking_data_batch(unique_ids)
+    sis_by_id = await lookup_student_parking_data_batch(unique_ids) if unique_ids else {}
 
-    result: dict[str, StudentParkingData] = {}
-    for em, mid in email_to_id.items():
-        data = sis_by_id.get(mid)
+    for em in need_resolve:
+        mid = email_to_id.get(em)
+        data = sis_by_id.get(mid) if mid else None
+        _sis_cache[em] = (data, time.monotonic())
         if data:
             result[em] = data
+
+    logger.info("SIS batch: %d emails, %d resolved, %d with SIS data",
+                len(emails), len(email_to_id), len(result))
     return result
