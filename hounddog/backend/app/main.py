@@ -67,6 +67,62 @@ from .middleware.audit import AuditMiddleware
 logger = logging.getLogger("quarry")
 
 
+async def _backfill_moravian_ids():
+    """Background task: backfill moravian_id on permits using Okta List Users API."""
+    try:
+        from .database import async_session
+        from .config import settings as s
+        if not s.okta_domain or not s.okta_api_token:
+            return
+        async with async_session() as db:
+            from sqlalchemy import text
+            missing = (await db.execute(
+                text("SELECT DISTINCT email FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''")
+            )).scalars().all()
+            if not missing:
+                logger.info("moravian_id backfill: all permits already have IDs")
+                return
+            missing_set = {e.strip().lower() for e in missing if e}
+            logger.info("Backfilling moravian_id for %d permit emails via Okta", len(missing_set))
+            import httpx
+            email_to_mid: dict[str, str] = {}
+            url: str | None = f"https://{s.okta_domain}/api/v1/users?limit=200&filter=status+eq+%22ACTIVE%22"
+            async with httpx.AsyncClient(timeout=30) as client:
+                while url:
+                    resp = await client.get(url, headers={"Authorization": f"SSWS {s.okta_api_token}"})
+                    if resp.status_code != 200:
+                        logger.warning("Okta List Users returned %d, stopping backfill", resp.status_code)
+                        break
+                    for u in resp.json():
+                        p = u.get("profile", {})
+                        login = (p.get("login") or "").strip().lower()
+                        email_val = (p.get("email") or "").strip().lower()
+                        for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+                            val = p.get(field)
+                            if val:
+                                mid = str(val).split("@")[0].strip()
+                                if login and login in missing_set:
+                                    email_to_mid[login] = mid
+                                if email_val and email_val in missing_set:
+                                    email_to_mid[email_val] = mid
+                                break
+                    url = None
+                    for part in resp.headers.get("link", "").split(","):
+                        if 'rel="next"' in part:
+                            url = part.split("<")[1].split(">")[0].strip()
+            updated = 0
+            for em, mid in email_to_mid.items():
+                r = await db.execute(
+                    text("UPDATE permits SET moravian_id = :mid WHERE LOWER(email) = :em AND moravian_id IS NULL"),
+                    {"mid": mid, "em": em}
+                )
+                updated += r.rowcount
+            await db.commit()
+            logger.info("Backfilled moravian_id on %d permit rows (%d emails matched)", updated, len(email_to_mid))
+    except Exception as e:
+        logger.warning("moravian_id backfill failed (non-fatal): %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from sqlalchemy import text
@@ -967,60 +1023,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Backup schedule disk->DB migration skipped: %s", e)
 
-    # Backfill moravian_id on permits using Okta List Users API
-    try:
-        from .database import async_session as _backfill_session
-        from .config import settings as _s
-        if _s.okta_domain and _s.okta_api_token:
-            async with _backfill_session() as _db:
-                from sqlalchemy import text as _t
-                _missing = (await _db.execute(
-                    _t("SELECT DISTINCT email FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''")
-                )).scalars().all()
-                if _missing:
-                    _missing_set = {e.strip().lower() for e in _missing if e}
-                    logger.info("Backfilling moravian_id for %d permits via Okta List Users", len(_missing_set))
-                    import httpx as _httpx
-                    _email_to_mid: dict[str, str] = {}
-                    _url: str | None = f"https://{_s.okta_domain}/api/v1/users?limit=200&filter=status+eq+%22ACTIVE%22"
-                    while _url:
-                        _resp = await _httpx.AsyncClient(timeout=30).get(
-                            _url, headers={"Authorization": f"SSWS {_s.okta_api_token}"}
-                        )
-                        if _resp.status_code != 200:
-                            logger.warning("Okta List Users returned %d, stopping backfill", _resp.status_code)
-                            break
-                        for _u in _resp.json():
-                            _p = _u.get("profile", {})
-                            _login = (_p.get("login") or "").strip().lower()
-                            _email_val = (_p.get("email") or "").strip().lower()
-                            for _field in ("altId", "studentId", "employeeNumber", "moravianId"):
-                                _val = _p.get(_field)
-                                if _val:
-                                    _mid = str(_val).split("@")[0].strip()
-                                    if _login and _login in _missing_set:
-                                        _email_to_mid[_login] = _mid
-                                    if _email_val and _email_val in _missing_set:
-                                        _email_to_mid[_email_val] = _mid
-                                    break
-                        _links = _resp.headers.get("link", "")
-                        _url = None
-                        for _part in _links.split(","):
-                            if 'rel="next"' in _part:
-                                _url = _part.split("<")[1].split(">")[0].strip()
-                    _updated = 0
-                    for _em, _mid in _email_to_mid.items():
-                        _r = await _db.execute(
-                            _t("UPDATE permits SET moravian_id = :mid WHERE LOWER(email) = :em AND moravian_id IS NULL"),
-                            {"mid": _mid, "em": _em}
-                        )
-                        _updated += _r.rowcount
-                    await _db.commit()
-                    logger.info("Backfilled moravian_id on %d permit rows (%d emails matched)", _updated, len(_email_to_mid))
-    except Exception as e:
-        logger.warning("moravian_id backfill failed (non-fatal): %s", e)
+    # Launch moravian_id backfill as a background task (doesn't block startup)
+    import asyncio
+    _backfill_task = asyncio.create_task(_backfill_moravian_ids())
 
     yield
+
+    if _backfill_task and not _backfill_task.done():
+        _backfill_task.cancel()
 
     stop_weather_monitor()
     stop_scheduler()
