@@ -202,6 +202,7 @@ export default function LotteryV2Manager() {
   const [addWaitlistCampus, setAddWaitlistCampus] = useState("north");
   const [addWaitlistTiers, setAddWaitlistTiers] = useState<{ id: string; label: string; price: number }[]>([]);
   const [addWaitlistTierId, setAddWaitlistTierId] = useState<string | undefined>(undefined);
+  const [addWaitlistPosition, setAddWaitlistPosition] = useState<number | null>(null);
   const [addWaitlistLoading, setAddWaitlistLoading] = useState(false);
 
   const [upgradeTarget, setUpgradeTarget] = useState<Application | null>(null);
@@ -435,14 +436,18 @@ export default function LotteryV2Manager() {
     if (!addWaitlistEmail.trim() || !addWaitlistTierId) return;
     setAddWaitlistLoading(true);
     try {
+      const body: Record<string, unknown> = {
+        email: addWaitlistEmail.trim(),
+        permit_type_id: addWaitlistTierId,
+        campus: addWaitlistCampus,
+      };
+      if (addWaitlistPosition != null && addWaitlistPosition >= 1) {
+        body.position = addWaitlistPosition;
+      }
       const res = await fetch("/api/lottery-v2/applications/admin-add", {
         method: "POST",
         headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: addWaitlistEmail.trim(),
-          permit_type_id: addWaitlistTierId,
-          campus: addWaitlistCampus,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to add");
@@ -1099,7 +1104,7 @@ export default function LotteryV2Manager() {
                   <Button onClick={() => { setRecoverOpen(true); setRecoverResults(null); setRecoverEmail(""); }}>
                     Recover
                   </Button>
-                  <Button onClick={() => { setAddWaitlistOpen(true); setAddWaitlistEmail(""); loadAddWaitlistTiers("north"); setAddWaitlistCampus("north"); }}>
+                  <Button onClick={() => { setAddWaitlistOpen(true); setAddWaitlistEmail(""); setAddWaitlistPosition(null); loadAddWaitlistTiers("north"); setAddWaitlistCampus("north"); }}>
                     Add to waitlist
                   </Button>
                 </Space>
@@ -1747,6 +1752,21 @@ export default function LotteryV2Manager() {
                                 Promote next
                               </Button>
                             </Tooltip>
+                            <Tooltip title="Add a student to this tier's waitlist">
+                              <Button
+                                size="small"
+                                onClick={() => {
+                                  setAddWaitlistOpen(true);
+                                  setAddWaitlistEmail("");
+                                  setAddWaitlistPosition(null);
+                                  setAddWaitlistTierId(group.permitTypeId);
+                                  setAddWaitlistTiers([{ id: group.permitTypeId!, label: group.label, price: 0 }]);
+                                  setAddWaitlistCampus("north");
+                                }}
+                              >
+                                Add student
+                              </Button>
+                            </Tooltip>
                           </Space>
                         )}
                       </div>
@@ -2211,6 +2231,22 @@ export default function LotteryV2Manager() {
                 label: `${t.label} — $${t.price}`,
               }))}
             />
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-1">
+              Position
+              <span className="font-normal text-gray-400 ml-1">(optional)</span>
+            </div>
+            <InputNumber
+              className="w-full"
+              min={1}
+              placeholder="End of list"
+              value={addWaitlistPosition}
+              onChange={(v) => setAddWaitlistPosition(v)}
+            />
+            <div className="text-xs text-gray-400 mt-1">
+              Leave blank to add at the end. Set a number to insert at that position (existing students shift down).
+            </div>
           </div>
         </div>
       </Modal>

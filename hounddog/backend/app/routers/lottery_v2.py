@@ -1134,6 +1134,7 @@ class AdminAddApplication(BaseModel):
     email: str
     permit_type_id: uuid.UUID
     campus: str = "north"
+    position: int | None = None
 
 
 @router.post("/applications/admin-add", response_model=ApplicationRead, status_code=201)
@@ -1252,6 +1253,20 @@ async def admin_add_to_waitlist(
         )
     ).scalar() or 0
 
+    target_pos = max_pos + 1
+    if data.position is not None and 1 <= data.position <= max_pos + 1:
+        target_pos = data.position
+        # Shift existing entries at or after this position down by 1
+        await db.execute(
+            LotteryV2Application.__table__.update()
+            .where(
+                LotteryV2Application.cycle_id == cycle.id,
+                LotteryV2Application.status == "waitlisted",
+                LotteryV2Application.waitlist_position >= target_pos,
+            )
+            .values(waitlist_position=LotteryV2Application.waitlist_position + 1)
+        )
+
     app = LotteryV2Application(
         cycle_id=cycle.id,
         student_sub=sub,
@@ -1265,7 +1280,7 @@ async def admin_add_to_waitlist(
         tier_preferences=[data.permit_type_id],
         assigned_permit_type_id=data.permit_type_id,
         status="waitlisted",
-        waitlist_position=max_pos + 1,
+        waitlist_position=target_pos,
         admin_notes=f"Added by {admin.email}",
     )
     db.add(app)
