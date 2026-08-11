@@ -447,14 +447,16 @@ function VisitorDetails({
       <Form.Item name="phone" label="Phone">
         <Input placeholder="610-555-0123" />
       </Form.Item>
-      <div className="grid grid-cols-2 gap-3">
-        <Form.Item name="start_date" label="Start date">
-          <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-        </Form.Item>
-        <Form.Item name="end_date" label="End date">
-          <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-        </Form.Item>
-      </div>
+      {!usingPreset && (
+        <div className="grid grid-cols-2 gap-3">
+          <Form.Item name="start_date" label="Start date">
+            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+          </Form.Item>
+          <Form.Item name="end_date" label="End date">
+            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+          </Form.Item>
+        </div>
+      )}
 
       {!usingPreset && (
         <div className="border-t pt-4 mt-2">
