@@ -1138,7 +1138,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             ${Number(tier.price).toFixed(0)}
                             {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
                           </span>
-                          <Tag color="green" className="ml-2">{tier.remaining} open</Tag>
+                          <Tag color="green" className="ml-2">Available</Tag>
                         </div>
                         <Button
                           type="primary"
