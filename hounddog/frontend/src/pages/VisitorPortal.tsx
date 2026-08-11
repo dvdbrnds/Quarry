@@ -7,7 +7,6 @@ import {
   DatePicker,
   Result,
   Spin,
-  Tag,
   App,
   Alert,
   Select,
@@ -20,8 +19,7 @@ import StudentLotMap from "../components/StudentLotMap";
 import { loadConfig } from "../auth";
 import type { Lot } from "../api";
 
-type Duration = "single_day" | "multi_day" | "semester";
-type Step = "intake" | "choose" | "details" | "done";
+type Step = "intake" | "details" | "done";
 
 interface VisitorPreset {
   id: string;
@@ -31,15 +29,6 @@ interface VisitorPreset {
   sponsor_email: string;
   sponsor_department: string;
   default_duration: string;
-}
-
-interface PermitOption {
-  id: string;
-  label: string;
-  description: string;
-  /** One day or less → day_guest API (no sponsor). Longer → vendor API (sponsor required). */
-  moreThanOneDay: boolean;
-  duration?: Duration;
 }
 
 interface PermitResult {
@@ -71,32 +60,6 @@ interface PublicLot {
 }
 
 const VISITOR_FILL = "#2563EB";
-
-/** Duration drives the path — not guest vs vendor purpose */
-const PERMIT_OPTIONS: PermitOption[] = [
-  {
-    id: "one_day",
-    label: "One day or less",
-    description:
-      "Guest visit, delivery, or same-day vendor work. No campus sponsor required.",
-    moreThanOneDay: false,
-  },
-  {
-    id: "multi_day",
-    label: "Multiple days",
-    description: "Custom date range for visits, vendor work, or extended stays. A campus sponsor must approve your request.",
-    moreThanOneDay: true,
-    duration: "multi_day",
-  },
-  {
-    id: "semester",
-    label: "Semester (contracted staff)",
-    description:
-      "For contracted employees without a Moravian account (e.g., Sodexo, Standardized Patients). A department sponsor must approve.",
-    moreThanOneDay: true,
-    duration: "semester",
-  },
-];
 
 function isVisitorLot(lot: PublicLot): boolean {
   const code = (lot.designation_code || "").toUpperCase();
@@ -140,7 +103,6 @@ function VisitorFlow() {
   const brand = useBranding();
   const { message } = App.useApp();
   const [step, setStep] = useState<Step>("intake");
-  const [selectedOption, setSelectedOption] = useState<PermitOption | null>(null);
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
   const [plateState, setPlateState] = useState("PA");
@@ -153,7 +115,6 @@ function VisitorFlow() {
   const [mapLoading, setMapLoading] = useState(true);
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [presets, setPresets] = useState<VisitorPreset[]>([]);
-  const [hoveredOptionId, setHoveredOptionId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -206,60 +167,38 @@ function VisitorFlow() {
 
   const showMap = Boolean(mapsApiKey && visitorLots.length > 0);
 
-  const continueToChoose = useCallback(() => {
+  const continueToDetails = useCallback(() => {
     if (!name.trim() || !plate.trim()) {
       message.warning("Name and license plate are required");
       return;
     }
-    setSelectedOption(null);
-    setStep("choose");
+    setStep("details");
   }, [name, plate, message]);
 
-  function chooseOption(opt: PermitOption) {
-    setSelectedOption(opt);
-    setStep("details");
-  }
-
   async function submitDetails(values: Record<string, unknown>) {
-    if (!selectedOption) return;
     setSubmitting(true);
     try {
       const presetId = values._preset_id as string | undefined;
-      const payload = selectedOption.moreThanOneDay
-        ? {
-            visitor_type: "vendor",
-            name: name.trim(),
-            plate: plate.trim().toUpperCase(),
-            plate_state: plateState.trim().toUpperCase(),
-            email: (values.email as string) || "",
-            phone: (values.phone as string) || "",
-            company_name: String(values.company_name || "").trim() || "Visitor",
-            duration: selectedOption.duration || "multi_day",
-            start_date: values.start_date
-              ? (values.start_date as dayjs.Dayjs).format("YYYY-MM-DD")
-              : undefined,
-            end_date: values.end_date
-              ? (values.end_date as dayjs.Dayjs).format("YYYY-MM-DD")
-              : undefined,
-            sponsor_name: String(values.sponsor_name || "").trim(),
-            sponsor_email: String(values.sponsor_email || "").trim(),
-            sponsor_department: (values.sponsor_department as string) || "",
-            work_description: (values.work_description as string) || "",
-            ...(presetId ? { preset_id: presetId } : {}),
-          }
-        : {
-            visitor_type: "day_guest",
-            name: name.trim(),
-            plate: plate.trim().toUpperCase(),
-            plate_state: plateState.trim().toUpperCase(),
-            email: (values.email as string) || "",
-            phone: (values.phone as string) || "",
-            visit_date: values.visit_date
-              ? (values.visit_date as dayjs.Dayjs).format("YYYY-MM-DD")
-              : undefined,
-            visiting_person: (values.visiting_person as string) || "",
-            visiting_event: (values.visiting_event as string) || "",
-          };
+      const payload = {
+        visitor_type: "visitor",
+        name: name.trim(),
+        plate: plate.trim().toUpperCase(),
+        plate_state: plateState.trim().toUpperCase(),
+        email: (values.email as string) || "",
+        phone: (values.phone as string) || "",
+        company_name: String(values.company_name || "").trim() || "Visitor",
+        start_date: values.start_date
+          ? (values.start_date as dayjs.Dayjs).format("YYYY-MM-DD")
+          : undefined,
+        end_date: values.end_date
+          ? (values.end_date as dayjs.Dayjs).format("YYYY-MM-DD")
+          : undefined,
+        sponsor_name: String(values.sponsor_name || "").trim(),
+        sponsor_email: String(values.sponsor_email || "").trim(),
+        sponsor_department: (values.sponsor_department as string) || "",
+        work_description: (values.work_description as string) || "",
+        ...(presetId ? { preset_id: presetId } : {}),
+      };
 
       const res = await fetch("/api/visitor/permits", {
         method: "POST",
@@ -289,13 +228,11 @@ function VisitorFlow() {
 
   function startOver() {
     setStep("intake");
-    setSelectedOption(null);
     setResult(null);
     setName("");
     setPlate("");
     setPlateState("PA");
     setFocusedLot(null);
-    setHoveredOptionId(null);
     detailsForm.resetFields();
   }
 
@@ -329,13 +266,13 @@ function VisitorFlow() {
             <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
               {step === "intake" && (
                 <Card title="1. About you">
-                  <Form layout="vertical" onFinish={continueToChoose}>
+                  <Form layout="vertical" onFinish={continueToDetails}>
                     <Alert
                       type="info"
                       showIcon
                       className="mb-4"
-                      message="How long will you park?"
-                      description="Guests and vendors use the same process. Parking for more than one day requires a campus sponsor’s approval."
+                      message="Visitor parking requires a campus sponsor"
+                      description="All visitors \u2014 guests, vendors, and contractors \u2014 need a Moravian staff or faculty sponsor to approve their parking request."
                     />
                     <Form.Item label="Full name" required>
                       <Input
@@ -369,22 +306,20 @@ function VisitorFlow() {
                       style={{ background: brand.primaryColor }}
                       block
                     >
-                      Continue — choose duration
+                      Continue
                     </Button>
                   </Form>
                 </Card>
               )}
 
-              {step === "choose" && (
+              {step === "details" && (
                 <Card
-                  title="2. How long do you need?"
+                  title="2. Visit details"
                   extra={
                     <Button
                       type="link"
                       onClick={() => {
                         setStep("intake");
-                        setSelectedOption(null);
-                        setHoveredOptionId(null);
                         setFocusedLot(null);
                       }}
                     >
@@ -392,102 +327,13 @@ function VisitorFlow() {
                     </Button>
                   }
                 >
-                  <p className="text-sm text-gray-500 mb-4">
-                    One day or less does not need a sponsor. Anything longer requires campus
-                    sponsor approval — whether you’re a guest or a vendor.
-                  </p>
-                  <ul className="space-y-2 list-none p-0 m-0">
-                    {PERMIT_OPTIONS.map((opt) => {
-                      const isHovered = hoveredOptionId === opt.id;
-                      return (
-                        <li
-                          key={opt.id}
-                          className="rounded-lg border px-3 py-3 transition-shadow hover:shadow-md cursor-pointer"
-                          style={{
-                            borderColor: isHovered ? VISITOR_FILL : "#e5e7eb",
-                            borderLeftWidth: 4,
-                            borderLeftColor: VISITOR_FILL,
-                            background: isHovered ? "#EFF6FF" : "#fff",
-                          }}
-                          onMouseEnter={() => {
-                            setHoveredOptionId(opt.id);
-                          }}
-                          onMouseLeave={() => {
-                            setHoveredOptionId(null);
-                          }}
-                          onClick={() => chooseOption(opt)}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="m-0 font-medium flex items-center gap-2">
-                                <span
-                                  className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                                  style={{ background: VISITOR_FILL }}
-                                />
-                                {opt.label}
-                              </p>
-                              <p className="m-0 text-xs text-gray-500 mt-1">{opt.description}</p>
-                              {opt.moreThanOneDay ? (
-                                <Tag color="gold" className="mt-2 m-0">
-                                  Sponsor approval required
-                                </Tag>
-                              ) : (
-                                <Tag color="blue" className="mt-2 m-0">
-                                  No sponsor needed
-                                </Tag>
-                              )}
-                            </div>
-                            <Button
-                              type="primary"
-                              size="small"
-                              style={{ background: VISITOR_FILL }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                chooseOption(opt);
-                              }}
-                            >
-                              Select
-                            </Button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Card>
-              )}
-
-              {step === "details" && selectedOption && (
-                <Card
-                  title={`3. ${selectedOption.label}`}
-                  extra={
-                    <Button
-                      type="link"
-                      onClick={() => {
-                        setStep("choose");
-                        setFocusedLot(null);
-                      }}
-                    >
-                      Back
-                    </Button>
-                  }
-                >
-                  {selectedOption.moreThanOneDay ? (
-                    <MultiDayDetails
-                      form={detailsForm}
-                      option={selectedOption}
-                      onSubmit={submitDetails}
-                      submitting={submitting}
-                      brand={brand}
-                      presets={presets}
-                    />
-                  ) : (
-                    <OneDayDetails
-                      form={detailsForm}
-                      onSubmit={submitDetails}
-                      submitting={submitting}
-                      brand={brand}
-                    />
-                  )}
+                  <VisitorDetails
+                    form={detailsForm}
+                    onSubmit={submitDetails}
+                    submitting={submitting}
+                    brand={brand}
+                    presets={presets}
+                  />
                 </Card>
               )}
 
@@ -510,62 +356,19 @@ function VisitorFlow() {
   );
 }
 
-function OneDayDetails({
+function VisitorDetails({
   form,
-  onSubmit,
-  submitting,
-  brand,
-}: {
-  form: FormInstance;
-  onSubmit: (values: Record<string, unknown>) => void;
-  submitting: boolean;
-  brand: { primaryColor: string };
-}) {
-  return (
-    <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ visit_date: dayjs() }}>
-      <p className="text-sm text-gray-500 mb-4">
-        For guest visits, deliveries, or same-day vendor work. Optional fields help campus staff
-        if they need to reach you.
-      </p>
-      <Form.Item name="visit_date" label="Date of visit">
-        <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-      </Form.Item>
-      <Form.Item name="visiting_person" label="Who are you visiting or working with? (optional)">
-        <Input placeholder="Prof. Johnson, Facilities, Admissions, etc." />
-      </Form.Item>
-      <Form.Item name="visiting_event" label="Event, job, or reason (optional)">
-        <Input placeholder="Open House, delivery, HVAC repair, etc." />
-      </Form.Item>
-      <Form.Item name="email" label="Email (optional — for confirmation)">
-        <Input type="email" placeholder="you@example.com" />
-      </Form.Item>
-      <Form.Item name="phone" label="Phone (optional)">
-        <Input placeholder="610-555-0123" />
-      </Form.Item>
-      <Button type="primary" htmlType="submit" loading={submitting} block style={{ background: brand.primaryColor }}>
-        Get parking pass
-      </Button>
-    </Form>
-  );
-}
-
-function MultiDayDetails({
-  form,
-  option,
   onSubmit,
   submitting,
   brand,
   presets,
 }: {
   form: FormInstance;
-  option: PermitOption;
   onSubmit: (values: Record<string, unknown>) => void;
   submitting: boolean;
   brand: { primaryColor: string };
   presets: VisitorPreset[];
 }) {
-  const needsEndDate = option.duration === "multi_day";
-  const isSemester = option.duration === "semester";
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const usingPreset = selectedPreset !== null && selectedPreset !== "__other__";
 
@@ -586,7 +389,7 @@ function MultiDayDetails({
   };
 
   return (
-    <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ start_date: dayjs() }}>
+    <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ start_date: dayjs(), end_date: dayjs() }}>
       <Form.Item name="_preset_id" hidden><Input /></Form.Item>
 
       {presets.length > 0 && (
@@ -628,17 +431,13 @@ function MultiDayDetails({
           showIcon
           className="mb-4"
           message="Campus sponsor required"
-          description={
-            isSemester
-              ? "Semester parking for contracted staff needs approval from a department supervisor."
-              : "Parking for more than one day needs approval from a Moravian staff or faculty sponsor, whether you are a guest or a vendor."
-          }
+          description="A Moravian staff or faculty member must approve your parking request. They will receive an email to confirm."
         />
       )}
 
       {!usingPreset && (
-        <Form.Item name="company_name" label={isSemester ? "Department / program" : "Company or organization (optional)"}>
-          <Input placeholder={isSemester ? "Sim Center, Nursing, etc." : "ABC Plumbing, or leave blank if visiting as a guest"} />
+        <Form.Item name="company_name" label="Company or organization (optional)">
+          <Input placeholder="ABC Plumbing, Sodexo, or leave blank if visiting as a guest" />
         </Form.Item>
       )}
 
@@ -652,23 +451,17 @@ function MultiDayDetails({
         <Form.Item name="start_date" label="Start date">
           <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
         </Form.Item>
-        {needsEndDate && (
-          <Form.Item
-            name="end_date"
-            label="End date"
-            rules={[{ required: true, message: "End date required" }]}
-          >
-            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-          </Form.Item>
-        )}
+        <Form.Item name="end_date" label="End date">
+          <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+        </Form.Item>
       </div>
 
       {!usingPreset && (
         <div className="border-t pt-4 mt-2">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Campus sponsor</h4>
           <p className="text-xs text-gray-500 mb-4">
-            Enter the staff or faculty member who can approve your multi-day parking. They will get
-            an email to confirm.
+            Enter the Moravian staff or faculty member who can approve your parking. They will
+            receive an email to confirm.
           </p>
           <Form.Item
             name="sponsor_name"
@@ -694,10 +487,10 @@ function MultiDayDetails({
       )}
 
       {!usingPreset && (
-        <Form.Item name="work_description" label={isSemester ? "Role / reason for parking" : "Reason for extended parking"}>
+        <Form.Item name="work_description" label="Reason for visit">
           <Input.TextArea
             rows={3}
-            placeholder={isSemester ? "Standardized Patient, contracted instructor, etc." : "Multi-day visit, contracted project, conference, etc."}
+            placeholder="Guest visit, delivery, vendor work, conference, etc."
           />
         </Form.Item>
       )}
@@ -730,7 +523,7 @@ function ConfirmationCard({
               <tbody>
                 <tr className="border-b">
                   <td className="py-2 text-gray-500">Permit #</td>
-                  <td className="py-2 font-semibold text-right">{result.permit_number || "—"}</td>
+                  <td className="py-2 font-semibold text-right">{result.permit_number || "\u2014"}</td>
                 </tr>
                 <tr className="border-b">
                   <td className="py-2 text-gray-500">Name</td>
@@ -744,7 +537,7 @@ function ConfirmationCard({
                   <td className="py-2 text-gray-500">Valid</td>
                   <td className="py-2 text-right">
                     {result.start_date}
-                    {result.end_date && result.end_date !== result.start_date && ` — ${result.end_date}`}
+                    {result.end_date && result.end_date !== result.start_date && ` \u2014 ${result.end_date}`}
                   </td>
                 </tr>
                 <tr>

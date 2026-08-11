@@ -26,18 +26,12 @@ router = APIRouter()
 
 
 class VisitorPermitCreate(BaseModel):
-    visitor_type: str  # "day_guest" or "vendor"
-    # Common fields
+    visitor_type: str = "visitor"
     name: str
     plate: str
     plate_state: str = ""
     email: str = ""
     phone: str = ""
-    # Day guest fields
-    visit_date: date | None = None
-    visiting_person: str = ""
-    visiting_event: str = ""
-    # Vendor fields
     company_name: str = ""
     duration: str = "single_day"
     start_date: date | None = None
@@ -275,12 +269,7 @@ async def create_visitor_permit(data: VisitorPermitCreate, db: AsyncSession = De
         raise HTTPException(400, "Name is required")
 
     try:
-        if data.visitor_type == "day_guest":
-            return await _create_day_guest(data, plate, db)
-        elif data.visitor_type == "vendor":
-            return await _create_vendor(data, plate, db)
-        else:
-            raise HTTPException(400, "visitor_type must be 'day_guest' or 'vendor'")
+        return await _create_visitor(data, plate, db)
     except HTTPException:
         raise
     except Exception as e:
@@ -406,51 +395,7 @@ async def approve_or_deny(token: str, body: ApprovalDecision, db: AsyncSession =
 # ── Private helpers ──
 
 
-async def _create_day_guest(data: VisitorPermitCreate, plate: str, db: AsyncSession) -> VisitorPermitResponse:
-    visit_date = data.visit_date or today_local()
-
-    notes_parts = []
-    if data.visiting_person:
-        notes_parts.append(f"Visiting: {data.visiting_person}")
-    if data.visiting_event:
-        notes_parts.append(f"Event: {data.visiting_event}")
-
-    permit = Permit(
-        permit_number=await next_permit_number(db),
-        name=data.name.strip(),
-        email=data.email or None,
-        phone=data.phone or "",
-        plates=[plate],
-        lot_assignment="Visitor",
-        permit_type="visitor_day",
-        start_date=visit_date,
-        end_date=visit_date,
-        status="active",
-        student_id="|".join(notes_parts),
-    )
-    db.add(permit)
-    await db.flush()
-    await db.refresh(permit)
-    await _notify_permit_change("created", 1)
-
-    if data.email:
-        await _send_visitor_confirmation(permit)
-
-    return VisitorPermitResponse(
-        id=str(permit.id),
-        permit_number=permit.permit_number,
-        visitor_type="visitor_day",
-        name=permit.name,
-        plate=plate,
-        status="active",
-        start_date=visit_date.isoformat(),
-        end_date=visit_date.isoformat(),
-        message="Your day pass is active. Please display your confirmation on your dashboard.",
-    )
-
-
-async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession) -> VisitorPermitResponse:
-    # Resolve preset — fills in sponsor/company from the backend
+async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSession) -> VisitorPermitResponse:
     if data.preset_id:
         preset = await db.get(VisitorPreset, uuid.UUID(data.preset_id))
         if not preset or not preset.active:
@@ -462,35 +407,23 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         if preset.default_duration and data.duration == "single_day":
             data.duration = preset.default_duration
 
-    if not data.company_name.strip():
-        raise HTTPException(400, "Company name is required for vendor permits")
     if not data.sponsor_name.strip():
-        raise HTTPException(400, "Sponsor/contact name is required for vendor permits")
+        raise HTTPException(400, "A campus sponsor name is required")
     if not data.sponsor_email.strip():
-        raise HTTPException(400, "Sponsor email is required for vendor permits")
+        raise HTTPException(400, "A campus sponsor email is required")
 
     start = data.start_date or today_local()
-    is_long_term = data.duration in ("multi_day", "long_term_30", "long_term_60", "long_term_90", "semester")
+    end = data.end_date or start
 
-    if data.duration == "single_day":
-        end = start
-    elif data.duration == "multi_day":
-        end = data.end_date or (start + timedelta(days=7))
-    elif data.duration == "long_term_30":
-        end = start + timedelta(days=30)
-    elif data.duration == "long_term_60":
-        end = start + timedelta(days=60)
-    elif data.duration == "long_term_90":
-        end = start + timedelta(days=90)
-    elif data.duration == "semester":
-        end = start + timedelta(days=120)
+    days = (end - start).days
+    if data.duration == "semester":
+        permit_type = "visitor_contracted_staff"
+        if end == start:
+            end = start + timedelta(days=120)
+    elif days > 0:
+        permit_type = "visitor_vendor_longterm"
     else:
-        end = start
-
-    permit_type = "visitor_contracted_staff" if data.duration == "semester" else (
-        "visitor_vendor_longterm" if is_long_term else "visitor_vendor"
-    )
-    status = "pending_approval" if is_long_term else "active"
+        permit_type = "visitor_day"
 
     permit = Permit(
         permit_number=await next_permit_number(db),
@@ -498,60 +431,50 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         email=data.email or None,
         phone=data.phone or "",
         plates=[plate],
-        lot_assignment="Vendor",
+        lot_assignment="Visitor",
         permit_type=permit_type,
         start_date=start,
         end_date=end,
-        status=status,
+        status="pending_approval",
         student_id=data.company_name.strip()[:64] if data.company_name.strip() else "",
     )
     db.add(permit)
     await db.flush()
     await db.refresh(permit)
 
-    requires_approval = is_long_term
-    message = ""
+    token = secrets.token_urlsafe(48)
+    approval = VisitorApprovalToken(
+        token=token,
+        permit_id=permit.id,
+        sponsor_email=data.sponsor_email.strip(),
+        sponsor_name=data.sponsor_name.strip(),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    db.add(approval)
+    await db.flush()
 
-    if is_long_term:
-        # Generate approval token and email sponsor
-        token = secrets.token_urlsafe(48)
-        approval = VisitorApprovalToken(
-            token=token,
-            permit_id=permit.id,
-            sponsor_email=data.sponsor_email.strip(),
-            sponsor_name=data.sponsor_name.strip(),
-            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    email_sent = await _send_sponsor_approval_email(
+        sponsor_email=data.sponsor_email.strip(),
+        sponsor_name=data.sponsor_name.strip(),
+        visitor_name=data.name.strip(),
+        company_name=data.company_name.strip() if data.company_name else "Visitor",
+        plate=plate,
+        work_description=data.work_description.strip() if data.work_description else "",
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        token=token,
+    )
+    if email_sent:
+        msg = (
+            "Your permit request has been submitted and is pending approval from "
+            f"{data.sponsor_name.strip()}. You will receive confirmation once approved."
         )
-        db.add(approval)
-        await db.flush()
-
-        email_sent = await _send_sponsor_approval_email(
-            sponsor_email=data.sponsor_email.strip(),
-            sponsor_name=data.sponsor_name.strip(),
-            visitor_name=data.name.strip(),
-            company_name=data.company_name.strip(),
-            plate=plate,
-            work_description=data.work_description.strip(),
-            start_date=start.isoformat(),
-            end_date=end.isoformat(),
-            token=token,
-        )
-        if email_sent:
-            message = (
-                "Your permit request has been submitted and is pending approval from "
-                f"{data.sponsor_name.strip()}. You will receive confirmation once approved."
-            )
-        else:
-            message = (
-                "Your permit request has been submitted, but we could not send the approval "
-                f"email to {data.sponsor_email.strip()}. Please contact them directly or "
-                "reach out to the parking office for assistance."
-            )
     else:
-        await _notify_permit_change("created", 1)
-        if data.email:
-            await _send_visitor_confirmation(permit)
-        message = "Your vendor day pass is active."
+        msg = (
+            "Your permit request has been submitted, but we could not send the approval "
+            f"email to {data.sponsor_email.strip()}. Please contact them directly or "
+            "reach out to the parking office for assistance."
+        )
 
     return VisitorPermitResponse(
         id=str(permit.id),
@@ -559,11 +482,11 @@ async def _create_vendor(data: VisitorPermitCreate, plate: str, db: AsyncSession
         visitor_type=permit_type,
         name=permit.name,
         plate=plate,
-        status=status,
+        status="pending_approval",
         start_date=start.isoformat(),
         end_date=end.isoformat(),
-        requires_approval=requires_approval,
-        message=message,
+        requires_approval=True,
+        message=msg,
     )
 
 
