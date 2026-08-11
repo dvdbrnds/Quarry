@@ -667,9 +667,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       if (app.status === "selected") {
         message.success("A seat was available — accept your offer below.");
       } else if (app.status === "waitlisted") {
-        message.success(
-          `You're on the waitlist${app.waitlist_position != null ? ` (#${app.waitlist_position})` : ""}.`,
-        );
+        message.success("You're on the waitlist. You'll be notified if a spot opens.");
       } else {
         message.success("Application submitted");
       }
@@ -1028,8 +1026,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                   {application.status === "waitlisted" && (
                     <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-                      <p className="m-0 text-blue-900">
-                        Waitlist position: <strong>#{application.waitlist_position}</strong>
+                      <p className="m-0 text-blue-900 font-medium">
+                        You're on the waitlist
                       </p>
                       <p className="m-0 mt-1 text-sm text-blue-800">
                         No action needed. You'll be notified if a spot opens.
@@ -1056,7 +1054,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   </p>
                   {(() => {
                     const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
-                    const otherTiers = tiers.filter((t) => t.id !== currentTierId);
+                    const otherTiers = tiers.filter((t) => t.id !== currentTierId && t.requires_lottery);
                     if (otherTiers.length === 0) {
                       return (
                         <p className="text-sm text-gray-400 m-0">
@@ -1084,11 +1082,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                               ${Number(tier.price).toFixed(0)}
                               {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
                             </span>
-                            {existingApp?.status === "waitlisted" && existingApp.waitlist_position && (
-                              <Tag color="blue" className="ml-2">
-                                #{existingApp.waitlist_position} on waitlist
-                              </Tag>
-                            )}
                             {existingApp?.status === "selected" && (
                               <Tag color="green" className="ml-2">Offer available!</Tag>
                             )}
@@ -1133,7 +1126,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   {(() => {
                     const currentPrice = parseFloat(application.assigned_permit_type_price || "0");
                     const higherTiers = tiers.filter(
-                      (t) => parseFloat(t.price) > currentPrice && t.id !== application.assigned_permit_type_id
+                      (t) => parseFloat(t.price) > currentPrice && t.id !== application.assigned_permit_type_id && t.requires_lottery
                     );
                     if (higherTiers.length === 0) {
                       return (
@@ -1162,11 +1155,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             <span className="text-sm text-gray-500 ml-2">
                               +${diff} difference
                             </span>
-                            {upgradeApp?.status === "waitlisted" && upgradeApp.waitlist_position && (
-                              <Tag color="blue" className="ml-2">
-                                #{upgradeApp.waitlist_position} on waitlist
-                              </Tag>
-                            )}
                             {upgradeApp?.status === "selected" && (
                               <Tag color="green" className="ml-2">Offer available!</Tag>
                             )}

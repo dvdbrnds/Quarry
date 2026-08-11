@@ -115,7 +115,7 @@ export default function StudentPermits() {
                         {app.assigned_lot && <span className="ml-1 text-green-700 font-medium">&middot; Assigned: {app.assigned_lot}</span>}
                       </div>
                       {app.status === "waitlisted" && app.waitlist_message && <div className="text-xs text-blue-600 mt-1">{app.waitlist_message}</div>}
-                      {app.status === "waitlisted" && !app.waitlist_message && app.waitlist_position != null && <div className="text-xs text-blue-600 mt-1">Waitlist position #{app.waitlist_position}</div>}
+                      {app.status === "waitlisted" && !app.waitlist_message && <div className="text-xs text-blue-600 mt-1">You're on the waitlist</div>}
                       {app.status === "selected" && app.offer_expires_at && (
                         <div className="text-xs text-green-700 mt-1">
                           Accept by {new Date(app.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
