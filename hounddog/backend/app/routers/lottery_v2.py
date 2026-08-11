@@ -1799,7 +1799,7 @@ async def advance_cycle_waitlist(
 
 
 class AdvanceTierRequest(BaseModel):
-    permit_type_id: str
+    permit_type_id: uuid.UUID
     action: str = Field(..., pattern="^(expire|promote)$")
 
 
