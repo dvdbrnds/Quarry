@@ -626,7 +626,15 @@ export default function Permits() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold">Permits</h2>
                   <Space>
-                    <Button onClick={() => downloadWithAuth("/api/permits/export/csv", "permits.csv")}>Export CSV</Button>
+                    <Button onClick={() => {
+                      const params = new URLSearchParams();
+                      if (filterStatus) params.set("status", filterStatus);
+                      if (filterType) params.set("permit_type", filterType);
+                      if (filterLot) params.set("lot", filterLot);
+                      if (search) params.set("search", search);
+                      const qs = params.toString();
+                      downloadWithAuth(`/api/permits/export/csv${qs ? `?${qs}` : ""}`, "permits.csv");
+                    }}>Export CSV</Button>
                     <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>
                   </Space>
                 </div>

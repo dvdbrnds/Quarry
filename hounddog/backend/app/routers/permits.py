@@ -1194,12 +1194,31 @@ async def import_permits_csv(
 
 
 @router.get("/export/csv")
-async def export_permits(db: AsyncSession = Depends(get_db)):
-    permits = (
-        await db.execute(
-            select(Permit).where(Permit.deleted_at.is_(None)).order_by(Permit.name)
+async def export_permits(
+    status: str | None = None,
+    permit_type: str | None = None,
+    lot: str | None = None,
+    search: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Permit).where(Permit.deleted_at.is_(None))
+    if status:
+        query = query.where(Permit.status == status)
+    if permit_type:
+        query = query.where(Permit.permit_type == permit_type)
+    if lot:
+        query = query.where(Permit.lot_assignment == lot)
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                Permit.name.ilike(like),
+                Permit.student_id.ilike(like),
+                Permit.permit_number.ilike(like),
+                Permit.plates.any(search.upper()),
+            )
         )
-    ).scalars().all()
+    permits = (await db.execute(query.order_by(Permit.name))).scalars().all()
 
     output = io.StringIO()
     writer = csv.writer(output)
