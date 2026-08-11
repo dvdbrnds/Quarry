@@ -459,11 +459,6 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE visitor_presets ALTER COLUMN active SET DEFAULT true",
             "ALTER TABLE visitor_presets ALTER COLUMN sort_order SET DEFAULT 0",
             "DELETE FROM visitor_presets WHERE label = 'Sodexo employee'",
-            # One-time: expire all outstanding lottery offers at midnight Aug 10 2026 ET (04:00 UTC)
-            """UPDATE lottery_v2_applications
-               SET offer_expires_at = '2026-08-10T04:00:00+00:00'
-               WHERE status = 'selected'
-                 AND offer_expires_at > '2026-08-10T04:00:00+00:00'""",
             # Rename South Standalone → South Third Party
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
             # Lottery V2 is production — drop staging cycle names
