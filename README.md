@@ -28,25 +28,13 @@ Select your target device and hit Run. The app requires a physical device (camer
 1. Grant camera and location permissions when prompted
 2. The app starts in **Officer mode** — camera scanner, scan log, and export
 3. Tap the lock icon in the bottom bar to enter **Admin mode** (default passcode: `1234`)
-4. In Admin mode, configure the school name, import permit data, and manage lots
+4. In Admin mode, pair with HoundDog (QR or URL + API key) so permits sync from the live server
 
-## Updating Permit Data
+## Permit Data
 
-Permit data is a JSON file matching the format in `BirdDog/Resources/permits.json`.
+Bird Dog loads permits **only** from the live HoundDog server. Pair the iPad via the Quarry dashboard QR code (or enter the server URL + API key in Admin Settings). Sync runs automatically every minute and on push notification.
 
-### From a spreadsheet
-
-```bash
-# Convert an Excel export to the JSON format Bird Dog expects
-# Output is written to BirdDog/Resources/permits.json
-python3 scripts/convert_permits.py input.xlsx
-```
-
-### Loading onto the iPad
-
-**Option A — Rebuild** (development): Replace `BirdDog/Resources/permits.json` and build from Xcode.
-
-**Option B — File import** (production): AirDrop the JSON file to the iPad, then open it from Bird Dog's Admin Settings > Import Permits. The imported file becomes the source of truth and persists across app restarts.
+There is no bundled `permits.json` and no offline file import for permits. If the database is empty, connect to HoundDog and tap **Sync Now**.
 
 ## Admin vs. Officer Mode
 
@@ -59,7 +47,7 @@ python3 scripts/convert_permits.py input.xlsx
 | Audio toggle | Yes | Yes |
 | Database management | No | Yes |
 | Lot management | No | Yes |
-| Settings (passcode, school, import) | No | Yes |
+| Settings (passcode, school, HoundDog) | No | Yes |
 
 Tap the lock icon to toggle. The default admin passcode is `1234` — change it in Admin Settings before handing the iPad to officers.
 

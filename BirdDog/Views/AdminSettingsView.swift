@@ -7,7 +7,6 @@ struct AdminSettingsView: View {
     @ObservedObject private var appSettings = AppSettings.shared
     @ObservedObject private var syncService = HoundDogSyncService.shared
     @ObservedObject private var officerAuth = OfficerAuthService.shared
-    @State private var showPermitImporter = false
     @State private var showLotImporter = false
     @State private var showPasscodeChange = false
     @State private var showQRScanner = false
@@ -30,13 +29,6 @@ struct AdminSettingsView: View {
         }
         .navigationTitle("Admin Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(
-            isPresented: $showPermitImporter,
-            allowedContentTypes: [UTType.json],
-            allowsMultipleSelection: false
-        ) { result in
-            handlePermitImport(result)
-        }
         .fileImporter(
             isPresented: $showLotImporter,
             allowedContentTypes: [UTType.json],
@@ -369,16 +361,12 @@ struct AdminSettingsView: View {
 
     private var dataSection: some View {
         Section {
-            Button {
-                showPermitImporter = true
-            } label: {
-                HStack {
-                    Label("Import Permits", systemImage: "doc.badge.plus")
-                    Spacer()
-                    Text("\(PlateDatabase.shared.totalCount()) loaded")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            HStack {
+                Label("Permits", systemImage: "doc.text.fill")
+                Spacer()
+                Text("\(PlateDatabase.shared.totalCount()) synced")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Button {
@@ -395,7 +383,7 @@ struct AdminSettingsView: View {
         } header: {
             Text("Data Management")
         } footer: {
-            Text("Import JSON files via AirDrop, Files, or any file source. Permit files must match the permits.json format. Lot files must be an array of lot objects.")
+            Text("Permit data comes only from the live HoundDog server sync. Lot files can still be imported via AirDrop or Files if needed.")
         }
     }
 
@@ -426,10 +414,8 @@ struct AdminSettingsView: View {
             infoRow("Lots", value: "\(GeofenceService.shared.lots.count)")
             if syncService.isEnabled && !appSettings.houndDogURL.isEmpty {
                 infoRow("Data Source", value: "HoundDog server")
-            } else if LocalDataProvider.shared.hasImportedPermits {
-                infoRow("Data Source", value: "Imported file")
             } else {
-                infoRow("Data Source", value: "Bundled")
+                infoRow("Data Source", value: "Not connected")
             }
         }
     }
@@ -452,25 +438,6 @@ struct AdminSettingsView: View {
     }
 
     // MARK: - Import Handlers
-
-    private func handlePermitImport(_ result: Result<[URL], Error>) {
-        do {
-            guard let url = try result.get().first else { return }
-            guard url.startAccessingSecurityScopedResource() else {
-                showError("Unable to access the selected file.")
-                return
-            }
-            defer { url.stopAccessingSecurityScopedResource() }
-
-            let data = try Data(contentsOf: url)
-            let count = try LocalDataProvider.shared.importPermits(from: data)
-            importMessage = "Imported \(count) permit records successfully."
-            importAlertIsError = false
-            showImportAlert = true
-        } catch {
-            showError("Failed to import permits: \(error.localizedDescription)")
-        }
-    }
 
     private func handleLotImport(_ result: Result<[URL], Error>) {
         do {

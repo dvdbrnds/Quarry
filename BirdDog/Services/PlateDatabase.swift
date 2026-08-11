@@ -26,8 +26,6 @@ final class PlateDatabase {
         container.mainContext
     }
 
-    private static let seedVersionKey = "PlateDatabase.seedVersion"
-
     nonisolated static func createContainer() -> ModelContainer {
         do {
             let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
@@ -76,29 +74,6 @@ final class PlateDatabase {
         for ext in extensions {
             let url = dir.appendingPathComponent("default.\(ext)")
             try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    func seedIfNeeded() {
-        let url: URL? = LocalDataProvider.shared.permitDataURL()
-        guard let url else { return }
-
-        let fileDate = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)?
-            .timeIntervalSince1970 ?? 0
-        let seedVersion = String(format: "%.0f", fileDate)
-
-        let lastSeed = UserDefaults.standard.string(forKey: Self.seedVersionKey) ?? ""
-        guard lastSeed != seedVersion else { return }
-
-        do {
-            let data = try Data(contentsOf: url)
-            let payload = try JSONDecoder().decode(PermitPayload.self, from: data)
-
-            try deleteAll()
-            _ = try seedFromPayload(payload)
-            UserDefaults.standard.set(seedVersion, forKey: Self.seedVersionKey)
-        } catch {
-            print("Failed to seed database: \(error)")
         }
     }
 

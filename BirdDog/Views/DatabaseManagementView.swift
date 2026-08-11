@@ -56,7 +56,7 @@ struct DatabaseManagementView: View {
                     Text("No permit data loaded")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text("Rebuild the app with an updated permits.json to load data.")
+                    Text("Pair with HoundDog and sync to load live permits.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)

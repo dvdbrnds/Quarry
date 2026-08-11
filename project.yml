@@ -30,11 +30,6 @@ targets:
           - "**/*.xlsx"
     resources:
       - path: BirdDog/Resources/Assets.xcassets
-      # Optional: gitignored (PII). Generate with:
-      #   python3 scripts/convert_permits.py "All Parking Permits.xlsx"
-      # Or import via Admin Settings on device.
-      - path: BirdDog/Resources/permits.json
-        optional: true
       - path: BirdDog/Resources/lots.json
     dependencies:
       - package: StarXpand-SDK-iOS

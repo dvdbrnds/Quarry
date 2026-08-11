@@ -215,7 +215,7 @@ struct ContentView: View {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
-                Text("No permit data loaded")
+                Text("No permit data — sync with HoundDog")
                     .font(.caption2.bold())
             }
             .padding(.horizontal, 12)

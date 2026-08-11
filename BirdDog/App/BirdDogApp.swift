@@ -41,7 +41,6 @@ extension BirdDogApp {
         HoundDogSyncService.shared.startIfConfigured()
 
         Task {
-            PlateDatabase.shared.seedIfNeeded()
             PlateDatabase.shared.pruneExpiredPermits()
             if PrinterService.shared.hasSavedPrinter {
                 PrinterService.shared.reconnectSaved()
