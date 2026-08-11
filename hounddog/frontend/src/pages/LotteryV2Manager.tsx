@@ -1085,37 +1085,6 @@ export default function LotteryV2Manager() {
                 <Space size={4}>
                   <Button
                     disabled={busy || active.status !== "drawn"}
-                    onClick={() => {
-                      if (!active) return;
-                      modal.confirm({
-                        title: `Repair placements for "${active.name}"?`,
-                        content:
-                          "Removes duplicate offers, clears phantom waitlist rows for people who already won, demotes excess selected offers over capacity (re-places into lower prefs when possible), then fills remaining open seats. Emails newly selected students by default. Does not revoke accepted/paid permits.",
-                        okText: "Repair now",
-                        onOk: async () => {
-                          const data = await postAction(
-                            `/api/lottery-v2/cycles/${active.id}/repair`,
-                            { send_notifications: true },
-                          );
-                          if (data) {
-                            message.success(
-                              `Repair: ${data.newly_selected} newly selected, ${data.capacity_demoted ?? 0} over-cap demoted, ${data.superseded_waitlist ?? data.duplicates_demoted} duplicates cleared, ${data.remaining_waitlisted} still waitlisted`,
-                            );
-                          }
-                        },
-                      });
-                    }}
-                  >
-                    Repair
-                  </Button>
-                  <Button
-                    disabled={busy || active.status !== "drawn"}
-                    onClick={confirmNotifyWaitlist}
-                  >
-                    Email waitlist
-                  </Button>
-                  <Button
-                    disabled={busy || active.status !== "drawn"}
                     onClick={confirmAdvanceWaitlist}
                   >
                     Advance
