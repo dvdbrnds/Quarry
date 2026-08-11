@@ -1223,14 +1223,13 @@ async def export_permits(
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "permit_number", "student_id", "name", "email", "phone",
+        "permit_number", "name", "email", "phone",
         "plates", "lot_assignment", "permit_type", "beacon_id",
         "status", "start_date", "end_date", "created_at",
     ])
     for p in permits:
         writer.writerow([
             p.permit_number or "",
-            p.student_id,
             p.name,
             p.email or "",
             p.phone or "",
