@@ -173,10 +173,12 @@ struct ScanLogView: View {
 
     private func plateTextColor(for status: PlateStatus) -> Color {
         switch status {
+        case .authorized: return PlateStatus.allowedGreen
         case .unknown: return .red
         case .wrongLot: return .orange
         case .ticketed: return .purple
-        default: return .primary
+        case .expired: return .yellow
+        case .unchecked: return .primary
         }
     }
 
@@ -184,7 +186,7 @@ struct ScanLogView: View {
         Group {
             switch status {
             case .authorized:
-                Color.green.opacity(0.08)
+                PlateStatus.allowedGreen.opacity(0.14)
             case .unknown:
                 Color.red.opacity(0.08)
             case .wrongLot:
@@ -211,9 +213,9 @@ struct ScanLogView: View {
     private func permitDetail(for status: PlateStatus) -> String? {
         switch status {
         case .authorized(let permit):
-            return [permit.displayType, permit.ownerName, permit.vehicleDescription]
+            let parts = ["ALLOWED", permit.lotZone, permit.displayType, permit.ownerName]
                 .filter { !$0.isEmpty }
-                .joined(separator: " · ")
+            return parts.joined(separator: " · ")
         case .wrongLot(let permit, let expected, let actual):
             return "WRONG LOT · Permit: \(expected) · Here: \(actual) · \(permit.ownerName)"
         case .expired(let permit):

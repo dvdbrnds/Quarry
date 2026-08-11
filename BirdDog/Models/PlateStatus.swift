@@ -26,9 +26,12 @@ enum PlateStatus: Sendable, Equatable, Codable {
     case unchecked
     case ticketed
 
+    /// Brand signal green for plates allowed to park in this lot right now.
+    static let allowedGreen = Color("BDSignalGreen")
+
     var label: String {
         switch self {
-        case .authorized: return "Authorized"
+        case .authorized: return "Allowed"
         case .wrongLot: return "Wrong Lot"
         case .expired: return "Expired"
         case .unknown: return "Unknown"
@@ -39,7 +42,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
 
     var color: Color {
         switch self {
-        case .authorized: return .green
+        case .authorized: return Self.allowedGreen
         case .wrongLot: return .orange
         case .expired: return .yellow
         case .unknown: return .red

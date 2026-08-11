@@ -25,6 +25,9 @@ final class PlateAuthService: PlateCheckable {
         AppSettings.shared.wildcardZoneSet
     }
 
+    /// HoundDog uses "active"; legacy BirdDog JSON used "Valid".
+    private static let activeStatuses: Set<String> = ["active", "valid"]
+
     init() {}
 
     func check(plate: String, currentLot: String? = nil) -> PlateStatus {
@@ -65,19 +68,31 @@ final class PlateAuthService: PlateCheckable {
             issuedDate: record.issuedDate
         )
 
-        if record.permitStatus != "Valid" {
+        let statusKey = record.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()
+        let now = Date()
+
+        // Not an active/valid permit (revoked, suspended, expired status, etc.)
+        if !Self.activeStatuses.contains(statusKey) {
             return .expired(permit: info)
         }
 
-        if let expiration = record.expirationDate, expiration < Date() {
+        // Not yet valid for this date
+        if record.issuedDate > now {
             return .expired(permit: info)
         }
 
+        // Past end date
+        if let expiration = record.expirationDate, expiration < Calendar.current.startOfDay(for: now) {
+            return .expired(permit: info)
+        }
+
+        // In the system, but not allowed in this lot right now
         if let currentLot, !record.lotZone.isEmpty,
            !lotMatches(permitZone: record.lotZone, currentLot: currentLot) {
             return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
         }
 
+        // Allowed to park in this lot at this time
         return .authorized(permit: info)
     }
 
@@ -93,7 +108,7 @@ final class PlateAuthService: PlateCheckable {
             let zones = normalizedPermit.split(separator: ",").map {
                 $0.trimmingCharacters(in: .whitespaces)
             }
-            if zones.contains(normalizedLot) { return true }
+            if zones.contains(where: { $0 == normalizedLot }) { return true }
         }
 
         return false

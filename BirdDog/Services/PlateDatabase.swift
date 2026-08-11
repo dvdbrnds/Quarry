@@ -337,13 +337,19 @@ final class PlateDatabase {
     }
 
     func validCount() -> Int {
-        let predicate = #Predicate<PermitRecord> { $0.permitStatus == "Valid" }
-        return (try? context.fetchCount(FetchDescriptor<PermitRecord>(predicate: predicate))) ?? 0
+        let all = (try? context.fetch(FetchDescriptor<PermitRecord>())) ?? []
+        return all.filter {
+            let s = $0.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()
+            return s == "valid" || s == "active"
+        }.count
     }
 
     func expiredCount() -> Int {
-        let predicate = #Predicate<PermitRecord> { $0.permitStatus == "Expired" }
-        return (try? context.fetchCount(FetchDescriptor<PermitRecord>(predicate: predicate))) ?? 0
+        let all = (try? context.fetch(FetchDescriptor<PermitRecord>())) ?? []
+        return all.filter {
+            let s = $0.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()
+            return s == "expired" || s == "revoked" || s == "suspended"
+        }.count
     }
 
     var isEmpty: Bool {
@@ -421,19 +427,42 @@ struct PermitEntry: Decodable {
     let expirationDate: String?
     let beaconId: String?
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
+    private static let dateFormatters: [DateFormatter] = {
+        let formats = [
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ssXXXXX",
+            "yyyy-MM-dd",
+        ]
+        return formats.map { format in
+            let f = DateFormatter()
+            f.dateFormat = format
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone.current
+            return f
+        }
     }()
 
+    private static func parseDate(_ value: String) -> Date? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        for formatter in dateFormatters {
+            if let date = formatter.date(from: trimmed) { return date }
+        }
+        // ISO8601 with fractional seconds
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: trimmed) { return date }
+        iso.formatOptions = [.withInternetDateTime]
+        return iso.date(from: trimmed)
+    }
+
     var parsedIssuedDate: Date {
-        Self.dateFormatter.date(from: issuedDate) ?? .distantPast
+        Self.parseDate(issuedDate) ?? .distantPast
     }
 
     var parsedExpirationDate: Date? {
-        guard let exp = expirationDate, !exp.isEmpty else { return nil }
-        return Self.dateFormatter.date(from: exp)
+        guard let exp = expirationDate else { return nil }
+        return Self.parseDate(exp)
     }
 }

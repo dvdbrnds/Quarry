@@ -11,7 +11,7 @@ struct PlateOverlayView: View {
 
     private var backgroundColor: Color {
         switch authStatus {
-        case .authorized: return .green.opacity(0.75)
+        case .authorized: return PlateStatus.allowedGreen.opacity(0.85)
         case .wrongLot: return .orange.opacity(0.8)
         case .expired: return .yellow.opacity(0.75)
         case .unknown: return .red.opacity(0.8)

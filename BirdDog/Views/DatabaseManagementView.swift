@@ -18,11 +18,17 @@ struct DatabaseManagementView: View {
     }
 
     private var validCount: Int {
-        allRecords.filter { $0.permitStatus == "Valid" }.count
+        allRecords.filter {
+            let s = $0.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()
+            return s == "valid" || s == "active"
+        }.count
     }
 
     private var expiredCount: Int {
-        allRecords.filter { $0.permitStatus == "Expired" }.count
+        allRecords.filter {
+            let s = $0.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()
+            return s == "expired" || s == "revoked" || s == "suspended"
+        }.count
     }
 
     var body: some View {
@@ -119,7 +125,10 @@ private struct PermitRowView: View {
 
                 Text(record.permitStatus)
                     .font(.caption.bold())
-                    .foregroundStyle(record.permitStatus == "Valid" ? .green : .yellow)
+                    .foregroundStyle(
+                        ["valid", "active"].contains(record.permitStatus.lowercased())
+                            ? PlateStatus.allowedGreen : .yellow
+                    )
             }
 
             if !record.ownerName.isEmpty {
