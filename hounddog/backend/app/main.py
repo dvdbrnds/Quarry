@@ -68,59 +68,63 @@ logger = logging.getLogger("quarry")
 
 
 async def _backfill_moravian_ids():
-    """Background task: backfill moravian_id on permits using Okta List Users API."""
-    try:
-        from .database import async_session
-        from .config import settings as s
-        if not s.okta_domain or not s.okta_api_token:
+    """Backfill moravian_id on permits by looking up each email in Okta."""
+    import asyncio
+    import httpx
+    from .database import async_session
+    from .config import settings as s
+
+    if not s.okta_domain or not s.okta_api_token:
+        return
+
+    async with async_session() as db:
+        from sqlalchemy import text
+        missing = (await db.execute(
+            text("SELECT DISTINCT email FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''")
+        )).scalars().all()
+        if not missing:
+            logger.info("moravian_id backfill: all permits already have IDs")
             return
-        async with async_session() as db:
-            from sqlalchemy import text
-            missing = (await db.execute(
-                text("SELECT DISTINCT email FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''")
-            )).scalars().all()
-            if not missing:
-                logger.info("moravian_id backfill: all permits already have IDs")
-                return
-            missing_set = {e.strip().lower() for e in missing if e}
-            logger.info("Backfilling moravian_id for %d permit emails via Okta", len(missing_set))
-            import httpx
-            email_to_mid: dict[str, str] = {}
-            url: str | None = f"https://{s.okta_domain}/api/v1/users?limit=200&filter=status+eq+%22ACTIVE%22"
-            async with httpx.AsyncClient(timeout=30) as client:
-                while url:
-                    resp = await client.get(url, headers={"Authorization": f"SSWS {s.okta_api_token}"})
+
+        emails = list({e.strip().lower() for e in missing if e})
+        logger.info("Backfilling moravian_id for %d emails", len(emails))
+
+        email_to_mid: dict[str, str] = {}
+        sem = asyncio.Semaphore(10)
+
+        async def _lookup(client: httpx.AsyncClient, em: str):
+            async with sem:
+                try:
+                    resp = await client.get(
+                        f"https://{s.okta_domain}/api/v1/users/{em}",
+                        headers={"Authorization": f"SSWS {s.okta_api_token}"},
+                    )
+                    if resp.status_code == 429:
+                        await asyncio.sleep(1)
+                        return
                     if resp.status_code != 200:
-                        logger.warning("Okta List Users returned %d, stopping backfill", resp.status_code)
-                        break
-                    for u in resp.json():
-                        p = u.get("profile", {})
-                        login = (p.get("login") or "").strip().lower()
-                        email_val = (p.get("email") or "").strip().lower()
-                        for field in ("altId", "studentId", "employeeNumber", "moravianId"):
-                            val = p.get(field)
-                            if val:
-                                mid = str(val).split("@")[0].strip()
-                                if login and login in missing_set:
-                                    email_to_mid[login] = mid
-                                if email_val and email_val in missing_set:
-                                    email_to_mid[email_val] = mid
-                                break
-                    url = None
-                    for part in resp.headers.get("link", "").split(","):
-                        if 'rel="next"' in part:
-                            url = part.split("<")[1].split(">")[0].strip()
-            updated = 0
-            for em, mid in email_to_mid.items():
-                r = await db.execute(
-                    text("UPDATE permits SET moravian_id = :mid WHERE LOWER(email) = :em AND moravian_id IS NULL"),
-                    {"mid": mid, "em": em}
-                )
-                updated += r.rowcount
-            await db.commit()
-            logger.info("Backfilled moravian_id on %d permit rows (%d emails matched)", updated, len(email_to_mid))
-    except Exception as e:
-        logger.warning("moravian_id backfill failed (non-fatal): %s", e)
+                        return
+                    profile = resp.json().get("profile", {})
+                    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+                        val = profile.get(field)
+                        if val:
+                            email_to_mid[em] = str(val).split("@")[0].strip()
+                            return
+                except Exception as e:
+                    logger.debug("Okta lookup failed for %s: %s", em, e)
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            await asyncio.gather(*[_lookup(client, em) for em in emails])
+
+        updated = 0
+        for em, mid in email_to_mid.items():
+            r = await db.execute(
+                text("UPDATE permits SET moravian_id = :mid WHERE LOWER(email) = :em AND moravian_id IS NULL"),
+                {"mid": mid, "em": em}
+            )
+            updated += r.rowcount
+        await db.commit()
+        logger.info("Backfilled moravian_id: %d/%d emails resolved, %d rows updated", len(email_to_mid), len(emails), updated)
 
 
 @asynccontextmanager
