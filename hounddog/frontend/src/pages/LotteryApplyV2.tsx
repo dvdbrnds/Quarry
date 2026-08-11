@@ -1115,6 +1115,46 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
+            {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
+              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.remaining > 0);
+              if (buyableTiers.length === 0) return null;
+              return (
+                <Card className="mt-4">
+                  <div className="space-y-4">
+                    <h3 className="text-base font-semibold m-0">Buy Available Permits</h3>
+                    <p className="text-sm text-gray-600 m-0">
+                      These permits are available for direct purchase — no waitlist needed.
+                    </p>
+                    {buyableTiers.map((tier) => (
+                      <div
+                        key={tier.id}
+                        className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
+                        onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
+                        onMouseLeave={() => setHighlightedLots([])}
+                      >
+                        <div>
+                          <span className="font-medium">{tier.label}</span>
+                          <span className="text-sm text-gray-500 ml-2">
+                            ${Number(tier.price).toFixed(0)}
+                            {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
+                          </span>
+                          <Tag color="green" className="ml-2">{tier.remaining} open</Tag>
+                        </div>
+                        <Button
+                          type="primary"
+                          size="small"
+                          loading={submitting}
+                          onClick={() => purchaseCommuterPermit(tier)}
+                        >
+                          Buy
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })()}
+
             {application && application.status === "accepted" && tiers.length > 0 && (
               <Card className="mt-4">
                 <div className="space-y-4">
