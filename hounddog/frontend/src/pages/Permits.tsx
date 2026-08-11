@@ -561,7 +561,6 @@ export default function Permits() {
   const columns: ColumnsType<Permit> = [
     { title: "Permit #", dataIndex: "permit_number", key: "permit_number", sorter: true, width: 120, render: (v) => v ? <span className="font-mono text-xs font-medium">{v}</span> : <span className="text-ink-mute">—</span> },
     { title: "Name", dataIndex: "name", key: "name", sorter: true, render: (name) => <span className="font-medium">{name}</span> },
-    { title: "Student ID", dataIndex: "student_id", key: "student_id", sorter: true, render: (v) => v || "—" },
     { title: "Plates", dataIndex: "plates", key: "plates", render: (plates: string[]) => <span className="font-mono text-xs">{plates.join(", ")}</span> },
     { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true, ellipsis: true, width: 150 },
     { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => {
