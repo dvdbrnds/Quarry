@@ -1112,7 +1112,6 @@ export default function LotteryV2Manager() {
                         <th className="py-1.5 pr-3 text-right">Truly open</th>
                         <th className="py-1.5 pr-3 text-right">Waitlisted</th>
                         <th className="py-1.5 pr-3">Class year</th>
-                        <th className="py-1.5 pr-3">SIS breakdown</th>
                         <th className="py-1.5 pr-3">Auto-advance</th>
                       </tr>
                     </thead>
@@ -1147,16 +1146,6 @@ export default function LotteryV2Manager() {
                                   .filter(k => t.class_year_breakdown[k])
                                   .map(k => `${k.slice(0, 2)}: ${t.class_year_breakdown[k]}`)
                                   .join(" · ")
-                              : "—"}
-                          </td>
-                          <td className="py-1.5 pr-3 text-[10px] text-gray-600 whitespace-nowrap">
-                            {t.housing_breakdown && Object.keys(t.housing_breakdown).length > 0
-                              ? [
-                                  ...Object.entries(t.housing_breakdown as Record<string, number>).map(([k, v]) => `${k.slice(0, 3)}: ${v}`),
-                                  ...(t.res_life_staff_count > 0 ? [`RA: ${t.res_life_staff_count}`] : []),
-                                  ...(t.employee_count > 0 ? [`Emp: ${t.employee_count}`] : []),
-                                  ...(t.accel_nursing_count > 0 ? [`ABSN: ${t.accel_nursing_count}`] : []),
-                                ].join(" · ")
                               : "—"}
                           </td>
                           <td className="py-1.5 pr-3">

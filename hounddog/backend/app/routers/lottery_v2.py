@@ -2054,54 +2054,6 @@ async def capacity_audit(
             counts[label] = counts.get(label, 0) + 1
         return counts
 
-    # SIS enrichment: resolve Moravian IDs via Okta emails, then batch-query Jenzabar
-    from ..services.sis_student_data import lookup_batch_by_emails
-
-    all_tier_permits: dict[str, list[Permit]] = {}
-    for pt in pts:
-        tier_permits = (
-            await db.execute(
-                select(Permit).where(
-                    Permit.permit_type == pt.code,
-                    Permit.status == "active",
-                    Permit.deleted_at.is_(None),
-                )
-            )
-        ).scalars().all()
-        all_tier_permits[pt.code] = list(tier_permits)
-
-    all_emails = []
-    for permit_list in all_tier_permits.values():
-        for p in permit_list:
-            if p.email and p.email.strip():
-                all_emails.append(p.email.strip())
-    sis_by_email = await lookup_batch_by_emails(all_emails)
-
-    def _sis_breakdown(permit_list: list[Permit]) -> dict:
-        housing: dict[str, int] = {}
-        res_life = 0
-        employee = 0
-        absn = 0
-        for p in permit_list:
-            em = (p.email or "").strip().lower()
-            data = sis_by_email.get(em)
-            if not data:
-                continue
-            if data.housing_label:
-                housing[data.housing_label] = housing.get(data.housing_label, 0) + 1
-            if data.res_life_staff:
-                res_life += 1
-            if data.employee:
-                employee += 1
-            if data.accel_nursing:
-                absn += 1
-        return {
-            "housing_breakdown": housing,
-            "res_life_staff_count": res_life,
-            "employee_count": employee,
-            "accel_nursing_count": absn,
-        }
-
     tier_rows = []
     for code in LOTTERY_TIER_CODES:
         pt = pt_by_code.get(code)
@@ -2148,7 +2100,6 @@ async def capacity_audit(
             "waitlisted_with_pref": len(waitlisted_with_pref),
             "apps_first_choice": len(first_choice_apps),
             "class_year_breakdown": _class_year_breakdown(selected_to_tier),
-            **_sis_breakdown(all_tier_permits.get(pt.code, [])),
         })
 
     # South / U deep dive
