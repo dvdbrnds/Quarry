@@ -395,9 +395,9 @@ function VisitorDetails({
       {presets.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
           <Form.Item
-            label={<span className="text-base font-semibold">Who are you with?</span>}
+            label={<span className="text-base font-semibold">Are you with one of our regular campus partners?</span>}
             className="mb-0"
-            extra="If your organization is listed, select it to speed up approval."
+            extra="Select your organization to speed up the approval process."
           >
             <Select
               size="large"
