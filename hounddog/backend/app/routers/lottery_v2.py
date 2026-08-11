@@ -1922,6 +1922,21 @@ async def advance_waitlist_tier(
     await db.commit()
 
     if promoted_app:
+        if promoted_app.student_email and not promoted_app.is_test_entry and promoted_app.offer_expires_at:
+            try:
+                from ..services.email import send_lottery_selection_email
+                await send_lottery_selection_email(
+                    recipient_email=promoted_app.student_email,
+                    student_name=promoted_app.student_name,
+                    permit_type_label=pt.label,
+                    price=str(pt.price),
+                    deadline=promoted_app.offer_expires_at.strftime("%B %d, %Y"),
+                    portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
+                    assigned_lot=promoted_app.assigned_lot,
+                    lot_assignments=list(pt.lot_assignments or []),
+                )
+            except Exception as e:
+                logger.error("Failed to email promoted applicant %s: %s", promoted_app.id, e)
         return {
             "action": "promote",
             "permit_type": pt.label,
