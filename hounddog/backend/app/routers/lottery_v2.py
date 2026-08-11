@@ -2054,8 +2054,8 @@ async def capacity_audit(
             counts[label] = counts.get(label, 0) + 1
         return counts
 
-    # SIS enrichment: load classification data for all active permits across tiers
-    from ..services.sis_student_data import lookup_student_parking_data_batch
+    # SIS enrichment: resolve Moravian IDs via Okta emails, then batch-query Jenzabar
+    from ..services.sis_student_data import lookup_batch_by_emails
 
     all_tier_permits: dict[str, list[Permit]] = {}
     for pt in pts:
@@ -2070,12 +2070,12 @@ async def capacity_audit(
         ).scalars().all()
         all_tier_permits[pt.code] = list(tier_permits)
 
-    all_student_ids = []
+    all_emails = []
     for permit_list in all_tier_permits.values():
         for p in permit_list:
-            if p.student_id and p.student_id.strip():
-                all_student_ids.append(p.student_id.strip())
-    sis_by_id = await lookup_student_parking_data_batch(all_student_ids)
+            if p.email and p.email.strip():
+                all_emails.append(p.email.strip())
+    sis_by_email = await lookup_batch_by_emails(all_emails)
 
     def _sis_breakdown(permit_list: list[Permit]) -> dict:
         housing: dict[str, int] = {}
@@ -2083,8 +2083,8 @@ async def capacity_audit(
         employee = 0
         absn = 0
         for p in permit_list:
-            sid = (p.student_id or "").strip()
-            data = sis_by_id.get(sid)
+            em = (p.email or "").strip().lower()
+            data = sis_by_email.get(em)
             if not data:
                 continue
             if data.housing_label:
@@ -2344,19 +2344,21 @@ async def tier_detail(
     unique_people = len(permit_emails | {(a.student_email or "").lower() for a in selected_apps})
     committed = len(permits) + len(pending)
 
-    # SIS enrichment: batch-lookup student classification data
-    from ..services.sis_student_data import lookup_student_parking_data_batch
+    # SIS enrichment: resolve Moravian IDs via Okta, then batch-query Jenzabar
+    from ..services.sis_student_data import lookup_batch_by_emails
 
-    all_student_ids = [p.student_id for p in permits if p.student_id and p.student_id.strip()]
-    sis_by_id = await lookup_student_parking_data_batch(all_student_ids)
+    all_emails = [p.email for p in permits if p.email]
+    sis_by_email = await lookup_batch_by_emails(all_emails)
 
-    def _sis_fields(student_id: str | None) -> dict:
-        sid = (student_id or "").strip()
-        data = sis_by_id.get(sid) if sid else None
+    _empty_sis = {"housing_status": None, "housing_label": None, "division_code": None,
+                  "class_code": None, "class_label": None,
+                  "accel_nursing": None, "res_life_staff": None, "employee": None}
+
+    def _sis_fields(email: str | None) -> dict:
+        em = (email or "").strip().lower()
+        data = sis_by_email.get(em) if em else None
         if not data:
-            return {"housing_status": None, "housing_label": None, "division_code": None,
-                    "class_code": None, "class_label": None,
-                    "accel_nursing": None, "res_life_staff": None, "employee": None}
+            return _empty_sis
         return {"housing_status": data.housing_status, "housing_label": data.housing_label,
                 "division_code": data.division_code, "class_code": data.class_code,
                 "class_label": data.class_label, "accel_nursing": data.accel_nursing,
@@ -2368,7 +2370,7 @@ async def tier_detail(
     sis_employee = 0
     sis_absn = 0
     for p in permits:
-        sf = _sis_fields(p.student_id)
+        sf = _sis_fields(p.email)
         if sf["housing_label"]:
             sis_housing[sf["housing_label"]] = sis_housing.get(sf["housing_label"], 0) + 1
         if sf["res_life_staff"]:
@@ -2415,7 +2417,7 @@ async def tier_detail(
                     if (ek := (p.email or "").lower()) in app_by_email
                     else None
                 ),
-                **_sis_fields(p.student_id),
+                **_sis_fields(p.email),
             }
             for p in permits
         ],

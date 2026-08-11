@@ -101,3 +101,54 @@ async def is_res_life_staff(id_num: str) -> bool:
     """Check if a student is ResLife staff according to SIS."""
     data = await lookup_student_parking_data(id_num)
     return data.res_life_staff if data else False
+
+
+async def _resolve_moravian_id(email: str) -> str | None:
+    """Look up a user's Moravian numeric ID (altId) from Okta by email."""
+    if not settings.okta_domain or not settings.okta_api_token:
+        return None
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                f"https://{settings.okta_domain}/api/v1/users/{email}",
+                headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                timeout=10,
+            )
+            if res.status_code != 200:
+                return None
+            profile = res.json().get("profile", {})
+            for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+                val = profile.get(field)
+                if val:
+                    return str(val).split("@")[0].strip()
+    except Exception as e:
+        logger.debug("Okta altId lookup failed for %s: %s", email, e)
+    return None
+
+
+async def lookup_batch_by_emails(emails: list[str]) -> dict[str, StudentParkingData]:
+    """Resolve Moravian IDs from Okta emails, then batch-query SIS.
+
+    Returns a dict keyed by lowercase email for those found.
+    """
+    email_to_id: dict[str, str] = {}
+    for email in emails:
+        em = (email or "").strip().lower()
+        if not em or em in email_to_id:
+            continue
+        mid = await _resolve_moravian_id(em)
+        if mid:
+            email_to_id[em] = mid
+
+    if not email_to_id:
+        return {}
+
+    sis_by_id = await lookup_student_parking_data_batch(list(email_to_id.values()))
+
+    result: dict[str, StudentParkingData] = {}
+    for em, mid in email_to_id.items():
+        data = sis_by_id.get(mid)
+        if data:
+            result[em] = data
+    return result
