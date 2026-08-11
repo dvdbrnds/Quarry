@@ -6,18 +6,8 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
-/** Matches backend LOTTERY_TIER_CODES — resident tiers placed by Lottery V2 waterfall. */
-const LOTTERY_TIER_CODES = new Set([
-  "north_premium_resident",
-  "north_guaranteed_resident",
-  "steel_field_resident",
-  "south_premium_resident",
-  "south_guaranteed_resident",
-]);
-
 /** External City lots — sold off-platform; never Quarry online purchase. */
 const NO_ONLINE_PURCHASE_CODES = new Set([
-  ...LOTTERY_TIER_CODES,
   "south_standalone",
 ]);
 
@@ -97,6 +87,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       sort_order: values.sort_order ?? 0,
       eligible_groups: values.eligible_groups || [],
       allow_multiple: values.allow_multiple ?? false,
+      requires_lottery: values.requires_lottery ?? false,
       auto_advance_waitlist: values.auto_advance_waitlist ?? true,
       min_class_year: values.min_class_year ? parseInt(values.min_class_year) : null,
       application_opens_at: values.application_opens_at?.toISOString() ?? null,
@@ -172,12 +163,12 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
               <Checkbox>Available for online purchase</Checkbox>
             </Form.Item>
           )}
-          {blockOnlinePurchase && code === "south_standalone" && (
+          {blockOnlinePurchase && (
             <span className="text-sm text-ink-mute">Third-party lots are sold off-platform — online purchase disabled.</span>
           )}
-          {blockOnlinePurchase && LOTTERY_TIER_CODES.has(code || "") && (
-            <span className="text-sm text-ink-mute">Lottery tiers are assigned via the Lottery tab — online purchase disabled.</span>
-          )}
+          <Form.Item name="requires_lottery" valuePropName="checked" noStyle>
+            <Checkbox>Requires lottery</Checkbox>
+          </Form.Item>
           <Form.Item name="allow_multiple" valuePropName="checked" noStyle>
             <Checkbox>
               <Tooltip title="When enabled, a person can register multiple permits of this type (e.g. faculty with multiple vehicles). When disabled, each person is limited to one permit.">
