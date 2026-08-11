@@ -1116,7 +1116,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             )}
 
             {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
-              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.remaining > 0);
+              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.is_purchasable_online && t.remaining > 0);
               if (buyableTiers.length === 0) return null;
               return (
                 <Card className="mt-4">
