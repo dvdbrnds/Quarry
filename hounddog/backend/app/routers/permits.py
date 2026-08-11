@@ -9,7 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user
+from decimal import Decimal
+
+from ..auth.okta import OktaUser, get_current_user, require_admin
 from ..config import settings
 from ..database import get_db
 from ..services.lottery_runner import run_lottery, verify_lottery, LotteryResult
@@ -530,6 +532,287 @@ async def update_permit(
     await db.refresh(permit)
     await _notify_permit_change("updated", 1)
     return permit
+
+
+class ReassignRequest(BaseModel):
+    new_permit_type: str
+    lot_assignment: str | None = None
+
+
+class ReassignPreview(BaseModel):
+    old_type: str
+    old_label: str
+    old_price: str
+    new_type: str
+    new_label: str
+    new_price: str
+    difference: str
+    action: str  # "charge", "refund", or "none"
+
+
+@router.post("/{permit_id}/reassign-preview")
+async def reassign_preview(
+    permit_id: uuid.UUID,
+    data: ReassignRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Preview the financial impact of reassigning a permit to a different type."""
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    old_pt = (
+        await db.execute(select(PermitType).where(PermitType.code == permit.permit_type))
+    ).scalars().first()
+    new_pt = (
+        await db.execute(select(PermitType).where(PermitType.code == data.new_permit_type))
+    ).scalars().first()
+
+    old_price = old_pt.price if old_pt else Decimal("0.00")
+    new_price = new_pt.price if new_pt else Decimal("0.00")
+    diff = new_price - old_price
+
+    if diff > 0:
+        action = "charge"
+    elif diff < 0:
+        action = "refund"
+    else:
+        action = "none"
+
+    return ReassignPreview(
+        old_type=permit.permit_type or "",
+        old_label=old_pt.label if old_pt else permit.permit_type or "",
+        old_price=str(old_price),
+        new_type=data.new_permit_type,
+        new_label=new_pt.label if new_pt else data.new_permit_type,
+        new_price=str(new_price),
+        difference=str(abs(diff)),
+        action=action,
+    )
+
+
+@router.post("/{permit_id}/reassign")
+async def reassign_permit(
+    permit_id: uuid.UUID,
+    data: ReassignRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Reassign a permit to a different type, handling billing or refunds automatically.
+
+    - Upgrade (new costs more): creates a Stripe checkout session and emails the student.
+    - Downgrade (new costs less): issues a partial Stripe refund.
+    - Same price: just updates the permit type and lots.
+    """
+    import logging
+    logger = logging.getLogger("quarry.permits")
+
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    old_pt = (
+        await db.execute(select(PermitType).where(PermitType.code == permit.permit_type))
+    ).scalars().first()
+    new_pt = (
+        await db.execute(select(PermitType).where(PermitType.code == data.new_permit_type))
+    ).scalars().first()
+    if not new_pt:
+        raise HTTPException(400, "Target permit type not found")
+
+    old_price = old_pt.price if old_pt else Decimal("0.00")
+    new_price = new_pt.price if new_pt else Decimal("0.00")
+    diff = new_price - old_price
+
+    new_lots = data.lot_assignment
+    if new_lots is None and new_pt.lot_assignments:
+        new_lots = ", ".join(new_pt.lot_assignments)
+
+    result: dict = {
+        "permit_id": str(permit.id),
+        "old_type": old_pt.label if old_pt else permit.permit_type,
+        "new_type": new_pt.label,
+    }
+
+    if diff > 0:
+        # ── Upgrade: charge the difference via Stripe ──
+        if not permit.email:
+            raise HTTPException(400, "Permit has no email — cannot send payment link")
+        if not settings.stripe_secret_key:
+            raise HTTPException(503, "Stripe not configured")
+
+        import stripe
+        stripe.api_key = settings.stripe_secret_key
+
+        base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+        plate_str = ", ".join(permit.plates) if permit.plates else "N/A"
+        permit_number = permit.permit_number or ""
+
+        session = stripe.checkout.Session.create(
+            customer_email=permit.email,
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": f"Upgrade to {new_pt.label}",
+                        "description": (
+                            f"Permit #{permit_number} | "
+                            f"{old_pt.label if old_pt else permit.permit_type} → {new_pt.label} | "
+                            f"Plate: {plate_str}"
+                        ),
+                    },
+                    "unit_amount": int(diff * 100),
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            payment_intent_data={
+                "statement_descriptor_suffix": "PARK UPGRADE",
+                "metadata": {
+                    "type": "admin_permit_charge",
+                    "revenue_category": "parking_permits",
+                    "department": "parking_services",
+                    "permit_id": str(permit.id),
+                    "permit_number": permit_number,
+                    "permit_type_code": new_pt.code,
+                    "permit_type_label": new_pt.label,
+                    "old_permit_type": permit.permit_type or "",
+                    "plate": plate_str,
+                    "institution": settings.school_name or "moravian",
+                    "reassign_action": "upgrade",
+                },
+            },
+            success_url=f"{base_url}/parking?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base_url}/parking?payment=cancelled",
+            metadata={
+                "type": "admin_permit_charge",
+                "permit_id": str(permit.id),
+                "permit_type_code": new_pt.code,
+                "permit_type_label": new_pt.label,
+                "permit_number": permit_number,
+                "reassign_action": "upgrade",
+            },
+        )
+
+        # Update the permit immediately
+        permit.permit_type = new_pt.code
+        if new_lots:
+            permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
+        permit.stripe_session_id = session.id
+        await db.flush()
+        await _notify_permit_change("updated", 1)
+
+        # Email the student
+        try:
+            from ..services.email import send_payment_link_email
+            await send_payment_link_email(
+                recipient_email=permit.email,
+                recipient_name=permit.name,
+                permit_type_label=new_pt.label,
+                permit_number=permit_number,
+                amount_display=f"${diff:.2f}",
+                checkout_url=session.url,
+            )
+        except Exception:
+            pass
+
+        logger.info(
+            "Admin %s reassigned permit %s: %s → %s, charge $%s",
+            admin.email, permit.id, old_pt.label if old_pt else "?", new_pt.label, diff,
+        )
+        result.update({
+            "action": "charge",
+            "charge_amount": str(diff),
+            "checkout_url": session.url,
+            "email_sent": True,
+        })
+
+    elif diff < 0:
+        # ── Downgrade: issue a partial Stripe refund ──
+        refund_amount = abs(diff)
+
+        # Find the original payment
+        pay_result = await db.execute(
+            select(Payment).where(
+                func.lower(Payment.payer_email) == (permit.email or "").lower(),
+                Payment.payment_type.in_([
+                    "lottery_v2_permit", "lottery_permit",
+                    "permit_purchase", "standalone_permit_purchase",
+                    "direct_permit_purchase", "admin_permit_charge",
+                ]),
+            ).order_by(Payment.amount.desc()).limit(1)
+        )
+        payment = pay_result.scalar()
+
+        stripe_id = None
+        if payment and payment.stripe_payment_id:
+            stripe_id = payment.stripe_payment_id
+        elif permit.stripe_session_id:
+            stripe_id = permit.stripe_session_id
+
+        refund_result: dict = {"action": "refund", "refund_amount": str(refund_amount)}
+
+        if stripe_id and settings.stripe_secret_key:
+            import stripe
+            stripe.api_key = settings.stripe_secret_key
+
+            try:
+                # Resolve checkout session to payment intent if needed
+                if stripe_id.startswith("cs_"):
+                    sess = stripe.checkout.Session.retrieve(stripe_id)
+                    stripe_id = sess.payment_intent
+
+                refund = stripe.Refund.create(
+                    payment_intent=stripe_id,
+                    amount=int(refund_amount * 100),
+                    reason="requested_by_customer",
+                    metadata={
+                        "type": "permit_reassign_refund",
+                        "permit_id": str(permit.id),
+                        "student_email": permit.email or "",
+                        "old_type": permit.permit_type or "",
+                        "new_type": new_pt.code,
+                        "refund_amount": str(refund_amount),
+                        "admin": admin.email or admin.sub,
+                    },
+                )
+                refund_result["refund_id"] = refund.id
+                refund_result["refund_status"] = refund.status
+                logger.info(
+                    "Admin %s reassigned permit %s: %s → %s, refund $%s (refund %s)",
+                    admin.email, permit.id, old_pt.label if old_pt else "?",
+                    new_pt.label, refund_amount, refund.id,
+                )
+            except Exception as e:
+                logger.warning("Stripe refund failed for reassignment: %s", e)
+                refund_result["refund_error"] = str(e)
+                refund_result["manual_refund_needed"] = True
+        else:
+            refund_result["manual_refund_needed"] = True
+            refund_result["reason"] = "No Stripe payment found on record"
+
+        # Update the permit regardless of refund success
+        permit.permit_type = new_pt.code
+        if new_lots:
+            permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
+        await db.flush()
+        await _notify_permit_change("updated", 1)
+
+        result.update(refund_result)
+
+    else:
+        # ── Same price: just update ──
+        permit.permit_type = new_pt.code
+        if new_lots:
+            permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
+        await db.flush()
+        await _notify_permit_change("updated", 1)
+
+        result["action"] = "none"
+        result["message"] = "Permit type changed — no price difference"
+
+    return result
 
 
 @router.delete("/{permit_id}", status_code=204)

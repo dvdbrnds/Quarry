@@ -152,6 +152,20 @@ function PermitForm({
     }
   }
 
+  async function doReassign(permitId: string, newType: string, lotAssign: string) {
+    const headers = await authHeaders();
+    const res = await fetch(`/api/permits/${permitId}/reassign`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ new_permit_type: newType, lot_assignment: lotAssign || null }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Reassignment failed");
+    }
+    return res.json();
+  }
+
   async function handleFinish(values: any) {
     setSaving(true);
     const plates = values.plates
@@ -162,6 +176,73 @@ function PermitForm({
       : (values.lot_assignment || "");
     try {
       if (initial) {
+        const typeChanged = values.permit_type && values.permit_type !== initial.permit_type;
+
+        if (typeChanged) {
+          // Preview the financial impact
+          const headers = await authHeaders();
+          const previewRes = await fetch(`/api/permits/${initial.id}/reassign-preview`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ new_permit_type: values.permit_type, lot_assignment: lotAssignment || null }),
+          });
+          if (!previewRes.ok) {
+            const err = await previewRes.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to preview reassignment");
+          }
+          const preview = await previewRes.json();
+
+          setSaving(false);
+
+          const confirmContent = preview.action === "charge"
+            ? `Upgrading from ${preview.old_label} ($${preview.old_price}) to ${preview.new_label} ($${preview.new_price}). A payment link for $${preview.difference} will be emailed to the permit holder.`
+            : preview.action === "refund"
+              ? `Downgrading from ${preview.old_label} ($${preview.old_price}) to ${preview.new_label} ($${preview.new_price}). A Stripe refund of $${preview.difference} will be issued.`
+              : null;
+
+          if (confirmContent) {
+            Modal.confirm({
+              title: preview.action === "charge" ? "Upgrade — charge the difference?" : "Downgrade — issue a refund?",
+              content: confirmContent,
+              okText: preview.action === "charge" ? "Approve & send bill" : "Approve & issue refund",
+              cancelText: "Cancel",
+              onOk: async () => {
+                try {
+                  const reassignResult = await doReassign(initial.id, values.permit_type, lotAssignment);
+                  // Also update other fields (name, plates, etc.)
+                  const otherData = {
+                    name: values.name,
+                    plates,
+                    student_id: values.student_id,
+                    email: values.email || null,
+                    phone: values.phone,
+                    beacon_id: values.beacon_id || null,
+                    status: values.status || "active",
+                    start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+                    end_date: values.end_date?.format("YYYY-MM-DD") || null,
+                  };
+                  await api.permits.update(initial.id, otherData);
+
+                  if (reassignResult.action === "charge") {
+                    message.success(`Permit upgraded — $${reassignResult.charge_amount} payment link sent`);
+                  } else if (reassignResult.action === "refund") {
+                    if (reassignResult.refund_id) {
+                      message.success(`Permit downgraded — $${reassignResult.refund_amount} refund issued`);
+                    } else {
+                      message.warning(`Permit downgraded — manual refund of $${reassignResult.refund_amount} needed (no Stripe payment found)`);
+                    }
+                  }
+                  onSave();
+                } catch (e: any) {
+                  message.error(e.message || "Reassignment failed");
+                }
+              },
+            });
+            return;
+          }
+        }
+
+        // No type change or same price — regular update
         const data = {
           name: values.name,
           plates,
