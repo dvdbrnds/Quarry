@@ -1075,6 +1075,43 @@ async def smtp_test(user=Depends(require_admin())):
         return {"ok": False, "host": s.smtp_host, "port": s.smtp_port, "user": s.smtp_user, "error": str(e)}
 
 
+@app.post("/api/admin/sis-test", tags=["admin"])
+async def sis_test(user=Depends(require_admin())):
+    """Test SIS (Jenzabar) SQL Server connectivity and run a sample lookup."""
+    from .config import settings as s
+    if not s.sis_mssql_host or not s.sis_mssql_password:
+        return {"ok": False, "error": "SIS_MSSQL_HOST or SIS_MSSQL_PASSWORD not configured"}
+    try:
+        import pymssql
+        conn = pymssql.connect(
+            server=s.sis_mssql_host,
+            port=s.sis_mssql_port,
+            user=s.sis_mssql_user,
+            password=s.sis_mssql_password,
+            database=s.sis_mssql_database,
+        )
+        cursor = conn.cursor(as_dict=True)
+        cursor.execute("SELECT 1 AS ping")
+        cursor.fetchone()
+        conn.close()
+        return {
+            "ok": True,
+            "host": s.sis_mssql_host,
+            "port": s.sis_mssql_port,
+            "user": s.sis_mssql_user,
+            "database": s.sis_mssql_database,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "host": s.sis_mssql_host,
+            "port": s.sis_mssql_port,
+            "user": s.sis_mssql_user,
+            "database": s.sis_mssql_database,
+            "error": str(e),
+        }
+
+
 @app.get("/api/admin/preflight", tags=["admin"])
 async def preflight_check(user=Depends(require_admin())):
     from .services.env_preflight import run_preflight

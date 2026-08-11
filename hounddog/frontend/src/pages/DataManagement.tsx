@@ -35,6 +35,8 @@ export default function DataManagement() {
   const [runningNow, setRunningNow] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [smtpResult, setSmtpResult] = useState<{ ok: boolean; host?: string; port?: number; user?: string; error?: string } | null>(null);
+  const [sisTesting, setSisTesting] = useState(false);
+  const [sisResult, setSisResult] = useState<{ ok: boolean; host?: string; port?: number; user?: string; database?: string; error?: string } | null>(null);
 
   const handleSmtpTest = async () => {
     setSmtpTesting(true);
@@ -54,6 +56,27 @@ export default function DataManagement() {
       message.error("SMTP test request failed");
     } finally {
       setSmtpTesting(false);
+    }
+  };
+
+  const handleSisTest = async () => {
+    setSisTesting(true);
+    setSisResult(null);
+    try {
+      const token = (await import("../auth")).getAccessToken();
+      const res = await fetch("/api/admin/sis-test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await token}` },
+      });
+      const data = await res.json();
+      setSisResult(data);
+      if (data.ok) message.success("SIS connection successful");
+      else message.error(`SIS failed: ${data.error}`);
+    } catch (e: any) {
+      setSisResult({ ok: false, error: e.message || "Request failed" });
+      message.error("SIS test request failed");
+    } finally {
+      setSisTesting(false);
     }
   };
 
@@ -452,6 +475,34 @@ export default function DataManagement() {
               {smtpResult.ok
                 ? <><CheckCircleFilled /> Connected — {smtpResult.host}:{smtpResult.port} as {smtpResult.user}</>
                 : <><CloseCircleFilled /> {smtpResult.error}{smtpResult.host ? ` (${smtpResult.host}:${smtpResult.port})` : ""}</>
+              }
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* SIS (Jenzabar) */}
+      <Card size="small" className="mb-6">
+        <div className="flex items-center gap-4 flex-wrap">
+          <DatabaseOutlined className="text-lg text-purple-500" />
+          <div className="flex-1 min-w-[200px]">
+            <div className="font-semibold text-sm">SIS (Jenzabar SQL Server)</div>
+            <div className="text-xs text-gray-500">
+              Test connectivity to the student information system — verifies host, credentials, and database.
+            </div>
+          </div>
+          <Button
+            onClick={handleSisTest}
+            loading={sisTesting}
+            icon={<DatabaseOutlined />}
+          >
+            Test SIS
+          </Button>
+          {sisResult && (
+            <div className={`flex items-center gap-2 text-sm ${sisResult.ok ? "text-green-600" : "text-red-600"}`}>
+              {sisResult.ok
+                ? <><CheckCircleFilled /> Connected — {sisResult.host}:{sisResult.port} db={sisResult.database} as {sisResult.user}</>
+                : <><CloseCircleFilled /> {sisResult.error}{sisResult.host ? ` (${sisResult.host}:${sisResult.port})` : ""}</>
               }
             </div>
           )}
