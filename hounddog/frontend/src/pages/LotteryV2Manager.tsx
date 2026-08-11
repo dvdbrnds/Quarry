@@ -2100,8 +2100,16 @@ export default function LotteryV2Manager() {
                 <h1>${d.permit_type.label}</h1>
                 <div class="meta">Price: $${d.permit_type.price} · Capacity: ${d.permit_type.max_capacity} · Active permits: ${d.summary.active_permit_count} · Pending: ${d.summary.pending_count} · Printed: ${new Date().toLocaleString()}</div>
                 <h2>Active Permits (${d.active_permits.length})</h2>
-                <table><thead><tr><th>Name</th><th>Email</th><th>Plate</th><th>Permit #</th></tr></thead>
-                <tbody>${rows(d.active_permits, [], ["name","email","plate","permit_number"])}</tbody></table>
+                <table><thead><tr><th>Name</th><th>Email</th><th>Year</th><th>Housing</th><th>RA/RD</th><th>Plate</th><th>Permit #</th></tr></thead>
+                <tbody>${d.active_permits.map((p: any) => `<tr>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.name ?? ""}</td>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.email ?? ""}</td>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.class_code ?? ""}</td>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.housing_label ?? ""}</td>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.res_life_staff ? "RA/RD" : ""}${p.employee ? " Emp" : ""}${p.accel_nursing ? " ABSN" : ""}</td>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.plate ?? ""}</td>
+                  <td style="padding:4px 10px;border-bottom:1px solid #eee;">${p.permit_number ?? ""}</td>
+                </tr>`).join("")}</tbody></table>
                 ${d.pending_offers?.length ? `<h2>Pending Payment (${d.pending_offers.length})</h2>
                 <table><thead><tr><th>Name</th><th>Email</th><th>Plate</th><th>Upgrade</th></tr></thead>
                 <tbody>${rows(d.pending_offers, [], ["name","email","plate","is_upgrade"])}</tbody></table>` : ""}
