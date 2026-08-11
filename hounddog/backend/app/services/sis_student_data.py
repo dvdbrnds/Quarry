@@ -1,7 +1,7 @@
 """Query Moravian SIS (Jenzabar SQL Server) for student parking data.
 
 Uses the Mor_CUS_ParkingData stored procedure via the svc_parking user.
-Returns housing status, division code, accelerated nursing flag,
+Returns housing status, division code, class code, accelerated nursing flag,
 ResLife staff status, and employee status.
 """
 
@@ -18,6 +18,13 @@ HOUSING_LABELS = {
     "O": "Off Campus Release",
 }
 
+CLASS_CODE_LABELS = {
+    "FR": "Freshman",
+    "SO": "Sophomore",
+    "JR": "Junior",
+    "SR": "Senior",
+}
+
 
 @dataclass
 class StudentParkingData:
@@ -25,6 +32,8 @@ class StudentParkingData:
     division_code: str
     housing_status: str  # R, C, or O
     housing_label: str
+    class_code: str  # FR, SO, JR, SR for undergrads
+    class_label: str
     accel_nursing: bool
     res_life_staff: bool
     employee: bool
@@ -59,11 +68,14 @@ async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
             return None
 
         housing = str(row.get("HousingStatus", "")).strip()
+        class_code = str(row.get("ClassCode", "")).strip().upper()
         return StudentParkingData(
             id_num=str(row.get("id_num", id_num)).strip(),
             division_code=str(row.get("DivisionCode", "")).strip(),
             housing_status=housing,
             housing_label=HOUSING_LABELS.get(housing, housing),
+            class_code=class_code,
+            class_label=CLASS_CODE_LABELS.get(class_code, class_code),
             accel_nursing=str(row.get("AccelNursing", "No")).strip().lower() == "yes",
             res_life_staff=str(row.get("ResLifeStaff", "No")).strip().lower() == "yes",
             employee=str(row.get("Employee", "No")).strip().lower() == "yes",

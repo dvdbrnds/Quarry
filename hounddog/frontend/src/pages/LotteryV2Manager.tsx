@@ -2124,11 +2124,13 @@ export default function LotteryV2Manager() {
                         </thead>
                         <tbody>
                           {(tierDetail.active_permits || []).map((p: any, i: number) => {
-                            const cy = p.class_year;
-                            const now = new Date();
-                            const acadStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-                            const diff = cy ? cy - acadStart : null;
-                            const yearLabel = diff === null ? "—" : diff <= 1 ? "Sr" : diff === 2 ? "Jr" : diff === 3 ? "So" : "Fr";
+                            const yearLabel = p.class_code || (() => {
+                              const cy = p.class_year;
+                              const now = new Date();
+                              const acadStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+                              const diff = cy ? cy - acadStart : null;
+                              return diff === null ? "—" : diff <= 1 ? "Sr" : diff === 2 ? "Jr" : diff === 3 ? "So" : "Fr";
+                            })();
                             return (
                               <tr key={i} className="border-b border-gray-100">
                                 <td className="py-1 pr-2">{p.name}</td>

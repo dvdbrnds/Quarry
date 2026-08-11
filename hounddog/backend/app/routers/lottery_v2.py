@@ -2355,9 +2355,11 @@ async def tier_detail(
         data = sis_by_id.get(sid) if sid else None
         if not data:
             return {"housing_status": None, "housing_label": None, "division_code": None,
+                    "class_code": None, "class_label": None,
                     "accel_nursing": None, "res_life_staff": None, "employee": None}
         return {"housing_status": data.housing_status, "housing_label": data.housing_label,
-                "division_code": data.division_code, "accel_nursing": data.accel_nursing,
+                "division_code": data.division_code, "class_code": data.class_code,
+                "class_label": data.class_label, "accel_nursing": data.accel_nursing,
                 "res_life_staff": data.res_life_staff, "employee": data.employee}
 
     # SIS summary counts
@@ -2811,6 +2813,8 @@ async def sis_student_lookup(
         "division_code": data.division_code,
         "housing_status": data.housing_status,
         "housing_label": data.housing_label,
+        "class_code": data.class_code,
+        "class_label": data.class_label,
         "accel_nursing": data.accel_nursing,
         "res_life_staff": data.res_life_staff,
         "employee": data.employee,
