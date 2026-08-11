@@ -572,13 +572,14 @@ function MultiDayDetails({
   const handlePresetChange = (value: string) => {
     setSelectedPreset(value);
     if (value === "__other__") {
-      form.setFieldsValue({ _preset_id: undefined, company_name: "" });
+      form.setFieldsValue({ _preset_id: undefined, company_name: "", work_description: "" });
     } else {
       const p = presets.find((pr) => pr.id === value);
       if (p) {
         form.setFieldsValue({
           _preset_id: p.id,
           company_name: p.company_name,
+          work_description: p.label,
         });
       }
     }
@@ -692,12 +693,14 @@ function MultiDayDetails({
         </div>
       )}
 
-      <Form.Item name="work_description" label={isSemester ? "Role / reason for parking" : "Reason for extended parking"}>
-        <Input.TextArea
-          rows={3}
-          placeholder={isSemester ? "Standardized Patient, contracted instructor, etc." : "Multi-day visit, contracted project, conference, etc."}
-        />
-      </Form.Item>
+      {!usingPreset && (
+        <Form.Item name="work_description" label={isSemester ? "Role / reason for parking" : "Reason for extended parking"}>
+          <Input.TextArea
+            rows={3}
+            placeholder={isSemester ? "Standardized Patient, contracted instructor, etc." : "Multi-day visit, contracted project, conference, etc."}
+          />
+        </Form.Item>
+      )}
 
       <Button type="primary" htmlType="submit" loading={submitting} block style={{ background: brand.primaryColor }}>
         Submit for sponsor approval
