@@ -1321,6 +1321,46 @@ async def admin_manual_select(
     return await _app_to_read(db, app)
 
 
+@router.post("/applications/{application_id}/resend-offer-email")
+async def resend_offer_email(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Resend the lottery selection / offer email for a selected applicant."""
+    from ..services.email import send_lottery_selection_email
+
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app.status != "selected":
+        raise HTTPException(400, f"Can only resend offer email for selected applications (status is '{app.status}')")
+    if not app.student_email:
+        raise HTTPException(400, "No email address on this application")
+    if not app.assigned_permit_type_id:
+        raise HTTPException(400, "No permit type assigned")
+
+    pt = await db.get(PermitType, app.assigned_permit_type_id)
+    if not pt:
+        raise HTTPException(400, "Assigned permit type not found")
+
+    deadline = app.offer_expires_at.strftime("%B %d, %Y") if app.offer_expires_at else "TBD"
+
+    await send_lottery_selection_email(
+        recipient_email=app.student_email,
+        student_name=app.student_name,
+        permit_type_label=pt.label,
+        price=str(pt.price),
+        deadline=deadline,
+        portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
+        assigned_lot=app.assigned_lot,
+        lot_assignments=list(pt.lot_assignments or []),
+    )
+
+    logger.info("Admin %s resent offer email for %s (%s)", admin.email, app.student_name, app.student_email)
+    return {"status": "sent", "recipient": app.student_email, "student": app.student_name, "permit_type": pt.label}
+
+
 class AdminUpgradeRequest(BaseModel):
     permit_type_id: uuid.UUID
     send_notification: bool = True

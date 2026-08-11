@@ -829,6 +829,20 @@ export default function LotteryV2Manager() {
               Restore
             </Button>
           )}
+          {r.status === "selected" && (
+            <Button
+              type="link"
+              size="small"
+              className="px-1"
+              disabled={busy}
+              onClick={async () => {
+                const data = await postAction(`/api/lottery-v2/applications/${r.id}/resend-offer-email`);
+                if (data) message.success(`Offer email resent to ${data.recipient}`);
+              }}
+            >
+              Resend
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -2028,6 +2042,15 @@ export default function LotteryV2Manager() {
               <Space>
                 <Button type="primary" disabled={busy} onClick={() => openManualSelect(caseApp)}>
                   Reassign permit type
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={async () => {
+                    const data = await postAction(`/api/lottery-v2/applications/${caseApp.id}/resend-offer-email`);
+                    if (data) message.success(`Offer email resent to ${data.recipient}`);
+                  }}
+                >
+                  Resend offer email
                 </Button>
               </Space>
             )}
