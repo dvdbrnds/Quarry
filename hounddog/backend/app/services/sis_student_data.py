@@ -5,7 +5,9 @@ Returns housing status, division code, class code, accelerated nursing flag,
 ResLife staff status, and employee status.
 """
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass
 
 from ..config import settings
@@ -24,6 +26,10 @@ CLASS_CODE_LABELS = {
     "JR": "Junior",
     "SR": "Senior",
 }
+
+# In-memory cache: email → (moravian_id, timestamp)
+_okta_id_cache: dict[str, tuple[str | None, float]] = {}
+_OKTA_CACHE_TTL = 600  # 10 minutes
 
 
 @dataclass
@@ -57,6 +63,8 @@ async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
             user=settings.sis_mssql_user,
             password=settings.sis_mssql_password,
             database=settings.sis_mssql_database,
+            login_timeout=5,
+            timeout=10,
         )
         cursor = conn.cursor(as_dict=True)
         cursor.execute("EXEC Mor_CUS_ParkingData @id_num=%s", (id_num,))
@@ -103,28 +111,65 @@ async def is_res_life_staff(id_num: str) -> bool:
     return data.res_life_staff if data else False
 
 
-async def _resolve_moravian_id(email: str) -> str | None:
-    """Look up a user's Moravian numeric ID (altId) from Okta by email."""
+async def _resolve_moravian_ids_batch(emails: list[str]) -> dict[str, str]:
+    """Resolve Moravian numeric IDs from Okta for a batch of emails.
+
+    Uses an in-memory cache and concurrent HTTP requests (max 20 at a time).
+    Returns {lowercase_email: moravian_id} for those found.
+    """
     if not settings.okta_domain or not settings.okta_api_token:
-        return None
+        return {}
+
+    now = time.monotonic()
+    result: dict[str, str] = {}
+    uncached: list[str] = []
+
+    for email in emails:
+        em = (email or "").strip().lower()
+        if not em or em in result:
+            continue
+        cached = _okta_id_cache.get(em)
+        if cached and (now - cached[1]) < _OKTA_CACHE_TTL:
+            if cached[0]:
+                result[em] = cached[0]
+        else:
+            uncached.append(em)
+
+    if not uncached:
+        return result
+
     import httpx
-    try:
-        async with httpx.AsyncClient() as client:
-            res = await client.get(
-                f"https://{settings.okta_domain}/api/v1/users/{email}",
-                headers={"Authorization": f"SSWS {settings.okta_api_token}"},
-                timeout=10,
-            )
-            if res.status_code != 200:
-                return None
-            profile = res.json().get("profile", {})
-            for field in ("altId", "studentId", "employeeNumber", "moravianId"):
-                val = profile.get(field)
-                if val:
-                    return str(val).split("@")[0].strip()
-    except Exception as e:
-        logger.debug("Okta altId lookup failed for %s: %s", email, e)
-    return None
+
+    sem = asyncio.Semaphore(20)
+
+    async def _lookup_one(client: httpx.AsyncClient, em: str) -> None:
+        async with sem:
+            try:
+                res = await client.get(
+                    f"https://{settings.okta_domain}/api/v1/users/{em}",
+                    headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+                    timeout=10,
+                )
+                if res.status_code == 200:
+                    profile = res.json().get("profile", {})
+                    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+                        val = profile.get(field)
+                        if val:
+                            mid = str(val).split("@")[0].strip()
+                            _okta_id_cache[em] = (mid, time.monotonic())
+                            result[em] = mid
+                            return
+                _okta_id_cache[em] = (None, time.monotonic())
+            except Exception as e:
+                logger.debug("Okta altId lookup failed for %s: %s", em, e)
+                _okta_id_cache[em] = (None, time.monotonic())
+
+    async with httpx.AsyncClient() as client:
+        await asyncio.gather(*[_lookup_one(client, em) for em in uncached])
+
+    logger.info("Okta batch resolve: %d emails → %d IDs (%d cached, %d looked up)",
+                len(emails), len(result), len(emails) - len(uncached), len(uncached))
+    return result
 
 
 async def lookup_batch_by_emails(emails: list[str]) -> dict[str, StudentParkingData]:
@@ -132,19 +177,12 @@ async def lookup_batch_by_emails(emails: list[str]) -> dict[str, StudentParkingD
 
     Returns a dict keyed by lowercase email for those found.
     """
-    email_to_id: dict[str, str] = {}
-    for email in emails:
-        em = (email or "").strip().lower()
-        if not em or em in email_to_id:
-            continue
-        mid = await _resolve_moravian_id(em)
-        if mid:
-            email_to_id[em] = mid
-
+    email_to_id = await _resolve_moravian_ids_batch(emails)
     if not email_to_id:
         return {}
 
-    sis_by_id = await lookup_student_parking_data_batch(list(email_to_id.values()))
+    unique_ids = list(set(email_to_id.values()))
+    sis_by_id = await lookup_student_parking_data_batch(unique_ids)
 
     result: dict[str, StudentParkingData] = {}
     for em, mid in email_to_id.items():
