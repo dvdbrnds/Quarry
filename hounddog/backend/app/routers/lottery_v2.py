@@ -2055,35 +2055,39 @@ async def capacity_audit(
         return counts
 
     # SIS enrichment: resolve class years and classifications from Jenzabar
-    from ..services.sis_student_data import lookup_batch_by_emails
-    import sentry_sdk
-
     all_tier_permits: dict[str, list[Permit]] = {}
-    all_emails: list[str] = []
-    for pt in pts:
-        tier_permits = (
-            await db.execute(
-                select(Permit).where(
-                    Permit.permit_type == pt.code,
-                    Permit.status == "active",
-                    Permit.deleted_at.is_(None),
-                )
-            )
-        ).scalars().all()
-        all_tier_permits[pt.code] = list(tier_permits)
-        for p in tier_permits:
-            if p.email:
-                all_emails.append(p.email)
+    sis_by_email: dict = {}
 
     try:
+        from ..services.sis_student_data import lookup_batch_by_emails
+
+        all_emails: list[str] = []
+        for pt in pts:
+            tier_permits = (
+                await db.execute(
+                    select(Permit).where(
+                        Permit.permit_type == pt.code,
+                        Permit.status == "active",
+                        Permit.deleted_at.is_(None),
+                    )
+                )
+            ).scalars().all()
+            all_tier_permits[pt.code] = list(tier_permits)
+            for p in tier_permits:
+                if p.email:
+                    all_emails.append(p.email)
+
         sis_by_email = await lookup_batch_by_emails(all_emails)
+        logger.info("SIS enrichment complete: %d/%d emails resolved", len(sis_by_email), len(all_emails))
     except Exception as e:
-        logger.error("SIS batch enrichment failed, continuing without SIS data: %s", e)
-        sentry_sdk.capture_exception(e)
-        sis_by_email = {}
+        logger.error("SIS enrichment failed, continuing without SIS data: %s", e, exc_info=True)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(e)
+        except Exception:
+            pass
 
     def _sis_class_year_breakdown(permit_list: list[Permit]) -> dict[str, int]:
-        """Build class year breakdown from SIS ClassCode for active permits."""
         counts: dict[str, int] = {}
         for p in permit_list:
             em = (p.email or "").strip().lower()
