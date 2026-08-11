@@ -458,9 +458,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE visitor_presets ALTER COLUMN default_duration SET DEFAULT 'semester'",
             "ALTER TABLE visitor_presets ALTER COLUMN active SET DEFAULT true",
             "ALTER TABLE visitor_presets ALTER COLUMN sort_order SET DEFAULT 0",
-            """INSERT INTO visitor_presets (label, company_name, sponsor_name, sponsor_email, sponsor_department, default_duration, sort_order)
-               SELECT 'Sodexo employee', 'Sodexo', 'Stacey Cesanek', 'cesaneks@moravian.edu', 'Food Services', 'semester', 0
-               WHERE NOT EXISTS (SELECT 1 FROM visitor_presets WHERE label = 'Sodexo employee')""",
+            "DELETE FROM visitor_presets WHERE label = 'Sodexo employee'",
             # One-time: expire all outstanding lottery offers at midnight Aug 10 2026 ET (04:00 UTC)
             """UPDATE lottery_v2_applications
                SET offer_expires_at = '2026-08-10T04:00:00+00:00'
