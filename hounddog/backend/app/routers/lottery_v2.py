@@ -2367,10 +2367,14 @@ async def tier_detail(
     committed = len(permits) + len(pending)
 
     # SIS enrichment: resolve Moravian IDs via Okta, then batch-query Jenzabar
-    from ..services.sis_student_data import lookup_batch_by_emails
-
-    all_emails = [p.email for p in permits if p.email]
-    sis_by_email = await lookup_batch_by_emails(all_emails)
+    sis_by_email: dict = {}
+    try:
+        from ..services.sis_student_data import lookup_batch_by_emails
+        all_emails = [p.email for p in permits if p.email]
+        sis_by_email = await lookup_batch_by_emails(all_emails)
+        logger.info("Tier detail SIS: %d/%d emails resolved", len(sis_by_email), len(all_emails))
+    except Exception as e:
+        logger.error("Tier detail SIS enrichment failed: %s", e, exc_info=True)
 
     _empty_sis = {"housing_status": None, "housing_label": None, "division_code": None,
                   "class_code": None, "class_label": None,
