@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     sis_hold_api_url: str = ""
     sis_hold_api_key: str = ""
 
-    # SIS SQL Server (Colleague) — student data lookup
+    # SIS SQL Server (Jenzabar) — student data lookup
     sis_mssql_host: str = ""
     sis_mssql_port: int = 1433
     sis_mssql_user: str = "svc_parking"
@@ -147,7 +147,7 @@ class Settings(BaseSettings):
     # Public Parking Map
     public_map_requires_auth: bool = False
 
-    # SIS Subscriber Sync (Colleague)
+    # SIS Subscriber Sync (Jenzabar)
     sis_subscriber_sync_enabled: bool = False
     sis_subscriber_sync_url: str = ""
     sis_subscriber_sync_key: str = ""

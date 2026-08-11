@@ -1,5 +1,5 @@
 """
-SIS / Colleague subscriber sync.
+SIS / Jenzabar subscriber sync.
 
 Pulls student/staff directory from the SIS API and upserts into
 alert_subscribers. Adds synced subscribers to appropriate groups based

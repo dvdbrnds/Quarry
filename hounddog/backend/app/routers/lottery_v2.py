@@ -2800,7 +2800,7 @@ async def sis_student_lookup(
     id_num: str,
     _admin: OktaUser = Depends(require_admin()),
 ):
-    """Look up a student's housing status and division from SIS (Colleague)."""
+    """Look up a student's housing status and division from SIS (Jenzabar)."""
     from ..services.sis_student_data import lookup_student_parking_data
 
     data = await lookup_student_parking_data(id_num)

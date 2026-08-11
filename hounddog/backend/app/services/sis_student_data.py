@@ -1,4 +1,4 @@
-"""Query Moravian SIS (Colleague SQL Server) for student parking data.
+"""Query Moravian SIS (Jenzabar SQL Server) for student parking data.
 
 Uses the Mor_CUS_ParkingData stored procedure via the svc_parking user.
 Returns housing status, division code, accelerated nursing flag,
