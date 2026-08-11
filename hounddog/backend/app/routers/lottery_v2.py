@@ -2580,7 +2580,7 @@ async def tier_detail(
                     app_by_email[ek].created_at.isoformat()
                     if (ek := (p.email or "").lower()) in app_by_email
                     and app_by_email[ek].created_at
-                    else None
+                    else (p.created_at.isoformat() if p.created_at else None)
                 ),
                 "class_year": (
                     app_by_email[ek].class_year
