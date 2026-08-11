@@ -1090,7 +1090,41 @@ export default function LotteryV2Manager() {
                       </span>
                     )}
                   </h4>
-                  <Button type="link" size="small" onClick={() => setCapacityAudit(null)}>Dismiss</Button>
+                  <div className="flex gap-2">
+                    <Button size="small" onClick={() => {
+                      const tiers = capacityAudit.tiers || [];
+                      const yearKeys = ["Senior", "Junior", "Sophomore", "Freshman", "Other", "Unknown"];
+                      const headers = ["Tier", "Capacity", "Active Permits", "Pending Payment", "Committed", "Over By", "Truly Open", "Waitlisted",
+                        ...yearKeys, "Resident", "Commuter", "Off Campus", "RA/RD", "Employee", "ABSN", "Auto-advance"];
+                      const rows = tiers.filter((t: any) => !t.missing).map((t: any) => [
+                        t.label || t.code,
+                        t.max_capacity,
+                        t.active_permits,
+                        t.selected_pending_payment,
+                        t.committed,
+                        t.over_capacity_by,
+                        t.truly_open,
+                        t.waitlisted_with_pref,
+                        ...yearKeys.map(k => t.class_year_breakdown?.[k] || 0),
+                        t.housing_breakdown?.Resident || 0,
+                        t.housing_breakdown?.Commuter || 0,
+                        t.housing_breakdown?.["Off Campus Release"] || 0,
+                        t.res_life_staff_count || 0,
+                        t.employee_count || 0,
+                        t.accel_nursing_count || 0,
+                        t.auto_advance_waitlist === false ? "OFF" : "ON",
+                      ]);
+                      const csv = [headers, ...rows].map(r => r.map((v: any) => `"${v}"`).join(",")).join("\n");
+                      const blob = new Blob([csv], { type: "text/csv" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `capacity-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}>Export CSV</Button>
+                    <Button type="link" size="small" onClick={() => setCapacityAudit(null)}>Dismiss</Button>
+                  </div>
                 </div>
                 <p className="m-0 text-gray-600">
                   Active on lot Q: <strong>{capacityAudit.lot_active_permits?.Q ?? "—"}</strong>
