@@ -6,10 +6,11 @@ options:
   xcodeVersion: "16.0"
   createIntermediateGroups: true
 settings:
-  SWIFT_VERSION: "5.9"
-  TARGETED_DEVICE_FAMILY: "1,2"
-  INFOPLIST_FILE: BirdDog/App/Info.plist
-  GENERATE_INFOPLIST_FILE: false
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    INFOPLIST_FILE: BirdDog/App/Info.plist
+    GENERATE_INFOPLIST_FILE: false
   configs:
     Debug:
       SWIFT_OPTIMIZATION_LEVEL: "-O"
@@ -29,7 +30,11 @@ targets:
           - "**/*.xlsx"
     resources:
       - path: BirdDog/Resources/Assets.xcassets
+      # Optional: gitignored (PII). Generate with:
+      #   python3 scripts/convert_permits.py "All Parking Permits.xlsx"
+      # Or import via Admin Settings on device.
       - path: BirdDog/Resources/permits.json
+        optional: true
       - path: BirdDog/Resources/lots.json
     dependencies:
       - package: StarXpand-SDK-iOS
