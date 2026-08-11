@@ -1783,6 +1783,144 @@ async def advance_cycle_waitlist(
     }
 
 
+class AdvanceTierRequest(BaseModel):
+    permit_type_id: str
+    action: str = Field(..., pattern="^(expire|promote)$")
+
+
+@router.post("/cycles/{cycle_id}/advance-waitlist-tier")
+async def advance_waitlist_tier(
+    cycle_id: uuid.UUID,
+    body: AdvanceTierRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Per-tier waitlist advance: either expire overdue offers or promote
+    the next waitlisted student for a specific permit type."""
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+    if cycle.status != "drawn":
+        raise HTTPException(400, "Can only advance waitlist on drawn cycles")
+
+    pt = await db.get(PermitType, body.permit_type_id)
+    if not pt:
+        raise HTTPException(404, "Permit type not found")
+
+    now = datetime.now(timezone.utc)
+
+    if body.action == "expire":
+        expired_result = await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status == "selected",
+                LotteryV2Application.assigned_permit_type_id == body.permit_type_id,
+                LotteryV2Application.offer_expires_at.isnot(None),
+                LotteryV2Application.offer_expires_at < now,
+            )
+        )
+        expired = expired_result.scalars().all()
+        for app in expired:
+            app.status = "expired"
+            app.assigned_permit_type_id = None
+            app.assigned_lot = None
+        await db.commit()
+        return {
+            "action": "expire",
+            "permit_type": pt.label,
+            "expired": len(expired),
+        }
+
+    # action == "promote"
+    from ..services.lottery_v2_runner import (
+        WaterfallApplicant,
+        try_place_one,
+        _tiers_with_offers_reserved,
+    )
+
+    waitlisted = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status == "waitlisted",
+            )
+            .order_by(LotteryV2Application.waitlist_position.asc())
+        )
+    ).scalars().all()
+
+    winner_emails = {
+        (a.student_email or "").strip().lower() or a.id
+        for a in (
+            await db.execute(
+                select(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status.in_(["selected", "accepted"]),
+                )
+            )
+        ).scalars().all()
+    }
+
+    tiers = await _tiers_with_offers_reserved(db, cycle_id)
+    # Only keep the target tier so placement is scoped
+    target_tier = tiers.get(body.permit_type_id)
+    if not target_tier:
+        await db.commit()
+        return {
+            "action": "promote",
+            "permit_type": pt.label,
+            "promoted": None,
+            "reason": "No capacity data for this tier",
+        }
+    scoped_tiers = {body.permit_type_id: target_tier}
+
+    promoted_app = None
+    for app in waitlisted:
+        email = (app.student_email or "").strip().lower() or str(app.id)
+        if email in winner_emails:
+            continue
+        if body.permit_type_id not in (app.tier_preferences or []):
+            continue
+        applicant = WaterfallApplicant(
+            id=app.id,
+            class_year=app.class_year,
+            created_at=app.created_at or datetime.now(timezone.utc),
+            tier_preferences=[body.permit_type_id],
+            student_email=app.student_email,
+            student_name=app.student_name,
+        )
+        placement = try_place_one(applicant, scoped_tiers)
+        if placement:
+            offer_days = cycle.offer_window_days or 5
+            app.status = "selected"
+            app.assigned_permit_type_id = placement.assigned_permit_type_id
+            app.assigned_lot = placement.assigned_lot
+            app.waitlist_position = None
+            app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
+            promoted_app = app
+            break
+
+    # Recompute waitlist positions
+    remaining = [a for a in waitlisted if a.status == "waitlisted"]
+    for idx, a in enumerate(remaining, 1):
+        a.waitlist_position = idx
+    await db.commit()
+
+    if promoted_app:
+        return {
+            "action": "promote",
+            "permit_type": pt.label,
+            "promoted": promoted_app.student_name,
+            "promoted_email": promoted_app.student_email,
+        }
+    return {
+        "action": "promote",
+        "permit_type": pt.label,
+        "promoted": None,
+        "reason": "No eligible waitlisted student for this tier or tier is full",
+    }
+
+
 @router.post("/cycles/{cycle_id}/notify-waitlist")
 async def notify_waitlist(
     cycle_id: uuid.UUID,

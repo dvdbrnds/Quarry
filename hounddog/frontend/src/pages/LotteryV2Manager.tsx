@@ -957,9 +957,21 @@ export default function LotteryV2Manager() {
     },
   ];
 
+  const tierLabelToId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of apps) {
+      const ids = a.tier_preferences || [];
+      const labels = a.tier_preference_labels || [];
+      for (let i = 0; i < ids.length && i < labels.length; i++) {
+        if (!map[labels[i]]) map[labels[i]] = ids[i];
+      }
+    }
+    return map;
+  }, [apps]);
+
   const waitlistByTier = useMemo(() => {
     const waitlisted = deskRows.filter((a) => a.status === "waitlisted");
-    const groups: { label: string; short: string; cap: any; students: Application[] }[] = [];
+    const groups: { label: string; short: string; permitTypeId: string | undefined; cap: any; students: Application[] }[] = [];
     const labels = tierChips.map((t) => t.label);
     for (const tierLabel of labels) {
       const chip = tierChips.find((t) => t.label === tierLabel);
@@ -970,12 +982,13 @@ export default function LotteryV2Manager() {
       groups.push({
         label: tierLabel,
         short: tierLabel.replace(/ Resident$/i, ""),
+        permitTypeId: tierLabelToId[tierLabel],
         cap: chip?.cap,
         students,
       });
     }
     return groups;
-  }, [deskRows, tierChips]);
+  }, [deskRows, tierChips, tierLabelToId]);
 
   const firstChoiceDemand = Object.entries(
     apps.reduce<Record<string, number>>((acc, a) => {
@@ -1076,18 +1089,6 @@ export default function LotteryV2Manager() {
                     onClick={confirmRun}
                   >
                     Run draw
-                  </Button>
-                </Space>
-              </div>
-              <Divider type="vertical" className="h-8 self-end" />
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Waitlist</div>
-                <Space size={4}>
-                  <Button
-                    disabled={busy || active.status !== "drawn"}
-                    onClick={confirmAdvanceWaitlist}
-                  >
-                    Advance
                   </Button>
                 </Space>
               </div>
@@ -1687,9 +1688,66 @@ export default function LotteryV2Manager() {
                             {group.students.length} waiting
                             {group.cap ? ` · ${group.cap.max_capacity} capacity · ${group.cap.active_permits} active` : ""}
                           </span>
+                          {group.cap?.over_capacity && (
+                            <Tag color="red" className="m-0 ml-2">Over capacity</Tag>
+                          )}
                         </div>
-                        {group.cap?.over_capacity && (
-                          <Tag color="red" className="m-0">Over capacity</Tag>
+                        {group.permitTypeId && active?.status === "drawn" && (
+                          <Space size={4}>
+                            <Tooltip title="Expire overdue offers for this tier only">
+                              <Button
+                                size="small"
+                                disabled={busy}
+                                onClick={() => {
+                                  modal.confirm({
+                                    title: `Expire overdue offers for ${group.short}?`,
+                                    content: "Only affects offers for this tier that are past their expiration date. No one gets promoted — you can do that separately.",
+                                    okText: "Expire overdue",
+                                    onOk: async () => {
+                                      const data = await postAction(
+                                        `/api/lottery-v2/cycles/${active.id}/advance-waitlist-tier`,
+                                        { permit_type_id: group.permitTypeId, action: "expire" },
+                                      );
+                                      if (data) {
+                                        message.success(`${group.short}: ${data.expired} offer(s) expired`);
+                                      }
+                                    },
+                                  });
+                                }}
+                              >
+                                Expire overdue
+                              </Button>
+                            </Tooltip>
+                            <Tooltip title="Promote the next waitlisted student into this tier">
+                              <Button
+                                size="small"
+                                type="primary"
+                                disabled={busy}
+                                onClick={() => {
+                                  modal.confirm({
+                                    title: `Promote next student into ${group.short}?`,
+                                    content: `The highest-ranked waitlisted student who listed ${group.short} as a preference will be offered a spot. They will be emailed an offer with the standard acceptance window.`,
+                                    okText: "Promote next",
+                                    onOk: async () => {
+                                      const data = await postAction(
+                                        `/api/lottery-v2/cycles/${active.id}/advance-waitlist-tier`,
+                                        { permit_type_id: group.permitTypeId, action: "promote" },
+                                      );
+                                      if (data) {
+                                        if (data.promoted) {
+                                          message.success(`${group.short}: ${data.promoted} promoted and offered a spot`);
+                                        } else {
+                                          message.warning(`${group.short}: ${data.reason || "No eligible student to promote"}`);
+                                        }
+                                      }
+                                    },
+                                  });
+                                }}
+                              >
+                                Promote next
+                              </Button>
+                            </Tooltip>
+                          </Space>
                         )}
                       </div>
                       <table className="w-full text-sm">
