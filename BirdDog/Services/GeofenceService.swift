@@ -16,12 +16,12 @@ final class GeofenceService: NSObject, ObservableObject {
     private let locationManager = CLLocationManager()
     private var container: ModelContainer?
 
-    private static let seedVersionKey = "GeofenceService.seedVersion"
-
     override init() {
         super.init()
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 10
+        locationManager.distanceFilter = 5
+        locationManager.activityType = .automotiveNavigation
+        locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.delegate = self
     }
 
@@ -161,30 +161,23 @@ final class GeofenceService: NSObject, ObservableObject {
         try? context.save()
     }
 
-    // MARK: - Seed from bundled lots.json
+    // MARK: - Seed from bundled lots.json (only when empty — HoundDog sync is source of truth)
 
     private func seedIfNeeded() {
         guard let container else { return }
+        let context = ModelContext(container)
+        let existingCount = (try? context.fetchCount(FetchDescriptor<ParkingLotRecord>())) ?? 0
+        guard existingCount == 0 else { return }
+
         guard let url = Bundle.main.url(forResource: "lots", withExtension: "json") else { return }
-
-        let fileDate = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)?
-            .timeIntervalSince1970 ?? 0
-        let seedVersion = String(format: "%.0f", fileDate)
-
-        let lastSeed = UserDefaults.standard.string(forKey: Self.seedVersionKey) ?? ""
-        guard lastSeed != seedVersion else { return }
 
         do {
             let data = try Data(contentsOf: url)
             let lots = try JSONDecoder().decode([ParkingLot].self, from: data)
-
-            let context = ModelContext(container)
-            try context.delete(model: ParkingLotRecord.self)
             for lot in lots {
                 context.insert(ParkingLotRecord(lotId: lot.id, name: lot.name, boundary: lot.boundary, spotCount: lot.spotCount, hasSheepDog: lot.hasSheepDog))
             }
             try context.save()
-            UserDefaults.standard.set(seedVersion, forKey: Self.seedVersionKey)
         } catch {
             print("Failed to seed lot data: \(error)")
         }

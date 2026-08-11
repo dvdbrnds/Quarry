@@ -248,7 +248,8 @@ struct ContentView: View {
 
     @ViewBuilder
     private var currentLotBadge: some View {
-        if let lotName = viewModel.geofenceService.currentLotName {
+        let geo = viewModel.geofenceService
+        if let lotName = geo.currentLotName {
             HStack(spacing: 4) {
                 Image(systemName: "mappin.circle.fill")
                     .font(.caption2)
@@ -257,7 +258,61 @@ struct ContentView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
+            .foregroundStyle(.white)
+            .background(PlateStatus.allowedGreen, in: Capsule())
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: lotStatusIcon(for: geo))
+                    .font(.caption2)
+                Text(lotStatusLabel(for: geo))
+                    .font(.caption2.bold())
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .foregroundStyle(lotStatusForeground(for: geo))
+            .background(lotStatusBackground(for: geo), in: Capsule())
+        }
+    }
+
+    private func lotStatusIcon(for geo: GeofenceService) -> String {
+        switch geo.locationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            return geo.currentLocation == nil ? "location" : "mappin.slash"
+        case .denied, .restricted:
+            return "location.slash"
+        default:
+            return "location"
+        }
+    }
+
+    private func lotStatusLabel(for geo: GeofenceService) -> String {
+        switch geo.locationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            if geo.currentLocation == nil { return "GPS…" }
+            if geo.lots.isEmpty { return "No lots synced" }
+            return "Outside lots"
+        case .denied, .restricted:
+            return "Location off"
+        default:
+            return "Enable GPS"
+        }
+    }
+
+    private func lotStatusForeground(for geo: GeofenceService) -> Color {
+        switch geo.locationStatus {
+        case .denied, .restricted: return .white
+        default: return .black
+        }
+    }
+
+    private func lotStatusBackground(for geo: GeofenceService) -> Color {
+        switch geo.locationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            return geo.currentLocation == nil ? .yellow : .orange
+        case .denied, .restricted:
+            return .red
+        default:
+            return .yellow
         }
     }
 

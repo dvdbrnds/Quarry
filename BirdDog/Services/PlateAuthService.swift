@@ -97,20 +97,29 @@ final class PlateAuthService: PlateCheckable {
     }
 
     private func lotMatches(permitZone: String, currentLot: String) -> Bool {
-        let normalizedPermit = permitZone.trimmingCharacters(in: .whitespaces).uppercased()
-        let normalizedLot = currentLot.trimmingCharacters(in: .whitespaces).uppercased()
+        let normalizedLot = Self.normalizeLotCode(currentLot)
+        guard !normalizedLot.isEmpty else { return false }
 
-        if normalizedPermit == normalizedLot { return true }
+        if wildcardZones.contains(Self.normalizeLotCode(permitZone)) { return true }
 
-        if wildcardZones.contains(normalizedPermit) { return true }
+        let zones = permitZone
+            .split(separator: ",")
+            .map { Self.normalizeLotCode(String($0)) }
+            .filter { !$0.isEmpty }
 
-        if normalizedPermit.contains(",") {
-            let zones = normalizedPermit.split(separator: ",").map {
-                $0.trimmingCharacters(in: .whitespaces)
-            }
-            if zones.contains(where: { $0 == normalizedLot }) { return true }
+        if zones.isEmpty {
+            return Self.normalizeLotCode(permitZone) == normalizedLot
         }
 
-        return false
+        return zones.contains(normalizedLot)
+    }
+
+    /// HoundDog uses codes like "A"; bundled BirdDog data used "LOT A".
+    static func normalizeLotCode(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if s.hasPrefix("LOT ") {
+            s = String(s.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+        }
+        return s
     }
 }

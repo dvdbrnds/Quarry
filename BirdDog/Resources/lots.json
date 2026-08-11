@@ -1,8 +1,8 @@
 [
   {
-    "id": "LOT_A",
-    "name": "LOT A",
-    "spotCount": 0,
+    "id": "A",
+    "name": "A",
+    "spotCount": 103,
     "hasSheepDog": false,
     "boundary": [
       { "latitude": 40.62540, "longitude": -75.37020 },
@@ -12,9 +12,9 @@
     ]
   },
   {
-    "id": "LOT_Q",
-    "name": "LOT Q",
-    "spotCount": 0,
+    "id": "Q",
+    "name": "Q",
+    "spotCount": 42,
     "hasSheepDog": false,
     "boundary": [
       { "latitude": 40.62320, "longitude": -75.36860 },
