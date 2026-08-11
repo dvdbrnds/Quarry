@@ -2056,6 +2056,7 @@ async def capacity_audit(
 
     # SIS enrichment: resolve class years and classifications from Jenzabar
     from ..services.sis_student_data import lookup_batch_by_emails
+    import sentry_sdk
 
     all_tier_permits: dict[str, list[Permit]] = {}
     all_emails: list[str] = []
@@ -2074,7 +2075,12 @@ async def capacity_audit(
             if p.email:
                 all_emails.append(p.email)
 
-    sis_by_email = await lookup_batch_by_emails(all_emails)
+    try:
+        sis_by_email = await lookup_batch_by_emails(all_emails)
+    except Exception as e:
+        logger.error("SIS batch enrichment failed, continuing without SIS data: %s", e)
+        sentry_sdk.capture_exception(e)
+        sis_by_email = {}
 
     def _sis_class_year_breakdown(permit_list: list[Permit]) -> dict[str, int]:
         """Build class year breakdown from SIS ClassCode for active permits."""
@@ -2142,6 +2148,7 @@ async def capacity_audit(
         projected = active + selected_count
         projected_over = max(0, projected - max_cap)
 
+        committed = active + selected_count
         tier_permit_list = all_tier_permits.get(pt.code, [])
         tier_rows.append({
             "code": pt.code,
@@ -2150,6 +2157,7 @@ async def capacity_audit(
             "max_capacity": max_cap,
             "active_permits": active,
             "selected_pending_payment": selected_count,
+            "committed": committed,
             "over_capacity_by": over_by,
             "truly_open": truly_open,
             "projected": projected,

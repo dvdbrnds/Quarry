@@ -130,8 +130,7 @@ async def lookup_student_parking_data_batch(id_nums: list[str]) -> dict[str, Stu
     unique = list({n for n in id_nums if n and n.strip()})
     if not unique:
         return {}
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _sis_batch_query, unique)
+    return await asyncio.to_thread(_sis_batch_query, unique)
 
 
 async def is_res_life_staff(id_num: str) -> bool:
