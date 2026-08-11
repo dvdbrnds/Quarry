@@ -2054,44 +2054,36 @@ async def capacity_audit(
             counts[label] = counts.get(label, 0) + 1
         return counts
 
-    # SIS enrichment: resolve class years and classifications from Jenzabar
+    # SIS enrichment using moravian_id stored on permits (no Okta calls)
+    from ..services.sis_student_data import lookup_batch_by_moravian_ids
+
     all_tier_permits: dict[str, list[Permit]] = {}
-    sis_by_email: dict = {}
+    all_moravian_ids: list[str] = []
+    for pt in pts:
+        tier_permits = (
+            await db.execute(
+                select(Permit).where(
+                    Permit.permit_type == pt.code,
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        all_tier_permits[pt.code] = list(tier_permits)
+        for p in tier_permits:
+            if p.moravian_id:
+                all_moravian_ids.append(p.moravian_id)
 
     try:
-        from ..services.sis_student_data import lookup_batch_by_emails
-
-        all_emails: list[str] = []
-        for pt in pts:
-            tier_permits = (
-                await db.execute(
-                    select(Permit).where(
-                        Permit.permit_type == pt.code,
-                        Permit.status == "active",
-                        Permit.deleted_at.is_(None),
-                    )
-                )
-            ).scalars().all()
-            all_tier_permits[pt.code] = list(tier_permits)
-            for p in tier_permits:
-                if p.email:
-                    all_emails.append(p.email)
-
-        sis_by_email = await lookup_batch_by_emails(all_emails)
-        logger.info("SIS enrichment complete: %d/%d emails resolved", len(sis_by_email), len(all_emails))
+        sis_by_id = await lookup_batch_by_moravian_ids(all_moravian_ids)
     except Exception as e:
-        logger.error("SIS enrichment failed, continuing without SIS data: %s", e, exc_info=True)
-        try:
-            import sentry_sdk
-            sentry_sdk.capture_exception(e)
-        except Exception:
-            pass
+        logger.error("SIS capacity audit enrichment failed: %s", e, exc_info=True)
+        sis_by_id = {}
 
     def _sis_class_year_breakdown(permit_list: list[Permit]) -> dict[str, int]:
         counts: dict[str, int] = {}
         for p in permit_list:
-            em = (p.email or "").strip().lower()
-            data = sis_by_email.get(em)
+            data = sis_by_id.get(p.moravian_id) if p.moravian_id else None
             label = data.class_label if data and data.class_label else "Unknown"
             counts[label] = counts.get(label, 0) + 1
         return counts
@@ -2102,8 +2094,7 @@ async def capacity_audit(
         employee = 0
         absn = 0
         for p in permit_list:
-            em = (p.email or "").strip().lower()
-            data = sis_by_email.get(em)
+            data = sis_by_id.get(p.moravian_id) if p.moravian_id else None
             if not data:
                 continue
             if data.housing_label:
@@ -2151,9 +2142,9 @@ async def capacity_audit(
         truly_open = max(0, max_cap - active)
         projected = active + selected_count
         projected_over = max(0, projected - max_cap)
-
         committed = active + selected_count
         tier_permit_list = all_tier_permits.get(pt.code, [])
+
         tier_rows.append({
             "code": pt.code,
             "label": pt.label,
@@ -2169,7 +2160,7 @@ async def capacity_audit(
             "auto_advance_waitlist": pt.auto_advance_waitlist,
             "waitlisted_with_pref": len(waitlisted_with_pref),
             "apps_first_choice": len(first_choice_apps),
-            "class_year_breakdown": _sis_class_year_breakdown(tier_permit_list) if tier_permit_list else _class_year_breakdown(selected_to_tier),
+            "class_year_breakdown": _sis_class_year_breakdown(tier_permit_list),
             **_sis_breakdown(tier_permit_list),
         })
 
@@ -2366,13 +2357,14 @@ async def tier_detail(
     unique_people = len(permit_emails | {(a.student_email or "").lower() for a in selected_apps})
     committed = len(permits) + len(pending)
 
-    # SIS enrichment: resolve Moravian IDs via Okta, then batch-query Jenzabar
-    sis_by_email: dict = {}
+    # SIS enrichment using moravian_id stored on permits (no Okta calls)
+    from ..services.sis_student_data import lookup_batch_by_moravian_ids
+
+    sis_by_id: dict = {}
     try:
-        from ..services.sis_student_data import lookup_batch_by_emails
-        all_emails = [p.email for p in permits if p.email]
-        sis_by_email = await lookup_batch_by_emails(all_emails)
-        logger.info("Tier detail SIS: %d/%d emails resolved", len(sis_by_email), len(all_emails))
+        all_mids = [p.moravian_id for p in permits if p.moravian_id]
+        sis_by_id = await lookup_batch_by_moravian_ids(all_mids)
+        logger.info("Tier detail SIS: %d/%d permits have SIS data", len(sis_by_id), len(permits))
     except Exception as e:
         logger.error("Tier detail SIS enrichment failed: %s", e, exc_info=True)
 
@@ -2380,9 +2372,8 @@ async def tier_detail(
                   "class_code": None, "class_label": None,
                   "accel_nursing": None, "res_life_staff": None, "employee": None}
 
-    def _sis_fields(email: str | None) -> dict:
-        em = (email or "").strip().lower()
-        data = sis_by_email.get(em) if em else None
+    def _sis_fields(moravian_id: str | None) -> dict:
+        data = sis_by_id.get(moravian_id) if moravian_id else None
         if not data:
             return _empty_sis
         return {"housing_status": data.housing_status, "housing_label": data.housing_label,
@@ -2396,7 +2387,7 @@ async def tier_detail(
     sis_employee = 0
     sis_absn = 0
     for p in permits:
-        sf = _sis_fields(p.email)
+        sf = _sis_fields(p.moravian_id)
         if sf["housing_label"]:
             sis_housing[sf["housing_label"]] = sis_housing.get(sf["housing_label"], 0) + 1
         if sf["res_life_staff"]:
@@ -2443,7 +2434,7 @@ async def tier_detail(
                     if (ek := (p.email or "").lower()) in app_by_email
                     else None
                 ),
-                **_sis_fields(p.email),
+                **_sis_fields(p.moravian_id),
             }
             for p in permits
         ],

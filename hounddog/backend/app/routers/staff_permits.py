@@ -111,11 +111,20 @@ async def enroll_vehicle(
     if target <= new_start:
         target = date(new_start.year + 1, 6, 30)
 
+    _profile = getattr(user, "profile", None) or {}
+    _mid = None
+    for _f in ("altId", "studentId", "employeeNumber", "moravianId"):
+        _v = _profile.get(_f)
+        if _v:
+            _mid = str(_v).split("@")[0].strip()
+            break
+
     permit = Permit(
         permit_number=await next_permit_number(db),
         name=data.name.strip(),
         email=user.email,
         student_id=user.sub,
+        moravian_id=_mid,
         plates=[plate],
         lot_assignment=", ".join(pt.lot_assignments) if pt.lot_assignments else "",
         permit_type=STAFF_PERMIT_CODE,

@@ -14,6 +14,7 @@ class Permit(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     permit_number: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     student_id: Mapped[str] = mapped_column(String(64), default="")
+    moravian_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     name: Mapped[str] = mapped_column(String(256))
     email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     phone: Mapped[str] = mapped_column(String(32), default="")

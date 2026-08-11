@@ -563,6 +563,8 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code)",
             # Admin permit charge — link permit to Stripe session for payment
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS stripe_session_id VARCHAR(255)",
+            # Moravian numeric ID for SIS lookups
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS moravian_id VARCHAR(32)",
             # Voucher usage tracking for department chargebacks
             """CREATE TABLE IF NOT EXISTS voucher_usages (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -964,6 +966,59 @@ async def lifespan(app: FastAPI):
                         logger.info("Migrated backup schedule from disk to DB")
     except Exception as e:
         logger.warning("Backup schedule disk->DB migration skipped: %s", e)
+
+    # Backfill moravian_id on permits using Okta List Users API
+    try:
+        from .database import async_session as _backfill_session
+        from .config import settings as _s
+        if _s.okta_domain and _s.okta_api_token:
+            async with _backfill_session() as _db:
+                from sqlalchemy import text as _t
+                _missing = (await _db.execute(
+                    _t("SELECT DISTINCT email FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''")
+                )).scalars().all()
+                if _missing:
+                    _missing_set = {e.strip().lower() for e in _missing if e}
+                    logger.info("Backfilling moravian_id for %d permits via Okta List Users", len(_missing_set))
+                    import httpx as _httpx
+                    _email_to_mid: dict[str, str] = {}
+                    _url: str | None = f"https://{_s.okta_domain}/api/v1/users?limit=200&filter=status+eq+%22ACTIVE%22"
+                    while _url:
+                        _resp = await _httpx.AsyncClient(timeout=30).get(
+                            _url, headers={"Authorization": f"SSWS {_s.okta_api_token}"}
+                        )
+                        if _resp.status_code != 200:
+                            logger.warning("Okta List Users returned %d, stopping backfill", _resp.status_code)
+                            break
+                        for _u in _resp.json():
+                            _p = _u.get("profile", {})
+                            _login = (_p.get("login") or "").strip().lower()
+                            _email_val = (_p.get("email") or "").strip().lower()
+                            for _field in ("altId", "studentId", "employeeNumber", "moravianId"):
+                                _val = _p.get(_field)
+                                if _val:
+                                    _mid = str(_val).split("@")[0].strip()
+                                    if _login and _login in _missing_set:
+                                        _email_to_mid[_login] = _mid
+                                    if _email_val and _email_val in _missing_set:
+                                        _email_to_mid[_email_val] = _mid
+                                    break
+                        _links = _resp.headers.get("link", "")
+                        _url = None
+                        for _part in _links.split(","):
+                            if 'rel="next"' in _part:
+                                _url = _part.split("<")[1].split(">")[0].strip()
+                    _updated = 0
+                    for _em, _mid in _email_to_mid.items():
+                        _r = await _db.execute(
+                            _t("UPDATE permits SET moravian_id = :mid WHERE LOWER(email) = :em AND moravian_id IS NULL"),
+                            {"mid": _mid, "em": _em}
+                        )
+                        _updated += _r.rowcount
+                    await _db.commit()
+                    logger.info("Backfilled moravian_id on %d permit rows (%d emails matched)", _updated, len(_email_to_mid))
+    except Exception as e:
+        logger.warning("moravian_id backfill failed (non-fatal): %s", e)
 
     yield
 

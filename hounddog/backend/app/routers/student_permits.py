@@ -5,6 +5,16 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+
+def _extract_moravian_id(user) -> str | None:
+    """Extract the Moravian numeric ID from an OktaUser profile."""
+    profile = getattr(user, "profile", None) or {}
+    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+        val = profile.get(field)
+        if val:
+            return str(val).split("@")[0].strip()
+    return None
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -639,6 +649,7 @@ async def direct_purchase(
         new_permit = Permit(
             permit_number=await next_permit_number(db),
             student_id=user.sub,
+            moravian_id=_extract_moravian_id(user),
             name=data.student_name,
             email=user.email,
             phone=data.phone or "",
@@ -725,6 +736,7 @@ async def direct_purchase(
         new_permit = Permit(
             permit_number=await next_permit_number(db),
             student_id=user.sub,
+            moravian_id=_extract_moravian_id(user),
             name=data.student_name,
             email=user.email,
             phone=data.phone or "",
