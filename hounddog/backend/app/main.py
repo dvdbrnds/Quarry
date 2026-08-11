@@ -1177,6 +1177,38 @@ async def sis_test(user=Depends(require_admin())):
         }
 
 
+@app.post("/api/admin/backfill-moravian-ids", tags=["admin"])
+async def backfill_moravian_ids_endpoint(user=Depends(require_admin())):
+    """Manually trigger moravian_id backfill and return results."""
+    from sqlalchemy import text
+    from .database import async_session
+    async with async_session() as db:
+        total = (await db.execute(text("SELECT COUNT(*) FROM permits WHERE email IS NOT NULL AND email != ''"))).scalar()
+        has_mid = (await db.execute(text("SELECT COUNT(*) FROM permits WHERE moravian_id IS NOT NULL"))).scalar()
+        missing = (await db.execute(text("SELECT COUNT(*) FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''"))).scalar()
+
+    if missing == 0:
+        return {"ok": True, "total": total, "has_moravian_id": has_mid, "missing": 0, "message": "All permits already have moravian_id"}
+
+    try:
+        await _backfill_moravian_ids()
+    except Exception as e:
+        return {"ok": False, "error": str(e), "total": total, "has_moravian_id": has_mid, "missing": missing}
+
+    async with async_session() as db:
+        has_mid_after = (await db.execute(text("SELECT COUNT(*) FROM permits WHERE moravian_id IS NOT NULL"))).scalar()
+        still_missing = (await db.execute(text("SELECT COUNT(*) FROM permits WHERE moravian_id IS NULL AND email IS NOT NULL AND email != ''"))).scalar()
+
+    return {
+        "ok": True,
+        "total": total,
+        "had_moravian_id_before": has_mid,
+        "has_moravian_id_after": has_mid_after,
+        "still_missing": still_missing,
+        "filled": has_mid_after - has_mid,
+    }
+
+
 @app.get("/api/admin/preflight", tags=["admin"])
 async def preflight_check(user=Depends(require_admin())):
     from .services.env_preflight import run_preflight
