@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert, Button, Card, Collapse, Drawer, Input, Modal, Select, Space, Statistic, Table, Tag, App as AntApp, InputNumber,
+  Alert, Badge, Button, Card, Collapse, Divider, Drawer, Input, Modal, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, App as AntApp, InputNumber,
 } from "antd";
 import { authHeaders } from "../auth";
 
@@ -101,6 +101,18 @@ function wantsTier(app: Application, tierLabel: string): boolean {
   return (app.tier_preference_labels || []).includes(tierLabel);
 }
 
+function shortenTierLabel(label: string): string {
+  return label
+    .replace(/ Resident$/i, "")
+    .replace(/Guaranteed/g, "Guar.")
+    .replace(/Premium/g, "Prem.")
+    .replace(/Extended/g, "Ext.")
+    .replace(/\(Undergrad\)/g, "(UG)")
+    .replace(/\(Grad\)/g, "(G)");
+}
+
+type DeskView = "desk" | "applications" | "queue";
+
 function buildComplaintSummary(app: Application, siblings: Application[]): string {
   const prefs = app.tier_preference_labels || [];
   const first = prefs[0] || app.first_choice_label || "—";
@@ -200,6 +212,7 @@ export default function LotteryV2Manager() {
 
   const [tierDetail, setTierDetail] = useState<any | null>(null);
   const [tierDetailLoading, setTierDetailLoading] = useState(false);
+  const [deskView, setDeskView] = useState<DeskView>("desk");
 
   const active = cycles.find((c) => c.id === activeId) || null;
   const studentUrl = `${window.location.origin}/parking`;
@@ -655,19 +668,25 @@ export default function LotteryV2Manager() {
   }, [deskRows, deskQuery, deskFilter, deskTier, apps]);
 
   const deskFilterCounts = useMemo(() => {
+    const matchesTier = (a: Application) => {
+      if (!deskTier) return true;
+      if (a.status === "waitlisted" || a.status === "superseded") return wantsTier(a, deskTier);
+      return a.assigned_permit_type_label === deskTier;
+    };
     const superseded = apps.filter((a) => a.status === "superseded" && !deskRows.some((d) => d.id === a.id));
-    const all = [...deskRows, ...superseded];
-    const placed = deskRows.filter((a) => ["selected", "accepted"].includes(a.status)).length;
-    const offer = deskRows.filter((a) => a.status === "selected").length;
-    const accepted = deskRows.filter((a) => a.status === "accepted").length;
-    const waitlist = deskRows.filter((a) => a.status === "waitlisted").length;
-    const sup = superseded.length;
-    const mismatch = deskRows.filter((a) => {
+    const all = [...deskRows, ...superseded].filter(matchesTier);
+    const base = deskRows.filter(matchesTier);
+    const placed = base.filter((a) => ["selected", "accepted"].includes(a.status)).length;
+    const offer = base.filter((a) => a.status === "selected").length;
+    const accepted = base.filter((a) => a.status === "accepted").length;
+    const waitlist = base.filter((a) => a.status === "waitlisted").length;
+    const sup = superseded.filter(matchesTier).length;
+    const mismatch = base.filter((a) => {
       const first = a.first_choice_label || a.tier_preference_labels?.[0];
       return first && a.assigned_permit_type_label && first !== a.assigned_permit_type_label;
     }).length;
     return { all: all.length, placed, offer, accepted, waitlist, superseded: sup, mismatch } as Record<DeskFilter, number>;
-  }, [apps, deskRows]);
+  }, [apps, deskRows, deskTier]);
 
   const caseSiblings = useMemo(() => {
     if (!caseApp) return [];
@@ -730,6 +749,7 @@ export default function LotteryV2Manager() {
     { title: "Year", dataIndex: "class_year", width: 72 },
     {
       title: "Wanted (#1)",
+      ellipsis: true,
       render: (_: unknown, r: Application) => {
         const first = r.first_choice_label || r.tier_preference_labels?.[0] || "—";
         const mismatch =
@@ -737,25 +757,30 @@ export default function LotteryV2Manager() {
           first !== "—" &&
           first !== r.assigned_permit_type_label;
         return (
-          <span>
-            {first}
-            {mismatch && (
-              <Tag color="orange" className="ml-1 m-0">
-                got other
-              </Tag>
-            )}
-          </span>
+          <Tooltip title={first !== "—" ? first : undefined}>
+            <span className="whitespace-nowrap">
+              {shortenTierLabel(first)}
+              {mismatch && (
+                <Tag color="orange" className="ml-1 m-0">
+                  got other
+                </Tag>
+              )}
+            </span>
+          </Tooltip>
         );
       },
     },
     {
       title: "Got",
+      ellipsis: true,
       render: (_: unknown, r: Application) =>
         r.assigned_permit_type_label ? (
-          <span>
-            {r.assigned_permit_type_label}
-            {r.assigned_lot ? ` · ${r.assigned_lot}` : ""}
-          </span>
+          <Tooltip title={r.assigned_permit_type_label}>
+            <span className="whitespace-nowrap">
+              {shortenTierLabel(r.assigned_permit_type_label)}
+              {r.assigned_lot ? ` · ${r.assigned_lot}` : ""}
+            </span>
+          </Tooltip>
         ) : r.status === "waitlisted" ? (
           <span className="text-gray-500">Waitlist</span>
         ) : (
@@ -831,16 +856,20 @@ export default function LotteryV2Manager() {
     {
       title: "1st Choice",
       dataIndex: "first_choice_label",
+      ellipsis: true,
       render: (v: string | null, r: Application) => {
         const prefs = r.tier_preference_labels || [];
         if (!v && prefs.length === 0) return "—";
+        const full = v || prefs[0];
         return (
-          <span title={prefs.length > 1 ? `Ranked: ${prefs.join(" → ")}` : undefined}>
-            {v || prefs[0]}
-            {prefs.length > 1 && (
-              <span className="text-gray-400 text-xs ml-1">(+{prefs.length - 1})</span>
-            )}
-          </span>
+          <Tooltip title={prefs.length > 1 ? `Ranked: ${prefs.join(" → ")}` : full}>
+            <span className="whitespace-nowrap">
+              {shortenTierLabel(full)}
+              {prefs.length > 1 && (
+                <span className="text-gray-400 text-xs ml-1">(+{prefs.length - 1})</span>
+              )}
+            </span>
+          </Tooltip>
         );
       },
     },
@@ -857,12 +886,15 @@ export default function LotteryV2Manager() {
     },
     {
       title: "Assigned",
+      ellipsis: true,
       render: (_: unknown, r: Application) =>
         r.assigned_permit_type_label ? (
-          <span>
-            {r.assigned_permit_type_label}
-            {r.assigned_lot ? ` · ${r.assigned_lot}` : ""}
-          </span>
+          <Tooltip title={r.assigned_permit_type_label}>
+            <span className="whitespace-nowrap">
+              {shortenTierLabel(r.assigned_permit_type_label)}
+              {r.assigned_lot ? ` · ${r.assigned_lot}` : ""}
+            </span>
+          </Tooltip>
         ) : r.waitlist_position != null ? (
           <span>Waitlist #{r.waitlist_position}</span>
         ) : (
@@ -924,6 +956,26 @@ export default function LotteryV2Manager() {
       },
     },
   ];
+
+  const waitlistByTier = useMemo(() => {
+    const waitlisted = deskRows.filter((a) => a.status === "waitlisted");
+    const groups: { label: string; short: string; cap: any; students: Application[] }[] = [];
+    const labels = tierChips.map((t) => t.label);
+    for (const tierLabel of labels) {
+      const chip = tierChips.find((t) => t.label === tierLabel);
+      const students = waitlisted
+        .filter((a) => wantsTier(a, tierLabel))
+        .sort((a, b) => (a.waitlist_position ?? 10_000) - (b.waitlist_position ?? 10_000));
+      if (students.length === 0) continue;
+      groups.push({
+        label: tierLabel,
+        short: tierLabel.replace(/ Resident$/i, ""),
+        cap: chip?.cap,
+        students,
+      });
+    }
+    return groups;
+  }, [deskRows, tierChips]);
 
   const firstChoiceDemand = Object.entries(
     apps.reduce<Record<string, number>>((acc, a) => {
@@ -997,87 +1049,111 @@ export default function LotteryV2Manager() {
                 </>
               ) : null}
             </div>
-            <Space wrap>
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Lifecycle</div>
+                <Space size={4}>
+                  <Button
+                    disabled={busy || active.status === "open" || active.status === "drawn"}
+                    onClick={() =>
+                      postAction(`/api/lottery-v2/cycles/${active.id}/open`, {
+                        auto_draw_threshold: autoThreshold ? autoThreshold / 100 : null,
+                        auto_draw_days: autoDays || null,
+                      })
+                    }
+                  >
+                    Open applications
+                  </Button>
+                  <Button
+                    disabled={busy || active.status !== "open"}
+                    onClick={() => postAction(`/api/lottery-v2/cycles/${active.id}/close`)}
+                  >
+                    Close window
+                  </Button>
+                  <Button
+                    type="primary"
+                    disabled={busy || active.status === "drawn" || active.application_count === 0}
+                    onClick={confirmRun}
+                  >
+                    Run draw
+                  </Button>
+                </Space>
+              </div>
+              <Divider type="vertical" className="h-8 self-end" />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Waitlist</div>
+                <Space size={4}>
+                  <Button
+                    disabled={busy || active.status !== "drawn"}
+                    onClick={() => {
+                      if (!active) return;
+                      modal.confirm({
+                        title: `Repair placements for "${active.name}"?`,
+                        content:
+                          "Removes duplicate offers, clears phantom waitlist rows for people who already won, demotes excess selected offers over capacity (re-places into lower prefs when possible), then fills remaining open seats. Emails newly selected students by default. Does not revoke accepted/paid permits.",
+                        okText: "Repair now",
+                        onOk: async () => {
+                          const data = await postAction(
+                            `/api/lottery-v2/cycles/${active.id}/repair`,
+                            { send_notifications: true },
+                          );
+                          if (data) {
+                            message.success(
+                              `Repair: ${data.newly_selected} newly selected, ${data.capacity_demoted ?? 0} over-cap demoted, ${data.superseded_waitlist ?? data.duplicates_demoted} duplicates cleared, ${data.remaining_waitlisted} still waitlisted`,
+                            );
+                          }
+                        },
+                      });
+                    }}
+                  >
+                    Repair
+                  </Button>
+                  <Button
+                    disabled={busy || active.status !== "drawn"}
+                    onClick={confirmNotifyWaitlist}
+                  >
+                    Email waitlist
+                  </Button>
+                  <Button
+                    disabled={busy || active.status !== "drawn"}
+                    onClick={confirmAdvanceWaitlist}
+                  >
+                    Advance
+                  </Button>
+                </Space>
+              </div>
+              <Divider type="vertical" className="h-8 self-end" />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Students</div>
+                <Space size={4}>
+                  <Button onClick={() => { setRecoverOpen(true); setRecoverResults(null); setRecoverEmail(""); }}>
+                    Recover
+                  </Button>
+                  <Button onClick={() => { setAddWaitlistOpen(true); setAddWaitlistEmail(""); loadAddWaitlistTiers("north"); setAddWaitlistCampus("north"); }}>
+                    Add to waitlist
+                  </Button>
+                </Space>
+              </div>
+              <Divider type="vertical" className="h-8 self-end" />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Reports</div>
+                <Space size={4}>
+                  <Button disabled={busy} onClick={loadCapacityAudit}>
+                    Capacity audit
+                  </Button>
+                  <Button disabled={busy} onClick={loadDupesReport}>
+                    Duplicates
+                  </Button>
+                </Space>
+              </div>
               <Button
-                disabled={busy || active.status === "open" || active.status === "drawn"}
-                onClick={() =>
-                  postAction(`/api/lottery-v2/cycles/${active.id}/open`, {
-                    auto_draw_threshold: autoThreshold ? autoThreshold / 100 : null,
-                    auto_draw_days: autoDays || null,
-                  })
-                }
-              >
-                Open applications
-              </Button>
-              <Button
-                disabled={busy || active.status !== "open"}
-                onClick={() => postAction(`/api/lottery-v2/cycles/${active.id}/close`)}
-              >
-                Close window
-              </Button>
-              <Button
-                type="primary"
-                disabled={busy || active.status === "drawn" || active.application_count === 0}
-                onClick={confirmRun}
-              >
-                Run draw
-              </Button>
-              <Button
-                disabled={busy || active.status !== "drawn"}
-                onClick={() => {
-                  if (!active) return;
-                  modal.confirm({
-                    title: `Repair placements for "${active.name}"?`,
-                    content:
-                      "Removes duplicate offers, clears phantom waitlist rows for people who already won, demotes excess selected offers over capacity (re-places into lower prefs when possible), then fills remaining open seats. Emails newly selected students by default. Does not revoke accepted/paid permits.",
-                    okText: "Repair now",
-                    onOk: async () => {
-                      const data = await postAction(
-                        `/api/lottery-v2/cycles/${active.id}/repair`,
-                        { send_notifications: true },
-                      );
-                      if (data) {
-                        message.success(
-                          `Repair: ${data.newly_selected} newly selected, ${data.capacity_demoted ?? 0} over-cap demoted, ${data.superseded_waitlist ?? data.duplicates_demoted} duplicates cleared, ${data.remaining_waitlisted} still waitlisted`,
-                        );
-                      }
-                    },
-                  });
-                }}
-              >
-                Repair waitlist
-              </Button>
-              <Button
-                disabled={busy || active.status !== "drawn"}
-                onClick={confirmNotifyWaitlist}
-              >
-                Email waitlist
-              </Button>
-              <Button
-                disabled={busy || active.status !== "drawn"}
-                onClick={confirmAdvanceWaitlist}
-              >
-                Advance waitlist
-              </Button>
-              <Button disabled={busy} onClick={loadCapacityAudit}>
-                Capacity audit
-              </Button>
-              <Button onClick={() => { setRecoverOpen(true); setRecoverResults(null); setRecoverEmail(""); }}>
-                Recover student
-              </Button>
-              <Button onClick={() => { setAddWaitlistOpen(true); setAddWaitlistEmail(""); loadAddWaitlistTiers("north"); setAddWaitlistCampus("north"); }}>
-                Add to waitlist
-              </Button>
-              <Button disabled={busy} onClick={loadDupesReport}>
-                Duplicates report
-              </Button>
-              <Button
+                className="ml-auto"
                 disabled={busy || !activeId}
                 onClick={() => activeId && loadDetail(activeId)}
               >
                 Refresh
               </Button>
-            </Space>
+            </div>
 
             {capacityAudit && (
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm space-y-3">
@@ -1469,12 +1545,25 @@ export default function LotteryV2Manager() {
           )}
 
           {showDesk && (
+            <Segmented
+              value={deskView}
+              onChange={(v) => setDeskView(v as DeskView)}
+              options={[
+                { label: "Placement Desk", value: "desk" },
+                { label: "Waitlist Queue", value: "queue" },
+                { label: "All Applications", value: "applications" },
+              ]}
+              className="mb-4"
+            />
+          )}
+
+          {showDesk && deskView === "desk" && (
             <Card
               title="Placement desk"
               size="small"
               extra={
                 <span className="text-xs text-gray-500">
-                  Search students · answer complaints · filter by seat
+                  Search students · answer complaints · filter by tier
                 </span>
               }
             >
@@ -1490,61 +1579,86 @@ export default function LotteryV2Manager() {
               <div className="flex flex-wrap gap-2 mb-3">
                 <Button
                   size="small"
-                  type={!deskTier && deskFilter !== "waitlist" ? "primary" : "default"}
-                  onClick={() => {
-                    setDeskTier(null);
-                    setDeskFilter("all");
-                  }}
+                  type={!deskTier ? "primary" : "default"}
+                  onClick={() => setDeskTier(null)}
                 >
                   All tiers
                 </Button>
-                {tierChips.map(({ label, count, waitCount, cap }) => {
-                  const short = label.replace(/ Resident$/i, "");
-                  const activeChip = deskTier === label && deskFilter === "waitlist";
+                {(() => {
+                  const withWait = tierChips.filter((t) => t.waitCount > 0);
+                  const withoutWait = tierChips.filter((t) => t.waitCount === 0);
                   return (
-                    <Button
-                      key={label}
-                      size="small"
-                      type={activeChip ? "primary" : "default"}
-                      danger={!!cap?.over_capacity}
-                      title={`Click to view the waitlist for ${short}`}
-                      onClick={() => {
-                        if (activeChip) {
-                          setDeskTier(null);
-                          setDeskFilter("all");
-                        } else {
-                          setDeskTier(label);
-                          setDeskFilter("waitlist");
-                        }
-                      }}
-                    >
-                      {short}: {count} placed
-                      {waitCount > 0 ? ` · ${waitCount} wait` : ""}
-                      {cap && waitCount === 0 ? ` · ${cap.remaining_vs_active} open` : ""}
-                    </Button>
+                    <>
+                      {withWait.map(({ label, count, waitCount, cap }) => {
+                        const short = label.replace(/ Resident$/i, "");
+                        return (
+                          <Badge key={label} count={waitCount} size="small" color="#d97706" offset={[-4, 0]}>
+                            <Button
+                              size="small"
+                              type={deskTier === label ? "primary" : "default"}
+                              danger={!!cap?.over_capacity}
+                              title={`${short}: ${count} placed · ${waitCount} waitlisted`}
+                              onClick={() => setDeskTier(deskTier === label ? null : label)}
+                            >
+                              {short}: {count}
+                            </Button>
+                          </Badge>
+                        );
+                      })}
+                      {withoutWait.map(({ label, count, cap }) => {
+                        const short = label.replace(/ Resident$/i, "");
+                        return (
+                          <Button
+                            key={label}
+                            size="small"
+                            type={deskTier === label ? "primary" : "default"}
+                            danger={!!cap?.over_capacity}
+                            title={`${short}: ${count} placed · ${cap?.remaining_vs_active ?? 0} open`}
+                            onClick={() => setDeskTier(deskTier === label ? null : label)}
+                          >
+                            {short}: {count}
+                            {cap ? ` · ${cap.remaining_vs_active} open` : ""}
+                          </Button>
+                        );
+                      })}
+                    </>
                   );
-                })}
-                <Button
-                  size="small"
-                  type={!deskTier && deskFilter === "waitlist" ? "primary" : "default"}
+                })()}
+                <Tag
+                  color={!deskTier && deskFilter === "waitlist" ? "blue" : "default"}
+                  className="cursor-pointer px-2 py-0.5 leading-6"
                   onClick={() => {
                     setDeskTier(null);
                     setDeskFilter("waitlist");
                   }}
                 >
                   All waitlists: {results?.live?.waitlisted_count ?? results?.waitlisted?.length ?? 0}
-                </Button>
+                </Tag>
               </div>
 
-              {deskFilter === "waitlist" && deskTier && (
-                <Alert
-                  type="info"
-                  showIcon
-                  className="mb-3"
-                  message={`Waitlist for ${deskTier.replace(/ Resident$/i, "")}`}
-                  description="Students still waiting who ranked this permit type (any preference). Ordered by waitlist position. Click the tier again to clear."
-                />
-              )}
+              {deskTier && (() => {
+                const chip = tierChips.find((t) => t.label === deskTier);
+                if (!chip) return null;
+                const short = deskTier.replace(/ Resident$/i, "");
+                return (
+                  <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between">
+                    <div className="text-sm">
+                      <strong>{short}</strong>
+                      <span className="text-gray-600 ml-3">
+                        {chip.count} placed
+                        {chip.cap ? ` · ${chip.cap.max_capacity} capacity` : ""}
+                        {chip.waitCount > 0 ? ` · ${chip.waitCount} waitlisted` : ""}
+                        {chip.cap && chip.cap.over_capacity && (
+                          <span className="text-red-600 font-medium ml-1">(over capacity)</span>
+                        )}
+                      </span>
+                    </div>
+                    <Button type="link" size="small" onClick={() => setDeskTier(null)}>
+                      Clear filter
+                    </Button>
+                  </div>
+                );
+              })()}
 
               <div className="flex flex-wrap gap-2 mb-4">
                 {(
@@ -1585,25 +1699,113 @@ export default function LotteryV2Manager() {
             </Card>
           )}
 
-          <Card title="All applications" size="small">
-            {firstChoiceDemand.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {firstChoiceDemand.map(([label, count]) => (
-                  <Tag key={label} color="blue">
-                    {label}: {count} first-choice
-                  </Tag>
-                ))}
-              </div>
-            )}
-            <Table
-              rowKey="id"
-              size="small"
-              loading={loading}
-              dataSource={apps}
-              columns={columns}
-              pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-            />
-          </Card>
+          {showDesk && deskView === "queue" && (
+            <Card title="Waitlist Queue" size="small" extra={
+              <span className="text-xs text-gray-500">
+                {deskRows.filter((a) => a.status === "waitlisted").length} students across {waitlistByTier.length} tiers
+              </span>
+            }>
+              {waitlistByTier.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">No students are currently waitlisted.</div>
+              ) : (
+                <div className="space-y-4">
+                  {waitlistByTier.map((group) => (
+                    <div key={group.label} className="border rounded-lg overflow-hidden">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b flex items-center justify-between">
+                        <div className="font-medium text-sm">
+                          {group.short}
+                          <span className="font-normal text-gray-500 ml-2">
+                            {group.students.length} waiting
+                            {group.cap ? ` · ${group.cap.max_capacity} capacity · ${group.cap.active_permits} active` : ""}
+                          </span>
+                        </div>
+                        {group.cap?.over_capacity && (
+                          <Tag color="red" className="m-0">Over capacity</Tag>
+                        )}
+                      </div>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-500 border-b bg-white">
+                            <th className="py-1.5 px-4 w-16">#</th>
+                            <th className="py-1.5 px-2">Student</th>
+                            <th className="py-1.5 px-2 w-16">Year</th>
+                            <th className="py-1.5 px-2">Wanted (#1)</th>
+                            <th className="py-1.5 px-2 w-24">Plate</th>
+                            <th className="py-1.5 px-2 w-40">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.students.map((a, idx) => (
+                            <tr key={a.id} className={`border-b border-gray-100 ${idx === 0 ? "bg-blue-50/50" : ""}`}>
+                              <td className="py-2 px-4">
+                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${idx === 0 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
+                                  {a.waitlist_position ?? "—"}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2">
+                                <button
+                                  type="button"
+                                  className="text-left bg-transparent border-0 p-0 cursor-pointer text-brand-primary hover:underline"
+                                  onClick={() => setCaseApp(a)}
+                                >
+                                  <div className="font-medium text-gray-900">{a.student_name}</div>
+                                  <div className="text-xs text-gray-500">{a.student_email}</div>
+                                </button>
+                              </td>
+                              <td className="py-2 px-2 text-gray-600">{a.class_year}</td>
+                              <td className="py-2 px-2">
+                                <Tooltip title={a.first_choice_label || a.tier_preference_labels?.[0]}>
+                                  <span className="text-gray-700">
+                                    {shortenTierLabel(a.first_choice_label || a.tier_preference_labels?.[0] || "—")}
+                                  </span>
+                                </Tooltip>
+                              </td>
+                              <td className="py-2 px-2 font-mono text-gray-600">{a.plate || "—"}</td>
+                              <td className="py-2 px-2">
+                                <Space size={0}>
+                                  <Button type="link" size="small" className="px-1" onClick={() => setCaseApp(a)}>
+                                    Case
+                                  </Button>
+                                  <Button type="link" size="small" className="px-1" disabled={busy} onClick={() => confirmBump(a)}>
+                                    Top
+                                  </Button>
+                                  <Button type="link" size="small" className="px-1" disabled={busy} onClick={() => openManualSelect(a)}>
+                                    Select
+                                  </Button>
+                                </Space>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {(!showDesk || deskView === "applications") && (
+            <Card title="All applications" size="small">
+              {firstChoiceDemand.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {firstChoiceDemand.map(([label, count]) => (
+                    <Tag key={label} color="blue">
+                      {label}: {count} first-choice
+                    </Tag>
+                  ))}
+                </div>
+              )}
+              <Table
+                rowKey="id"
+                size="small"
+                loading={loading}
+                dataSource={apps}
+                columns={columns}
+                pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+              />
+            </Card>
+          )}
         </>
       )}
 
