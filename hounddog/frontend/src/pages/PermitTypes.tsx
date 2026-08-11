@@ -380,7 +380,7 @@ export default function PermitTypes() {
       render: (_, pt) => {
         if (!pt.is_active) return <Tag color="red">Inactive</Tag>;
 
-        if (LOTTERY_TIER_CODES.has(pt.code)) {
+        if (pt.requires_lottery) {
           return (
             <div>
               <Tag color="purple">Lottery tier</Tag>
