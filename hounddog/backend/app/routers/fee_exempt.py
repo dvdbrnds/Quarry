@@ -915,6 +915,9 @@ async def issue_refund(
     if not permit:
         raise HTTPException(404, "Permit not found")
 
+    if permit.refund_id:
+        raise HTTPException(409, f"Refund already issued ({permit.refund_id})")
+
     pt_result = await db.execute(
         select(PermitType).where(PermitType.code == permit.permit_type)
     )

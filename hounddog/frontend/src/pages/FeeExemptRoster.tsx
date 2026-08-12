@@ -68,7 +68,7 @@ export default function FeeExemptRoster() {
   const [refundTotal, setRefundTotal] = useState("0.00");
   const [refundLoading, setRefundLoading] = useState(false);
   const [refundDebug, setRefundDebug] = useState<any>(null);
-  const [issuingRefund, setIssuingRefund] = useState<string | null>(null);
+  const [issuingRefund, setIssuingRefund] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("roster");
 
   const load = useCallback(async () => {
@@ -252,7 +252,8 @@ export default function FeeExemptRoster() {
   }
 
   async function handleIssueRefund(appId: string) {
-    setIssuingRefund(appId);
+    if (issuingRefund.has(appId)) return;
+    setIssuingRefund((prev) => new Set(prev).add(appId));
     try {
       const res = await fetch(`/api/admin/fee-exempt/refund-due/${appId}/issue-refund`, {
         method: "POST",
@@ -264,11 +265,17 @@ export default function FeeExemptRoster() {
       }
       const data = await res.json();
       message.success(`Refund of $${data.refund_amount} issued (${data.refund_id})`);
+      setRefundRows((prev) =>
+        prev.map((r) => (r.application_id === appId ? { ...r, refund_issued: true } : r))
+      );
       loadRefundDue();
     } catch (e: any) {
       message.error(e.message);
-    } finally {
-      setIssuingRefund(null);
+      setIssuingRefund((prev) => {
+        const next = new Set(prev);
+        next.delete(appId);
+        return next;
+      });
     }
   }
 
@@ -646,8 +653,8 @@ export default function FeeExemptRoster() {
                     type="primary"
                     size="small"
                     icon={<DollarOutlined />}
-                    loading={issuingRefund === r.application_id}
-                    disabled={!r.stripe_payment_id}
+                    loading={issuingRefund.has(r.application_id)}
+                    disabled={!r.stripe_payment_id || issuingRefund.has(r.application_id)}
                     onClick={() => handleIssueRefund(r.application_id)}
                   >
                     Issue Refund
