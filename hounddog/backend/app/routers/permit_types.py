@@ -57,7 +57,8 @@ async def list_permit_types(
             )
         )
         active_count = count_result.scalar() or 0
-        remaining = max(0, pt.max_capacity - active_count)
+        public_capacity = pt.max_capacity - (pt.reserved_spots or 0)
+        remaining = max(0, public_capacity - active_count)
         results.append(
             PermitTypeWithCount(
                 **{k: v for k, v in pt.__dict__.items() if not k.startswith("_")},
@@ -202,6 +203,7 @@ async def import_permit_types(
                 existing.eligible = row.eligible
                 existing.price = row.price
                 existing.max_capacity = row.max_capacity
+                existing.reserved_spots = row.reserved_spots
                 existing.valid_days = row.valid_days
                 existing.lot_assignments = row.lot_assignments
                 existing.time_restriction = row.time_restriction
@@ -216,6 +218,7 @@ async def import_permit_types(
                     eligible=row.eligible,
                     price=row.price,
                     max_capacity=row.max_capacity,
+                    reserved_spots=row.reserved_spots,
                     valid_days=row.valid_days,
                     lot_assignments=row.lot_assignments,
                     time_restriction=row.time_restriction,
@@ -329,7 +332,8 @@ async def run_lottery(
         )
     )).scalar() or 0
 
-    spots = max(0, pt.max_capacity - active_count - already_selected)
+    public_capacity = pt.max_capacity - (pt.reserved_spots or 0)
+    spots = max(0, public_capacity - active_count - already_selected)
 
     from ..services.lottery import get_strategy, assign_lots, distribute_capacity
     strategy = get_strategy(pt.lottery_strategy or "seniority_weighted")
@@ -710,7 +714,10 @@ async def simulate_lottery(
     if not candidates:
         raise HTTPException(400, "No applications to simulate with")
 
-    capacity = data.capacity_override if data.capacity_override else pt.max_capacity
+    if data.capacity_override:
+        capacity = data.capacity_override
+    else:
+        capacity = pt.max_capacity - (pt.reserved_spots or 0)
     spots = max(0, capacity)
 
     from ..services.lottery import get_strategy, assign_lots, distribute_capacity

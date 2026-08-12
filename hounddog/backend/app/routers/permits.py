@@ -96,7 +96,8 @@ async def live_status(
                 Permit.deleted_at.is_(None),
             )
         )).scalar() or 0
-        remaining = max(0, pt.max_capacity - active_count)
+        public_capacity = pt.max_capacity - (pt.reserved_spots or 0)
+        remaining = max(0, public_capacity - active_count)
         pct = round((active_count / pt.max_capacity * 100), 1) if pt.max_capacity > 0 else 0
         type_stats.append({
             "id": str(pt.id),
