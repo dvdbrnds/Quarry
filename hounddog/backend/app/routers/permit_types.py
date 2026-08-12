@@ -57,7 +57,7 @@ async def list_permit_types(
             )
         )
         active_count = count_result.scalar() or 0
-        public_capacity = pt.max_capacity - (pt.reserved_spots or 0)
+        public_capacity = pt.max_capacity - int(pt.max_capacity * (pt.reserved_pct or 0) / 100)
         remaining = max(0, public_capacity - active_count)
         results.append(
             PermitTypeWithCount(
@@ -203,7 +203,7 @@ async def import_permit_types(
                 existing.eligible = row.eligible
                 existing.price = row.price
                 existing.max_capacity = row.max_capacity
-                existing.reserved_spots = row.reserved_spots
+                existing.reserved_pct = row.reserved_pct
                 existing.valid_days = row.valid_days
                 existing.lot_assignments = row.lot_assignments
                 existing.time_restriction = row.time_restriction
@@ -218,7 +218,7 @@ async def import_permit_types(
                     eligible=row.eligible,
                     price=row.price,
                     max_capacity=row.max_capacity,
-                    reserved_spots=row.reserved_spots,
+                    reserved_pct=row.reserved_pct,
                     valid_days=row.valid_days,
                     lot_assignments=row.lot_assignments,
                     time_restriction=row.time_restriction,
@@ -332,7 +332,7 @@ async def run_lottery(
         )
     )).scalar() or 0
 
-    public_capacity = pt.max_capacity - (pt.reserved_spots or 0)
+    public_capacity = pt.max_capacity - int(pt.max_capacity * (pt.reserved_pct or 0) / 100)
     spots = max(0, public_capacity - active_count - already_selected)
 
     from ..services.lottery import get_strategy, assign_lots, distribute_capacity
@@ -717,7 +717,7 @@ async def simulate_lottery(
     if data.capacity_override:
         capacity = data.capacity_override
     else:
-        capacity = pt.max_capacity - (pt.reserved_spots or 0)
+        capacity = pt.max_capacity - int(pt.max_capacity * (pt.reserved_pct or 0) / 100)
     spots = max(0, capacity)
 
     from ..services.lottery import get_strategy, assign_lots, distribute_capacity

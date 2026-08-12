@@ -18,7 +18,7 @@ class PermitType(Base):
     eligible: Mapped[str] = mapped_column(String(512), default="")
     price: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("0.00"))
     max_capacity: Mapped[int] = mapped_column(Integer, default=0)
-    reserved_spots: Mapped[int] = mapped_column(Integer, default=0)
+    reserved_pct: Mapped[int] = mapped_column(Integer, default=0)
     valid_days: Mapped[int] = mapped_column(Integer, default=365)
     lot_assignments: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     time_restriction: Mapped[str | None] = mapped_column(String(64), nullable=True)
