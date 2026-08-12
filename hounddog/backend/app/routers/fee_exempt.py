@@ -814,6 +814,25 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
 
         seen_emails.add(email_key)
 
+        already_refunded = bool(permit.refund_id) or refund_notes.get(email_key, False)
+
+        # Backfill: check Stripe for existing refunds if we don't have a local record
+        if not already_refunded and stripe_id and settings.stripe_secret_key:
+            try:
+                import stripe as _stripe
+                _stripe.api_key = settings.stripe_secret_key
+                resolve_id = stripe_id
+                if resolve_id.startswith("cs_"):
+                    sess = _stripe.checkout.Session.retrieve(resolve_id)
+                    resolve_id = sess.payment_intent
+                if resolve_id:
+                    refunds = _stripe.Refund.list(payment_intent=resolve_id, limit=1)
+                    if refunds.data:
+                        permit.refund_id = refunds.data[0].id
+                        already_refunded = True
+            except Exception:
+                pass
+
         rows.append(RefundDueRow(
             application_id=str(permit.id),
             student_name=permit.name,
@@ -825,7 +844,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
             refund_amount=str(overpaid),
             permit_number=permit.permit_number,
             stripe_payment_id=stripe_id,
-            refund_issued=bool(permit.refund_id) or refund_notes.get(email_key, False),
+            refund_issued=already_refunded,
         ))
         total += overpaid
 
