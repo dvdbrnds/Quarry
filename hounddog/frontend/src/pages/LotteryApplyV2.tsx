@@ -125,6 +125,7 @@ interface Application {
   status: string;
   lottery_rank: number | null;
   waitlist_position: number | null;
+  phone: string | null;
   offer_expires_at: string | null;
   fee_exempt?: boolean;
   is_upgrade?: boolean;
@@ -440,6 +441,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       ) {
         setApplication(appBody);
         setStep("done");
+        if (appBody.plate) setPlate(appBody.plate);
+        if (appBody.plate_state) setPlateState(appBody.plate_state);
+        if (appBody.phone) setPhone(appBody.phone);
+        if (appBody.student_name) setStudentName(appBody.student_name);
+        if (appBody.class_year) setClassYear(appBody.class_year);
         if (appBody.campus) loadTiers(appBody.campus, appBody.class_year);
       } else {
         setApplication(null);

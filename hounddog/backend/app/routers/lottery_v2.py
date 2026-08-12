@@ -109,6 +109,7 @@ class ApplicationRead(BaseModel):
     campus: str
     plate: str
     plate_state: str
+    phone: str | None = None
     tier_preferences: list[uuid.UUID]
     tier_preference_labels: list[str] = []
     first_choice_label: str | None = None
@@ -203,6 +204,7 @@ async def _app_to_read(
         campus=app.campus,
         plate=app.plate,
         plate_state=app.plate_state or "",
+        phone=app.phone,
         tier_preferences=prefs,
         tier_preference_labels=preference_labels,
         first_choice_label=preference_labels[0] if preference_labels else None,
