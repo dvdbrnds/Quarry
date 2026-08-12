@@ -525,7 +525,7 @@ function ConfirmationCard({
               <tbody>
                 <tr className="border-b">
                   <td className="py-2 text-gray-500">Permit #</td>
-                  <td className="py-2 font-semibold text-right">{result.permit_number || "\u2014"}</td>
+                  <td className="py-2 font-semibold text-right">{result.permit_number || "-"}</td>
                 </tr>
                 <tr className="border-b">
                   <td className="py-2 text-gray-500">Name</td>
@@ -539,7 +539,7 @@ function ConfirmationCard({
                   <td className="py-2 text-gray-500">Valid</td>
                   <td className="py-2 text-right">
                     {result.start_date}
-                    {result.end_date && result.end_date !== result.start_date && ` \u2014 ${result.end_date}`}
+                    {result.end_date && result.end_date !== result.start_date && ` - ${result.end_date}`}
                   </td>
                 </tr>
                 <tr>

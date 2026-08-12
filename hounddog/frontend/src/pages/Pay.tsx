@@ -50,7 +50,7 @@ export default function Pay() {
       if (res.status === 404) {
         if (attempt < MAX_RETRIES) {
           setRetrying(true);
-          setError("Ticket is being processed. Checking again shortly\u2026");
+          setError("Ticket is being processed. Checking again shortly...");
           const abort = new AbortController();
           retryAbort.current = abort;
           await new Promise<void>((resolve, reject) => {
@@ -60,7 +60,7 @@ export default function Pay() {
           return loadTicketById(id, attempt + 1);
         }
         setRetrying(false);
-        setError("Ticket not found. It may still be syncing \u2014 please try again in a minute.");
+        setError("Ticket not found. It may still be syncing - please try again in a minute.");
         return;
       }
       setRetrying(false);
