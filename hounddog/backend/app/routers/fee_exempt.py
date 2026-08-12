@@ -958,7 +958,6 @@ async def issue_refund(
     import stripe
     stripe.api_key = settings.stripe_secret_key
 
-    stripe_id = payment.stripe_payment_id
     try:
         if stripe_id.startswith("cs_"):
             session = stripe.checkout.Session.retrieve(stripe_id)
