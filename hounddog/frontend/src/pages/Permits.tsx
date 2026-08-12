@@ -123,9 +123,7 @@ function PermitForm({
   function handleTypeChange(code: string | undefined) {
     setSelectedTypeCode(code);
     const pt = permitTypes.find((p) => p.code === code);
-    if (pt?.lot_assignments?.length) {
-      form.setFieldsValue({ lot_assignment: [...pt.lot_assignments] });
-    }
+    form.setFieldsValue({ lot_assignment: pt?.lot_assignments?.length ? [...pt.lot_assignments] : [] });
   }
 
   async function validateVoucher() {

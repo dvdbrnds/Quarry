@@ -635,8 +635,8 @@ async def reassign_permit(
     diff = new_price - old_price
 
     new_lots = data.lot_assignment
-    if new_lots is None and new_pt.lot_assignments:
-        new_lots = ", ".join(new_pt.lot_assignments)
+    if new_lots is None:
+        new_lots = ", ".join(new_pt.lot_assignments) if new_pt.lot_assignments else ""
 
     result: dict = {
         "permit_id": str(permit.id),
@@ -706,8 +706,7 @@ async def reassign_permit(
 
         # Update the permit immediately
         permit.permit_type = new_pt.code
-        if new_lots:
-            permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
+        permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
         permit.stripe_session_id = session.id
         await db.flush()
         await _notify_permit_change("updated", 1)
@@ -803,8 +802,7 @@ async def reassign_permit(
 
         # Update the permit regardless of refund success
         permit.permit_type = new_pt.code
-        if new_lots:
-            permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
+        permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
         await db.flush()
         await _notify_permit_change("updated", 1)
 
@@ -813,8 +811,7 @@ async def reassign_permit(
     else:
         # ── Same price: just update ──
         permit.permit_type = new_pt.code
-        if new_lots:
-            permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
+        permit.lot_assignment = effective_lot_assignment(new_lots, list(new_pt.lot_assignments or []))
         await db.flush()
         await _notify_permit_change("updated", 1)
 
