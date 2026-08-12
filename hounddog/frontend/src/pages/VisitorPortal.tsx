@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -10,7 +10,6 @@ import {
   App,
   Alert,
   Select,
-  type FormInstance,
 } from "antd";
 import dayjs from "dayjs";
 import { useBranding } from "../useBranding";
@@ -18,8 +17,6 @@ import PublicPageNav from "../components/PublicPageNav";
 import StudentLotMap from "../components/StudentLotMap";
 import { loadConfig } from "../auth";
 import type { Lot } from "../api";
-
-type Step = "intake" | "details" | "done";
 
 interface VisitorPreset {
   id: string;
@@ -102,19 +99,19 @@ export default function VisitorPortal() {
 function VisitorFlow() {
   const brand = useBranding();
   const { message } = App.useApp();
-  const [step, setStep] = useState<Step>("intake");
-  const [name, setName] = useState("");
-  const [plate, setPlate] = useState("");
-  const [plateState, setPlateState] = useState("PA");
+  const [form] = Form.useForm();
+  const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<PermitResult | null>(null);
-  const [detailsForm] = Form.useForm();
   const [visitorLots, setVisitorLots] = useState<Lot[]>([]);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
   const [mapLoading, setMapLoading] = useState(true);
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
   const [presets, setPresets] = useState<VisitorPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  const usingPreset = selectedPreset !== null && selectedPreset !== "__other__";
 
   useEffect(() => {
     (async () => {
@@ -167,23 +164,38 @@ function VisitorFlow() {
 
   const showMap = Boolean(mapsApiKey && visitorLots.length > 0);
 
-  const continueToDetails = useCallback(() => {
-    if (!name.trim() || !plate.trim()) {
+  function handlePresetChange(value: string) {
+    setSelectedPreset(value);
+    if (value === "__other__") {
+      form.setFieldsValue({ _preset_id: undefined, company_name: "", work_description: "" });
+    } else {
+      const p = presets.find((pr) => pr.id === value);
+      if (p) {
+        form.setFieldsValue({
+          _preset_id: p.id,
+          company_name: p.company_name,
+          work_description: p.label,
+        });
+      }
+    }
+  }
+
+  async function submitForm(values: Record<string, unknown>) {
+    const name = String(values.name || "").trim();
+    const plate = String(values.plate || "").trim().toUpperCase();
+    if (!name || !plate) {
       message.warning("Name and license plate are required");
       return;
     }
-    setStep("details");
-  }, [name, plate, message]);
 
-  async function submitDetails(values: Record<string, unknown>) {
     setSubmitting(true);
     try {
       const presetId = values._preset_id as string | undefined;
       const payload = {
         visitor_type: "visitor",
-        name: name.trim(),
-        plate: plate.trim().toUpperCase(),
-        plate_state: plateState.trim().toUpperCase(),
+        name,
+        plate,
+        plate_state: String(values.plate_state || "PA").trim().toUpperCase() || "PA",
         email: (values.email as string) || "",
         phone: (values.phone as string) || "",
         company_name: String(values.company_name || "").trim() || "Visitor",
@@ -218,7 +230,7 @@ function VisitorFlow() {
       }
       const data: PermitResult = await res.json();
       setResult(data);
-      setStep("done");
+      setDone(true);
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : "Failed to create permit");
     } finally {
@@ -227,13 +239,12 @@ function VisitorFlow() {
   }
 
   function startOver() {
-    setStep("intake");
+    setDone(false);
     setResult(null);
-    setName("");
-    setPlate("");
-    setPlateState("PA");
     setFocusedLot(null);
-    detailsForm.resetFields();
+    setSelectedPreset(null);
+    form.resetFields();
+    form.setFieldsValue({ plate_state: "PA", start_date: dayjs(), end_date: dayjs() });
   }
 
   const mapPanel = showMap && (
@@ -264,9 +275,18 @@ function VisitorFlow() {
             )}
 
             <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
-              {step === "intake" && (
-                <Card title="1. About you">
-                  <Form layout="vertical" onFinish={continueToDetails}>
+              {done && result ? (
+                <ConfirmationCard result={result} onStartOver={startOver} />
+              ) : (
+                <Card title="Visitor parking request">
+                  <Form
+                    form={form}
+                    layout="vertical"
+                    onFinish={submitForm}
+                    initialValues={{ plate_state: "PA", start_date: dayjs(), end_date: dayjs() }}
+                  >
+                    <Form.Item name="_preset_id" hidden><Input /></Form.Item>
+
                     <Alert
                       type="info"
                       showIcon
@@ -274,71 +294,156 @@ function VisitorFlow() {
                       message="Visitor parking requires a campus sponsor"
                       description="All visitors (guests, vendors, and contractors) need a Moravian staff or faculty sponsor to approve their parking request."
                     />
-                    <Form.Item label="Full name" required>
-                      <Input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Jane Smith"
-                      />
+
+                    <Form.Item
+                      name="name"
+                      label="Full name"
+                      rules={[{ required: true, message: "Name is required" }]}
+                    >
+                      <Input placeholder="Jane Smith" />
                     </Form.Item>
-                    <Form.Item label="License plate" required>
-                      <Input
-                        value={plate}
-                        onChange={(e) => setPlate(e.target.value.toUpperCase())}
-                        className="font-mono"
-                        maxLength={12}
-                        placeholder="ABC1234"
-                      />
+
+                    <Form.Item
+                      name="plate"
+                      label="License plate"
+                      rules={[{ required: true, message: "License plate is required" }]}
+                      getValueFromEvent={(e) => e.target.value.toUpperCase()}
+                    >
+                      <Input className="font-mono" maxLength={12} placeholder="ABC1234" />
                     </Form.Item>
-                    <Form.Item label="State">
-                      <Input
-                        value={plateState}
-                        onChange={(e) => setPlateState(e.target.value.toUpperCase())}
-                        className="font-mono"
-                        maxLength={2}
-                        placeholder="PA"
-                      />
+
+                    <Form.Item
+                      name="plate_state"
+                      label="State"
+                      getValueFromEvent={(e) => e.target.value.toUpperCase()}
+                    >
+                      <Input className="font-mono" maxLength={2} placeholder="PA" />
                     </Form.Item>
+
+                    <Form.Item name="email" label="Your email">
+                      <Input type="email" placeholder="you@example.com" />
+                    </Form.Item>
+
+                    <Form.Item name="phone" label="Phone">
+                      <Input placeholder="610-555-0123" />
+                    </Form.Item>
+
+                    {presets.length > 0 && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <Form.Item
+                          label={<span className="text-base font-semibold">Are you with one of our regular campus partners?</span>}
+                          className="mb-0"
+                          extra="Select your organization to speed up the approval process."
+                        >
+                          <Select
+                            size="large"
+                            placeholder="Select your organization or choose Other"
+                            value={selectedPreset ?? undefined}
+                            onChange={handlePresetChange}
+                            allowClear
+                            onClear={() => {
+                              setSelectedPreset(null);
+                              form.setFieldsValue({ _preset_id: undefined, company_name: "" });
+                            }}
+                            options={[
+                              ...presets.map((p) => ({ value: p.id, label: p.label })),
+                              { value: "__other__", label: "Other / not listed" },
+                            ]}
+                          />
+                        </Form.Item>
+                      </div>
+                    )}
+
+                    {usingPreset && (
+                      <Alert
+                        type="info"
+                        showIcon
+                        className="mb-4"
+                        message="Your campus sponsor will be notified automatically"
+                        description="Once you submit, an approval email will be sent to your organization's campus contact. No additional sponsor information is needed."
+                      />
+                    )}
+
+                    {selectedPreset === "__other__" || (presets.length === 0 && !usingPreset) ? (
+                      <>
+                        <Alert
+                          type="warning"
+                          showIcon
+                          className="mb-4"
+                          message="Campus sponsor required"
+                          description="A Moravian staff or faculty member must approve your parking request. They will receive an email to confirm."
+                        />
+
+                        <Form.Item name="company_name" label="Company or organization (optional)">
+                          <Input placeholder="ABC Plumbing, Sodexo, or leave blank if visiting as a guest" />
+                        </Form.Item>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <Form.Item name="start_date" label="Start date">
+                            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+                          </Form.Item>
+                          <Form.Item name="end_date" label="End date">
+                            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+                          </Form.Item>
+                        </div>
+
+                        <div className="border-t pt-4 mt-2">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-2">Campus sponsor</h4>
+                          <p className="text-xs text-gray-500 mb-4">
+                            Enter the Moravian staff or faculty member who can approve your parking. They will
+                            receive an email to confirm.
+                          </p>
+                          <Form.Item
+                            name="sponsor_name"
+                            label="Sponsor name"
+                            rules={[{ required: true, message: "Sponsor name required" }]}
+                          >
+                            <Input placeholder="Mary Johnson" />
+                          </Form.Item>
+                          <Form.Item
+                            name="sponsor_email"
+                            label="Sponsor email (moravian.edu)"
+                            rules={[
+                              { required: true, message: "Sponsor email required" },
+                              { type: "email", message: "Enter a valid email" },
+                            ]}
+                          >
+                            <Input placeholder="johnsonm@moravian.edu" />
+                          </Form.Item>
+                          <Form.Item name="sponsor_department" label="Department">
+                            <Input placeholder="Facilities, IT, Athletics, etc." />
+                          </Form.Item>
+                        </div>
+
+                        <Form.Item name="work_description" label="Reason for visit">
+                          <Input.TextArea
+                            rows={3}
+                            placeholder="Guest visit, delivery, vendor work, conference, etc."
+                          />
+                        </Form.Item>
+                      </>
+                    ) : null}
+
+                    {/* Partner selected but not "other": ready to submit */}
+                    {/* No partner choice yet when presets exist: still allow submit only after choice? Keep submit always; backend requires sponsor unless preset */}
+                    {presets.length > 0 && selectedPreset === null && (
+                      <p className="text-xs text-gray-500 mb-4">
+                        Select a campus partner above, or choose Other / not listed, to continue.
+                      </p>
+                    )}
+
                     <Button
                       type="primary"
                       htmlType="submit"
-                      disabled={!name.trim() || !plate.trim()}
-                      style={{ background: brand.primaryColor }}
+                      loading={submitting}
                       block
+                      style={{ background: brand.primaryColor }}
+                      disabled={presets.length > 0 && selectedPreset === null}
                     >
-                      Continue
+                      Submit for sponsor approval
                     </Button>
                   </Form>
                 </Card>
-              )}
-
-              {step === "details" && (
-                <Card
-                  title="2. Visit details"
-                  extra={
-                    <Button
-                      type="link"
-                      onClick={() => {
-                        setStep("intake");
-                        setFocusedLot(null);
-                      }}
-                    >
-                      Back
-                    </Button>
-                  }
-                >
-                  <VisitorDetails
-                    form={detailsForm}
-                    onSubmit={submitDetails}
-                    submitting={submitting}
-                    brand={brand}
-                    presets={presets}
-                  />
-                </Card>
-              )}
-
-              {step === "done" && result && (
-                <ConfirmationCard result={result} onStartOver={startOver} />
               )}
             </div>
 
@@ -353,154 +458,6 @@ function VisitorFlow() {
         )}
       </main>
     </div>
-  );
-}
-
-function VisitorDetails({
-  form,
-  onSubmit,
-  submitting,
-  brand,
-  presets,
-}: {
-  form: FormInstance;
-  onSubmit: (values: Record<string, unknown>) => void;
-  submitting: boolean;
-  brand: { primaryColor: string };
-  presets: VisitorPreset[];
-}) {
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const usingPreset = selectedPreset !== null && selectedPreset !== "__other__";
-
-  const handlePresetChange = (value: string) => {
-    setSelectedPreset(value);
-    if (value === "__other__") {
-      form.setFieldsValue({ _preset_id: undefined, company_name: "", work_description: "" });
-    } else {
-      const p = presets.find((pr) => pr.id === value);
-      if (p) {
-        form.setFieldsValue({
-          _preset_id: p.id,
-          company_name: p.company_name,
-          work_description: p.label,
-        });
-      }
-    }
-  };
-
-  return (
-    <Form form={form} layout="vertical" onFinish={onSubmit} initialValues={{ start_date: dayjs(), end_date: dayjs() }}>
-      <Form.Item name="_preset_id" hidden><Input /></Form.Item>
-
-      {presets.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-          <Form.Item
-            label={<span className="text-base font-semibold">Are you with one of our regular campus partners?</span>}
-            className="mb-0"
-            extra="Select your organization to speed up the approval process."
-          >
-            <Select
-              size="large"
-              placeholder="Select your organization or choose Other"
-              value={selectedPreset ?? undefined}
-              onChange={handlePresetChange}
-              allowClear
-              onClear={() => { setSelectedPreset(null); form.setFieldsValue({ _preset_id: undefined, company_name: "" }); }}
-              options={[
-                ...presets.map((p) => ({ value: p.id, label: p.label })),
-                { value: "__other__", label: "Other / not listed" },
-              ]}
-            />
-          </Form.Item>
-        </div>
-      )}
-
-      {usingPreset && (
-        <Alert
-          type="info"
-          showIcon
-          className="mb-4"
-          message="Your campus sponsor will be notified automatically"
-          description="Once you submit, an approval email will be sent to your organization's campus contact. No additional sponsor information is needed."
-        />
-      )}
-
-      {!usingPreset && (
-        <Alert
-          type="warning"
-          showIcon
-          className="mb-4"
-          message="Campus sponsor required"
-          description="A Moravian staff or faculty member must approve your parking request. They will receive an email to confirm."
-        />
-      )}
-
-      {!usingPreset && (
-        <Form.Item name="company_name" label="Company or organization (optional)">
-          <Input placeholder="ABC Plumbing, Sodexo, or leave blank if visiting as a guest" />
-        </Form.Item>
-      )}
-
-      <Form.Item name="email" label="Your email">
-        <Input type="email" placeholder="you@example.com" />
-      </Form.Item>
-      <Form.Item name="phone" label="Phone">
-        <Input placeholder="610-555-0123" />
-      </Form.Item>
-      {!usingPreset && (
-        <div className="grid grid-cols-2 gap-3">
-          <Form.Item name="start_date" label="Start date">
-            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-          </Form.Item>
-          <Form.Item name="end_date" label="End date">
-            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-          </Form.Item>
-        </div>
-      )}
-
-      {!usingPreset && (
-        <div className="border-t pt-4 mt-2">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Campus sponsor</h4>
-          <p className="text-xs text-gray-500 mb-4">
-            Enter the Moravian staff or faculty member who can approve your parking. They will
-            receive an email to confirm.
-          </p>
-          <Form.Item
-            name="sponsor_name"
-            label="Sponsor name"
-            rules={[{ required: !usingPreset, message: "Sponsor name required" }]}
-          >
-            <Input placeholder="Mary Johnson" />
-          </Form.Item>
-          <Form.Item
-            name="sponsor_email"
-            label="Sponsor email (moravian.edu)"
-            rules={[
-              { required: !usingPreset, message: "Sponsor email required" },
-              { type: "email", message: "Enter a valid email" },
-            ]}
-          >
-            <Input placeholder="johnsonm@moravian.edu" />
-          </Form.Item>
-          <Form.Item name="sponsor_department" label="Department">
-            <Input placeholder="Facilities, IT, Athletics, etc." />
-          </Form.Item>
-        </div>
-      )}
-
-      {!usingPreset && (
-        <Form.Item name="work_description" label="Reason for visit">
-          <Input.TextArea
-            rows={3}
-            placeholder="Guest visit, delivery, vendor work, conference, etc."
-          />
-        </Form.Item>
-      )}
-
-      <Button type="primary" htmlType="submit" loading={submitting} block style={{ background: brand.primaryColor }}>
-        Submit for sponsor approval
-      </Button>
-    </Form>
   );
 }
 
