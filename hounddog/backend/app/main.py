@@ -477,6 +477,7 @@ async def lifespan(app: FastAPI):
             "UPDATE permit_types SET valid_days = 365 WHERE code = 'faculty_staff' AND valid_days = 730",
             "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS department_name VARCHAR(256) DEFAULT 'Parking Authority'",
             "UPDATE branding_settings SET department_name = 'Parking Authority' WHERE department_name IS NULL OR department_name = ''",
+            "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS vouchers_enabled BOOLEAN DEFAULT TRUE",
             # Multi-permit & vehicle swap
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS last_plate_change TIMESTAMPTZ",
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS allow_multiple BOOLEAN DEFAULT FALSE",

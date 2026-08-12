@@ -5,6 +5,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import ChargebackLog from "./ChargebackLog";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -656,6 +657,11 @@ export default function Finance() {
               </Card>
             </>
           ),
+        },
+        {
+          key: "chargebacks",
+          label: "Department Chargebacks",
+          children: <ChargebackLog />,
         },
         {
           key: "tools", label: "Import / Export",

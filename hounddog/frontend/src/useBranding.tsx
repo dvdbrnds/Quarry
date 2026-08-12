@@ -9,6 +9,7 @@ export interface Branding {
   faviconUrl: string;
   schoolName: string;
   departmentName: string;
+  vouchersEnabled: boolean;
 }
 
 const DEFAULTS: Branding = {
@@ -19,6 +20,7 @@ const DEFAULTS: Branding = {
   faviconUrl: "/favicon.png",
   schoolName: "",
   departmentName: "Parking Authority",
+  vouchersEnabled: true,
 };
 
 const BrandingContext = createContext<Branding>(DEFAULTS);
@@ -38,6 +40,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           faviconUrl: data.favicon_url || DEFAULTS.faviconUrl,
           schoolName: data.school_name ?? DEFAULTS.schoolName,
           departmentName: data.department_name ?? DEFAULTS.departmentName,
+          vouchersEnabled: data.vouchers_enabled ?? DEFAULTS.vouchersEnabled,
         });
       })
       .catch(() => {});

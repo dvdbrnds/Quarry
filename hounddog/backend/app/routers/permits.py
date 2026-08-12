@@ -352,7 +352,10 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
     applied_voucher = None
     if data.voucher_code:
         from ..models.voucher import Voucher
-        from .vouchers import _validate_voucher
+        from .vouchers import _validate_voucher, vouchers_are_enabled
+
+        if not await vouchers_are_enabled(db):
+            raise HTTPException(400, "Vouchers are not enabled for this school.")
 
         voucher_result = await db.execute(
             select(Voucher).where(func.upper(Voucher.code) == data.voucher_code.upper().strip())

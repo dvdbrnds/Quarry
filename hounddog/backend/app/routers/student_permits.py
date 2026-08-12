@@ -709,6 +709,9 @@ async def direct_purchase(
         applied_voucher = voucher_result.scalar()
         if not applied_voucher:
             raise HTTPException(400, "Invalid voucher code.")
+        from ..routers.vouchers import vouchers_are_enabled
+        if not await vouchers_are_enabled(db):
+            raise HTTPException(400, "Vouchers are not enabled for this school.")
         error = _validate_voucher(applied_voucher, pt.code)
         if error:
             raise HTTPException(400, error)

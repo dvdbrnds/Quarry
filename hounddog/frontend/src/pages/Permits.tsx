@@ -15,6 +15,7 @@ import FeeExemptRoster from "./FeeExemptRoster";
 import DiscountRoster from "./DiscountRoster";
 import VoucherManager from "./VoucherManager";
 import VisitorPresets from "./VisitorPresets";
+import { useBranding } from "../useBranding";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -52,6 +53,7 @@ function PermitForm({
   onSave: () => void; onCancel: () => void;
 }) {
   const { message } = App.useApp();
+  const { vouchersEnabled } = useBranding();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [waiveFee, setWaiveFee] = useState(false);
@@ -391,22 +393,26 @@ function PermitForm({
             </div>
             {!waiveFee && (
               <>
-                <div className="flex gap-2 mb-2">
-                  <Input
-                    size="small"
-                    placeholder="Voucher code (optional)"
-                    value={voucherCode}
-                    onChange={e => { setVoucherCode(e.target.value); setVoucherValid(false); setVoucherDiscount(null); }}
-                    onPressEnter={e => { e.preventDefault(); validateVoucher(); }}
-                    className="max-w-[200px]"
-                  />
-                  <Button size="small" onClick={validateVoucher} loading={validatingVoucher}
-                    disabled={!voucherCode.trim() || !selectedTypeCode}>
-                    Apply
-                  </Button>
-                </div>
-                {voucherValid && voucherDiscount && (
-                  <p className="text-xs text-green-600 m-0 mb-2">{voucherDiscount.message}</p>
+                {vouchersEnabled && (
+                  <>
+                    <div className="flex gap-2 mb-2">
+                      <Input
+                        size="small"
+                        placeholder="Voucher code (optional)"
+                        value={voucherCode}
+                        onChange={e => { setVoucherCode(e.target.value); setVoucherValid(false); setVoucherDiscount(null); }}
+                        onPressEnter={e => { e.preventDefault(); validateVoucher(); }}
+                        className="max-w-[200px]"
+                      />
+                      <Button size="small" onClick={validateVoucher} loading={validatingVoucher}
+                        disabled={!voucherCode.trim() || !selectedTypeCode}>
+                        Apply
+                      </Button>
+                    </div>
+                    {voucherValid && voucherDiscount && (
+                      <p className="text-xs text-green-600 m-0 mb-2">{voucherDiscount.message}</p>
+                    )}
+                  </>
                 )}
                 {finalPrice !== basePrice && (
                   <p className="text-sm m-0">
@@ -443,6 +449,7 @@ export default function Permits() {
   const { modal, message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
+  const { vouchersEnabled } = useBranding();
 
   const initTab =
     location.hash === "#lottery" || location.hash === "#lottery-v2"
@@ -455,7 +462,7 @@ export default function Permits() {
             ? "fee-exempt"
             : location.hash === "#absn" || location.hash === "#discounts"
               ? "discounts"
-            : location.hash === "#vouchers" || location.hash === "#coupons"
+            : (location.hash === "#vouchers" || location.hash === "#coupons") && vouchersEnabled
               ? "vouchers"
               : "permits";
   const [tab, setTab] = useState(initTab);
@@ -601,22 +608,7 @@ export default function Permits() {
     { label: "Revoked", value: stats.revoked, filter: "revoked", color: undefined },
   ] : [];
 
-  return (
-    <div>
-      <Tabs
-        activeKey={tab}
-        onChange={(key) => {
-          setTab(key);
-          window.location.hash =
-            key === "permits" ? ""
-            : key === "lottery" ? "lottery"
-            : key === "live" ? "live"
-            : key === "fee-exempt" ? "fee-exempt"
-            : key === "discounts" ? "absn"
-            : key === "vouchers" ? "vouchers"
-            : "types";
-        }}
-        items={[
+  const permitTabs = [
           {
             key: "permits",
             label: "Permits",
@@ -796,17 +788,34 @@ export default function Permits() {
             label: "ABSN Discount",
             children: <DiscountRoster />,
           },
-          {
+          ...(vouchersEnabled ? [{
             key: "vouchers",
             label: "Vouchers",
             children: <VoucherManager />,
-          },
+          }] : []),
           {
             key: "live",
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
           },
-        ]}
+  ];
+
+  return (
+    <div>
+      <Tabs
+        activeKey={tab === "vouchers" && !vouchersEnabled ? "permits" : tab}
+        onChange={(key) => {
+          setTab(key);
+          window.location.hash =
+            key === "permits" ? ""
+            : key === "lottery" ? "lottery"
+            : key === "live" ? "live"
+            : key === "fee-exempt" ? "fee-exempt"
+            : key === "discounts" ? "absn"
+            : key === "vouchers" ? "vouchers"
+            : "types";
+        }}
+        items={permitTabs}
       />
     </div>
   );

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user_or_impersonated, require_admin
 from ..database import get_db
+from ..models.branding_settings import BrandingSettings
 from ..models.voucher import Voucher
 from ..models.voucher_usage import VoucherUsage
 
@@ -71,6 +72,14 @@ class VoucherValidateResponse(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+async def vouchers_are_enabled(db: AsyncSession) -> bool:
+    result = await db.execute(select(BrandingSettings).where(BrandingSettings.id == 1))
+    row = result.scalar()
+    if not row or row.vouchers_enabled is None:
+        return True
+    return bool(row.vouchers_enabled)
+
+
 def _to_read(c: Voucher) -> VoucherRead:
     return VoucherRead(
         id=str(c.id),
@@ -111,6 +120,8 @@ async def list_vouchers(db: AsyncSession = Depends(get_db)):
 
 @admin_router.post("", response_model=VoucherRead, status_code=201)
 async def create_voucher(data: VoucherCreate, db: AsyncSession = Depends(get_db)):
+    if not await vouchers_are_enabled(db):
+        raise HTTPException(403, "Vouchers are not enabled for this school.")
     if data.discount_type not in ("percent", "flat", "full"):
         raise HTTPException(400, "discount_type must be 'percent', 'flat', or 'full'")
     if data.discount_type == "percent" and (data.discount_value < 0 or data.discount_value > 100):
@@ -197,6 +208,9 @@ async def validate_voucher(
     _user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Validate a voucher code for a specific permit type. Returns discount info or error."""
+    if not await vouchers_are_enabled(db):
+        return VoucherValidateResponse(valid=False, message="Vouchers are not enabled for this school.")
+
     result = await db.execute(
         select(Voucher).where(func.upper(Voucher.code) == data.code.upper().strip())
     )

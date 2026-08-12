@@ -806,7 +806,7 @@ async def accept_offer(
 
     # ── Program discount (ABSN) + optional voucher ────────────────────────────
     from ..models.voucher import Voucher
-    from ..routers.vouchers import _validate_voucher
+    from ..routers.vouchers import _validate_voucher, vouchers_are_enabled
     from ..services.group_discount import resolve_program_discount, apply_flat_discount
 
     prog_discount = await resolve_program_discount(db, user)
@@ -823,6 +823,8 @@ async def accept_offer(
             discount_note = f" | RA Discount: −${ra_amount:.0f}"
 
     if voucher_code:
+        if not await vouchers_are_enabled(db):
+            raise HTTPException(400, "Vouchers are not enabled for this school.")
         voucher_result = await db.execute(
             select(Voucher).where(func.upper(Voucher.code) == voucher_code.upper().strip())
         )

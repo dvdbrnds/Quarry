@@ -48,6 +48,7 @@ async def get_branding(db: AsyncSession = Depends(get_db)):
         "favicon_url": favicon_url,
         "school_name": settings.school_name,
         "department_name": bs.department_name or "Parking Authority",
+        "vouchers_enabled": True if bs.vouchers_enabled is None else bool(bs.vouchers_enabled),
     }
 
 
@@ -97,6 +98,30 @@ async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = De
     return {"ok": True}
 
 
+class FeatureFlagsUpdate(BaseModel):
+    vouchers_enabled: bool
+
+
+@admin_router.get("/features")
+async def get_feature_flags(db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    return {
+        "vouchers_enabled": True if bs.vouchers_enabled is None else bool(bs.vouchers_enabled),
+    }
+
+
+@admin_router.put("/features")
+async def update_feature_flags(body: FeatureFlagsUpdate, db: AsyncSession = Depends(get_db)):
+    bs = await _get_or_create(db)
+    bs.vouchers_enabled = body.vouchers_enabled
+    await db.flush()
+    invalidate_branding_cache()
+    return {
+        "ok": True,
+        "vouchers_enabled": bool(bs.vouchers_enabled),
+    }
+
+
 @admin_router.post("/reset")
 async def reset_branding(db: AsyncSession = Depends(get_db)):
     bs = await _get_or_create(db)
@@ -104,6 +129,7 @@ async def reset_branding(db: AsyncSession = Depends(get_db)):
     bs.primary_color = "#1a2744"
     bs.accent_color = "#c9a84c"
     bs.department_name = "Parking Authority"
+    bs.vouchers_enabled = True
     bs.logo_data = None
     bs.logo_mime = None
     bs.favicon_data = None
