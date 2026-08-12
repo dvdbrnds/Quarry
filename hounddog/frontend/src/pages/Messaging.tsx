@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api, MessageTemplate, SendMessagePreview, PermitNotificationStatus, Lot,
 } from "../api";
 import {
   Tabs, Table, Button, Input, Select, Checkbox, Tag, Card, Form, Alert, Space, App, Spin, Empty,
 } from "antd";
+import ReactQuill from "react-quill-new";
+import "react-quill-new/dist/quill.snow.css";
 import type { ColumnsType } from "antd/es/table";
 
 export default function Messaging() {
@@ -72,6 +74,50 @@ function TemplatesSection() {
   );
 }
 
+const QUILL_MODULES = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    ["bold", "italic", "underline"],
+    [{ color: [] }, { background: [] }],
+    [{ align: [] }],
+    [{ list: "ordered" }, { list: "bullet" }],
+    ["link"],
+    ["clean"],
+  ],
+};
+
+function EmailBodyEditor({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+  const quillRef = useRef<ReactQuill>(null);
+
+  function handleInsertPlaceholder(placeholder: string) {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    const range = editor.getSelection(true);
+    editor.insertText(range.index, placeholder);
+    editor.setSelection(range.index + placeholder.length, 0);
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-1">
+        <span className="text-xs text-ink-mute mr-1 self-center">Insert:</span>
+        {["{lot_name}", "{reason}", "{closes_at}", "{reopens_at}", "{school}", "{department}"].map(p => (
+          <Button key={p} size="small" type="dashed" className="!text-xs !px-2 !h-6"
+            onClick={() => handleInsertPlaceholder(p)}>{p}</Button>
+        ))}
+      </div>
+      <ReactQuill
+        ref={quillRef}
+        theme="snow"
+        value={value || ""}
+        onChange={(content) => onChange?.(content)}
+        modules={QUILL_MODULES}
+        style={{ minHeight: 200 }}
+      />
+    </div>
+  );
+}
+
 function TemplateForm({ initial, onSave, onCancel }: { initial?: MessageTemplate; onSave: () => void; onCancel: () => void }) {
   const { message: msg } = App.useApp();
   const [form] = Form.useForm();
@@ -117,15 +163,12 @@ function TemplateForm({ initial, onSave, onCancel }: { initial?: MessageTemplate
         <Form.Item name="email_subject" label="Email Subject">
           <Input placeholder="{school} Parking: {lot_name} Closed" />
         </Form.Item>
-        <Form.Item name="email_body" label="Email Body (HTML)">
-          <Input.TextArea rows={6} className="font-mono" />
+        <Form.Item name="email_body" label="Email Body">
+          <EmailBodyEditor />
         </Form.Item>
         <Form.Item name="sms_body" label={<>SMS Body <span className={`ml-2 text-xs ${smsBody.length > 160 ? "text-red-600 font-bold" : "text-ink-mute"}`}>{smsBody.length}/160</span></>}>
           <Input.TextArea rows={3} placeholder="{school} Parking: {lot_name} closed..." />
         </Form.Item>
-        <p className="text-xs text-ink-mute mb-4">
-          Placeholders: <code>{"{lot_name}"}</code> <code>{"{reason}"}</code> <code>{"{closes_at}"}</code> <code>{"{reopens_at}"}</code> <code>{"{school}"}</code>
-        </p>
         <Space>
           <Button onClick={onCancel}>Cancel</Button>
           <Button type="primary" htmlType="submit" loading={saving}>{initial ? "Update" : "Create"}</Button>
