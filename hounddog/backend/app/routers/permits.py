@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from decimal import Decimal
 
@@ -50,6 +51,19 @@ SORTABLE_FIELDS = {
     "end_date": Permit.end_date,
     "created_at": Permit.created_at,
 }
+
+
+def _permit_search_clause(search: str) -> ColumnElement[bool]:
+    """Substring match on name/ID/permit # and any plate in the plates array."""
+    like = f"%{search}%"
+    # plates.any() is exact-only; array_to_string enables partial plate search-as-you-type
+    return or_(
+        Permit.name.ilike(like),
+        Permit.student_id.ilike(like),
+        Permit.permit_number.ilike(like),
+        Permit.email.ilike(like),
+        func.array_to_string(Permit.plates, ",").ilike(like),
+    )
 
 
 @router.get("/stats")
@@ -211,15 +225,7 @@ async def list_permits(
         query = query.where(Permit.start_date >= cutoff)
 
     if search:
-        like = f"%{search}%"
-        query = query.where(
-            or_(
-                Permit.name.ilike(like),
-                Permit.student_id.ilike(like),
-                Permit.permit_number.ilike(like),
-                Permit.plates.any(search.upper()),
-            )
-        )
+        query = query.where(_permit_search_clause(search))
     if status:
         if status == "expiring_soon":
             today = today_local()
@@ -1209,15 +1215,7 @@ async def export_permits(
     if lot:
         query = query.where(Permit.lot_assignment == lot)
     if search:
-        like = f"%{search}%"
-        query = query.where(
-            or_(
-                Permit.name.ilike(like),
-                Permit.student_id.ilike(like),
-                Permit.permit_number.ilike(like),
-                Permit.plates.any(search.upper()),
-            )
-        )
+        query = query.where(_permit_search_clause(search))
     permits = (await db.execute(query.order_by(Permit.name))).scalars().all()
 
     output = io.StringIO()
