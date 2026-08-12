@@ -459,6 +459,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE visitor_presets ALTER COLUMN default_duration SET DEFAULT 'semester'",
             "ALTER TABLE visitor_presets ALTER COLUMN active SET DEFAULT true",
             "ALTER TABLE visitor_presets ALTER COLUMN sort_order SET DEFAULT 0",
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS permit_type_code VARCHAR(64)",
             "DELETE FROM visitor_presets WHERE label = 'Sodexo employee'",
             # Rename South Standalone → South Third Party
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",

@@ -13,6 +13,7 @@ from ..auth.okta import require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
+from ..models.permit_type import PermitType
 from ..models.visitor_approval_token import VisitorApprovalToken
 from ..models.visitor_preset import VisitorPreset
 from ..services.permit_numbering import next_permit_number
@@ -97,6 +98,7 @@ class PresetCreate(BaseModel):
     sponsor_email: str = ""
     sponsor_department: str = ""
     default_duration: str = "semester"
+    permit_type_code: str | None = None
     sort_order: int = 0
 
 
@@ -107,6 +109,7 @@ class PresetUpdate(BaseModel):
     sponsor_email: str | None = None
     sponsor_department: str | None = None
     default_duration: str | None = None
+    permit_type_code: str | None = None
     active: bool | None = None
     sort_order: int | None = None
 
@@ -133,6 +136,7 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "sponsor_email": p.sponsor_email,
             "sponsor_department": p.sponsor_department,
             "default_duration": p.default_duration,
+            "permit_type_code": p.permit_type_code,
         }
         for p in rows
     ]
@@ -158,6 +162,7 @@ async def list_all_presets(
             "sponsor_email": p.sponsor_email,
             "sponsor_department": p.sponsor_department,
             "default_duration": p.default_duration,
+            "permit_type_code": p.permit_type_code,
             "active": p.active,
             "sort_order": p.sort_order,
         }
@@ -179,6 +184,7 @@ async def create_preset(
         sponsor_email=data.sponsor_email.strip(),
         sponsor_department=data.sponsor_department.strip(),
         default_duration=data.default_duration,
+        permit_type_code=data.permit_type_code or None,
         sort_order=data.sort_order,
     )
     db.add(preset)
@@ -396,6 +402,7 @@ async def approve_or_deny(token: str, body: ApprovalDecision, db: AsyncSession =
 
 
 async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSession) -> VisitorPermitResponse:
+    preset = None
     if data.preset_id:
         preset = await db.get(VisitorPreset, uuid.UUID(data.preset_id))
         if not preset or not preset.active:
@@ -415,15 +422,34 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
     start = data.start_date or today_local()
     end = data.end_date or start
 
-    days = (end - start).days
-    if data.duration == "semester":
-        permit_type = "visitor_contracted_staff"
-        if end == start:
-            end = start + timedelta(days=120)
-    elif days > 0:
-        permit_type = "visitor_vendor_longterm"
+    lot_assignment = "Visitor"
+
+    # If the preset specifies a permit type, use it with its lot assignments
+    if preset and preset.permit_type_code:
+        pt_result = await db.execute(
+            select(PermitType).where(PermitType.code == preset.permit_type_code)
+        )
+        pt_row = pt_result.scalars().first()
+        if pt_row:
+            permit_type = pt_row.code
+            if pt_row.lot_assignments:
+                lot_assignment = ", ".join(pt_row.lot_assignments)
+            if end == start and data.duration == "semester":
+                end = start + timedelta(days=120)
+        else:
+            permit_type = "visitor_contracted_staff"
+            if end == start:
+                end = start + timedelta(days=120)
     else:
-        permit_type = "visitor_day"
+        days = (end - start).days
+        if data.duration == "semester":
+            permit_type = "visitor_contracted_staff"
+            if end == start:
+                end = start + timedelta(days=120)
+        elif days > 0:
+            permit_type = "visitor_vendor_longterm"
+        else:
+            permit_type = "visitor_day"
 
     permit = Permit(
         permit_number=await next_permit_number(db),
@@ -431,7 +457,7 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         email=data.email or None,
         phone=data.phone or "",
         plates=[plate],
-        lot_assignment="Visitor",
+        lot_assignment=lot_assignment,
         permit_type=permit_type,
         start_date=start,
         end_date=end,

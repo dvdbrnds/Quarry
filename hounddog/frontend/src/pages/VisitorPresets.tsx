@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
-import { getAccessToken } from "../auth";
+import { authHeaders, getAccessToken } from "../auth";
 
 interface Preset {
   id: string;
@@ -11,8 +11,14 @@ interface Preset {
   sponsor_email: string;
   sponsor_department: string;
   default_duration: string;
+  permit_type_code: string | null;
   active: boolean;
   sort_order: number;
+}
+
+interface PermitTypeOption {
+  code: string;
+  label: string;
 }
 
 const DURATION_OPTIONS = [
@@ -43,6 +49,20 @@ export default function VisitorPresets() {
   const [editing, setEditing] = useState<Preset | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  const [permitTypes, setPermitTypes] = useState<PermitTypeOption[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch("/api/permit-types", { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setPermitTypes(data.map((pt: any) => ({ code: pt.code, label: pt.label })));
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,6 +197,17 @@ export default function VisitorPresets() {
               render: (d: string) => d === "semester" ? "Semester" : "Multi-day",
             },
             {
+              title: "Permit Type",
+              dataIndex: "permit_type_code",
+              key: "permit_type",
+              width: 160,
+              render: (code: string | null) => {
+                if (!code) return <span className="text-gray-400">Default</span>;
+                const pt = permitTypes.find((t) => t.code === code);
+                return pt ? pt.label : code;
+              },
+            },
+            {
               title: "Active",
               dataIndex: "active",
               key: "active",
@@ -264,6 +295,17 @@ export default function VisitorPresets() {
               <InputNumber min={0} className="w-full" />
             </Form.Item>
           </div>
+          <Form.Item
+            name="permit_type_code"
+            label="Permit type"
+            extra="Assign a specific permit type (and its lots) instead of the default visitor permit"
+          >
+            <Select
+              allowClear
+              placeholder="Default (Visitor)"
+              options={permitTypes.map((pt) => ({ value: pt.code, label: pt.label }))}
+            />
+          </Form.Item>
         </Form>
       </Modal>
     </div>
