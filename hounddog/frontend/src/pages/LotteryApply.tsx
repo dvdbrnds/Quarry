@@ -60,7 +60,12 @@ export default function LotteryApply() {
         const authed = await isAuthenticated();
         if (!authed) { sessionStorage.setItem("quarry_return_path", "/parking"); await login(); return; }
         const u = await fetchCurrentUser();
-        // Faculty/staff (not Quarry admins) go to employee parking enrollment
+        // Admins go to the admin dashboard
+        if (u?.role === "admin") {
+          window.location.replace("/dashboard");
+          return;
+        }
+        // Faculty/staff go to employee parking enrollment
         if (u?.role === "staff") {
           window.location.replace("/employee-parking");
           return;

@@ -193,7 +193,12 @@ export default function LotteryApplyV2() {
           return;
         }
 
-        // Faculty/staff (not Quarry admins) go to employee parking enrollment
+        // Admins go to the admin dashboard
+        if (u?.role === "admin") {
+          window.location.replace("/dashboard");
+          return;
+        }
+        // Faculty/staff go to employee parking enrollment
         if (u?.role === "staff") {
           window.location.replace("/employee-parking");
           return;
