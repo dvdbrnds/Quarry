@@ -681,8 +681,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               <li key={t.id}>
                 <strong>#{i + 1}</strong> {t.label}
                 {t.lot_assignments?.length ? ` — lots ${t.lot_assignments.join(", ")}` : ""}
-                {postDraw && t.remaining <= 0 ? " (full - waitlist)" : ""}
-                {postDraw && t.remaining > 0 ? " (available)" : ""}
+                {postDraw && t.remaining <= 0 ? "" : ""}
               </li>
             ))}
           </ol>
@@ -1203,7 +1202,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             ${Number(tier.price).toFixed(0)}
                             {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
                           </span>
-                          <Tag color="green" className="ml-2">Available</Tag>
+                          
                         </div>
                         <Button
                           type="primary"
@@ -1590,7 +1589,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             Buy Now
                           </Button>
                         ) : (
-                          <Tag color="red" className="mt-1">Full</Tag>
+                          <Tag className="mt-1">Unavailable</Tag>
                         )}
                       </div>
                     </div>
@@ -1687,10 +1686,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                     style={{ background: colors.fill }}
                                   />
                                   {tier.label}
-                                  {soldOut && <Tag className="m-0">Full</Tag>}
-                                  {!soldOut && showWaitlist && (
-                                    <Tag color="green" className="m-0">Available</Tag>
-                                  )}
+                                  
                                 </p>
                                 <p className="m-0 text-xs text-gray-500 mt-1">
                                   {formatTierPrice(tier)}
@@ -1750,8 +1746,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   </Button>
                                 )}
                                 {soldOut && !showWaitlist && (
-                                  <Button type="primary" size="small" disabled>
-                                    Full
+                                  <Button size="small" disabled>
+                                    Unavailable
                                   </Button>
                                 )}
                               </Space>
