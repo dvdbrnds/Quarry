@@ -681,8 +681,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               <li key={t.id}>
                 <strong>#{i + 1}</strong> {t.label}
                 {t.lot_assignments?.length ? ` — lots ${t.lot_assignments.join(", ")}` : ""}
-                {postDraw && t.remaining <= 0 ? " (full — waitlist)" : ""}
-                {postDraw && t.remaining > 0 ? ` (${t.remaining} open)` : ""}
+                {postDraw && t.remaining <= 0 ? " (full - waitlist)" : ""}
+                {postDraw && t.remaining > 0 ? " (available)" : ""}
               </li>
             ))}
           </ol>
@@ -1636,7 +1636,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         ? "Map colors: blue = full-time, amber = after 4 PM & weekends, teal = street. Hover a permit to emphasize its lots."
                         : cycle?.status === "drawn"
                           ? "Lottery is complete. Buy any permit with open seats, or join the waitlist for any option — including full ones."
-                          : "Spots remaining after the lottery draw. Purchase directly — first come, first served."}
+                          : "Permits available after the lottery draw. Purchase directly, first come, first served."}
                     </p>
                     {isCommuterPath && (
                       <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
@@ -1689,7 +1689,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   {tier.label}
                                   {soldOut && <Tag className="m-0">Full</Tag>}
                                   {!soldOut && showWaitlist && (
-                                    <Tag color="green" className="m-0">{tier.remaining} open</Tag>
+                                    <Tag color="green" className="m-0">Available</Tag>
                                   )}
                                 </p>
                                 <p className="m-0 text-xs text-gray-500 mt-1">
