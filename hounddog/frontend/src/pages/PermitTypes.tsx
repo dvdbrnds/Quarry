@@ -13,7 +13,7 @@ const NO_ONLINE_PURCHASE_CODES = new Set([
 
 interface PermitTypeRow {
   id: string; code: string; label: string; eligible: string; price: string;
-  max_capacity: number; reserved_pct: number; valid_days: number; lot_assignments: string[];
+  max_capacity: number; reserved_pct: number; reserved_spots: number; valid_days: number; lot_assignments: string[];
   time_restriction: string | null; is_purchasable_online: boolean;
   is_active: boolean; sort_order: number; active_count: number; remaining: number;
   requires_lottery: boolean; lottery_strategy: string; min_class_year: number | null;
@@ -79,7 +79,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
     setSaving(true);
     const body: Record<string, unknown> = {
       code: values.code, label: values.label, eligible: values.eligible, price: values.price,
-      max_capacity: values.max_capacity, reserved_pct: values.reserved_pct ?? 0, valid_days: values.valid_days,
+      max_capacity: values.max_capacity, reserved_pct: values.reserved_pct ?? 0, reserved_spots: values.reserved_spots ?? 0, valid_days: values.valid_days,
       lot_assignments: values.lot_assignments || [],
       is_purchasable_online: NO_ONLINE_PURCHASE_CODES.has(values.code)
         ? false
@@ -114,7 +114,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
-        initialValues={{ price: "0.00", max_capacity: 100, reserved_pct: 0, valid_days: 365, sort_order: 0, lot_assignments: [] }}>
+        initialValues={{ price: "0.00", max_capacity: 100, reserved_pct: 0, reserved_spots: 0, valid_days: 365, sort_order: 0, lot_assignments: [] }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="label" label="Label" rules={[{ required: true }]}><Input /></Form.Item>
@@ -124,6 +124,9 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
           <Form.Item name="reserved_pct" label={
             <Tooltip title="Percentage of capacity held back from lottery/sales for admin discretionary assignment">Reserved %</Tooltip>
           }><InputNumber className="w-full" min={0} max={100} addonAfter="%" /></Form.Item>
+          <Form.Item name="reserved_spots" label={
+            <Tooltip title="Fixed number of spots held back. The larger of this and the percentage is used.">Reserved (fixed)</Tooltip>
+          }><InputNumber className="w-full" min={0} /></Form.Item>
           <Form.Item name="valid_days" label="Valid Days"><InputNumber className="w-full" /></Form.Item>
           <Form.Item name="lot_assignments" label={
             <span className="flex items-center gap-2">
@@ -355,12 +358,13 @@ export default function PermitTypes() {
     }},
     { title: "Price", dataIndex: "price", key: "price", render: v => Number(v) === 0 ? "Free" : `$${Number(v).toFixed(0)}` },
     { title: "Capacity", key: "capacity", render: (_, pt) => {
-      const reserved = Math.floor(pt.max_capacity * (pt.reserved_pct || 0) / 100);
+      const fromPct = Math.floor(pt.max_capacity * (pt.reserved_pct || 0) / 100);
+      const reserved = Math.max(pt.reserved_spots || 0, fromPct);
       return (
         <div>
           <span>{pt.max_capacity}</span>
           {reserved > 0 && (
-            <div className="text-[11px] text-ink-mute">{pt.reserved_pct}% reserved ({reserved})</div>
+            <div className="text-[11px] text-ink-mute">{reserved} reserved</div>
           )}
         </div>
       );
@@ -381,7 +385,8 @@ export default function PermitTypes() {
     {
       title: "Usage", key: "usage",
       render: (_, pt) => {
-        const publicCap = pt.max_capacity - Math.floor(pt.max_capacity * (pt.reserved_pct || 0) / 100);
+        const reserved = Math.max(pt.reserved_spots || 0, Math.floor(pt.max_capacity * (pt.reserved_pct || 0) / 100));
+        const publicCap = pt.max_capacity - reserved;
         return (
           <Space>
             <span className="text-ink-mute">{pt.active_count} / {publicCap}</span>

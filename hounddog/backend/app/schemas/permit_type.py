@@ -12,6 +12,7 @@ class PermitTypeBase(BaseModel):
     price: Decimal = Decimal("0.00")
     max_capacity: int = 0
     reserved_pct: int = 0
+    reserved_spots: int = 0
     valid_days: int = 365
     lot_assignments: list[str] = []
     time_restriction: str | None = None
@@ -41,6 +42,7 @@ class PermitTypeUpdate(BaseModel):
     price: Decimal | None = None
     max_capacity: int | None = None
     reserved_pct: int | None = None
+    reserved_spots: int | None = None
     valid_days: int | None = None
     lot_assignments: list[str] | None = None
     time_restriction: str | None = None
@@ -80,6 +82,7 @@ class PermitTypeImportRow(BaseModel):
     price: Decimal = Decimal("0.00")
     max_capacity: int = 0
     reserved_pct: int = 0
+    reserved_spots: int = 0
     valid_days: int = 365
     lot_assignments: list[str] = []
     time_restriction: str | None = None

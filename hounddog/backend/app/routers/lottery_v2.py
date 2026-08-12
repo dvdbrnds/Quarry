@@ -339,7 +339,8 @@ async def _eligible_tiers_for(
             )
         ).scalar() or 0
         cap = pt.max_capacity or 0
-        public_capacity = cap - int(cap * (pt.reserved_pct or 0) / 100)
+        reserved = max(pt.reserved_spots or 0, int(cap * (pt.reserved_pct or 0) / 100))
+        public_capacity = cap - reserved
         remaining = max(0, public_capacity - active_count)
         your_price = apply_flat_discount(pt.price, prog_discount)
         out.append(

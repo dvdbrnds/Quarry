@@ -186,7 +186,8 @@ async def available_permit_types(
             )
         )).scalar() or 0
 
-        public_capacity = pt.max_capacity - int(pt.max_capacity * (pt.reserved_pct or 0) / 100)
+        reserved = max(pt.reserved_spots or 0, int(pt.max_capacity * (pt.reserved_pct or 0) / 100))
+        public_capacity = pt.max_capacity - reserved
         remaining = max(0, public_capacity - active_count - lottery_reserved)
 
         current_applicants = None
@@ -588,7 +589,8 @@ async def direct_purchase(
     )).scalar() or 0
 
     total_committed = active_count + lottery_reserved
-    public_capacity = pt.max_capacity - int(pt.max_capacity * (pt.reserved_pct or 0) / 100)
+    reserved = max(pt.reserved_spots or 0, int(pt.max_capacity * (pt.reserved_pct or 0) / 100))
+    public_capacity = pt.max_capacity - reserved
     remaining = max(0, public_capacity - total_committed)
     if remaining <= 0:
         raise HTTPException(

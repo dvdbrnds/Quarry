@@ -274,7 +274,8 @@ async def build_tier_capacities(
 
         committed = active_count + offer_count
         cap = pt.max_capacity or 0
-        public_capacity = cap - int(cap * (pt.reserved_pct or 0) / 100)
+        reserved = max(pt.reserved_spots or 0, int(cap * (pt.reserved_pct or 0) / 100))
+        public_capacity = cap - reserved
         remaining = max(0, public_capacity - committed)
         lots = list(pt.lot_assignments or [])
         lot_caps = distribute_capacity(remaining, lots) if lots else {}

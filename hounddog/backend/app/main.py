@@ -492,6 +492,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS auto_advance_waitlist BOOLEAN DEFAULT TRUE",
             # Percentage of capacity held back from lottery/sales for admin discretionary use
             "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS reserved_pct INTEGER DEFAULT 0",
+            "ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS reserved_spots INTEGER DEFAULT 0",
             # NOTE: Do NOT hard-reset permit_types.lot_assignments / max_capacity here.
             # Those belong to admin edits and must survive redeploys. Initial defaults are
             # seeded only when the table is empty (see seed block below).
