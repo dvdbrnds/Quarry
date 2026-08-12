@@ -825,7 +825,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
             refund_amount=str(overpaid),
             permit_number=permit.permit_number,
             stripe_payment_id=stripe_id,
-            refund_issued=refund_notes.get(email_key, False),
+            refund_issued=bool(permit.refund_id) or refund_notes.get(email_key, False),
         ))
         total += overpaid
 
@@ -978,7 +978,9 @@ async def issue_refund(
     except stripe.StripeError as e:
         raise HTTPException(400, f"Stripe refund failed: {e.user_message or str(e)}")
 
-    # Mark refund on lottery app if one exists
+    permit.refund_id = refund.id
+
+    # Also mark refund on lottery app if one exists (legacy tracking)
     app_result = await db.execute(
         select(LotteryV2Application).where(
             func.lower(LotteryV2Application.student_email) == (permit.email or "").lower(),
