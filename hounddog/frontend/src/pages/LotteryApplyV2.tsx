@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, InputNumber, Radio, Spin, Tag, App as AntApp, Space, Alert, Modal, Checkbox } from "antd";
+import { Button, Card, DatePicker, Form, Input, InputNumber, Radio, Select, Spin, Tag, App as AntApp, Space, Alert, Modal, Checkbox } from "antd";
+import dayjs from "dayjs";
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
 import type { Lot } from "../api";
@@ -264,6 +265,64 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [commuterTiers, setCommuterTiers] = useState<Tier[]>([]);
   const [upgradeApps, setUpgradeApps] = useState<Application[]>([]);
   const [joiningUpgrade, setJoiningUpgrade] = useState<string | null>(null);
+
+  // Overnight guest registration state
+  interface GuestReg { id: string; guest_name: string; guest_plate: string | null; guest_plate_state: string; check_in: string; check_out: string; status: string; }
+  const [guestRegs, setGuestRegs] = useState<GuestReg[]>([]);
+  const [showGuestForm, setShowGuestForm] = useState(false);
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+  const [guestForm] = Form.useForm();
+
+  const loadGuests = useCallback(async () => {
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      const res = await fetch("/api/student/guests", { headers });
+      if (res.ok) setGuestRegs(await res.json());
+    } catch { /* ignore */ }
+  }, [impersonateEmail]);
+
+  useEffect(() => { loadGuests(); }, [loadGuests]);
+
+  async function submitGuest(values: any) {
+    setGuestSubmitting(true);
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      const res = await fetch("/api/student/guests", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guest_name: values.guest_name,
+          guest_plate: values.guest_plate || null,
+          guest_plate_state: values.guest_plate_state || "PA",
+          check_in: values.dates[0].format("YYYY-MM-DD"),
+          check_out: values.dates[1].format("YYYY-MM-DD"),
+          roommate_consent: values.roommate_consent,
+          notes: values.notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to register guest");
+      }
+      message.success("Guest registered successfully");
+      guestForm.resetFields();
+      setShowGuestForm(false);
+      loadGuests();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setGuestSubmitting(false);
+    }
+  }
+
+  async function cancelGuest(id: string) {
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      await fetch(`/api/student/guests/${id}`, { method: "DELETE", headers });
+      message.success("Guest registration cancelled");
+      loadGuests();
+    } catch { message.error("Failed to cancel"); }
+  }
 
   /** All eligible path options (map + choose); ranking is intentional and separate */
   const eligibleTiers = tiers;
@@ -1275,6 +1334,105 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       )}
                     </div>
                   ))}
+                </div>
+              </Card>
+            )}
+
+            {(step === "done" || (!application && myPermits.length > 0) || (!application && !cycle && !isCommuterPath)) && (
+              <Card className="mt-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold m-0">Overnight Guest Registration</h3>
+                      <p className="text-sm text-gray-500 m-0 mt-1">
+                        Guests may stay up to 2 consecutive nights within any 7-day period.
+                        Roommate consent is required. Guest vehicles must be registered.
+                      </p>
+                    </div>
+                    {!showGuestForm && (
+                      <Button icon={<PlusOutlined />} onClick={() => setShowGuestForm(true)}>
+                        Register a Guest
+                      </Button>
+                    )}
+                  </div>
+
+                  {showGuestForm && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+                      <Form form={guestForm} layout="vertical" onFinish={submitGuest}>
+                        <Form.Item name="guest_name" label="Guest name" rules={[{ required: true, message: "Enter your guest's name" }]}>
+                          <Input placeholder="Full name" />
+                        </Form.Item>
+                        <div className="grid grid-cols-3 gap-3">
+                          <Form.Item name="guest_plate" label="Vehicle plate" className="col-span-2">
+                            <Input placeholder="Optional - but recommended" />
+                          </Form.Item>
+                          <Form.Item name="guest_plate_state" label="State" initialValue="PA">
+                            <Select options={["PA","NJ","NY","CT","DE","MD","VA","MA","OH"].map(s => ({ label: s, value: s }))} />
+                          </Form.Item>
+                        </div>
+                        <Form.Item name="dates" label="Check-in / Check-out" rules={[{ required: true, message: "Select dates" }]}>
+                          <DatePicker.RangePicker
+                            disabledDate={(d) => d.isBefore(dayjs().startOf("day"))}
+                            format="MMM D, YYYY"
+                            style={{ width: "100%" }}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          name="roommate_consent"
+                          valuePropName="checked"
+                          rules={[{ validator: (_, v) => v ? Promise.resolve() : Promise.reject("Roommate consent is required") }]}
+                        >
+                          <Checkbox>
+                            All roommates have given expressed consent for this overnight guest
+                          </Checkbox>
+                        </Form.Item>
+                        <Form.Item name="notes" label="Notes (optional)">
+                          <Input.TextArea rows={2} placeholder="Any additional details" />
+                        </Form.Item>
+                        <div className="flex gap-2">
+                          <Button type="primary" htmlType="submit" loading={guestSubmitting}>
+                            Register Guest
+                          </Button>
+                          <Button onClick={() => { setShowGuestForm(false); guestForm.resetFields(); }}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </Form>
+
+                      <div className="mt-3 text-xs text-gray-500 space-y-1">
+                        <p className="m-0"><strong>Visitation hours:</strong> Weekdays 10 AM - 2 AM. Weekends: 24-hour access Friday 10 AM through Monday 2 AM (with roommate approval).</p>
+                        <p className="m-0"><strong>Host responsibility:</strong> You must stay with your guest the entire time they are in the residential area.</p>
+                        <p className="m-0">Questions? Contact Housing at housing@moravian.edu or your RA.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {guestRegs.filter(g => g.status === "active").length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium m-0 text-gray-700">Your registered guests</h4>
+                      {guestRegs.filter(g => g.status === "active").map((g) => (
+                        <div key={g.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                          <div>
+                            <span className="font-medium">{g.guest_name}</span>
+                            {g.guest_plate && (
+                              <span className="text-sm text-gray-500 ml-2">{g.guest_plate} ({g.guest_plate_state})</span>
+                            )}
+                            <span className="text-sm text-gray-500 ml-2">
+                              {new Date(g.check_in + "T00:00").toLocaleDateString()} - {new Date(g.check_out + "T00:00").toLocaleDateString()}
+                            </span>
+                            {new Date(g.check_out) < new Date() ? (
+                              <Tag className="ml-2" color="default">Completed</Tag>
+                            ) : (
+                              <Tag className="ml-2" color="green">Active</Tag>
+                            )}
+                          </div>
+                          {new Date(g.check_out) >= new Date() && (
+                            <Button size="small" danger onClick={() => cancelGuest(g.id)}>Cancel</Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Card>
             )}

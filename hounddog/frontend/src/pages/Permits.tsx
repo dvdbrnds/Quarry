@@ -15,6 +15,7 @@ import FeeExemptRoster from "./FeeExemptRoster";
 import DiscountRoster from "./DiscountRoster";
 import VoucherManager from "./VoucherManager";
 import VisitorPresets from "./VisitorPresets";
+import GuestRegistrations from "./GuestRegistrations";
 import { useBranding } from "../useBranding";
 
 async function downloadWithAuth(url: string, filename: string) {
@@ -463,7 +464,9 @@ export default function Permits() {
               ? "discounts"
             : (location.hash === "#vouchers" || location.hash === "#coupons") && vouchersEnabled
               ? "vouchers"
-              : "permits";
+              : location.hash === "#guests"
+                ? "guests"
+                : "permits";
   const [tab, setTab] = useState(initTab);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
@@ -793,6 +796,11 @@ export default function Permits() {
             children: <VoucherManager />,
           }] : []),
           {
+            key: "guests",
+            label: "Guests",
+            children: <GuestRegistrations />,
+          },
+          {
             key: "live",
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
@@ -812,6 +820,7 @@ export default function Permits() {
             : key === "fee-exempt" ? "fee-exempt"
             : key === "discounts" ? "absn"
             : key === "vouchers" ? "vouchers"
+            : key === "guests" ? "guests"
             : "types";
         }}
         items={permitTabs}

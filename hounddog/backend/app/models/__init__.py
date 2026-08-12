@@ -11,6 +11,7 @@ from .voucher_usage import VoucherUsage
 from .device import Device
 from .enforcement_settings import EnforcementSettings
 from .fee_exempt_roster import FeeExemptRoster
+from .guest_registration import GuestRegistration
 from .discount_roster import DiscountRoster
 from .lot import ParkingLot
 from .lot_closure import LotClosure
@@ -46,6 +47,7 @@ __all__ = [
     "Device",
     "EnforcementSettings",
     "FeeExemptRoster",
+    "GuestRegistration",
     "DiscountRoster",
     "LotClosure",
     "LotZone",

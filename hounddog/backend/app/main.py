@@ -43,6 +43,7 @@ from .routers import (
     devices,
     enforcement_settings,
     fee_exempt,
+    guest_registrations,
     discount_roster,
     lots,
     lottery_v2,
@@ -660,6 +661,23 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_stripe_cache_created ON stripe_transaction_cache(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_stripe_cache_status ON stripe_transaction_cache(status)",
+            # Overnight guest registrations
+            """CREATE TABLE IF NOT EXISTS guest_registrations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                host_email VARCHAR(256) NOT NULL,
+                host_name VARCHAR(256) NOT NULL,
+                guest_name VARCHAR(256) NOT NULL,
+                guest_plate VARCHAR(32),
+                guest_plate_state VARCHAR(2) DEFAULT 'PA',
+                check_in DATE NOT NULL,
+                check_out DATE NOT NULL,
+                roommate_consent BOOLEAN DEFAULT FALSE,
+                notes TEXT,
+                status VARCHAR(32) DEFAULT 'active',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_guest_reg_host ON guest_registrations(host_email)",
+            "CREATE INDEX IF NOT EXISTS idx_guest_reg_checkin ON guest_registrations(check_in)",
             ]
             for migration in migrations:
                 try:
@@ -1102,6 +1120,8 @@ app.include_router(branding.admin_router, prefix="/api/branding", tags=["brandin
 app.include_router(branding.public_router, prefix="/api/branding", tags=["branding-public"])
 app.include_router(parking_map.router, prefix="/api/parking-map", tags=["parking-map"])
 app.include_router(visitor_permits.router, prefix="/api/visitor/permits", tags=["visitor-permits"])
+app.include_router(guest_registrations.student_router, prefix="/api/student/guests", tags=["student-guests"])
+app.include_router(guest_registrations.admin_router, prefix="/api/admin/guests", tags=["admin-guests"])
 app.include_router(vouchers.admin_router, prefix="/api/vouchers", tags=["vouchers"])
 app.include_router(vouchers.router, prefix="/api/vouchers", tags=["vouchers"])
 
