@@ -667,7 +667,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         <div className="space-y-3">
           <p className="m-0 text-sm text-gray-600">
             {postDraw
-              ? "We'll try open seats in this order. If none are open, you'll join the waitlist for these permits."
+              ? "We'll process these in order and add you to the waitlist for each."
               : "Seats are offered in your ranked order. You will be considered for "}
             {!postDraw && (
               <>
@@ -1548,7 +1548,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       : cycle?.status === "open"
                         ? "Continue — rank tiers"
                         : cycle?.status === "drawn"
-                          ? "Continue — buy or join waitlist"
+                          ? "Continue — join waitlist"
                           : "Continue — available permits"}
                   </Button>
                 </Form>
@@ -1604,7 +1604,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   !cycle && isCommuterPath
                     ? "Commuter Permits"
                     : cycle?.status === "drawn" && !isCommuterPath
-                      ? "2. Buy or join a waitlist"
+                      ? "2. Join a waitlist"
                       : "2. Choose your permit"
                 }
                 extra={
@@ -1634,8 +1634,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       {isCommuterPath
                         ? "Map colors: blue = full-time, amber = after 4 PM & weekends, teal = street. Hover a permit to emphasize its lots."
                         : cycle?.status === "drawn"
-                          ? "Lottery is complete. Buy any permit with open seats, or join the waitlist for any option — including full ones."
-                          : "Permits available after the lottery draw. Purchase directly, first come, first served."}
+                          ? "Lottery is complete. Join the waitlist for any permit type below."
+                          : "Join the waitlist for any permit type below."}
                     </p>
                     {isCommuterPath && (
                       <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
@@ -1648,7 +1648,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         showIcon
                         className="mb-4"
                         message="Waitlists are open for every resident permit type"
-                        description="If a seat is open when you request, you'll get an offer. If not, you'll be added to that waitlist and notified when one opens."
+                        description="Join any waitlist below. You'll be notified when a spot opens."
                       />
                     )}
 
@@ -1724,33 +1724,13 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   )}
                                 </div>
                               </div>
-                              <Space direction="vertical" size={4} className="shrink-0">
-                                {!soldOut && (
-                                  <Button
-                                    type="primary"
-                                    size="small"
-                                    loading={submitting}
-                                    onClick={() => purchaseCommuterPermit(tier)}
-                                    style={{ background: colors.fill }}
-                                  >
-                                    Buy
-                                  </Button>
-                                )}
-                                {showWaitlist && (
-                                  <Button
-                                    size="small"
-                                    loading={submitting}
-                                    onClick={() => joinWaitlist(tier)}
-                                  >
-                                    {soldOut ? "Join waitlist" : "Request / waitlist"}
-                                  </Button>
-                                )}
-                                {soldOut && !showWaitlist && (
-                                  <Button size="small" disabled>
-                                    Unavailable
-                                  </Button>
-                                )}
-                              </Space>
+                              <Button
+                                size="small"
+                                loading={submitting}
+                                onClick={() => joinWaitlist(tier)}
+                              >
+                                Join waitlist
+                              </Button>
                             </div>
                           </li>
                         );
@@ -1760,7 +1740,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     {cycle?.status === "drawn" && !isCommuterPath && (
                       <div className="mt-4 pt-4 border-t">
                         <p className="text-sm text-gray-600 mb-2">
-                          Want backups? Rank several permits — we'll try open seats in order, then waitlist you.
+                          Want backups? Rank several permits and we'll add you to each waitlist in order.
                         </p>
                         <Button
                           block
@@ -1803,7 +1783,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   <>
                     <p className="text-sm text-gray-500 mb-4">
                       {cycle?.status === "drawn"
-                        ? "Add permits in order. We'll try open seats first; anything full goes to the waitlist."
+                        ? "Add permits in order. We'll add you to the waitlist for each."
                         : "Tap Add in the order you want seats tried. #1 is offered first — Premium and Guaranteed are different permits and prices. Hover a tier to see its lots on the map."}
                     </p>
 
