@@ -122,8 +122,7 @@ function PermitForm({
   function handleTypeChange(code: string | undefined) {
     setSelectedTypeCode(code);
     const pt = permitTypes.find((p) => p.code === code);
-    // On create, type change fills defaults. On edit, keep custom lots (they supersede).
-    if (!initial && pt?.lot_assignments?.length) {
+    if (pt?.lot_assignments?.length) {
       form.setFieldsValue({ lot_assignment: [...pt.lot_assignments] });
     }
   }
