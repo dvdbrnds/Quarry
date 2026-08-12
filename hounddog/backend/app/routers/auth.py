@@ -7,6 +7,7 @@ from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_to
 from ..config import settings
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
+from ..services.sis_student_data import lookup_student_parking_data
 
 logger = logging.getLogger("quarry.audit")
 
@@ -47,18 +48,47 @@ async def _write_auth_event(user: OktaUser, action: str, summary: str,
         logger.warning("Auth audit write failed: %s", e)
 
 
+def _extract_moravian_id(user: OktaUser) -> str | None:
+    """Extract Moravian numeric ID from Okta profile fields."""
+    profile = getattr(user, "profile", None) or {}
+    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+        val = profile.get(field)
+        if val:
+            return str(val).split("@")[0].strip()
+    return None
+
+
 @router.get("/me")
 async def me(request: Request, user: OktaUser = Depends(get_current_user)):
     ip = request.client.host if request.client else None
+
+    role = user.role
+
+    # For non-admin users, check Jenzabar SIS for authoritative employment status.
+    # Rule: students who are also employees default to student.
+    if role not in ("admin",):
+        moravian_id = _extract_moravian_id(user)
+        if moravian_id:
+            try:
+                sis = await lookup_student_parking_data(moravian_id)
+                if sis:
+                    is_student = bool(user.class_year) or sis.housing_status in ("R", "C")
+                    if sis.employee and not is_student:
+                        role = "staff"
+                    elif is_student:
+                        role = "student"
+            except Exception:
+                logger.debug("SIS lookup failed during auth for %s", user.email)
+
     await _write_auth_event(
         user, "LOGIN",
-        f"User signed in: {user.email} (role: {user.role})",
+        f"User signed in: {user.email} (role: {role})",
         ip,
     )
     return {
         "sub": user.sub,
         "email": user.email,
-        "role": user.role,
+        "role": role,
         "groups": user.groups,
     }
 

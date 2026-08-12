@@ -1298,6 +1298,7 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
     name = email
     groups: list[str] = []
     class_year = None
+    moravian_id: str | None = None
 
     # Primary source: Okta API
     if settings.okta_domain and settings.okta_api_token:
@@ -1313,6 +1314,12 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
                     sub = okta_user.get("id", "")
                     profile = okta_user.get("profile", {})
                     name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip() or email
+
+                    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+                        val = profile.get(field)
+                        if val:
+                            moravian_id = str(val).split("@")[0].strip()
+                            break
 
                     groups_res = await client.get(
                         f"https://{settings.okta_domain}/api/v1/users/{okta_user['id']}/groups",
@@ -1368,9 +1375,8 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
             sub = perm_row["sub"] or ""
             name = perm_row["name"] or email
 
-    # Determine role: check for student indicators first (class year,
-    # applications, or student-type permits), since students can also
-    # appear in faculty/staff Okta groups (e.g. RAs in "Res Life Staff").
+    # Determine role using Jenzabar SIS as the source of truth for employment.
+    # Rule: if someone is both a student and employee, student takes priority.
     has_student_record = False
 
     stu_check = await db.execute(text("""
@@ -1395,20 +1401,37 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
         """), {"email": email})
         has_student_record = stu_permit.scalar() is not None
 
-    # Check if they have an actual faculty_staff permit
-    has_staff_permit = False
-    staff_perm_check = await db.execute(text("""
-        SELECT 1 FROM permits
-        WHERE LOWER(email) = :email AND deleted_at IS NULL
-        AND permit_type = 'faculty_staff' AND status = 'active'
-        LIMIT 1
-    """), {"email": email})
-    has_staff_permit = staff_perm_check.scalar() is not None
+    is_student = bool(class_year) or has_student_record
 
-    if has_staff_permit:
-        role = "employee"
-    elif class_year or has_student_record:
+    # Check Jenzabar SIS for authoritative employment status
+    is_employee = False
+
+    if moravian_id:
+        try:
+            from app.services.sis_student_data import lookup_student_parking_data
+            sis = await lookup_student_parking_data(moravian_id)
+            if sis:
+                is_employee = sis.employee
+                if sis.housing_status in ("R", "C"):
+                    is_student = True
+        except Exception:
+            logger.debug("SIS lookup failed for impersonate %s", email)
+
+    # Also check for existing faculty_staff permit as fallback
+    if not is_employee:
+        staff_perm_check = await db.execute(text("""
+            SELECT 1 FROM permits
+            WHERE LOWER(email) = :email AND deleted_at IS NULL
+            AND permit_type = 'faculty_staff' AND status = 'active'
+            LIMIT 1
+        """), {"email": email})
+        is_employee = staff_perm_check.scalar() is not None
+
+    # Student takes priority over employee
+    if is_student:
         role = "student"
+    elif is_employee:
+        role = "staff"
     else:
         role = "student"
 
