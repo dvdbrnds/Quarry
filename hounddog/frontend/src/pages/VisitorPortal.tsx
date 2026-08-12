@@ -272,7 +272,7 @@ function VisitorFlow() {
                       showIcon
                       className="mb-4"
                       message="Visitor parking requires a campus sponsor"
-                      description="All visitors \u2014 guests, vendors, and contractors \u2014 need a Moravian staff or faculty sponsor to approve their parking request."
+                      description="All visitors (guests, vendors, and contractors) need a Moravian staff or faculty sponsor to approve their parking request."
                     />
                     <Form.Item label="Full name" required>
                       <Input
