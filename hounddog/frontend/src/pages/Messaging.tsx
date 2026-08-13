@@ -166,6 +166,11 @@ function TemplateForm({ initial, onSave, onCancel }: { initial?: MessageTemplate
         <Form.Item name="email_body" label="Email Body">
           <EmailBodyEditor />
         </Form.Item>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 text-sm text-amber-900">
+          <strong>About placeholders:</strong> Words in curly braces like <code className="bg-amber-100 px-1 rounded">{"{lot_name}"}</code> and <code className="bg-amber-100 px-1 rounded">{"{school}"}</code> are
+          automatically replaced with real values when the message is sent. For example, <code className="bg-amber-100 px-1 rounded">{"{school}"}</code> becomes <em>Moravian University</em> and <code className="bg-amber-100 px-1 rounded">{"{lot_name}"}</code> becomes
+          the name of the lot you select (e.g. <em>Lot A</em>).
+        </div>
         <Form.Item name="sms_body" label={<>SMS Body <span className={`ml-2 text-xs ${smsBody.length > 160 ? "text-red-600 font-bold" : "text-ink-mute"}`}>{smsBody.length}/160</span></>}>
           <Input.TextArea rows={3} placeholder="{school} Parking: {lot_name} closed..." />
         </Form.Item>
