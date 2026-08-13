@@ -1729,13 +1729,24 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                   )}
                                 </div>
                               </div>
-                              <Button
-                                size="small"
-                                loading={submitting}
-                                onClick={() => joinWaitlist(tier)}
-                              >
-                                Join waitlist
-                              </Button>
+                              {isCommuterPath ? (
+                                <Button
+                                  type="primary"
+                                  size="small"
+                                  loading={submitting}
+                                  onClick={() => purchaseCommuterPermit(tier)}
+                                >
+                                  Buy
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="small"
+                                  loading={submitting}
+                                  onClick={() => joinWaitlist(tier)}
+                                >
+                                  Join waitlist
+                                </Button>
+                              )}
                             </div>
                           </li>
                         );
