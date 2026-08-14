@@ -65,17 +65,27 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
     role = user.role
 
     # For non-admin users, check Jenzabar SIS for authoritative employment status.
-    # Rule: students who are also employees default to student.
+    # Rule: current students who are also employees default to student.
+    # A class_year alone doesn't mean current student -- alumni who become
+    # faculty still have their old class_year in Okta (e.g. class of 2007).
     if role not in ("admin",):
+        from datetime import datetime
+        current_year = datetime.now().year
+        # class_year within 6 years of now is a reasonable current-student window
+        has_current_class_year = (
+            bool(user.class_year) and user.class_year >= current_year - 1
+        )
+        okta_says_staff = role == "staff"
+
         moravian_id = _extract_moravian_id(user)
         if moravian_id:
             try:
                 sis = await lookup_student_parking_data(moravian_id)
                 if sis:
-                    is_student = bool(user.class_year) or sis.housing_status in ("R", "C")
-                    if sis.employee and not is_student:
+                    is_current_student = has_current_class_year or sis.housing_status in ("R", "C")
+                    if sis.employee and not is_current_student:
                         role = "staff"
-                    elif is_student:
+                    elif is_current_student and not okta_says_staff:
                         role = "student"
             except Exception:
                 logger.debug("SIS lookup failed during auth for %s", user.email)

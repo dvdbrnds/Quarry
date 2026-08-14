@@ -1401,7 +1401,12 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
         """), {"email": email})
         has_student_record = stu_permit.scalar() is not None
 
-    is_student = bool(class_year) or has_student_record
+    # A class_year only indicates current student if recent -- alumni who
+    # become faculty still have their old class_year (e.g. 2007).
+    from datetime import datetime as _dt
+    _current_year = _dt.now().year
+    has_current_class_year = bool(class_year) and class_year >= _current_year - 1
+    is_current_student = has_current_class_year or has_student_record
 
     # Check Jenzabar SIS for authoritative employment status
     is_employee = False
@@ -1413,12 +1418,18 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
             if sis:
                 is_employee = sis.employee
                 if sis.housing_status in ("R", "C"):
-                    is_student = True
+                    is_current_student = True
         except Exception:
             logger.debug("SIS lookup failed for impersonate %s", email)
 
+    # Also check Okta groups for staff indicators
+    from app.auth.okta import FACULTY_STAFF_OKTA_GROUPS
+    okta_says_staff = bool(set(groups) & FACULTY_STAFF_OKTA_GROUPS) or any(
+        "faculty" in g.lower() or "staff" in g.lower() for g in groups
+    )
+
     # Also check for existing faculty_staff permit as fallback
-    if not is_employee:
+    if not is_employee and not okta_says_staff:
         staff_perm_check = await db.execute(text("""
             SELECT 1 FROM permits
             WHERE LOWER(email) = :email AND deleted_at IS NULL
@@ -1427,10 +1438,11 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
         """), {"email": email})
         is_employee = staff_perm_check.scalar() is not None
 
-    # Student takes priority over employee
-    if is_student:
+    # Current student takes priority, but only if Okta doesn't say staff.
+    # Alumni with old class years who are now faculty should stay staff.
+    if is_current_student and not okta_says_staff and not is_employee:
         role = "student"
-    elif is_employee:
+    elif is_employee or okta_says_staff:
         role = "staff"
     else:
         role = "student"
