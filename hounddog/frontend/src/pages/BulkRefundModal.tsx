@@ -194,7 +194,9 @@ export default function BulkRefundModal({ open, transactionIds, onClose, onFinis
   }
 
   const previewRows: PreviewRow[] = preview
-    ? [...preview.eligible, ...preview.skipped]
+    ? [...preview.eligible, ...preview.skipped].sort((a, b) =>
+        (a.customer_email || "").localeCompare(b.customer_email || "", undefined, { sensitivity: "base" }),
+      )
     : [];
 
   const columns: ColumnsType<PreviewRow> = [

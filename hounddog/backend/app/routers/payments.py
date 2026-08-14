@@ -2180,6 +2180,9 @@ async def bulk_refund_preview(
         else:
             skipped.append(item)
 
+    eligible.sort(key=lambda r: (r.customer_email or "").lower())
+    skipped.sort(key=lambda r: (r.customer_email or "").lower())
+
     return BulkRefundPreviewResponse(
         eligible=eligible,
         skipped=skipped,
