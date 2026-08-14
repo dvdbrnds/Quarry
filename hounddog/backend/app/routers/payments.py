@@ -27,6 +27,9 @@ from ..services.permit_numbering import next_permit_number
 from ..schemas.payment import (
     AvailablePermitsResponse,
     AvailablePermitType,
+    BulkRefundPreviewResponse,
+    BulkRefundPreviewRow,
+    BulkRefundRequest,
     BursarImportPayload,
     BursarImportResult,
     CheckoutRequest,
@@ -1988,6 +1991,51 @@ class RefundRequest(BaseModel):
     note: str | None = None
 
 
+def _refund_target_kwargs(stripe_mod, txn_id: str) -> dict:
+    """Map a cached Stripe id (ch_/py_/pi_/cs_) to Refund.create kwargs."""
+    if txn_id.startswith(("ch_", "py_")):
+        return {"charge": txn_id}
+    if txn_id.startswith("pi_"):
+        return {"payment_intent": txn_id}
+    if txn_id.startswith("cs_"):
+        sess = stripe_mod.checkout.Session.retrieve(txn_id)
+        pi = getattr(sess, "payment_intent", None)
+        if not pi:
+            raise ValueError("Checkout session has no payment_intent")
+        return {"payment_intent": pi if isinstance(pi, str) else pi.id}
+    raise ValueError(f"Unsupported Stripe id prefix: {txn_id}")
+
+
+def _live_refundable(stripe_mod, txn_id: str) -> tuple[Decimal, dict]:
+    """Current refundable balance from Stripe, plus kwargs for Refund.create."""
+    kwargs = _refund_target_kwargs(stripe_mod, txn_id)
+    ch = None
+    if "charge" in kwargs:
+        ch = stripe_mod.Charge.retrieve(kwargs["charge"])
+    else:
+        pi = stripe_mod.PaymentIntent.retrieve(
+            kwargs["payment_intent"], expand=["latest_charge"],
+        )
+        ch = getattr(pi, "latest_charge", None)
+        if isinstance(ch, str):
+            ch = stripe_mod.Charge.retrieve(ch)
+    if not ch:
+        raise ValueError("No charge found for this transaction")
+    amount = Decimal(str(ch.amount)) / 100
+    refunded = Decimal(str(getattr(ch, "amount_refunded", 0) or 0)) / 100
+    return amount - refunded, kwargs
+
+
+def _stripe_error_message(exc: Exception) -> str:
+    code = getattr(exc, "code", None) or ""
+    user_msg = getattr(exc, "user_message", None) or str(exc)
+    if code == "balance_insufficient":
+        return "Insufficient Stripe available balance to issue this refund"
+    if code in ("charge_already_refunded", "amount_too_large"):
+        return user_msg
+    return user_msg
+
+
 @router.post("/refund")
 async def refund_stripe_charge(
     data: RefundRequest,
@@ -1997,15 +2045,14 @@ async def refund_stripe_charge(
     """Admin: full refund of a Stripe charge (e.g. fee-exempt student charged in error)."""
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
-    if not data.charge_id.startswith(("ch_", "py_")):
-        raise HTTPException(400, "charge_id must be a Stripe charge id (ch_…)")
 
     import stripe
 
     stripe.api_key = settings.stripe_secret_key
     try:
+        kwargs = _refund_target_kwargs(stripe, data.charge_id)
         refund = stripe.Refund.create(
-            charge=data.charge_id,
+            **kwargs,
             reason=data.reason if data.reason in ("duplicate", "fraudulent", "requested_by_customer") else "requested_by_customer",
             metadata={
                 "refunded_by": admin.email or admin.sub,
@@ -2025,6 +2072,308 @@ async def refund_stripe_charge(
         "charge_id": data.charge_id,
         "amount": (getattr(refund, "amount", 0) or 0) / 100,
     }
+
+
+MAX_BULK_REFUND = 500
+BULK_REFUND_DELAY_S = 0.12
+
+
+def _dedupe_ids(ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in ids:
+        tid = (raw or "").strip()
+        if not tid or tid in seen:
+            continue
+        seen.add(tid)
+        out.append(tid)
+    return out
+
+
+@router.post("/bulk-refund/preview", response_model=BulkRefundPreviewResponse)
+async def bulk_refund_preview(
+    data: BulkRefundRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Classify selected Stripe transactions as eligible or skipped for a partial refund."""
+    from ..models.stripe_cache import StripeTransactionCache
+    from ..services.bulk_refund import evaluate_transaction, parse_money
+
+    ids = _dedupe_ids(data.transaction_ids)
+    if not ids:
+        raise HTTPException(400, "No transactions selected")
+    if len(ids) > MAX_BULK_REFUND:
+        raise HTTPException(400, f"Maximum {MAX_BULK_REFUND} transactions per bulk refund")
+
+    mode = (data.mode or "flat").lower()
+    if mode not in ("flat", "percent"):
+        raise HTTPException(400, "mode must be 'flat' or 'percent'")
+    try:
+        amount = parse_money(data.amount)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    rows_q = await db.execute(
+        select(StripeTransactionCache).where(StripeTransactionCache.id.in_(ids))
+    )
+    by_id = {row.id: row for row in rows_q.scalars().all()}
+
+    eligible: list[BulkRefundPreviewRow] = []
+    skipped: list[BulkRefundPreviewRow] = []
+    total = Decimal("0.00")
+
+    for txn_id in ids:
+        row = by_id.get(txn_id)
+        if not row:
+            classified = evaluate_transaction(
+                txn_id=txn_id,
+                status="missing",
+                original=Decimal("0"),
+                already_refunded=Decimal("0"),
+                mode=mode,
+                amount=amount,
+            )
+            classified["skip_reason"] = "not found in Stripe cache — run Full Sync"
+            classified["eligible"] = False
+        else:
+            classified = evaluate_transaction(
+                txn_id=row.id,
+                status=row.status,
+                original=row.amount or Decimal("0"),
+                already_refunded=row.amount_refunded or Decimal("0"),
+                mode=mode,
+                amount=amount,
+                customer_name=row.customer_name,
+                customer_email=row.customer_email,
+                description=row.description,
+            )
+        item = BulkRefundPreviewRow(**classified)
+        if item.eligible:
+            eligible.append(item)
+            total += Decimal(item.proposed or "0")
+        else:
+            skipped.append(item)
+
+    return BulkRefundPreviewResponse(
+        eligible=eligible,
+        skipped=skipped,
+        eligible_count=len(eligible),
+        skipped_count=len(skipped),
+        total_refund=str(total),
+    )
+
+
+@router.post("/bulk-refund")
+async def bulk_refund_execute(
+    data: BulkRefundRequest,
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Issue partial Stripe refunds for the given transactions. Streams NDJSON progress."""
+    import asyncio
+    import json as _json
+    import stripe
+    from fastapi.responses import StreamingResponse
+
+    from ..database import async_session as session_factory
+    from ..models.audit_log import AuditLog
+    from ..models.stripe_cache import StripeTransactionCache
+    from ..services.bulk_refund import (
+        evaluate_transaction,
+        parse_money,
+        refund_idempotency_key,
+    )
+
+    if not data.confirm:
+        raise HTTPException(400, "confirm must be true to process refunds")
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    ids = _dedupe_ids(data.transaction_ids)
+    if not ids:
+        raise HTTPException(400, "No transactions selected")
+    if len(ids) > MAX_BULK_REFUND:
+        raise HTTPException(400, f"Maximum {MAX_BULK_REFUND} transactions per bulk refund")
+
+    mode = (data.mode or "flat").lower()
+    if mode not in ("flat", "percent"):
+        raise HTTPException(400, "mode must be 'flat' or 'percent'")
+    try:
+        amount = parse_money(data.amount)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    stripe.api_key = settings.stripe_secret_key
+    admin_email = admin.email or admin.sub
+
+    async def _generate():
+        succeeded = 0
+        failed = 0
+        skipped = 0
+        yield _json.dumps({"event": "start", "total": len(ids)}) + "\n"
+
+        async with session_factory() as db:
+            rows_q = await db.execute(
+                select(StripeTransactionCache).where(StripeTransactionCache.id.in_(ids))
+            )
+            by_id = {row.id: row for row in rows_q.scalars().all()}
+
+            for index, txn_id in enumerate(ids, start=1):
+                payload = {
+                    "event": "item",
+                    "index": index,
+                    "total": len(ids),
+                    "id": txn_id,
+                }
+                cache_row = by_id.get(txn_id)
+                original = cache_row.amount if cache_row else Decimal("0")
+                already = cache_row.amount_refunded if cache_row else Decimal("0")
+                status = cache_row.status if cache_row else "missing"
+
+                classified = evaluate_transaction(
+                    txn_id=txn_id,
+                    status=status,
+                    original=original,
+                    already_refunded=already,
+                    mode=mode,
+                    amount=amount,
+                    customer_name=cache_row.customer_name if cache_row else None,
+                    customer_email=cache_row.customer_email if cache_row else None,
+                )
+                if not classified["eligible"]:
+                    skipped += 1
+                    payload.update({
+                        "status": "skipped",
+                        "reason": classified["skip_reason"],
+                        "customer_email": classified.get("customer_email"),
+                    })
+                    yield _json.dumps(payload) + "\n"
+                    continue
+
+                proposed = Decimal(classified["proposed"])
+                cents = int((proposed * 100).quantize(Decimal("1")))
+
+                try:
+                    live_refundable, kwargs = _live_refundable(stripe, txn_id)
+                    if proposed > live_refundable:
+                        skipped += 1
+                        payload.update({
+                            "status": "skipped",
+                            "reason": (
+                                f"refund ${proposed} exceeds live refundable "
+                                f"balance ${live_refundable.quantize(Decimal('0.01'))}"
+                            ),
+                            "customer_email": classified.get("customer_email"),
+                        })
+                        yield _json.dumps(payload) + "\n"
+                        continue
+
+                    refund = stripe.Refund.create(
+                        **kwargs,
+                        amount=cents,
+                        reason="requested_by_customer",
+                        metadata={
+                            "type": "bulk_partial_refund",
+                            "refunded_by": admin_email,
+                            "mode": mode,
+                            "requested_amount": str(amount),
+                            "transaction_id": txn_id,
+                        },
+                        idempotency_key=refund_idempotency_key(txn_id, cents),
+                    )
+                    refund_id = getattr(refund, "id", None)
+                    refund_status = getattr(refund, "status", "unknown")
+                    refunded_now = Decimal(str(getattr(refund, "amount", cents) or cents)) / 100
+
+                    if cache_row:
+                        try:
+                            live_left, _ = _live_refundable(stripe, txn_id)
+                            cache_row.amount_refunded = max(
+                                Decimal("0.00"),
+                                (cache_row.amount or Decimal("0")) - live_left,
+                            )
+                        except Exception:
+                            cache_row.amount_refunded = (
+                                (cache_row.amount_refunded or Decimal("0")) + refunded_now
+                            )
+                    db.add(AuditLog(
+                        user_email=admin_email,
+                        user_sub=admin.sub or "",
+                        action="POST",
+                        resource_type="payment",
+                        resource_id=txn_id[:64],
+                        endpoint="/api/payments/bulk-refund",
+                        summary=f"Bulk refund ${refunded_now:.2f} on {txn_id} → {refund_id}",
+                        response_status=200,
+                        changes={
+                            "refund_id": refund_id,
+                            "amount": str(refunded_now),
+                            "stripe_status": refund_status,
+                            "mode": mode,
+                        },
+                    ))
+                    await db.commit()
+                    succeeded += 1
+                    payload.update({
+                        "status": "succeeded",
+                        "refund_id": refund_id,
+                        "refund_status": refund_status,
+                        "amount": str(refunded_now),
+                        "customer_email": classified.get("customer_email"),
+                        "customer_name": classified.get("customer_name"),
+                    })
+                except Exception as e:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
+                    failed += 1
+                    payload.update({
+                        "status": "failed",
+                        "reason": _stripe_error_message(e),
+                        "customer_email": classified.get("customer_email"),
+                        "customer_name": classified.get("customer_name"),
+                    })
+                    logger.warning(
+                        "Bulk refund failed for %s: %s", txn_id, e, exc_info=True,
+                    )
+
+                yield _json.dumps(payload) + "\n"
+                await asyncio.sleep(BULK_REFUND_DELAY_S)
+
+            db.add(AuditLog(
+                user_email=admin_email,
+                user_sub=admin.sub or "",
+                action="POST",
+                resource_type="payment",
+                resource_id=None,
+                endpoint="/api/payments/bulk-refund",
+                summary=(
+                    f"Bulk refund batch complete: {succeeded} succeeded, "
+                    f"{failed} failed, {skipped} skipped "
+                    f"({mode} {amount})"
+                ),
+                response_status=200,
+                changes={
+                    "succeeded": succeeded,
+                    "failed": failed,
+                    "skipped": skipped,
+                    "mode": mode,
+                    "amount": str(amount),
+                    "count": len(ids),
+                },
+            ))
+            await db.commit()
+
+        yield _json.dumps({
+            "event": "done",
+            "succeeded": succeeded,
+            "failed": failed,
+            "skipped": skipped,
+            "total": len(ids),
+        }) + "\n"
+
+    return StreamingResponse(_generate(), media_type="application/x-ndjson")
 
 
 @router.get("/export/oracle-gl")

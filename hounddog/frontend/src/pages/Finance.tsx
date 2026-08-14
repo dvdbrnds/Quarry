@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty, Spin, Tabs, Descriptions, Tooltip,
+  Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty, Spin, Tabs, Descriptions, Tooltip, Input,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import ChargebackLog from "./ChargebackLog";
+import BulkRefundModal from "./BulkRefundModal";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -59,11 +60,15 @@ interface StripeTransactionsResponse {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  ticket_payment: "red", permit_purchase: "blue", standalone_permit_purchase: "blue", lottery_permit: "purple",
+  ticket_payment: "red", permit_purchase: "blue", standalone_permit_purchase: "blue",
+  lottery_permit: "purple", lottery_v2_permit: "purple", direct_permit_purchase: "blue",
 };
 const TYPE_LABELS: Record<string, string> = {
-  ticket_payment: "Citation", permit_purchase: "Permit", standalone_permit_purchase: "Permit", lottery_permit: "Lottery",
+  ticket_payment: "Citation", permit_purchase: "Permit", standalone_permit_purchase: "Permit",
+  lottery_permit: "Lottery", lottery_v2_permit: "Lottery", direct_permit_purchase: "Permit",
 };
+const PERMIT_TYPES = new Set(["permit_purchase", "standalone_permit_purchase", "direct_permit_purchase"]);
+const LOTTERY_TYPES = new Set(["lottery_permit", "lottery_v2_permit"]);
 const METHOD_LABELS: Record<string, string> = {
   online_card: "Stripe", online_permit_purchase: "Stripe", bursar: "Bursar",
 };
@@ -194,6 +199,11 @@ export default function Finance() {
   const [filterDateTo, setFilterDateTo] = useState<dayjs.Dayjs | null>(null);
   const [glFrom, setGlFrom] = useState<dayjs.Dayjs | null>(null);
   const [glTo, setGlTo] = useState<dayjs.Dayjs | null>(null);
+  const [stripeType, setStripeType] = useState("");
+  const [stripePermitType, setStripePermitType] = useState("");
+  const [stripeSearch, setStripeSearch] = useState("");
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [backfillRunning, setBackfillRunning] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ updated: number; already_set: number; skipped_no_email: number; errors: string[]; details: { id: string; email: string; source: string }[] } | null>(null);
   const [payBackfillRunning, setPayBackfillRunning] = useState(false);
@@ -365,7 +375,7 @@ export default function Finance() {
         if (ptype === "ticket_payment") {
           return <span>{ticketRef ? `Citation #${ticketRef}` : "Citation"}{plate ? <span className="text-ink-mute"> — {plate}</span> : ""}</span>;
         }
-        if (ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit") {
+        if (ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit" || ptype === "lottery_v2_permit" || ptype === "direct_permit_purchase") {
           return <span>{permitLabel || "Permit"}{plate ? <span className="text-ink-mute"> — {plate}</span> : ""}</span>;
         }
         return t.description || "—";
@@ -440,6 +450,49 @@ export default function Finance() {
     },
   ];
 
+  const filteredStripe = useMemo(() => {
+    const txns = stripe?.transactions || [];
+    const q = stripeSearch.trim().toLowerCase();
+    const fromIso = glFrom ? glFrom.startOf("day").toISOString() : null;
+    const toIso = glTo ? glTo.endOf("day").toISOString() : null;
+    return txns.filter((t) => {
+      if (fromIso && t.created < fromIso) return false;
+      if (toIso && t.created > toIso) return false;
+      const ptype = t.metadata?.type || "";
+      if (stripeType === "permit" && !PERMIT_TYPES.has(ptype)) return false;
+      if (stripeType === "lottery" && !LOTTERY_TYPES.has(ptype)) return false;
+      if (stripeType === "ticket_payment" && ptype !== "ticket_payment") return false;
+      if (stripePermitType) {
+        const label = t.metadata?.permit_type_label || t.metadata?.permit_type_code || "";
+        if (label !== stripePermitType) return false;
+      }
+      if (q) {
+        const hay = [
+          t.customer_name, t.customer_email, t.description, t.id,
+          t.metadata?.student_name, t.metadata?.student_email, t.metadata?.email,
+          t.metadata?.payer_name, t.metadata?.plate,
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [stripe, glFrom, glTo, stripeType, stripePermitType, stripeSearch]);
+
+  const permitTypeOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const t of stripe?.transactions || []) {
+      const label = t.metadata?.permit_type_label || t.metadata?.permit_type_code;
+      if (label) labels.add(label);
+    }
+    return [...labels].sort().map((v) => ({ label: v, value: v }));
+  }, [stripe]);
+
+  const bulkRefundIds = selectedRowKeys.length > 0
+    ? selectedRowKeys
+    : filteredStripe.map((t) => t.id);
+
+  const stripeFiltersActive = !!(glFrom || glTo || stripeType || stripePermitType || stripeSearch);
+
   const ov = stripe?.overview;
 
   return (
@@ -475,19 +528,81 @@ export default function Finance() {
 
       <Tabs defaultActiveKey="stripe" items={[
         {
-          key: "stripe", label: `Stripe Transactions${stripe ? ` (${stripe.transactions.length})` : ""}`,
+          key: "stripe", label: `Stripe Transactions${stripe ? ` (${filteredStripe.length}${filteredStripe.length !== (stripe.transactions.length) ? ` / ${stripe.transactions.length}` : ""})` : ""}`,
           children: (
             <div className="space-y-4">
               <Card>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                   <span className="text-sm text-ink-mute">Live data from Stripe API — no webhook dependency</span>
-                  <Space>
+                  <Space wrap>
+                    <Button
+                      size="small"
+                      type="primary"
+                      danger
+                      disabled={!bulkRefundIds.length}
+                      onClick={() => setBulkOpen(true)}
+                    >
+                      Bulk Refund{bulkRefundIds.length ? ` (${bulkRefundIds.length})` : ""}
+                    </Button>
                     <Button size="small" onClick={handleBackfillEmails} loading={backfillRunning}>Backfill Emails</Button>
                     <Button size="small" onClick={runStripeDebug} loading={debugLoading}>Diagnose Connection</Button>
                     <Button size="small" onClick={() => loadStripe(false)} loading={stripeLoading}>Refresh</Button>
                     <Button size="small" onClick={() => loadStripe(true)} loading={stripeLoading}>Full Sync</Button>
                   </Space>
                 </div>
+                <Space className="mb-4" wrap>
+                  <Select
+                    value={stripeType || undefined}
+                    onChange={(v) => setStripeType(v || "")}
+                    placeholder="All types"
+                    allowClear
+                    style={{ width: 140 }}
+                    options={[
+                      { label: "Permit", value: "permit" },
+                      { label: "Lottery", value: "lottery" },
+                      { label: "Citation", value: "ticket_payment" },
+                    ]}
+                  />
+                  <Select
+                    value={stripePermitType || undefined}
+                    onChange={(v) => setStripePermitType(v || "")}
+                    placeholder="All permit types"
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    style={{ width: 220 }}
+                    options={permitTypeOptions}
+                  />
+                  <Input
+                    placeholder="Search name, email, plate"
+                    value={stripeSearch}
+                    onChange={(e) => setStripeSearch(e.target.value)}
+                    allowClear
+                    style={{ width: 220 }}
+                  />
+                  {stripeFiltersActive && (
+                    <Button
+                      type="link"
+                      danger
+                      size="small"
+                      onClick={() => {
+                        setStripeType("");
+                        setStripePermitType("");
+                        setStripeSearch("");
+                        setGlFrom(null);
+                        setGlTo(null);
+                        setSelectedRowKeys([]);
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                  {selectedRowKeys.length > 0 && (
+                    <Button type="link" size="small" onClick={() => setSelectedRowKeys([])}>
+                      Clear selection ({selectedRowKeys.length})
+                    </Button>
+                  )}
+                </Space>
                 {stripeDebug && (
                   <Alert type="info" className="mb-4" showIcon closable onClose={() => setStripeDebug(null)}
                     message="Stripe Diagnostic Results"
@@ -517,7 +632,12 @@ export default function Finance() {
                     }
                   />
                 )}
-                <Table dataSource={stripe?.transactions || []} columns={stripeColumns} rowKey="id" size="small"
+                <Table dataSource={filteredStripe} columns={stripeColumns} rowKey="id" size="small"
+                  rowSelection={{
+                    selectedRowKeys,
+                    onChange: (keys) => setSelectedRowKeys(keys as string[]),
+                    preserveSelectedRowKeys: true,
+                  }}
                   pagination={{ defaultPageSize: 25, showSizeChanger: true, showTotal: t => `${t} transactions` }}
                   locale={{ emptyText: <Empty description="No Stripe transactions found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                   expandable={{
@@ -525,7 +645,7 @@ export default function Finance() {
                       const m = t.metadata || {};
                       const ptype = m.type || "";
                       const isCitation = ptype === "ticket_payment";
-                      const isPermit = ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit";
+                      const isPermit = ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit" || ptype === "lottery_v2_permit" || ptype === "direct_permit_purchase";
                       const knownKeys = new Set(["type", "ticket_id", "ticket_ref", "plate", "violation_code", "violation_category",
                         "offense_number", "fine_amount", "lot", "zone", "issued_at", "officer_id", "payer_name",
                         "permit_type_id", "permit_type_code", "permit_type_label", "student_name", "student_email",
@@ -710,6 +830,12 @@ export default function Finance() {
           ),
         },
       ]} />
+      <BulkRefundModal
+        open={bulkOpen}
+        transactionIds={bulkRefundIds}
+        onClose={() => setBulkOpen(false)}
+        onFinished={() => loadStripe(false)}
+      />
     </div>
   );
 }

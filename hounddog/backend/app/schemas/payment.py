@@ -227,3 +227,31 @@ class StripeTransactionsResponse(BaseModel):
     overview: StripeOverview
     transactions: list[StripeTransaction]
     has_more: bool = False
+
+
+class BulkRefundRequest(BaseModel):
+    transaction_ids: list[str]
+    mode: str = "flat"  # flat | percent
+    amount: Decimal
+    confirm: bool = False
+
+
+class BulkRefundPreviewRow(BaseModel):
+    id: str
+    customer_name: str | None = None
+    customer_email: str | None = None
+    description: str | None = None
+    amount: str
+    amount_refunded: str
+    refundable: str
+    eligible: bool
+    proposed: str | None = None
+    skip_reason: str | None = None
+
+
+class BulkRefundPreviewResponse(BaseModel):
+    eligible: list[BulkRefundPreviewRow]
+    skipped: list[BulkRefundPreviewRow]
+    eligible_count: int
+    skipped_count: int
+    total_refund: str
