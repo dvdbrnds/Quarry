@@ -211,6 +211,7 @@ class StripeTransaction(BaseModel):
     metadata: dict = {}
     created: datetime
     livemode: bool = False
+    payment_intent_id: str | None = None
 
 
 class StripeOverview(BaseModel):

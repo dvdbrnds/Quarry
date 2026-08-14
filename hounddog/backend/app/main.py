@@ -625,6 +625,7 @@ async def lifespan(app: FastAPI):
             # Moravian numeric ID for SIS lookups
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS moravian_id VARCHAR(32)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS refund_id VARCHAR(128)",
+            "ALTER TABLE stripe_transaction_cache ADD COLUMN IF NOT EXISTS payment_intent_id VARCHAR(256)",
             # Voucher usage tracking for department chargebacks
             """CREATE TABLE IF NOT EXISTS voucher_usages (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -661,6 +662,7 @@ async def lifespan(app: FastAPI):
                 metadata_json JSONB,
                 created_at TIMESTAMPTZ NOT NULL,
                 livemode BOOLEAN DEFAULT false,
+                payment_intent_id VARCHAR(256),
                 cached_at TIMESTAMPTZ DEFAULT now()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_stripe_cache_created ON stripe_transaction_cache(created_at DESC)",

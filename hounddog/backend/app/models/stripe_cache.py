@@ -30,4 +30,5 @@ class StripeTransactionCache(Base):
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     livemode: Mapped[bool] = mapped_column(Boolean, default=False)
+    payment_intent_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

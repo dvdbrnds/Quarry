@@ -115,3 +115,36 @@ def test_idempotency_key_stable_per_txn_and_cents():
 def test_parse_money_rounds_to_cents():
     assert parse_money("100.456") == Decimal("100.46")
     assert parse_money(100) == Decimal("100.00")
+
+
+def test_dedupe_collapses_charge_pi_and_session():
+    from datetime import datetime, timezone
+    from app.services.bulk_refund import dedupe_stripe_rows
+
+    ts = datetime(2026, 8, 8, 19, 13, tzinfo=timezone.utc).isoformat()
+    rows = [
+        {"id": "cs_1", "source": "checkout_session", "customer_email": "a@mu.edu",
+         "amount": "250.00", "created": ts, "payment_intent_id": "pi_1"},
+        {"id": "pi_1", "source": "payment_intent", "customer_email": "a@mu.edu",
+         "amount": "250.00", "created": ts, "payment_intent_id": "pi_1"},
+        {"id": "ch_1", "source": "charge", "customer_email": "a@mu.edu",
+         "amount": "250.00", "created": ts, "payment_intent_id": "pi_1"},
+    ]
+    out = dedupe_stripe_rows(rows)
+    assert len(out) == 1
+    assert out[0]["id"] == "ch_1"
+
+
+def test_dedupe_keeps_distinct_students():
+    from datetime import datetime, timezone
+    from app.services.bulk_refund import dedupe_stripe_rows
+
+    ts = datetime(2026, 8, 8, 19, 13, tzinfo=timezone.utc).isoformat()
+    rows = [
+        {"id": "ch_1", "source": "charge", "customer_email": "a@mu.edu",
+         "amount": "250.00", "created": ts},
+        {"id": "ch_2", "source": "charge", "customer_email": "b@mu.edu",
+         "amount": "250.00", "created": ts},
+    ]
+    out = dedupe_stripe_rows(rows)
+    assert {r["id"] for r in out} == {"ch_1", "ch_2"}

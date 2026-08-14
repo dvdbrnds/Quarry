@@ -89,3 +89,65 @@ def evaluate_transaction(
 def refund_idempotency_key(txn_id: str, cents: int) -> str:
     """Stable key so retrying a success does not create a second refund."""
     return f"bulk-refund:{txn_id}:{cents}"[:255]
+
+
+SOURCE_RANK = {"charge": 0, "payment_intent": 1, "checkout_session": 2}
+
+
+def transaction_group_key(
+    *,
+    txn_id: str,
+    source: str | None,
+    payment_intent_id: str | None,
+    customer_email: str | None,
+    amount,
+    created,
+) -> str:
+    """Group Charge + PaymentIntent + Checkout Session for the same payment."""
+    email = (customer_email or "").strip().lower()
+    ts = None
+    if created is not None:
+        ts = created.timestamp() if hasattr(created, "timestamp") else None
+        if ts is None:
+            try:
+                ts = float(created)
+            except (TypeError, ValueError):
+                ts = None
+    if email and ts is not None:
+        return f"fp:{email}:{amount}:{int(ts // 120)}"
+    pi = (payment_intent_id or "").strip()
+    if not pi and (txn_id or "").startswith("pi_"):
+        pi = txn_id
+    if pi:
+        return f"pi:{pi}"
+    return f"id:{txn_id}"
+
+
+def dedupe_stripe_rows(rows: list[dict]) -> list[dict]:
+    """Keep one row per underlying payment, preferring Charge over PI over Session."""
+    best: dict[str, dict] = {}
+    order: list[str] = []
+    for row in rows:
+        created = row.get("created")
+        if isinstance(created, str):
+            try:
+                from datetime import datetime as _dt
+                created = _dt.fromisoformat(created.replace("Z", "+00:00"))
+            except ValueError:
+                created = None
+        key = transaction_group_key(
+            txn_id=row.get("id") or "",
+            source=row.get("source"),
+            payment_intent_id=row.get("payment_intent_id"),
+            customer_email=row.get("customer_email") or (row.get("metadata") or {}).get("student_email") or (row.get("metadata") or {}).get("email"),
+            amount=row.get("amount"),
+            created=created,
+        )
+        prev = best.get(key)
+        rank = SOURCE_RANK.get(row.get("source") or "", 9)
+        if prev is None:
+            best[key] = row
+            order.append(key)
+        elif rank < SOURCE_RANK.get(prev.get("source") or "", 9):
+            best[key] = row
+    return [best[k] for k in order]

@@ -202,6 +202,7 @@ export default function Finance() {
   const [stripeType, setStripeType] = useState("");
   const [stripePermitType, setStripePermitType] = useState("");
   const [stripeSearch, setStripeSearch] = useState("");
+  const [stripeStatus, setStripeStatus] = useState("succeeded");
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [backfillRunning, setBackfillRunning] = useState(false);
@@ -462,6 +463,7 @@ export default function Finance() {
       if (stripeType === "permit" && !PERMIT_TYPES.has(ptype)) return false;
       if (stripeType === "lottery" && !LOTTERY_TYPES.has(ptype)) return false;
       if (stripeType === "ticket_payment" && ptype !== "ticket_payment") return false;
+      if (stripeStatus && t.status !== stripeStatus) return false;
       if (stripePermitType) {
         const label = t.metadata?.permit_type_label || t.metadata?.permit_type_code || "";
         if (label !== stripePermitType) return false;
@@ -476,7 +478,7 @@ export default function Finance() {
       }
       return true;
     });
-  }, [stripe, glFrom, glTo, stripeType, stripePermitType, stripeSearch]);
+  }, [stripe, glFrom, glTo, stripeType, stripePermitType, stripeSearch, stripeStatus]);
 
   const permitTypeOptions = useMemo(() => {
     const labels = new Set<string>();
@@ -491,7 +493,7 @@ export default function Finance() {
     ? selectedRowKeys
     : filteredStripe.map((t) => t.id);
 
-  const stripeFiltersActive = !!(glFrom || glTo || stripeType || stripePermitType || stripeSearch);
+  const stripeFiltersActive = !!(glFrom || glTo || stripeType || stripePermitType || stripeSearch || (stripeStatus && stripeStatus !== "succeeded"));
 
   const ov = stripe?.overview;
 
@@ -573,6 +575,19 @@ export default function Finance() {
                     style={{ width: 220 }}
                     options={permitTypeOptions}
                   />
+                  <Select
+                    value={stripeStatus || undefined}
+                    onChange={(v) => setStripeStatus(v || "")}
+                    placeholder="All statuses"
+                    allowClear
+                    style={{ width: 140 }}
+                    options={[
+                      { label: "Succeeded", value: "succeeded" },
+                      { label: "Failed", value: "failed" },
+                      { label: "Pending", value: "pending" },
+                      { label: "Canceled", value: "canceled" },
+                    ]}
+                  />
                   <Input
                     placeholder="Search name, email, plate"
                     value={stripeSearch}
@@ -589,6 +604,7 @@ export default function Finance() {
                         setStripeType("");
                         setStripePermitType("");
                         setStripeSearch("");
+                        setStripeStatus("succeeded");
                         setGlFrom(null);
                         setGlTo(null);
                         setSelectedRowKeys([]);
@@ -603,6 +619,9 @@ export default function Finance() {
                     </Button>
                   )}
                 </Space>
+                <p className="text-xs text-ink-mute mb-3">
+                  This list is Stripe payments, not issued permits. Duplicate Charge / PaymentIntent / Checkout Session rows for the same payment are collapsed so a bulk refund cannot hit one student twice.
+                </p>
                 {stripeDebug && (
                   <Alert type="info" className="mb-4" showIcon closable onClose={() => setStripeDebug(null)}
                     message="Stripe Diagnostic Results"

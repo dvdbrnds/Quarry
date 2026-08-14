@@ -1484,6 +1484,8 @@ def _charge_to_txn(ch) -> StripeTransaction:
     billing = getattr(ch, "billing_details", None)
     email = getattr(ch, "receipt_email", None) or (getattr(billing, "email", None) if billing else None)
     name = getattr(billing, "name", None) if billing else None
+    pi_ref = getattr(ch, "payment_intent", None)
+    pi_id = pi_ref if isinstance(pi_ref, str) else getattr(pi_ref, "id", None)
 
     return StripeTransaction(
         id=ch.id,
@@ -1504,6 +1506,7 @@ def _charge_to_txn(ch) -> StripeTransaction:
         metadata=ch.metadata.to_dict() if getattr(ch, "metadata", None) else {},
         created=datetime.fromtimestamp(ch.created, tz=timezone.utc),
         livemode=getattr(ch, "livemode", False),
+        payment_intent_id=pi_id,
     )
 
 
@@ -1580,6 +1583,7 @@ def _pi_to_txn(pi) -> StripeTransaction:
         metadata=pi.metadata.to_dict() if getattr(pi, "metadata", None) else {},
         created=datetime.fromtimestamp(pi.created, tz=timezone.utc),
         livemode=getattr(pi, "livemode", False),
+        payment_intent_id=pi.id,
     )
 
 
@@ -1588,6 +1592,8 @@ def _session_to_txn(sess) -> StripeTransaction:
     amount = Decimal(str(getattr(sess, "amount_total", 0) or 0)) / 100
     status_map = {"complete": "succeeded", "open": "pending", "expired": "canceled"}
     customer_details = getattr(sess, "customer_details", None)
+    sess_pi = getattr(sess, "payment_intent", None)
+    sess_pi_id = sess_pi if isinstance(sess_pi, str) else getattr(sess_pi, "id", None)
 
     return StripeTransaction(
         id=sess.id,
@@ -1608,6 +1614,7 @@ def _session_to_txn(sess) -> StripeTransaction:
         metadata=sess.metadata.to_dict() if getattr(sess, "metadata", None) else {},
         created=datetime.fromtimestamp(sess.created, tz=timezone.utc),
         livemode=getattr(sess, "livemode", False),
+        payment_intent_id=sess_pi_id,
     )
 
 
@@ -1672,6 +1679,7 @@ async def stripe_transactions(
             metadata_json=txn.metadata,
             created_at=txn.created,
             livemode=txn.livemode,
+            payment_intent_id=txn.payment_intent_id,
         )
 
     try:
@@ -1694,6 +1702,8 @@ async def stripe_transactions(
                     existing.amount_refunded = txn.amount_refunded
                     existing.net = txn.net
                     existing.fee = txn.fee
+                    if txn.payment_intent_id:
+                        existing.payment_intent_id = txn.payment_intent_id
             except Exception as e:
                 errors.append(f"charge {ch.id}: {e}")
     except Exception as e:
@@ -1719,6 +1729,8 @@ async def stripe_transactions(
                     existing.amount_refunded = txn.amount_refunded
                     existing.net = txn.net
                     existing.fee = txn.fee
+                    if txn.payment_intent_id:
+                        existing.payment_intent_id = txn.payment_intent_id
             except Exception as e:
                 errors.append(f"pi {pi.id}: {e}")
     except Exception as e:
@@ -1746,31 +1758,20 @@ async def stripe_transactions(
 
     await db.flush()
 
+    from ..services.bulk_refund import dedupe_stripe_rows
+
     # Now serve from cache
     all_q = await db.execute(
         select(StripeTransactionCache).order_by(StripeTransactionCache.created_at.desc())
     )
     all_cached = all_q.scalars().all()
 
-    overview = {
-        "total_volume": Decimal("0"), "total_fees": Decimal("0"),
-        "total_net": Decimal("0"), "total_refunded": Decimal("0"),
-        "successful_count": 0, "refunded_count": 0, "failed_count": 0,
-    }
-    transactions: list[dict] = []
+    raw_transactions: list[dict] = []
     for row in all_cached:
-        if row.status == "succeeded":
-            overview["successful_count"] += 1
-            overview["total_volume"] += row.amount
-            overview["total_fees"] += row.fee
-            overview["total_net"] += row.net
-        if row.amount_refunded > 0:
-            overview["refunded_count"] += 1
-            overview["total_refunded"] += row.amount_refunded
-        if row.status == "failed":
-            overview["failed_count"] += 1
-
-        transactions.append({
+        pi_id = row.payment_intent_id
+        if not pi_id and (row.id or "").startswith("pi_"):
+            pi_id = row.id
+        raw_transactions.append({
             "id": row.id,
             "source": row.source,
             "amount": str(row.amount),
@@ -1789,7 +1790,31 @@ async def stripe_transactions(
             "metadata": row.metadata_json or {},
             "created": row.created_at.isoformat(),
             "livemode": row.livemode,
+            "payment_intent_id": pi_id,
         })
+
+    transactions = dedupe_stripe_rows(raw_transactions)
+
+    overview = {
+        "total_volume": Decimal("0"), "total_fees": Decimal("0"),
+        "total_net": Decimal("0"), "total_refunded": Decimal("0"),
+        "successful_count": 0, "refunded_count": 0, "failed_count": 0,
+    }
+    for row in transactions:
+        amount = Decimal(str(row["amount"]))
+        refunded = Decimal(str(row["amount_refunded"]))
+        fee = Decimal(str(row["fee"]))
+        net = Decimal(str(row["net"]))
+        if row["status"] == "succeeded":
+            overview["successful_count"] += 1
+            overview["total_volume"] += amount
+            overview["total_fees"] += fee
+            overview["total_net"] += net
+        if refunded > 0:
+            overview["refunded_count"] += 1
+            overview["total_refunded"] += refunded
+        if row["status"] == "failed":
+            overview["failed_count"] += 1
 
     return {
         "overview": {
