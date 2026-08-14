@@ -71,9 +71,8 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
     if role not in ("admin",):
         from datetime import datetime
         current_year = datetime.now().year
-        # class_year within 6 years of now is a reasonable current-student window
         has_current_class_year = (
-            bool(user.class_year) and user.class_year >= current_year - 1
+            bool(user.class_year) and user.class_year >= current_year
         )
 
         moravian_id = _extract_moravian_id(user)

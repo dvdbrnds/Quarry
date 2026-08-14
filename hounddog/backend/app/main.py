@@ -1405,7 +1405,7 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
     # become faculty still have their old class_year (e.g. 2007).
     from datetime import datetime as _dt
     _current_year = _dt.now().year
-    has_current_class_year = bool(class_year) and class_year >= _current_year - 1
+    has_current_class_year = bool(class_year) and class_year >= _current_year
     is_current_student = has_current_class_year or has_student_record
 
     # Check Jenzabar SIS for authoritative employment status
