@@ -45,14 +45,80 @@ async def _audit(summary: str, action: str = "POST", details: dict | None = None
                 ))
     except Exception as e:
         logger.warning("Failed to write backup audit entry: %s", e)
+
+
 SCHEDULE_FILE = BACKUP_DIR / "_schedule.json"
 SKIP_TABLES = {"alembic_version", "backup_snapshots"}
+BACKUP_ADVISORY_LOCK_KEY = 870014
 
 FREQUENCY_DELTAS = {
     "daily": timedelta(days=1),
     "weekly": timedelta(weeks=1),
     "monthly": timedelta(days=30),
 }
+
+
+def _aware(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _parse_hhmm(time_str: str) -> tuple[int, int]:
+    parts = (time_str or "02:00").split(":")
+    try:
+        hour = int(parts[0])
+    except (ValueError, IndexError):
+        hour = 2
+    try:
+        minute = int(parts[1]) if len(parts) > 1 else 0
+    except ValueError:
+        minute = 0
+    return max(0, min(23, hour)), max(0, min(59, minute))
+
+
+def current_slot(frequency: str, time_str: str, now: datetime) -> datetime:
+    """Most recent scheduled wall-clock time that has already arrived (campus TZ)."""
+    from .timeutils import campus_tz
+    tz = campus_tz()
+    local = _aware(now).astimezone(tz)
+    hour, minute = _parse_hhmm(time_str)
+    slot = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if slot > local:
+        slot -= FREQUENCY_DELTAS.get(frequency, timedelta(days=1))
+    return slot
+
+
+def is_backup_due(
+    frequency: str,
+    time_str: str,
+    now: datetime,
+    last_scheduled: datetime | None,
+) -> bool:
+    """Whether a scheduled backup should run for the current slot.
+
+    Daily due-ness is slot-based (today's HH:MM in Eastern), not "24 hours
+    since last_run". That way a 10 AM catch-up still leaves tomorrow's 2 AM
+    intact, and a missing next_run in app_config cannot skip the window.
+
+    Weekly/monthly additionally require the full period since the last
+    scheduled snapshot so they cannot fire every day after the first miss.
+    """
+    if last_scheduled is None:
+        from .timeutils import campus_tz
+        local = _aware(now).astimezone(campus_tz())
+        hour, minute = _parse_hhmm(time_str)
+        todays_slot = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return local >= todays_slot
+
+    slot = current_slot("daily", time_str, now)
+    last = _aware(last_scheduled)
+    if last >= slot:
+        return False
+    if frequency == "daily":
+        return True
+    period = FREQUENCY_DELTAS.get(frequency, timedelta(days=1))
+    return (_aware(now) - last) >= period
 
 
 def _serialise(value):
@@ -106,30 +172,36 @@ async def _read_schedule() -> dict:
 
 
 async def _write_schedule(data: dict):
-    """Write schedule to both DB and disk."""
+    """Write schedule to both DB and disk.
+
+    Must use CAST(:val AS jsonb) — SQLAlchemy treats :val::jsonb as a
+    parameter named 'val::jsonb', so the scheduler could never persist
+    last_run / next_run and would recompute a future window every tick.
+    """
     try:
         value_str = json.dumps(data)
         async with async_session() as db:
             await db.execute(text("""
                 INSERT INTO app_config (key, value, updated_at)
-                VALUES ('backup_schedule', :val::jsonb, now())
-                ON CONFLICT (key) DO UPDATE SET value = :val::jsonb, updated_at = now()
+                VALUES ('backup_schedule', CAST(:val AS jsonb), now())
+                ON CONFLICT (key) DO UPDATE SET value = CAST(:val AS jsonb), updated_at = now()
             """), {"val": value_str})
             await db.commit()
     except Exception as e:
-        logger.warning("Failed to write schedule to DB: %s", e)
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
+        logger.error("Failed to write schedule to DB: %s", e)
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
+    except Exception as e:
+        logger.warning("Failed to write schedule to disk: %s", e)
 
 
 def _compute_next_run(frequency: str, time_str: str, from_dt: datetime | None = None) -> datetime:
     """Compute the next run datetime based on frequency and time (HH:MM Eastern)."""
     from .timeutils import campus_tz, now_local
     tz = campus_tz()
-    now = from_dt.astimezone(tz) if from_dt else now_local()
-    parts = time_str.split(":")
-    hour = int(parts[0]) if len(parts) > 0 else 2
-    minute = int(parts[1]) if len(parts) > 1 else 0
+    now = _aware(from_dt).astimezone(tz) if from_dt else now_local()
+    hour, minute = _parse_hhmm(time_str)
 
     candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= now:
@@ -364,13 +436,35 @@ def _check_backup_dir_size():
         logger.warning("Backup directory is %.1fGB — check retention policy", total_gb)
 
 
+async def _latest_scheduled_created_at() -> datetime | None:
+    """Timestamp of the most recent scheduled snapshot (source of truth for due-ness)."""
+    try:
+        async with async_session() as db:
+            result = await db.execute(text("""
+                SELECT created_at FROM backup_snapshots
+                WHERE source = 'scheduled'
+                ORDER BY created_at DESC
+                LIMIT 1
+            """))
+            row = result.scalar()
+            if isinstance(row, datetime):
+                return _aware(row)
+    except Exception as e:
+        logger.warning("Failed to read latest scheduled backup: %s", e)
+    return None
+
+
 async def process_scheduled_backups():
     """Check if a scheduled backup is due and execute it.
 
-    Called every 60s from the closure_scheduler loop.  All scheduling
-    decisions happen here — a backup only runs when the wall-clock time
-    passes the configured daily window AND at least MIN_BACKUP_INTERVAL
-    has elapsed since the last run (hard safety floor).
+    Called every 60s from the closure_scheduler loop.
+
+    Due-ness is based on backup_snapshots (did we already take a scheduled
+    backup for this slot?), not on next_run in app_config. next_run is still
+    written for the UI, but a failed config write cannot skip or loop backups.
+
+    Two uvicorn workers both run this loop; a Postgres advisory lock ensures
+    only one worker creates the snapshot.
     """
     config = await _read_schedule()
     logger.debug(
@@ -383,53 +477,52 @@ async def process_scheduled_backups():
     frequency = config.get("frequency", "daily")
     time_str = config.get("time", "02:00")
     now = datetime.now(timezone.utc)
+    last_scheduled = await _latest_scheduled_created_at()
 
-    # ── Hard safety floor: never run more often than MIN_BACKUP_INTERVAL ──
-    last_run_str = config.get("last_run")
-    if last_run_str:
-        try:
-            last_run = datetime.fromisoformat(last_run_str)
-            if last_run.tzinfo is None:
-                last_run = last_run.replace(tzinfo=timezone.utc)
-            elapsed = now - last_run
-            if elapsed < MIN_BACKUP_INTERVAL:
-                logger.debug(
-                    "Backup scheduler: last run was %s ago (min interval %s), skipping",
-                    elapsed, MIN_BACKUP_INTERVAL,
-                )
-                return
-        except (ValueError, TypeError):
-            pass
-
-    # ── Determine next_run ──
-    next_run_str = config.get("next_run")
-    if next_run_str:
-        try:
-            next_run = datetime.fromisoformat(next_run_str)
-            if next_run.tzinfo is None:
-                from .timeutils import campus_tz
-                next_run = next_run.replace(tzinfo=campus_tz())
-        except (ValueError, TypeError):
-            logger.warning("Backup scheduler: invalid next_run '%s', recomputing", next_run_str)
-            next_run = _compute_next_run(frequency, time_str)
-    else:
-        # First boot or missing next_run — compute the next window
-        next_run = _compute_next_run(frequency, time_str)
-        config["next_run"] = next_run.isoformat()
-        await _write_schedule(config)
-        logger.info("Backup scheduler: initialised next_run to %s", next_run.isoformat())
-
-    if now < next_run:
+    if last_scheduled and (now - last_scheduled) < MIN_BACKUP_INTERVAL:
+        logger.debug(
+            "Backup scheduler: last scheduled run was %s ago (min interval %s), skipping",
+            now - last_scheduled, MIN_BACKUP_INTERVAL,
+        )
         return
 
-    # ── Pre-flight: disk space check ──
+    if not is_backup_due(frequency, time_str, now, last_scheduled):
+        if not config.get("next_run"):
+            config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
+            await _write_schedule(config)
+        return
+
+    # ── Only one worker proceeds with the actual backup ──
+    async with engine.connect() as lock_conn:
+        got_lock = (await lock_conn.execute(
+            text("SELECT pg_try_advisory_lock(:k)"),
+            {"k": BACKUP_ADVISORY_LOCK_KEY},
+        )).scalar()
+        if not got_lock:
+            return
+        try:
+            # Re-check inside the lock — the other worker may have just finished
+            last_scheduled = await _latest_scheduled_created_at()
+            if last_scheduled and (now - last_scheduled) < MIN_BACKUP_INTERVAL:
+                return
+            if not is_backup_due(frequency, time_str, now, last_scheduled):
+                return
+            await _execute_scheduled_backup(config, frequency, time_str, now)
+        finally:
+            await lock_conn.execute(
+                text("SELECT pg_advisory_unlock(:k)"),
+                {"k": BACKUP_ADVISORY_LOCK_KEY},
+            )
+            await lock_conn.commit()
+
+
+async def _execute_scheduled_backup(
+    config: dict, frequency: str, time_str: str, now: datetime,
+):
     if not _check_disk_space():
         await _audit("Backup SKIPPED: insufficient disk space", action="DELETE")
-        config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
-        await _write_schedule(config)
         return
 
-    # ── Run the backup ──
     try:
         logger.info("Backup scheduler: starting scheduled backup")
         filename = await _create_backup_file()
@@ -467,7 +560,6 @@ async def process_scheduled_backups():
                 logger.error("Google Drive upload failed (backup still saved in DB): %s", e)
                 await _audit(f"Google Drive upload failed: {e}", action="DELETE")
 
-        # ── Post-backup: retention cleanup (keep last 7) ──
         _cleanup_old_backups_disk(MAX_KEEP_COUNT)
         await _cleanup_old_backups_db(MAX_KEEP_COUNT)
         _check_backup_dir_size()
@@ -480,5 +572,3 @@ async def process_scheduled_backups():
         except Exception:
             pass
         await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")
-        config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
-        await _write_schedule(config)

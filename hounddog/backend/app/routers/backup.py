@@ -302,7 +302,14 @@ async def _write_schedule_db(db: AsyncSession, data: dict):
 @router.get("/schedule")
 async def get_schedule(db: AsyncSession = Depends(get_db)):
     """Return the current scheduled backup configuration."""
-    return await _read_schedule_db(db)
+    data = await _read_schedule_db(db)
+    if data.get("enabled") and not data.get("next_run"):
+        from ..services.backup_scheduler import _compute_next_run
+        data["next_run"] = _compute_next_run(
+            data.get("frequency", "daily"),
+            data.get("time", "02:00"),
+        ).isoformat()
+    return data
 
 
 @router.post("/schedule")
