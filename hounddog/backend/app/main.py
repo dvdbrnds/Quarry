@@ -1438,9 +1438,11 @@ async def impersonate_lookup(email: str, user=Depends(require_admin()), db: Asyn
         """), {"email": email})
         is_employee = staff_perm_check.scalar() is not None
 
-    # Current student takes priority, but only if Okta doesn't say staff.
-    # Alumni with old class years who are now faculty should stay staff.
-    if is_current_student and not okta_says_staff and not is_employee:
+    # Current students always take priority -- RAs and student workers are
+    # students first even though SIS marks them as employees.
+    # Alumni with stale class years (e.g. 2007) won't pass the current-year
+    # check, so they correctly fall through to staff.
+    if is_current_student:
         role = "student"
     elif is_employee or okta_says_staff:
         role = "staff"

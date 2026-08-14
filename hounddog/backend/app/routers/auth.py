@@ -75,7 +75,6 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
         has_current_class_year = (
             bool(user.class_year) and user.class_year >= current_year - 1
         )
-        okta_says_staff = role == "staff"
 
         moravian_id = _extract_moravian_id(user)
         if moravian_id:
@@ -83,10 +82,10 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
                 sis = await lookup_student_parking_data(moravian_id)
                 if sis:
                     is_current_student = has_current_class_year or sis.housing_status in ("R", "C")
-                    if sis.employee and not is_current_student:
-                        role = "staff"
-                    elif is_current_student and not okta_says_staff:
+                    if is_current_student:
                         role = "student"
+                    elif sis.employee:
+                        role = "staff"
             except Exception:
                 logger.debug("SIS lookup failed during auth for %s", user.email)
 
