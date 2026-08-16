@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, require_admin
+from ..auth.okta import OktaUser, require_office
 from ..config import settings
 from ..database import get_db
 from ..models.fee_exempt_roster import FeeExemptRoster
@@ -25,7 +25,7 @@ from ..services.roster_permit_status import (
 
 logger = logging.getLogger("quarry.fee_exempt")
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(require_office())])
 
 
 class RosterEntry(BaseModel):
@@ -153,7 +153,7 @@ async def upload_roster(
     academic_year: str = Form("2026-2027"),
     replace: bool = Form(False),
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """Upload an Excel or CSV file to populate the fee-exempt roster.
 
@@ -239,7 +239,7 @@ async def upload_roster(
 async def delete_roster_entry(
     entry_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     entry = await db.get(FeeExemptRoster, entry_id)
     if not entry:
@@ -264,7 +264,7 @@ async def update_roster_entry(
     entry_id: uuid.UUID,
     data: RosterUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """Update a fee-exempt roster row (e.g. backfill email for matching)."""
     entry = await db.get(FeeExemptRoster, entry_id)
@@ -304,7 +304,7 @@ async def update_roster_entry(
 @router.delete("/roster")
 async def clear_roster(
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """Delete all entries from the fee-exempt roster."""
     count = (await db.execute(
@@ -459,7 +459,7 @@ async def get_balance_due(db: AsyncSession = Depends(get_db)):
 async def send_balance_payment(
     app_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_office()),
 ):
     """Create a Stripe Checkout Session for the RA balance and email the link."""
     ra_discount = Decimal(str(settings.ra_discount_amount))
@@ -923,7 +923,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
 async def issue_refund(
     permit_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_office()),
 ):
     """Issue a partial Stripe refund for the RA discount amount."""
     from ..models.permit import Permit

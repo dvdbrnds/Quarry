@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func, or_, cast, Date, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user
+from ..auth.okta import get_current_user, OktaUser, require_admin, require_office
 from ..config import settings
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
@@ -47,6 +47,7 @@ async def list_tickets(
     lot: str | None = None,
     category: str | None = None,
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     query = select(Ticket)
 
@@ -150,7 +151,10 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/pipeline", response_model=TicketPipeline)
-async def ticket_pipeline(db: AsyncSession = Depends(get_db)):
+async def ticket_pipeline(
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     result = await db.execute(
         select(Ticket.status, func.count()).group_by(Ticket.status)
     )
@@ -176,6 +180,7 @@ TERMINAL_STATUSES = {"paid", "voided", "resolved_permit"}
 async def dashboard(
     period: str = Query("today", pattern="^(today|week|month)$"),
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     today = today_local()
     et = campus_tz()
@@ -309,7 +314,11 @@ async def dashboard(
 
 
 @router.get("/{ticket_id}", response_model=TicketRead)
-async def get_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_ticket(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
@@ -318,7 +327,10 @@ async def get_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{ticket_id}", response_model=TicketRead)
 async def update_ticket(
-    ticket_id: uuid.UUID, data: TicketUpdate, db: AsyncSession = Depends(get_db)
+    ticket_id: uuid.UUID,
+    data: TicketUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
@@ -336,7 +348,11 @@ async def update_ticket(
 
 
 @router.post("/{ticket_id}/void", response_model=TicketRead)
-async def void_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def void_ticket(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
@@ -352,6 +368,7 @@ async def void_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 async def bulk_void_tickets(
     data: dict,
     db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     """Void multiple tickets at once."""
     ids = data.get("ids", [])
@@ -419,7 +436,10 @@ async def appeal_ticket(
 
 @router.post("/{ticket_id}/appeal/decide", response_model=TicketRead)
 async def decide_appeal(
-    ticket_id: uuid.UUID, decision: AppealDecision, db: AsyncSession = Depends(get_db)
+    ticket_id: uuid.UUID,
+    decision: AppealDecision,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
@@ -444,7 +464,10 @@ async def decide_appeal(
 
 
 @router.get("/mail-notices/pending")
-async def pending_mail_notices(db: AsyncSession = Depends(get_db)):
+async def pending_mail_notices(
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     """Return overdue/escalated tickets for guests/visitors that haven't been mailed.
 
     These are tickets where:
@@ -495,6 +518,7 @@ async def pending_mail_notices(db: AsyncSession = Depends(get_db)):
 async def mark_mailed(
     data: dict,
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     """Mark tickets as having had a mail notice sent.
 

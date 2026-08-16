@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Statistic, Spin, Tag, Segmented, Empty } from "antd";
-import { authHeaders } from "../auth";
+import { authHeaders, isAdminRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
 
 type Period = "today" | "week" | "month";
@@ -219,6 +219,7 @@ export default function Dashboard() {
               </div>
             </Card>
 
+            {isAdminRole(user?.role) && (
             <Card size="small" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/finance")}>
               <Statistic
                 title={`Revenue ${PERIOD_LABELS[period].toLowerCase()}`}
@@ -231,6 +232,7 @@ export default function Dashboard() {
                 {data.revenue.pending_count} pending (${Number(data.revenue.pending_amount).toFixed(0)})
               </div>
             </Card>
+            )}
 
             <Card size="small" className="!bg-green-50 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/tickets")}>
               <Statistic

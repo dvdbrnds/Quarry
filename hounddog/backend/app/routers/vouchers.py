@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user_or_impersonated, require_admin
+from ..auth.okta import OktaUser, get_current_user_or_impersonated, require_office
 from ..database import get_db
 from ..models.branding_settings import BrandingSettings
 from ..models.voucher import Voucher
@@ -15,7 +15,7 @@ from ..models.voucher_usage import VoucherUsage
 
 router = APIRouter()
 
-admin_router = APIRouter(dependencies=[Depends(require_admin())])
+admin_router = APIRouter(dependencies=[Depends(require_office())])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

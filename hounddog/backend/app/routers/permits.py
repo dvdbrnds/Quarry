@@ -12,7 +12,7 @@ from sqlalchemy.sql import ColumnElement
 
 from decimal import Decimal
 
-from ..auth.okta import OktaUser, get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, require_admin, require_office
 from ..config import settings
 from ..database import get_db
 from ..services.lottery_runner import run_lottery, verify_lottery, LotteryResult
@@ -38,7 +38,7 @@ from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 from ..services.lot_assignment import effective_lot_assignment, permit_lot_matches
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter(dependencies=[Depends(require_office())])
 
 SORTABLE_FIELDS = {
     "permit_number": Permit.permit_number,
@@ -77,8 +77,8 @@ async def live_status(
     current_user: OktaUser = Depends(get_current_user),
 ):
     """Real-time permit subscription status for admin monitoring."""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if not current_user.is_office:
+        raise HTTPException(status_code=403, detail="Office access required")
 
     # Permit type capacity stats
     pts = (await db.execute(
@@ -566,7 +566,7 @@ async def reassign_preview(
     permit_id: uuid.UUID,
     data: ReassignRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """Preview the financial impact of reassigning a permit to a different type."""
     permit = await db.get(Permit, permit_id)
@@ -608,7 +608,7 @@ async def reassign_permit(
     permit_id: uuid.UUID,
     data: ReassignRequest,
     db: AsyncSession = Depends(get_db),
-    admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_office()),
 ):
     """Reassign a permit to a different type, handling billing or refunds automatically.
 

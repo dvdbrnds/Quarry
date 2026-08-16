@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbox, Descriptions } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
-import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
 import StudentLotMap from "../components/StudentLotMap";
@@ -39,7 +39,7 @@ export default function StaffPermits() {
 
         // Check for impersonation param (admin only)
         const impEmail = getImpersonateEmail();
-        if (impEmail && u?.role === "admin") {
+        if (impEmail && isOfficeRole(u?.role)) {
           setImpersonateEmail(impEmail);
           const headers = await authHeaders();
           const lookupRes = await fetch(

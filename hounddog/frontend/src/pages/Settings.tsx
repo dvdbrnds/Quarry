@@ -5,8 +5,10 @@ import Messaging from "./Messaging";
 import DataManagement from "./DataManagement";
 import BrandingSettings from "./BrandingSettings";
 import FeatureSettings from "./FeatureSettings";
+import { useCurrentUser } from "../UserContext";
+import { isAdminRole } from "../auth";
 
-const TABS = [
+const ALL_TABS = [
   { key: "messaging", label: "Messaging", children: <Messaging /> },
   { key: "branding", label: "Branding", children: <BrandingSettings /> },
   { key: "features", label: "Features", children: <FeatureSettings /> },
@@ -14,10 +16,17 @@ const TABS = [
   { key: "data", label: "Data Management", children: <DataManagement /> },
 ];
 
+const OPERATOR_TAB_KEYS = new Set(["branding", "activity"]);
+
 export default function Settings() {
+  const user = useCurrentUser();
+  const isAdmin = isAdminRole(user?.role);
+  const tabs = isAdmin ? ALL_TABS : ALL_TABS.filter((t) => OPERATOR_TAB_KEYS.has(t.key));
+  const defaultKey = isAdmin ? "messaging" : "branding";
+
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const activeKey = TABS.some(t => t.key === tabParam) ? tabParam! : "messaging";
+  const activeKey = tabs.some(t => t.key === tabParam) ? tabParam! : defaultKey;
 
   return (
     <div>
@@ -25,7 +34,7 @@ export default function Settings() {
       <Tabs
         activeKey={activeKey}
         onChange={(key) => setSearchParams({ tab: key })}
-        items={TABS}
+        items={tabs}
       />
     </div>
   );

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, require_admin, OktaUser
+from ..auth.okta import get_current_user, require_office, OktaUser
 from ..database import get_db
 from ..models.lot import ParkingLot
 from ..models.lot_closure import LotClosure
@@ -90,7 +90,11 @@ async def list_lots(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=LotRead, status_code=201)
-async def create_lot(data: LotCreate, db: AsyncSession = Depends(get_db)):
+async def create_lot(
+    data: LotCreate,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     existing = await db.execute(
         select(ParkingLot).where(ParkingLot.name == data.name, ParkingLot.deleted_at.is_(None))
     )
@@ -161,7 +165,7 @@ async def list_all_closures(
 async def schedule_closure(
     data: LotClosureCreate,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(require_office()),
 ):
     lot = await db.get(ParkingLot, data.lot_id)
     if not lot or lot.deleted_at:
@@ -188,6 +192,7 @@ async def update_closure(
     closure_id: uuid.UUID,
     data: LotClosureUpdate,
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     closure = await db.get(LotClosure, closure_id)
     if not closure:
@@ -203,7 +208,11 @@ async def update_closure(
 
 
 @router.delete("/closures/{closure_id}", status_code=204)
-async def cancel_closure(closure_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def cancel_closure(
+    closure_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     closure = await db.get(LotClosure, closure_id)
     if not closure:
         raise HTTPException(404, "Closure not found")
@@ -232,7 +241,10 @@ async def get_lot(lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{lot_id}", response_model=LotRead)
 async def update_lot(
-    lot_id: uuid.UUID, data: LotUpdate, db: AsyncSession = Depends(get_db)
+    lot_id: uuid.UUID,
+    data: LotUpdate,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     lot = await db.get(ParkingLot, lot_id)
     if not lot or lot.deleted_at:
@@ -276,7 +288,11 @@ async def update_lot(
 
 
 @router.delete("/{lot_id}", status_code=204)
-async def delete_lot(lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_lot(
+    lot_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     lot = await db.get(ParkingLot, lot_id)
     if not lot or lot.deleted_at:
         raise HTTPException(404, "Lot not found")
@@ -313,7 +329,10 @@ async def list_zones(lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{lot_id}/zones", response_model=LotZoneRead, status_code=201)
 async def create_zone(
-    lot_id: uuid.UUID, data: LotZoneCreate, db: AsyncSession = Depends(get_db)
+    lot_id: uuid.UUID,
+    data: LotZoneCreate,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     lot = await db.get(ParkingLot, lot_id)
     if not lot or lot.deleted_at:
@@ -341,6 +360,7 @@ async def update_zone(
     zone_id: uuid.UUID,
     data: LotZoneUpdate,
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     zone = await db.get(LotZone, zone_id)
     if not zone or zone.lot_id != lot_id:
@@ -360,7 +380,10 @@ async def update_zone(
 
 @router.delete("/{lot_id}/zones/{zone_id}", status_code=204)
 async def delete_zone(
-    lot_id: uuid.UUID, zone_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+    lot_id: uuid.UUID,
+    zone_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     zone = await db.get(LotZone, zone_id)
     if not zone or zone.lot_id != lot_id:
@@ -386,7 +409,10 @@ async def list_spots(lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{lot_id}/spots", response_model=SpotRead, status_code=201)
 async def create_spot(
-    lot_id: uuid.UUID, data: SpotCreate, db: AsyncSession = Depends(get_db)
+    lot_id: uuid.UUID,
+    data: SpotCreate,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     lot = await db.get(ParkingLot, lot_id)
     if not lot or lot.deleted_at:
@@ -413,6 +439,7 @@ async def update_spot(
     spot_id: uuid.UUID,
     data: SpotUpdate,
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     spot = await db.get(ParkingSpot, spot_id)
     if not spot or spot.lot_id != lot_id:
@@ -429,7 +456,10 @@ async def update_spot(
 
 @router.delete("/{lot_id}/spots/{spot_id}", status_code=204)
 async def delete_spot(
-    lot_id: uuid.UUID, spot_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+    lot_id: uuid.UUID,
+    spot_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     spot = await db.get(ParkingSpot, spot_id)
     if not spot or spot.lot_id != lot_id:
@@ -443,6 +473,7 @@ async def bulk_delete_spots(
     lot_id: uuid.UUID,
     body: dict,
     db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     """Delete multiple spots at once. Body: {"spot_ids": ["uuid", ...]}"""
     spot_ids = body.get("spot_ids", [])
@@ -465,7 +496,9 @@ async def bulk_delete_spots(
 
 @router.post("/{lot_id}/spots/detect", response_model=list[SpotRead])
 async def detect_spots_endpoint(
-    lot_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+    lot_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
 ):
     """Use AI vision to detect parking spots from satellite imagery."""
     from ..config import settings as cfg
@@ -550,7 +583,7 @@ async def close_lot_now(
     lot_id: uuid.UUID,
     body: CloseLotNow,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(require_office()),
 ):
     lot = await db.get(ParkingLot, lot_id)
     if not lot or lot.deleted_at:
@@ -589,7 +622,7 @@ async def close_lot_now(
 async def reopen_lot(
     lot_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(require_office()),
 ):
     lot = await db.get(ParkingLot, lot_id)
     if not lot or lot.deleted_at:

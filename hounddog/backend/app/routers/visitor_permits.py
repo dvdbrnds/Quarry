@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import require_admin
+from ..auth.okta import require_office
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
@@ -145,7 +145,7 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
 @router.get("/presets/all", tags=["admin"])
 async def list_all_presets(
     db: AsyncSession = Depends(get_db),
-    _admin=Depends(require_admin()),
+    _admin=Depends(require_office()),
 ):
     """Admin: list all presets including inactive."""
     rows = (
@@ -174,7 +174,7 @@ async def list_all_presets(
 async def create_preset(
     data: PresetCreate,
     db: AsyncSession = Depends(get_db),
-    _admin=Depends(require_admin()),
+    _admin=Depends(require_office()),
 ):
     """Admin: create a visitor preset."""
     preset = VisitorPreset(
@@ -198,7 +198,7 @@ async def update_preset(
     preset_id: uuid.UUID,
     data: PresetUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin=Depends(require_admin()),
+    _admin=Depends(require_office()),
 ):
     """Admin: update a visitor preset."""
     preset = await db.get(VisitorPreset, preset_id)
@@ -213,7 +213,7 @@ async def update_preset(
 async def delete_preset(
     preset_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _admin=Depends(require_admin()),
+    _admin=Depends(require_office()),
 ):
     """Admin: delete a visitor preset."""
     preset = await db.get(VisitorPreset, preset_id)
@@ -226,7 +226,7 @@ async def delete_preset(
 @router.get("/admin/pending", tags=["admin"])
 async def list_pending_visitor_permits(
     db: AsyncSession = Depends(get_db),
-    _admin=Depends(require_admin()),
+    _admin=Depends(require_office()),
 ):
     """Admin: list all visitor permits awaiting sponsor approval."""
     rows = (
@@ -333,7 +333,7 @@ async def get_approval_info(token: str, db: AsyncSession = Depends(get_db)):
 async def resend_sponsor_email(
     permit_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _admin=Depends(require_admin()),
+    _admin=Depends(require_office()),
 ):
     """Admin: resend the sponsor approval email for a pending visitor permit."""
     permit = await db.get(Permit, permit_id)

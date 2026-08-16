@@ -92,20 +92,33 @@ class OktaUser:
         return settings.admin_okta_groups in self.groups
 
     @property
+    def is_operator(self) -> bool:
+        """Parking office staff in the Quarry-Staff Okta group."""
+        return settings.staff_okta_groups in self.groups
+
+    @property
+    def is_office(self) -> bool:
+        """Admin or operator — office dashboard access."""
+        return self.is_admin or self.is_operator
+
+    @property
     def is_staff(self) -> bool:
-        """True for Quarry staff/admin or Moravian faculty/staff Okta groups."""
-        if self.is_admin or settings.staff_okta_groups in self.groups:
-            return True
+        """True for Moravian faculty/staff employees (permit buyers), not operators."""
         if set(self.groups) & FACULTY_STAFF_OKTA_GROUPS:
             return True
-        # Catch-all: any group containing "faculty" or "staff" (case-insensitive)
+        operator_group = settings.staff_okta_groups.lower()
         lower_groups = [g.lower() for g in self.groups]
-        return any("faculty" in g or "staff" in g for g in lower_groups)
+        return any(
+            ("faculty" in g or "staff" in g) and g != operator_group
+            for g in lower_groups
+        )
 
     @property
     def role(self) -> str:
         if self.is_admin:
             return "admin"
+        if self.is_operator:
+            return "operator"
         if self.is_staff:
             return "staff"
         return "none"
@@ -287,16 +300,21 @@ def require_admin():
     return dependency
 
 
+def require_office():
+    """Admin or operator — parking office dashboard."""
+    return require_role("admin", "operator")
+
+
 async def get_current_user_or_impersonated(request: Request) -> OktaUser:
-    """Return the current user, or a synthetic impersonated user if admin provides X-Impersonate header."""
+    """Return the current user, or a synthetic impersonated user if an office user provides X-Impersonate header."""
     user = await get_current_user(request)
 
     impersonate_email = request.headers.get("X-Impersonate", "").strip()
     if not impersonate_email:
         return user
 
-    if not user.is_admin:
-        raise HTTPException(403, "Only admins can impersonate")
+    if not user.is_office:
+        raise HTTPException(403, "Only admins and operators can impersonate")
 
     from ..database import async_session
     from sqlalchemy import select, text
@@ -379,7 +397,7 @@ async def get_current_user_or_impersonated(request: Request) -> OktaUser:
             target_sub = permit_row["sub"] or ""
             target_name = permit_row["name"] or impersonate_email
 
-    log.info("Admin %s impersonating %s (sub=%s, groups=%s)", user.email, impersonate_email, target_sub, target_groups)
+    log.info("%s %s impersonating %s (sub=%s, groups=%s)", user.role, user.email, impersonate_email, target_sub, target_groups)
 
     parts = target_name.split(" ", 1)
     given = parts[0] if parts else ""

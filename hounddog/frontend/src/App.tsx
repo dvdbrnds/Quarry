@@ -26,7 +26,7 @@ import ParkingMap from "./pages/ParkingMap";
 import Appeals from "./pages/Appeals";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
-import { logout, isAuthenticated, fetchCurrentUser, initAuth } from "./auth";
+import { logout, isAuthenticated, fetchCurrentUser, initAuth, isOfficeRole, isAdminRole } from "./auth";
 import type { AuthUser } from "./auth";
 import { UserContext } from "./UserContext";
 import { useBranding } from "./useBranding";
@@ -46,8 +46,10 @@ function RootRedirect() {
           return;
         }
         const user = await fetchCurrentUser();
-        if (user?.role === "admin" || user?.role === "staff") {
+        if (isOfficeRole(user?.role)) {
           navigate("/dashboard", { replace: true });
+        } else if (user?.role === "staff") {
+          navigate("/employee-parking", { replace: true });
         } else {
           navigate("/parking", { replace: true });
         }
@@ -129,8 +131,8 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/lots">Lots</NavItem>
         <NavItem to="/calendar">Calendar</NavItem>
-        <NavItem to="/finance">Finance</NavItem>
-        <NavItem to="/alerts">Alerts</NavItem>
+        {isAdminRole(user.role) && <NavItem to="/finance">Finance</NavItem>}
+        {isAdminRole(user.role) && <NavItem to="/alerts">Alerts</NavItem>}
         <NavItem to="/settings">Settings</NavItem>
 
         <div className="ml-auto relative" ref={menuRef}>
@@ -233,8 +235,8 @@ function AdminShell({ user }: { user: AuthUser }) {
           <Route path="/lots" element={<Lots />} />
           <Route path="/calendar" element={<OperationsCalendar />} />
           <Route path="/tickets" element={<Tickets />} />
-          <Route path="/finance" element={<Finance />} />
-          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/finance" element={isAdminRole(user.role) ? <Finance /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/alerts" element={isAdminRole(user.role) ? <Alerts /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
           <Route path="/student/permits" element={<StudentPermits />} />
@@ -408,8 +410,10 @@ export default function App() {
     <AuthGuard>
       {(user) => (
         <UserContext.Provider value={user}>
-          {user.role === "admin" || user.role === "staff" ? (
+          {isOfficeRole(user.role) ? (
             <AdminShell user={user} />
+          ) : user.role === "staff" ? (
+            <Navigate to="/employee-parking" replace />
           ) : (
             <StudentShell user={user} />
           )}

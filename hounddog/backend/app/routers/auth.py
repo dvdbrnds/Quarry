@@ -64,11 +64,12 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
 
     role = user.role
 
-    # For non-admin users, check Jenzabar SIS for authoritative employment status.
+    # For non-office users, check Jenzabar SIS for authoritative employment status.
     # Rule: current students who are also employees default to student.
     # A class_year alone doesn't mean current student -- alumni who become
     # faculty still have their old class_year in Okta (e.g. class of 2007).
-    if role not in ("admin",):
+    # Do not overwrite admin or operator (parking office) roles.
+    if role not in ("admin", "operator"):
         from datetime import datetime
         current_year = datetime.now().year
         has_current_class_year = (

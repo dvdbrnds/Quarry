@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { authHeaders } from "../auth";
+import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
@@ -51,7 +51,8 @@ function TicketsList() {
   const { modal, message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useCurrentUser();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminRole(user?.role);
+  const isOffice = isOfficeRole(user?.role);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -200,17 +201,17 @@ function TicketsList() {
       key: "issued_at",
       render: (d: string) => new Date(d).toLocaleDateString(),
     },
-    {
+    ...(isAdmin ? [{
       title: "Actions",
       key: "actions",
       width: 100,
-      render: (_, t) =>
-        isAdmin && !["paid", "voided"].includes(t.status) ? (
+      render: (_: unknown, t: Ticket) =>
+        !["paid", "voided"].includes(t.status) ? (
           <Button type="link" danger size="small" onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>
             Void
           </Button>
         ) : null,
-    },
+    }] : []),
   ];
 
   const [mailNoticesOpen, setMailNoticesOpen] = useState(false);
@@ -328,7 +329,7 @@ function TicketsList() {
               </Button>
             </Popconfirm>
           )}
-          {isAdmin && (
+          {isOffice && (
             <Button onClick={() => { setMailNoticesOpen(true); loadPendingNotices(); }}>
               Mail Notices
             </Button>
@@ -537,7 +538,15 @@ function TicketsList() {
 }
 
 export default function Tickets() {
+  const user = useCurrentUser();
+  const isAdmin = isAdminRole(user?.role);
   const [activeTab, setActiveTab] = useState("tickets");
+
+  const tabItems = [
+    { key: "tickets", label: "Tickets", children: <TicketsList /> },
+    ...(isAdmin ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
+    { key: "devices", label: "Enforcement Devices", children: <Devices /> },
+  ];
 
   return (
     <div>
@@ -546,11 +555,7 @@ export default function Tickets() {
         activeKey={activeTab}
         onChange={setActiveTab}
         destroyInactiveTabPane
-        items={[
-          { key: "tickets", label: "Tickets", children: <TicketsList /> },
-          { key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> },
-          { key: "devices", label: "Enforcement Devices", children: <Devices /> },
-        ]}
+        items={tabItems}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Checkbox, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip, Modal } from "antd";
-import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
@@ -60,8 +60,8 @@ export default function LotteryApply() {
         const authed = await isAuthenticated();
         if (!authed) { sessionStorage.setItem("quarry_return_path", "/parking"); await login(); return; }
         const u = await fetchCurrentUser();
-        // Admins go to the admin dashboard
-        if (u?.role === "admin") {
+        // Office users go to the dashboard
+        if (isOfficeRole(u?.role)) {
           window.location.replace("/dashboard");
           return;
         }

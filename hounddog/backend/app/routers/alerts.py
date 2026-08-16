@@ -63,7 +63,7 @@ from ..services.channels import get_registry
 
 logger = logging.getLogger("quarry.alerts")
 
-admin_router = APIRouter(dependencies=[Depends(require_role("admin", "staff"))])
+admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
 public_router = APIRouter()
 
 

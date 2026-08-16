@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth.okta import require_admin
+from .auth.okta import require_admin, require_office
 from .config import settings
 from .database import get_db
 
@@ -1285,7 +1285,7 @@ async def migrate_photos_to_db(user=Depends(require_admin()), db: AsyncSession =
 
 
 @app.get("/api/admin/impersonate-lookup", tags=["admin"])
-async def impersonate_lookup(email: str, user=Depends(require_admin()), db: AsyncSession = Depends(get_db)):
+async def impersonate_lookup(email: str, user=Depends(require_office()), db: AsyncSession = Depends(get_db)):
     """Look up a user's identity by email for impersonation purposes."""
     from sqlalchemy import text
     import httpx

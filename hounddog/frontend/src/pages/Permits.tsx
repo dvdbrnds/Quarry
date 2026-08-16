@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api, Permit } from "../api";
-import { authHeaders } from "../auth";
+import { authHeaders, isAdminRole } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
   Space, Tabs, Alert, App, Checkbox,
@@ -17,6 +17,7 @@ import VoucherManager from "./VoucherManager";
 import VisitorPresets from "./VisitorPresets";
 import GuestRegistrations from "./GuestRegistrations";
 import { useBranding } from "../useBranding";
+import { useCurrentUser } from "../UserContext";
 
 async function downloadWithAuth(url: string, filename: string) {
   const res = await fetch(url, { headers: await authHeaders() });
@@ -448,6 +449,8 @@ export default function Permits() {
   const navigate = useNavigate();
   const location = useLocation();
   const { vouchersEnabled } = useBranding();
+  const user = useCurrentUser();
+  const isAdmin = isAdminRole(user?.role);
 
   const initTab =
     location.hash === "#lottery" || location.hash === "#lottery-v2"
@@ -464,8 +467,12 @@ export default function Permits() {
               ? "vouchers"
               : location.hash === "#guests"
                 ? "guests"
+                : location.hash === "#visitor-presets" || location.hash === "#presets"
+                  ? "visitor-presets"
                 : "permits";
-  const [tab, setTab] = useState(initTab);
+  const [tab, setTab] = useState(
+    !isAdmin && (initTab === "lottery" || initTab === "types") ? "permits" : initTab,
+  );
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -803,7 +810,7 @@ export default function Permits() {
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
           },
-  ];
+  ].filter((t) => isAdmin || (t.key !== "lottery" && t.key !== "types"));
 
   return (
     <div>
@@ -819,6 +826,7 @@ export default function Permits() {
             : key === "discounts" ? "absn"
             : key === "vouchers" ? "vouchers"
             : key === "guests" ? "guests"
+            : key === "visitor-presets" ? "visitor-presets"
             : "types";
         }}
         items={permitTabs}

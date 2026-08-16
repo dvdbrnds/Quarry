@@ -18,7 +18,7 @@ from ..models.signage_screen import SignageScreen
 
 logger = logging.getLogger("quarry.signage")
 
-admin_router = APIRouter(dependencies=[Depends(require_role("admin", "staff"))])
+admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
 public_router = APIRouter()
 
 

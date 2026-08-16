@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     # Okta role mapping
     admin_okta_groups: str = "Quarry-Admin"
+    # Quarry-Staff maps to the operator role (parking office staff), not faculty/staff employees
     staff_okta_groups: str = "Quarry-Staff"
     okta_claim: str = "groups"
     okta_class_year_claim: str = "class_year"

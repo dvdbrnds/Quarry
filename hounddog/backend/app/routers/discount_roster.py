@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, require_admin
+from ..auth.okta import OktaUser, require_office
 from ..config import settings
 from ..database import get_db
 from ..models.discount_roster import DiscountRoster
@@ -22,7 +22,7 @@ from ..services.roster_permit_status import (
 
 logger = logging.getLogger("quarry.discount_roster")
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = APIRouter(dependencies=[Depends(require_office())])
 
 
 class RosterEntry(BaseModel):
@@ -161,7 +161,7 @@ async def upload_roster(
     academic_year: str = Form("2026-2027"),
     replace: bool = Form(False),
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """Upload Excel/CSV. Columns: student_id (Moravian ID), last, first, email (optional)."""
     content = await file.read()

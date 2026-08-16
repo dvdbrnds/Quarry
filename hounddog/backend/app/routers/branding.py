@@ -5,13 +5,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import require_role
+from ..auth.okta import require_admin, require_office
 from ..config import settings
 from ..database import get_db
 from ..models.branding_settings import BrandingSettings
 from ..services.email import invalidate_branding_cache
 
-admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
+admin_router = APIRouter(dependencies=[Depends(require_office())])
 public_router = APIRouter()
 
 _ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
@@ -103,7 +103,10 @@ class FeatureFlagsUpdate(BaseModel):
 
 
 @admin_router.get("/features")
-async def get_feature_flags(db: AsyncSession = Depends(get_db)):
+async def get_feature_flags(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
     bs = await _get_or_create(db)
     return {
         "vouchers_enabled": True if bs.vouchers_enabled is None else bool(bs.vouchers_enabled),
@@ -111,7 +114,11 @@ async def get_feature_flags(db: AsyncSession = Depends(get_db)):
 
 
 @admin_router.put("/features")
-async def update_feature_flags(body: FeatureFlagsUpdate, db: AsyncSession = Depends(get_db)):
+async def update_feature_flags(
+    body: FeatureFlagsUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin()),
+):
     bs = await _get_or_create(db)
     bs.vouchers_enabled = body.vouchers_enabled
     await db.flush()

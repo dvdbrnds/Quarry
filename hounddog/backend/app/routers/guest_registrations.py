@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_admin
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_office
 from ..database import get_db
 from ..models.guest_registration import GuestRegistration
 
@@ -187,7 +187,7 @@ async def cancel_guest(
 
 # ── Admin router ─────────────────────────────────────────────────────
 
-admin_router = APIRouter(dependencies=[Depends(require_admin())])
+admin_router = APIRouter(dependencies=[Depends(require_office())])
 
 
 @admin_router.get("")

@@ -135,3 +135,11 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   if (!res.ok) return null;
   return res.json();
 }
+
+export function isOfficeRole(role?: string | null): boolean {
+  return role === "admin" || role === "operator";
+}
+
+export function isAdminRole(role?: string | null): boolean {
+  return role === "admin";
+}

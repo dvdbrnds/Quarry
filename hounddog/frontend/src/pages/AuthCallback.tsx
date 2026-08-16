@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { initAuth, handleCallback, fetchCurrentUser } from "../auth";
+import { initAuth, handleCallback, fetchCurrentUser, isOfficeRole } from "../auth";
 import BrandMark from "../components/BrandMark";
 
 export default function AuthCallback() {
@@ -17,8 +17,10 @@ export default function AuthCallback() {
 
         if (savedPath) {
           navigate(savedPath, { replace: true });
-        } else if (user?.role === "admin" || user?.role === "staff") {
+        } else if (isOfficeRole(user?.role)) {
           navigate("/dashboard", { replace: true });
+        } else if (user?.role === "staff") {
+          navigate("/employee-parking", { replace: true });
         } else {
           navigate("/parking", { replace: true });
         }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, DatePicker, Form, Input, InputNumber, Radio, Select, Spin, Tag, App as AntApp, Space, Alert, Modal, Checkbox } from "antd";
 import dayjs from "dayjs";
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, fetchCurrentUser, loadConfig, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
@@ -164,7 +164,7 @@ export default function LotteryApplyV2() {
 
         // Check for impersonation param (admin only)
         const impEmail = getImpersonateEmail();
-        if (impEmail && u?.role === "admin") {
+        if (impEmail && isOfficeRole(u?.role)) {
           setImpersonateEmail(impEmail);
           // Fetch the impersonated user's identity
           const headers = await authHeaders();
@@ -193,8 +193,8 @@ export default function LotteryApplyV2() {
           return;
         }
 
-        // Admins go to the admin dashboard
-        if (u?.role === "admin") {
+        // Office users go to the dashboard
+        if (isOfficeRole(u?.role)) {
           window.location.replace("/dashboard");
           return;
         }

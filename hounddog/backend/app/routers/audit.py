@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, OktaUser, require_admin
+from ..auth.okta import OktaUser, require_admin, require_office
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
 from ..models.permit_type import PermitType
@@ -14,7 +14,7 @@ from ..schemas.audit import AuditLogList, AuditLogRead
 logger = logging.getLogger("quarry.audit")
 
 diagnostic_router = APIRouter()
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter(dependencies=[Depends(require_office())])
 
 
 async def _enrich_lottery_audit_items(
