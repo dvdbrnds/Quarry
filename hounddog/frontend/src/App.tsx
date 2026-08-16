@@ -109,7 +109,6 @@ function AdminShell({ user }: { user: AuthUser }) {
     const email = impersonateInput.trim();
     if (!email) return;
     window.open(`/parking?impersonate=${encodeURIComponent(email)}`, "_blank");
-    setMenuOpen(false);
   }
 
   const displayName = user.email?.split("@")[0] || user.email || "Account";
@@ -135,7 +134,29 @@ function AdminShell({ user }: { user: AuthUser }) {
         {isAdminRole(user.role) && <NavItem to="/alerts">Alerts</NavItem>}
         <NavItem to="/settings">Settings</NavItem>
 
-        <div className="ml-auto relative" ref={menuRef}>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <input
+              type="email"
+              placeholder="View as user..."
+              value={impersonateInput}
+              onChange={(e) => setImpersonateInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleImpersonate(); }}
+              aria-label="View as user"
+              className="text-xs px-2 py-1 rounded-md w-40 bg-white/10 border border-white/20 text-bone placeholder-bone/40 focus:outline-none focus:border-white/50"
+            />
+            <button
+              type="button"
+              onClick={handleImpersonate}
+              disabled={!impersonateInput.trim()}
+              className="text-xs px-2 py-1 rounded-md font-medium transition-colors disabled:opacity-30"
+              style={{ background: `${brand.accentColor}22`, color: brand.accentColor, border: `1px solid ${brand.accentColor}44` }}
+            >
+              Go
+            </button>
+          </div>
+
+          <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((o) => !o)}
@@ -188,29 +209,6 @@ function AdminShell({ user }: { user: AuthUser }) {
                 </a>
               </div>
 
-              <div className="px-4 py-3 border-t border-slate-100">
-                <label className="block text-xs font-medium text-slate-500 mb-1.5">View as user</label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="email"
-                    placeholder="email@moravian.edu"
-                    value={impersonateInput}
-                    onChange={(e) => setImpersonateInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleImpersonate(); }}
-                    className="flex-1 text-xs px-2 py-1.5 rounded-md border border-slate-200 focus:outline-none focus:border-slate-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleImpersonate}
-                    disabled={!impersonateInput.trim()}
-                    className="text-xs px-2.5 py-1.5 rounded-md font-medium text-white disabled:opacity-40"
-                    style={{ background: brand.primaryColor }}
-                  >
-                    Go
-                  </button>
-                </div>
-              </div>
-
               <div className="border-t border-slate-100 py-1">
                 <button
                   type="button"
@@ -223,6 +221,7 @@ function AdminShell({ user }: { user: AuthUser }) {
               </div>
             </div>
           )}
+          </div>
         </div>
         </div>
       </nav>
