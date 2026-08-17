@@ -67,10 +67,13 @@ interface CancelPreview {
   term_days: number;
   used_days: number;
   remaining_days: number;
+  remaining_weeks: number;
+  term_weeks: number;
   amount_paid: string;
   stripe_refundable: string | null;
   has_stripe: boolean;
   suggested_refund: string;
+  proration_options: { none: string; daily: string; weekly: string; semester: string };
   waitlist: { name: string; email: string; waitlist_position: number } | null;
   spot_goes_to_reserve: boolean;
   waitlist_offer_price: string;
@@ -94,6 +97,7 @@ function CancelPermitModal({
   const [reason, setReason] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [refundAmount, setRefundAmount] = useState<number>(0);
+  const [prorationMode, setProrationMode] = useState<string>("none");
 
   useEffect(() => {
     if (!open || !permit) {
@@ -101,6 +105,7 @@ function CancelPermitModal({
       setReason("");
       setNotes("");
       setRefundAmount(0);
+      setProrationMode("none");
       return;
     }
     (async () => {
@@ -114,7 +119,8 @@ function CancelPermitModal({
         }
         const data: CancelPreview = await res.json();
         setPreview(data);
-        setRefundAmount(parseFloat(data.suggested_refund) || 0);
+        setProrationMode("none");
+        setRefundAmount(parseFloat(data.amount_paid) || 0);
       } catch (e: any) {
         message.error(e.message || "Failed to load cancel details");
         onClose();
@@ -126,12 +132,12 @@ function CancelPermitModal({
 
   useEffect(() => {
     if (!preview) return;
-    if (reason === "issued_in_error") {
-      setRefundAmount(parseFloat(preview.amount_paid) || 0);
-    } else if (reason) {
-      setRefundAmount(parseFloat(preview.suggested_refund) || 0);
+    if (prorationMode === "custom") return;
+    const val = preview.proration_options[prorationMode as keyof typeof preview.proration_options];
+    if (val !== undefined) {
+      setRefundAmount(parseFloat(val) || 0);
     }
-  }, [reason, preview]);
+  }, [prorationMode, preview]);
 
   async function handleSubmit() {
     if (!reason) { message.warning("Please select a reason"); return; }
@@ -230,6 +236,22 @@ function CancelPermitModal({
                   {preview.stripe_refundable && ` · Stripe balance $${preview.stripe_refundable}`}
                 </span>
               </div>
+              <div className="mb-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Proration</label>
+                <Select
+                  className="w-full"
+                  size="small"
+                  value={prorationMode}
+                  onChange={(v) => setProrationMode(v)}
+                  options={[
+                    { label: `Full refund — $${preview.proration_options.none}`, value: "none" },
+                    { label: `By week — ${preview.remaining_weeks} of ${preview.term_weeks} weeks — $${preview.proration_options.weekly}`, value: "weekly" },
+                    { label: `By day — ${preview.remaining_days} of ${preview.term_days} days — $${preview.proration_options.daily}`, value: "daily" },
+                    { label: `By semester — $${preview.proration_options.semester}`, value: "semester" },
+                    { label: "Custom amount", value: "custom" },
+                  ]}
+                />
+              </div>
               <InputNumber
                 className="w-full"
                 prefix="$"
@@ -238,7 +260,7 @@ function CancelPermitModal({
                 step={0.01}
                 precision={2}
                 value={refundAmount}
-                onChange={v => setRefundAmount(v ?? 0)}
+                onChange={v => { setRefundAmount(v ?? 0); setProrationMode("custom"); }}
               />
               {!preview.has_stripe && refundAmount > 0 && (
                 <Typography.Text type="warning" className="text-xs mt-1 block">

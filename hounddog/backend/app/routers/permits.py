@@ -932,12 +932,22 @@ async def cancel_preview(
     start, end, term_days, used_days, remaining_days = _term_window(permit, pt)
     _payment, stripe_id, amount_paid, refundable = await _permit_payment_info(db, permit)
 
-    prorated = (Decimal(remaining_days) / Decimal(term_days) * amount_paid).quantize(Decimal("0.01"))
-    if reason == "issued_in_error":
-        suggested = amount_paid
-    else:
-        suggested = prorated
+    import math
     cap = refundable if refundable is not None else amount_paid
+    remaining_weeks = math.ceil(remaining_days / 7)
+    term_weeks = max(1, math.ceil(term_days / 7))
+    # Semester = roughly half the term
+    term_semesters = 2
+    remaining_semesters = 1 if remaining_days > term_days / 2 else 0
+
+    proration_options = {
+        "none": str(amount_paid),
+        "daily": str(min((Decimal(remaining_days) / Decimal(term_days) * amount_paid).quantize(Decimal("0.01")), cap)),
+        "weekly": str(min((Decimal(remaining_weeks) / Decimal(term_weeks) * amount_paid).quantize(Decimal("0.01")), cap)),
+        "semester": str(min((Decimal(remaining_semesters) / Decimal(term_semesters) * amount_paid).quantize(Decimal("0.01")), cap)),
+    }
+
+    suggested = amount_paid if reason == "issued_in_error" else Decimal(proration_options["weekly"])
     suggested = min(max(Decimal("0.00"), suggested), cap)
 
     waitlist = None
@@ -968,10 +978,13 @@ async def cancel_preview(
         "term_days": term_days,
         "used_days": used_days,
         "remaining_days": remaining_days,
+        "remaining_weeks": remaining_weeks,
+        "term_weeks": term_weeks,
         "amount_paid": str(amount_paid),
         "stripe_refundable": str(refundable) if refundable is not None else None,
         "has_stripe": bool(stripe_id and settings.stripe_secret_key),
         "suggested_refund": str(suggested),
+        "proration_options": proration_options,
         "waitlist": waitlist,
         "spot_goes_to_reserve": spot_goes_to_reserve,
         "waitlist_offer_price": str(pt.price) if pt else "0.00",
