@@ -4,7 +4,7 @@ import { api, Permit } from "../api";
 import { authHeaders, isAdminRole } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Checkbox,
+  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -36,6 +36,7 @@ interface PermitStats {
   expired: number;
   expiring_soon: number;
   revoked: number;
+  cancelled: number;
   unique_users: number;
 }
 
@@ -46,6 +47,230 @@ function parseLots(value: string | string[] | undefined | null): string[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.map((s) => String(s).trim()).filter(Boolean);
   return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+const CANCEL_REASONS: Record<string, string> = {
+  withdrawal: "Withdrawal",
+  transfer_off_campus: "Transfer off campus",
+  issued_in_error: "Issued in error",
+  other: "Other",
+};
+
+interface CancelPreview {
+  permit_id: string;
+  permit_number: string | null;
+  name: string;
+  permit_type: string;
+  permit_type_label: string;
+  start_date: string;
+  end_date: string;
+  term_days: number;
+  used_days: number;
+  remaining_days: number;
+  amount_paid: string;
+  stripe_refundable: string | null;
+  has_stripe: boolean;
+  suggested_refund: string;
+  waitlist: { name: string; email: string; waitlist_position: number } | null;
+  waitlist_offer_price: string;
+}
+
+function CancelPermitModal({
+  permit,
+  open,
+  onClose,
+  onCancelled,
+}: {
+  permit: Permit | null;
+  open: boolean;
+  onClose: () => void;
+  onCancelled: () => void;
+}) {
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<CancelPreview | null>(null);
+  const [reason, setReason] = useState<string>("");
+  const [notes, setNotes] = useState("");
+  const [refundAmount, setRefundAmount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!open || !permit) {
+      setPreview(null);
+      setReason("");
+      setNotes("");
+      setRefundAmount(0);
+      return;
+    }
+    (async () => {
+      setLoading(true);
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`/api/permits/${permit.id}/cancel-preview`, { headers });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Failed to load cancel preview");
+        }
+        const data: CancelPreview = await res.json();
+        setPreview(data);
+        setRefundAmount(parseFloat(data.suggested_refund) || 0);
+      } catch (e: any) {
+        message.error(e.message || "Failed to load cancel details");
+        onClose();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [open, permit]);
+
+  useEffect(() => {
+    if (!preview) return;
+    if (reason === "issued_in_error") {
+      setRefundAmount(parseFloat(preview.amount_paid) || 0);
+    } else if (reason) {
+      setRefundAmount(parseFloat(preview.suggested_refund) || 0);
+    }
+  }, [reason, preview]);
+
+  async function handleSubmit() {
+    if (!reason) { message.warning("Please select a reason"); return; }
+    if (reason === "other" && !notes.trim()) { message.warning("Notes are required when reason is Other"); return; }
+    if (!permit) return;
+
+    setSubmitting(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/permits/${permit.id}/cancel`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ reason, notes, refund_amount: refundAmount.toFixed(2) }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Cancel failed");
+      }
+      const result = await res.json();
+      if (result.refund_id) {
+        message.success(`Permit cancelled — $${refundAmount.toFixed(2)} refund issued via Stripe`);
+      } else if (result.manual_refund_needed && refundAmount > 0) {
+        message.warning(`Permit cancelled — manual refund of $${refundAmount.toFixed(2)} needed`);
+      } else {
+        message.success("Permit cancelled");
+      }
+      if (result.waitlist_offered) {
+        message.info(`Waitlist offer sent to ${result.waitlist_offered.email}`);
+      }
+      onCancelled();
+    } catch (e: any) {
+      message.error(e.message || "Cancel failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const maxRefund = preview
+    ? parseFloat(preview.stripe_refundable ?? preview.amount_paid) || 0
+    : 0;
+
+  return (
+    <Modal
+      title="Cancel Permit"
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={520}
+      destroyOnClose
+    >
+      {loading && <div className="py-8 text-center text-gray-500">Loading…</div>}
+      {preview && (
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-lg p-3 text-sm">
+            <div className="font-medium">{preview.name}</div>
+            <div className="text-gray-500">
+              {preview.permit_type_label} · #{preview.permit_number || "—"}
+            </div>
+            <div className="text-gray-500 mt-1">
+              {preview.start_date} → {preview.end_date}
+              <span className="ml-2 text-xs">
+                ({preview.used_days}d used · {preview.remaining_days}d remaining)
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Reason <span className="text-red-500">*</span>
+            </label>
+            <Select
+              className="w-full"
+              placeholder="Select a reason…"
+              value={reason || undefined}
+              onChange={setReason}
+              options={Object.entries(CANCEL_REASONS).map(([k, v]) => ({ label: v, value: k }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Notes</label>
+            <Input.TextArea
+              rows={2}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder={reason === "other" ? "Required — explain why…" : "Optional context…"}
+            />
+          </div>
+
+          {parseFloat(preview.amount_paid) > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Refund</span>
+                <span className="text-xs text-gray-500">
+                  Paid ${preview.amount_paid}
+                  {preview.stripe_refundable && ` · Stripe balance $${preview.stripe_refundable}`}
+                </span>
+              </div>
+              <InputNumber
+                className="w-full"
+                prefix="$"
+                min={0}
+                max={maxRefund}
+                step={0.01}
+                precision={2}
+                value={refundAmount}
+                onChange={v => setRefundAmount(v ?? 0)}
+              />
+              {!preview.has_stripe && refundAmount > 0 && (
+                <Typography.Text type="warning" className="text-xs mt-1 block">
+                  No Stripe payment on file — refund will need manual processing
+                </Typography.Text>
+              )}
+            </div>
+          )}
+
+          {preview.waitlist && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+              <div className="font-medium text-green-800 mb-1">Waitlist</div>
+              <div>
+                Next in line: <span className="font-medium">{preview.waitlist.name}</span>{" "}
+                ({preview.waitlist.email})
+              </div>
+              <div className="text-xs text-green-700 mt-1">
+                They will be offered this spot at ${preview.waitlist_offer_price} for
+                the remaining {preview.remaining_days} days.
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button onClick={onClose}>Back</Button>
+            <Button type="primary" danger loading={submitting} onClick={handleSubmit}>
+              Cancel Permit{refundAmount > 0 ? ` & Refund $${refundAmount.toFixed(2)}` : ""}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
 }
 
 function PermitForm({
@@ -495,6 +720,7 @@ export default function Permits() {
     permits: Array<{ id: string; name: string; student_id: string; lot_assignment: string; permit_type: string }>;
   }>>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<Permit | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -536,20 +762,12 @@ export default function Permits() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadMeta(); }, [loadMeta]);
 
-  function handleDelete(id: string) {
-    modal.confirm({
-      title: "Delete this permit?",
-      content: "This action cannot be undone.",
-      okText: "Delete",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await api.permits.delete(id);
-          message.success("Permit deleted");
-          load(); loadMeta();
-        } catch { message.error("Failed to delete permit"); }
-      },
-    });
+  function handleCancel(permit: Permit) {
+    if (permit.status === "cancelled") {
+      message.info("This permit is already cancelled");
+      return;
+    }
+    setCancelTarget(permit);
   }
 
   function handleBulkAction() {
@@ -590,17 +808,17 @@ export default function Permits() {
       title: "Status", dataIndex: "status", key: "status", sorter: true,
       render: (status, p) => (
         <Space>
-          <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
+          <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "cancelled" ? "purple" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
           {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
         </Space>
       ),
     },
     {
-      title: "Actions", key: "actions", width: 120, fixed: "right",
+      title: "Actions", key: "actions", width: 140, fixed: "right",
       render: (_, p) => (
         <Space onClick={e => e.stopPropagation()}>
           <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
-          <Button type="link" size="small" danger onClick={() => handleDelete(p.id)}>Del</Button>
+          <Button type="link" size="small" danger disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
         </Space>
       ),
     },
@@ -612,6 +830,7 @@ export default function Permits() {
     { label: "Unique People", value: stats.unique_users, filter: "", color: "#6366F1" },
     { label: "Expiring Soon", value: stats.expiring_soon, filter: "expiring_soon", color: "#F59E0B" },
     { label: "Expired", value: stats.expired, filter: "expired", color: "#EF4444" },
+    { label: "Cancelled", value: stats.cancelled, filter: "cancelled", color: "#8B5CF6" },
     { label: "Revoked", value: stats.revoked, filter: "revoked", color: undefined },
   ] : [];
 
@@ -638,7 +857,7 @@ export default function Permits() {
                 </div>
 
                 {stats && (
-                  <div className="grid grid-cols-6 gap-3 mb-4">
+                  <div className="grid grid-cols-7 gap-3 mb-4">
                     {statCards.map(sc => (
                       <Card key={sc.label} size="small" hoverable
                         className={filterStatus === sc.filter ? "!border-brand-primary !shadow-md" : ""}
@@ -692,6 +911,7 @@ export default function Permits() {
                       { label: "Active", value: "active" },
                       { label: "Expiring Soon", value: "expiring_soon" },
                       { label: "Expired", value: "expired" },
+                      { label: "Cancelled", value: "cancelled" },
                       { label: "Revoked", value: "revoked" },
                       { label: "Suspended", value: "suspended" },
                     ]}
@@ -830,6 +1050,12 @@ export default function Permits() {
             : "types";
         }}
         items={permitTabs}
+      />
+      <CancelPermitModal
+        permit={cancelTarget}
+        open={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onCancelled={() => { setCancelTarget(null); load(); loadMeta(); }}
       />
     </div>
   );

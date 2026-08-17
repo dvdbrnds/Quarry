@@ -823,14 +823,272 @@ async def reassign_permit(
     return result
 
 
-@router.delete("/{permit_id}", status_code=204)
-async def delete_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+CANCEL_REASONS = {
+    "withdrawal": "Withdrawal",
+    "transfer_off_campus": "Transfer off campus",
+    "issued_in_error": "Issued in error",
+    "other": "Other",
+}
+
+PERMIT_PAYMENT_TYPES = [
+    "lottery_v2_permit", "lottery_permit",
+    "permit_purchase", "standalone_permit_purchase",
+    "direct_permit_purchase", "admin_permit_charge",
+]
+
+
+class CancelRequest(BaseModel):
+    reason: str
+    notes: str = ""
+    refund_amount: Decimal = Decimal("0.00")
+
+
+def _term_window(permit: Permit, pt: PermitType | None) -> tuple[date, date, int, int, int]:
+    """Return start, end, term_days, used_days, remaining_days."""
+    today = today_local()
+    start = permit.start_date or today
+    valid_days = pt.valid_days if pt and pt.valid_days else 365
+    end = permit.end_date or (start + timedelta(days=valid_days))
+    term_days = max(1, (end - start).days)
+    remaining_days = max(0, (end - today).days)
+    used_days = min(term_days, max(0, (today - start).days))
+    return start, end, term_days, used_days, remaining_days
+
+
+async def _permit_payment_info(
+    db: AsyncSession, permit: Permit
+) -> tuple[Payment | None, str | None, Decimal, Decimal | None]:
+    """Find the original permit payment and current Stripe refundable balance.
+
+    Returns (payment, stripe_id, amount_paid, stripe_refundable_or_None).
+    """
+    payment = None
+    if permit.email:
+        pay_result = await db.execute(
+            select(Payment).where(
+                func.lower(Payment.payer_email) == permit.email.lower(),
+                Payment.payment_type.in_(PERMIT_PAYMENT_TYPES),
+            ).order_by(Payment.amount.desc()).limit(1)
+        )
+        payment = pay_result.scalar()
+
+    stripe_id = None
+    if payment and payment.stripe_payment_id:
+        stripe_id = payment.stripe_payment_id
+    elif permit.stripe_session_id:
+        stripe_id = permit.stripe_session_id
+
+    amount_paid = payment.amount if payment else Decimal("0.00")
+    refundable: Decimal | None = None
+
+    if stripe_id and settings.stripe_secret_key:
+        import stripe
+        stripe.api_key = settings.stripe_secret_key
+        try:
+            resolved = stripe_id
+            if str(resolved).startswith("cs_"):
+                sess = stripe.checkout.Session.retrieve(resolved)
+                resolved = sess.payment_intent
+                if not amount_paid and getattr(sess, "amount_total", None):
+                    amount_paid = Decimal(str(sess.amount_total)) / 100
+            if resolved:
+                pi = stripe.PaymentIntent.retrieve(resolved)
+                charge = None
+                charges = getattr(pi, "charges", None)
+                data = getattr(charges, "data", None) if charges else None
+                if data:
+                    charge = data[0]
+                if charge:
+                    total = Decimal(str(getattr(charge, "amount", 0) or 0)) / 100
+                    already = Decimal(str(getattr(charge, "amount_refunded", 0) or 0)) / 100
+                    refundable = max(Decimal("0.00"), total - already)
+                    if not amount_paid:
+                        amount_paid = total
+                elif getattr(pi, "amount", None):
+                    amount_paid = amount_paid or (Decimal(str(pi.amount)) / 100)
+                    refundable = amount_paid
+        except Exception:
+            pass
+
+    return payment, stripe_id, amount_paid, refundable
+
+
+@router.get("/{permit_id}/cancel-preview")
+async def cancel_preview(
+    permit_id: uuid.UUID,
+    reason: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
     permit = await db.get(Permit, permit_id)
     if not permit or permit.deleted_at:
         raise HTTPException(404, "Permit not found")
-    permit.deleted_at = datetime.now(timezone.utc)
+    if permit.status == "cancelled":
+        raise HTTPException(400, "Permit is already cancelled")
+
+    pt = (
+        await db.execute(select(PermitType).where(PermitType.code == permit.permit_type))
+    ).scalars().first()
+    start, end, term_days, used_days, remaining_days = _term_window(permit, pt)
+    _payment, stripe_id, amount_paid, refundable = await _permit_payment_info(db, permit)
+
+    prorated = (Decimal(remaining_days) / Decimal(term_days) * amount_paid).quantize(Decimal("0.01"))
+    if reason == "issued_in_error":
+        suggested = amount_paid
+    else:
+        suggested = prorated
+    cap = refundable if refundable is not None else amount_paid
+    suggested = min(max(Decimal("0.00"), suggested), cap)
+
+    waitlist = None
+    if pt:
+        from ..services.lottery_v2_runner import peek_waitlist_for_type
+        next_app = await peek_waitlist_for_type(db, pt.id)
+        if next_app:
+            waitlist = {
+                "name": next_app.student_name,
+                "email": next_app.student_email,
+                "waitlist_position": next_app.waitlist_position,
+            }
+
+    return {
+        "permit_id": str(permit.id),
+        "permit_number": permit.permit_number,
+        "name": permit.name,
+        "permit_type": permit.permit_type,
+        "permit_type_label": pt.label if pt else permit.permit_type,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "term_days": term_days,
+        "used_days": used_days,
+        "remaining_days": remaining_days,
+        "amount_paid": str(amount_paid),
+        "stripe_refundable": str(refundable) if refundable is not None else None,
+        "has_stripe": bool(stripe_id and settings.stripe_secret_key),
+        "suggested_refund": str(suggested),
+        "waitlist": waitlist,
+        "waitlist_offer_price": str(pt.price) if pt else "0.00",
+    }
+
+
+@router.post("/{permit_id}/cancel")
+async def cancel_permit(
+    permit_id: uuid.UUID,
+    data: CancelRequest,
+    db: AsyncSession = Depends(get_db),
+    office: OktaUser = Depends(require_office()),
+):
+    import logging
+    logger = logging.getLogger("quarry.permits")
+
+    if data.reason not in CANCEL_REASONS:
+        raise HTTPException(400, f"Invalid reason. Must be one of: {', '.join(CANCEL_REASONS)}")
+    notes = (data.notes or "").strip()
+    if data.reason == "other" and not notes:
+        raise HTTPException(400, "Notes are required when reason is Other")
+
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+    if permit.status == "cancelled":
+        raise HTTPException(400, "Permit is already cancelled")
+
+    pt = (
+        await db.execute(select(PermitType).where(PermitType.code == permit.permit_type))
+    ).scalars().first()
+    _start, end, _term, _used, _remaining = _term_window(permit, pt)
+    _payment, stripe_id, amount_paid, refundable = await _permit_payment_info(db, permit)
+
+    refund_amount = max(Decimal("0.00"), Decimal(str(data.refund_amount)).quantize(Decimal("0.01")))
+    cap = refundable if refundable is not None else amount_paid
+    if refund_amount > cap:
+        raise HTTPException(400, f"Refund amount exceeds refundable balance (${cap})")
+
+    refund_result: dict = {
+        "refund_amount": str(refund_amount),
+        "refund_id": None,
+        "refund_status": None,
+        "manual_refund_needed": False,
+        "refund_error": None,
+    }
+
+    if refund_amount > 0:
+        if stripe_id and settings.stripe_secret_key:
+            import stripe
+            stripe.api_key = settings.stripe_secret_key
+            try:
+                resolved = stripe_id
+                if str(resolved).startswith("cs_"):
+                    sess = stripe.checkout.Session.retrieve(resolved)
+                    resolved = sess.payment_intent
+                refund = stripe.Refund.create(
+                    payment_intent=resolved,
+                    amount=int(refund_amount * 100),
+                    reason="requested_by_customer",
+                    metadata={
+                        "type": "permit_cancel_refund",
+                        "permit_id": str(permit.id),
+                        "permit_number": permit.permit_number or "",
+                        "reason": data.reason,
+                        "cancelled_by": office.email or office.sub,
+                    },
+                )
+                refund_result["refund_id"] = refund.id
+                refund_result["refund_status"] = refund.status
+                permit.refund_id = refund.id
+            except Exception as e:
+                logger.warning("Stripe refund failed for cancel %s: %s", permit.id, e)
+                refund_result["refund_error"] = str(e)
+                refund_result["manual_refund_needed"] = True
+        else:
+            refund_result["manual_refund_needed"] = True
+            refund_result["refund_error"] = "No Stripe payment found on record"
+
+    now = datetime.now(timezone.utc)
+    permit.status = "cancelled"
+    permit.cancel_reason = data.reason
+    permit.cancel_notes = notes or None
+    permit.cancelled_at = now
+    permit.cancelled_by = office.email or office.sub
+    permit.refund_amount = refund_amount
     await db.flush()
-    await _notify_permit_change("deleted", 1)
+    await _notify_permit_change("updated", 1)
+
+    waitlist_offered = None
+    if pt:
+        from ..services.lottery_v2_runner import offer_vacated_seat
+        offered = await offer_vacated_seat(db, pt, end if remaining_term_ok(end) else None)
+        if offered:
+            waitlist_offered = {
+                "name": offered.student_name,
+                "email": offered.student_email,
+                "offer_expires_at": offered.offer_expires_at.isoformat() if offered.offer_expires_at else None,
+                "offer_end_date": offered.offer_end_date.isoformat() if offered.offer_end_date else None,
+            }
+
+    logger.info(
+        "%s cancelled permit %s reason=%s refund=$%s waitlist=%s",
+        office.email, permit.id, data.reason, refund_amount,
+        waitlist_offered["email"] if waitlist_offered else None,
+    )
+    return {
+        "status": "cancelled",
+        "permit_id": str(permit.id),
+        **refund_result,
+        "waitlist_offered": waitlist_offered,
+    }
+
+
+def remaining_term_ok(end: date) -> bool:
+    return end > today_local()
+
+
+@router.delete("/{permit_id}", status_code=410)
+async def delete_permit(permit_id: uuid.UUID):
+    raise HTTPException(
+        410,
+        "Direct delete is disabled. Use POST /api/permits/{id}/cancel.",
+    )
 
 
 class BulkStatusRequest(BaseModel):

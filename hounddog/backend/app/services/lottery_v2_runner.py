@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -1357,3 +1357,110 @@ async def complete_upgrade(
 
     await db.flush()
     return new_permit
+
+
+async def peek_waitlist_for_type(
+    db: AsyncSession,
+    permit_type_id: uuid.UUID,
+) -> LotteryV2Application | None:
+    """Next waitlisted applicant who ranked this permit type, if any."""
+    app, _cycle = await _next_waitlist_for_type(db, permit_type_id)
+    return app
+
+
+async def _next_waitlist_for_type(
+    db: AsyncSession,
+    permit_type_id: uuid.UUID,
+) -> tuple[LotteryV2Application | None, LotteryV2Cycle | None]:
+    waitlisted = (
+        await db.execute(
+            select(LotteryV2Application, LotteryV2Cycle)
+            .join(LotteryV2Cycle, LotteryV2Cycle.id == LotteryV2Application.cycle_id)
+            .where(
+                LotteryV2Cycle.status == "drawn",
+                LotteryV2Application.status == "waitlisted",
+                LotteryV2Application.is_test_entry.is_(False),
+                LotteryV2Application.tier_preferences.contains([permit_type_id]),
+            )
+            .order_by(
+                LotteryV2Application.waitlist_position.asc().nullslast(),
+                LotteryV2Application.created_at.asc(),
+            )
+        )
+    ).all()
+
+    for app, cycle in waitlisted:
+        taken = (
+            await db.execute(
+                select(func.count()).select_from(LotteryV2Application).where(
+                    LotteryV2Application.cycle_id == app.cycle_id,
+                    func.lower(LotteryV2Application.student_email) == (app.student_email or "").lower(),
+                    LotteryV2Application.status.in_(["selected", "accepted"]),
+                )
+            )
+        ).scalar() or 0
+        if taken:
+            continue
+        return app, cycle
+    return None, None
+
+
+async def offer_vacated_seat(
+    db: AsyncSession,
+    permit_type: PermitType,
+    offer_end_date: date | None,
+) -> LotteryV2Application | None:
+    """Offer this specific vacated permit type to the next waitlisted student.
+
+    Charge remains the full permit price. Term runs through offer_end_date
+    (remaining days of the cancelled permit) when provided.
+    """
+    app, cycle = await _next_waitlist_for_type(db, permit_type.id)
+    if not app or not cycle:
+        return None
+
+    offer_days = cycle.offer_window_days or 5
+    app.status = "selected"
+    app.assigned_permit_type_id = permit_type.id
+    app.assigned_lot = (permit_type.lot_assignments or [None])[0]
+    app.waitlist_position = None
+    app.offer_expires_at = datetime.now(timezone.utc) + timedelta(days=offer_days)
+    app.offer_end_date = offer_end_date
+
+    remaining = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == app.cycle_id,
+                LotteryV2Application.status == "waitlisted",
+                LotteryV2Application.id != app.id,
+            )
+            .order_by(
+                LotteryV2Application.waitlist_position.asc().nullslast(),
+                LotteryV2Application.created_at.asc(),
+            )
+        )
+    ).scalars().all()
+    for i, other in enumerate(remaining, 1):
+        other.waitlist_position = i
+
+    await db.flush()
+
+    if app.student_email:
+        try:
+            deadline = app.offer_expires_at.strftime("%B %d, %Y")
+            await send_lottery_selection_email(
+                recipient_email=app.student_email,
+                student_name=app.student_name,
+                permit_type_label=permit_type.label,
+                price=str(permit_type.price),
+                deadline=deadline,
+                portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
+                assigned_lot=app.assigned_lot,
+                lot_assignments=list(permit_type.lot_assignments or []),
+            )
+        except Exception as e:
+            logger.error("Failed to notify vacated-seat offer for %s: %s", app.id, e)
+
+    return app
+

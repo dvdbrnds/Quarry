@@ -1,7 +1,9 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import String, Date, DateTime, Boolean, func
+from decimal import Decimal
+
+from sqlalchemy import String, Date, DateTime, Boolean, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,3 +36,8 @@ class Permit(Base):
     last_plate_change: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     stripe_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     refund_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    refund_amount: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cancel_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[str | None] = mapped_column(String(256), nullable=True)

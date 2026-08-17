@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,6 +50,12 @@ class PermitRead(PermitBase):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None = None
+    refund_id: str | None = None
+    refund_amount: Decimal | None = None
+    cancel_reason: str | None = None
+    cancel_notes: str | None = None
+    cancelled_at: datetime | None = None
+    cancelled_by: str | None = None
 
 
 class PermitImportRow(BaseModel):

@@ -49,6 +49,12 @@ export interface Permit {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  refund_id: string | null;
+  refund_amount: string | null;
+  cancel_reason: string | null;
+  cancel_notes: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
 }
 
 export interface MessageTemplate {
@@ -588,7 +594,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ permits }),
       }),
-    stats: () => request<{ total: number; active: number; expired: number; expiring_soon: number; revoked: number; unique_users: number }>("/permits/stats"),
+    stats: () => request<{ total: number; active: number; expired: number; expiring_soon: number; revoked: number; cancelled: number; unique_users: number }>("/permits/stats"),
     bulkStatus: (ids: string[], status: string) =>
       request<{ updated: number }>("/permits/bulk-status", {
         method: "POST",

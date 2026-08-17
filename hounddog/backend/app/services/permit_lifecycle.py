@@ -182,6 +182,12 @@ async def get_permit_stats(db: AsyncSession) -> dict:
         )
     )).scalar() or 0
 
+    cancelled_count = (await db.execute(
+        select(func.count()).select_from(
+            base.where(Permit.status == "cancelled").subquery()
+        )
+    )).scalar() or 0
+
     total_count = (await db.execute(
         select(func.count()).select_from(base.subquery())
     )).scalar() or 0
@@ -200,5 +206,6 @@ async def get_permit_stats(db: AsyncSession) -> dict:
         "expired": expired_count,
         "expiring_soon": expiring_soon_count,
         "revoked": revoked_count,
+        "cancelled": cancelled_count,
         "unique_users": unique_users,
     }

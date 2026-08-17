@@ -4,9 +4,9 @@ Isolated from the legacy per-tier lottery tables (permit_applications).
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import String, DateTime, Integer, Boolean, Float, ForeignKey, Text, func
+from sqlalchemy import String, Date, DateTime, Integer, Boolean, Float, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,6 +59,7 @@ class LotteryV2Application(Base):
     lottery_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     waitlist_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     offer_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    offer_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_test_entry: Mapped[bool] = mapped_column(Boolean, default=False)
     fee_exempt: Mapped[bool] = mapped_column(Boolean, default=False)
     is_upgrade: Mapped[bool] = mapped_column(Boolean, default=False)

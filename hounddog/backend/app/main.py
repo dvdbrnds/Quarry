@@ -625,6 +625,12 @@ async def lifespan(app: FastAPI):
             # Moravian numeric ID for SIS lookups
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS moravian_id VARCHAR(32)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS refund_id VARCHAR(128)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS refund_amount NUMERIC(8,2)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS cancel_reason VARCHAR(64)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS cancel_notes TEXT",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(256)",
+            "ALTER TABLE lottery_v2_applications ADD COLUMN IF NOT EXISTS offer_end_date DATE",
             "ALTER TABLE stripe_transaction_cache ADD COLUMN IF NOT EXISTS payment_intent_id VARCHAR(256)",
             # Voucher usage tracking for department chargebacks
             """CREATE TABLE IF NOT EXISTS voucher_usages (

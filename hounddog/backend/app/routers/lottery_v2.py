@@ -46,6 +46,17 @@ logger = logging.getLogger("quarry.lottery_v2")
 router = APIRouter()
 
 
+def _application_end_date(app: LotteryV2Application, pt: PermitType) -> date:
+    """Remaining-term offer uses offer_end_date; otherwise a full valid_days term."""
+    if getattr(app, "offer_end_date", None) and app.offer_end_date > today_local():
+        return app.offer_end_date
+    return today_local() + timedelta(days=pt.valid_days or 365)
+
+
+def _application_valid_days(app: LotteryV2Application, pt: PermitType) -> int:
+    return max(1, (_application_end_date(app, pt) - today_local()).days)
+
+
 # ── Schemas ──────────────────────────────────────────────────────────
 
 
@@ -865,7 +876,7 @@ async def accept_offer(
             permit_type=pt.code,
             lot_assignment=lot_assignment,
             start_date=today_local(),
-            end_date=today_local() + timedelta(days=pt.valid_days),
+            end_date=_application_end_date(app, pt),
             status="active",
         )
         db.add(new_permit)
@@ -918,7 +929,9 @@ async def accept_offer(
         return {"status": "accepted", "fee_exempt": False, "upgrade": True, "charge_amount": "0.00"}
 
     product_name = f"{pt.label} Parking Permit"
-    product_desc = f"Plate: {app.plate} | Valid for {pt.valid_days} days" + discount_note
+    valid_days = _application_valid_days(app, pt)
+    end_date = _application_end_date(app, pt)
+    product_desc = f"Plate: {app.plate} | Valid through {end_date.isoformat()}" + discount_note
     if is_upgrade_checkout:
         product_name = f"Upgrade to {pt.label}"
         product_desc = f"Plate: {app.plate} | Difference from current permit" + discount_note
@@ -948,7 +961,7 @@ async def accept_offer(
                 "permit_type_code": pt.code,
                 "permit_type_label": pt.label,
                 "permit_price": str(pt.price),
-                "permit_valid_days": str(pt.valid_days),
+                "permit_valid_days": str(valid_days),
                 "plate": app.plate,
                 "student_name": app.student_name,
                 "student_email": app.student_email,
@@ -974,7 +987,8 @@ async def accept_offer(
             "student_name": app.student_name,
             "plate": app.plate,
             "email": app.student_email,
-            "valid_days": str(pt.valid_days),
+            "valid_days": str(valid_days),
+            "offer_end_date": end_date.isoformat(),
             "assigned_lot": app.assigned_lot or "",
             "phone": app.phone or "",
             "sms_opt_in": "true" if app.sms_opt_in else "false",
