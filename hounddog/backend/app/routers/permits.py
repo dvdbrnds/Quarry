@@ -941,6 +941,7 @@ async def cancel_preview(
     suggested = min(max(Decimal("0.00"), suggested), cap)
 
     waitlist = None
+    spot_goes_to_reserve = False
     if pt:
         from ..services.lottery_v2_runner import peek_waitlist_for_type
         next_app = await peek_waitlist_for_type(db, pt.id)
@@ -950,6 +951,11 @@ async def cancel_preview(
                 "email": next_app.student_email,
                 "waitlist_position": next_app.waitlist_position,
             }
+        else:
+            cap = pt.max_capacity or 0
+            reserved_target = max(pt.reserved_spots or 0, int(cap * (pt.reserved_pct or 0) / 100))
+            if reserved_target > 0:
+                spot_goes_to_reserve = True
 
     return {
         "permit_id": str(permit.id),
@@ -967,6 +973,7 @@ async def cancel_preview(
         "has_stripe": bool(stripe_id and settings.stripe_secret_key),
         "suggested_refund": str(suggested),
         "waitlist": waitlist,
+        "spot_goes_to_reserve": spot_goes_to_reserve,
         "waitlist_offer_price": str(pt.price) if pt else "0.00",
     }
 

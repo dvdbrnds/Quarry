@@ -72,6 +72,7 @@ interface CancelPreview {
   has_stripe: boolean;
   suggested_refund: string;
   waitlist: { name: string; email: string; waitlist_position: number } | null;
+  spot_goes_to_reserve: boolean;
   waitlist_offer_price: string;
 }
 
@@ -257,6 +258,17 @@ function CancelPermitModal({
               <div className="text-xs text-green-700 mt-1">
                 They will be offered this spot at ${preview.waitlist_offer_price} for
                 the remaining {preview.remaining_days} days.
+              </div>
+            </div>
+          )}
+
+          {!preview.waitlist && preview.spot_goes_to_reserve && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+              <div className="font-medium text-amber-800">Spot returns to reserve pool</div>
+              <div className="text-xs text-amber-700 mt-1">
+                The reserve capacity for this permit type is below target. This
+                spot will be held for discretionary assignment rather than
+                advancing the waitlist.
               </div>
             </div>
           )}
