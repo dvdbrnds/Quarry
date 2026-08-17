@@ -1365,46 +1365,18 @@ async def peek_waitlist_for_type(
 ) -> LotteryV2Application | None:
     """Next waitlisted applicant who ranked this permit type, if any.
 
-    Returns None if the freed spot would replenish the reserve pool instead.
+    Returns None if the permit type has a reserve configured — freed spots
+    go to the reserve pool for admin discretion before the waitlist.
     """
     pt = await db.get(PermitType, permit_type_id)
     if not pt:
         return None
 
-    cap = pt.max_capacity or 0
     reserved_target = max(
         pt.reserved_spots or 0,
-        int(cap * (pt.reserved_pct or 0) / 100),
+        int((pt.max_capacity or 0) * (pt.reserved_pct or 0) / 100),
     )
-    public_capacity = cap - reserved_target
-
-    active_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(Permit)
-            .where(
-                Permit.permit_type == pt.code,
-                Permit.status == "active",
-                Permit.deleted_at.is_(None),
-            )
-        )
-    ).scalar() or 0
-
-    offer_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(LotteryV2Application)
-            .where(
-                LotteryV2Application.assigned_permit_type_id == pt.id,
-                LotteryV2Application.status == "selected",
-            )
-        )
-    ).scalar() or 0
-
-    # After the cancel (active - 1), check if reserve still needs replenishment.
-    # The cancel hasn't been committed yet at preview time, so subtract 1.
-    committed_after_cancel = (active_count - 1) + offer_count
-    if committed_after_cancel >= public_capacity:
+    if reserved_target > 0:
         return None
 
     app, _cycle = await _next_waitlist_for_type(db, permit_type_id)
@@ -1455,42 +1427,15 @@ async def offer_vacated_seat(
 ) -> LotteryV2Application | None:
     """Offer this specific vacated permit type to the next waitlisted student.
 
-    The freed spot first replenishes the reserve pool. Only if the reserve is
-    already at its target capacity does the spot go to the waitlist.
+    The freed spot first goes to the reserve pool. If the permit type has any
+    reserve configured (reserved_spots or reserved_pct > 0), the spot is held
+    for admin discretionary assignment and the waitlist is NOT advanced.
     """
-    cap = permit_type.max_capacity or 0
     reserved_target = max(
         permit_type.reserved_spots or 0,
-        int(cap * (permit_type.reserved_pct or 0) / 100),
+        int((permit_type.max_capacity or 0) * (permit_type.reserved_pct or 0) / 100),
     )
-    public_capacity = cap - reserved_target
-
-    active_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(Permit)
-            .where(
-                Permit.permit_type == permit_type.code,
-                Permit.status == "active",
-                Permit.deleted_at.is_(None),
-            )
-        )
-    ).scalar() or 0
-
-    offer_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(LotteryV2Application)
-            .where(
-                LotteryV2Application.assigned_permit_type_id == permit_type.id,
-                LotteryV2Application.status == "selected",
-            )
-        )
-    ).scalar() or 0
-
-    committed = active_count + offer_count
-    if committed >= public_capacity:
-        # Reserve is still depleted — freed spot replenishes it, not the waitlist
+    if reserved_target > 0:
         return None
 
     app, cycle = await _next_waitlist_for_type(db, permit_type.id)
