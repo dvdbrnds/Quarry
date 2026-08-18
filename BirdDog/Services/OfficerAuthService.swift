@@ -81,7 +81,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
         }
 
         session.presentationContextProvider = self
-        session.prefersEphemeralWebBrowserSession = false
+        session.prefersEphemeralWebBrowserSession = true
         self.webAuthSession = session
         session.start()
     }
