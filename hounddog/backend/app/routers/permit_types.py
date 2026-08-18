@@ -57,14 +57,18 @@ async def list_permit_types(
             )
         )
         active_count = count_result.scalar() or 0
-        reserved = max(pt.reserved_spots or 0, int(pt.max_capacity * (pt.reserved_pct or 0) / 100))
-        public_capacity = pt.max_capacity - reserved
-        remaining = max(0, public_capacity - active_count)
+        reserved_target = max(pt.reserved_spots or 0, int(pt.max_capacity * (pt.reserved_pct or 0) / 100))
+        public_capacity = pt.max_capacity - reserved_target
+        public_remaining = max(0, public_capacity - active_count)
+        # Reserved spots that haven't been used yet (available for admin discretion)
+        total_remaining = max(0, pt.max_capacity - active_count)
+        reserved_available = max(0, total_remaining - public_remaining)
         results.append(
             PermitTypeWithCount(
                 **{k: v for k, v in pt.__dict__.items() if not k.startswith("_")},
                 active_count=active_count,
-                remaining=remaining,
+                remaining=total_remaining,
+                reserved_available=reserved_available,
             )
         )
     return results

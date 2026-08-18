@@ -73,6 +73,7 @@ class PermitTypeRead(PermitTypeBase):
 class PermitTypeWithCount(PermitTypeRead):
     active_count: int = 0
     remaining: int = 0
+    reserved_available: int = 0
 
 
 class PermitTypeImportRow(BaseModel):

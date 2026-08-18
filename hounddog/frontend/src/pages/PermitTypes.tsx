@@ -386,11 +386,16 @@ export default function PermitTypes() {
       title: "Usage", key: "usage",
       render: (_, pt) => {
         const reserved = Math.max(pt.reserved_spots || 0, Math.floor(pt.max_capacity * (pt.reserved_pct || 0) / 100));
-        const publicCap = pt.max_capacity - reserved;
+        const reservedAvail = (pt as any).reserved_available || 0;
         return (
-          <Space>
-            <span className="text-ink-mute">{pt.active_count} / {publicCap}</span>
-            <span className={pt.remaining === 0 ? "text-red-600 font-medium" : "text-green-600"}>{pt.remaining} left</span>
+          <Space direction="vertical" size={0}>
+            <span className="text-ink-mute">{pt.active_count} / {pt.max_capacity}</span>
+            <span className={pt.remaining === 0 ? "text-red-600 font-medium text-xs" : "text-green-600 text-xs"}>
+              {pt.remaining} available
+              {reserved > 0 && reservedAvail > 0 && (
+                <span className="text-orange-500 ml-1">({reservedAvail} reserved)</span>
+              )}
+            </span>
           </Space>
         );
       },
