@@ -19,15 +19,17 @@ struct AdminSettingsView: View {
             officerSection
             cameraSection
             printerSection
-            schoolSection
-            houndDogSection
-            oktaSection
-            ocrEngineSection
-            dataSection
-            securitySection
+            if officerAuth.isAdmin {
+                schoolSection
+                houndDogSection
+                oktaSection
+                ocrEngineSection
+                dataSection
+                securitySection
+            }
             appInfoSection
         }
-        .navigationTitle("Admin Settings")
+        .navigationTitle(officerAuth.isAdmin ? "Admin Settings" : "Settings")
         .navigationBarTitleDisplayMode(.inline)
         .fileImporter(
             isPresented: $showLotImporter,

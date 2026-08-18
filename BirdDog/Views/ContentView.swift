@@ -428,19 +428,22 @@ struct ContentView: View {
                 }
             }
 
-            if officerAuth.isAdmin {
+            if officerAuth.isStaff {
                 Menu {
-                    Button {
-                        viewModel.pauseScanning()
-                        showDatabase = true
-                    } label: {
-                        Label("Database", systemImage: "server.rack")
-                    }
-                    Button {
-                        viewModel.pauseScanning()
-                        showLotManagement = true
-                    } label: {
-                        Label("Lots", systemImage: "map")
+                    if officerAuth.isAdmin {
+                        Button {
+                            viewModel.pauseScanning()
+                            showDatabase = true
+                        } label: {
+                            Label("Database", systemImage: "server.rack")
+                        }
+                        Button {
+                            viewModel.pauseScanning()
+                            showLotManagement = true
+                        } label: {
+                            Label("Lots", systemImage: "map")
+                        }
+                        Divider()
                     }
                     Button {
                         viewModel.pauseScanning()
