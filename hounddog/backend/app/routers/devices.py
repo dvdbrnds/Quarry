@@ -63,3 +63,34 @@ async def delete_device(device_id: uuid.UUID, db: AsyncSession = Depends(get_db)
         raise HTTPException(404, "Device not found")
     await db.delete(device)
     await db.flush()
+
+
+@router.get("/{device_id}/pairing", response_model=DeviceReadWithPairing)
+async def get_device_pairing(device_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(404, "Device not found")
+
+    pairing_payload = {
+        "url": settings.public_url,
+        "key": device.api_key,
+        "name": settings.school_name,
+    }
+
+    if settings.okta_domain and settings.okta_client_id:
+        okta_issuer = f"https://{settings.okta_domain}/oauth2/default"
+        if settings.okta_domain.startswith("https://"):
+            okta_issuer = f"{settings.okta_domain}/oauth2/default"
+        pairing_payload["okta_issuer"] = okta_issuer
+        pairing_payload["okta_client_id"] = settings.okta_client_id
+
+    return DeviceReadWithPairing(
+        id=device.id,
+        name=device.name,
+        api_key=device.api_key,
+        device_type=device.device_type,
+        last_seen=device.last_seen,
+        created_at=device.created_at,
+        pairing_url=settings.public_url,
+        pairing_payload=pairing_payload,
+    )

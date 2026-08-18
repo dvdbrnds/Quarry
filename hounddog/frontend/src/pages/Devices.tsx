@@ -47,6 +47,13 @@ export default function Devices() {
     });
   }
 
+  async function showPairing(device: Device) {
+    try {
+      const res = await api.devices.pairing(device.id);
+      setPairingDevice(res);
+    } catch { message.error("Failed to load pairing code"); }
+  }
+
   const columns: ColumnsType<Device> = [
     { title: "Name", dataIndex: "name", key: "name", render: (v) => <span className="font-medium">{v}</span> },
     { title: "Type", dataIndex: "device_type", key: "type", render: (v) => <span className="capitalize">{v}</span> },
@@ -54,7 +61,12 @@ export default function Devices() {
     { title: "Created", dataIndex: "created_at", key: "created_at", render: (d) => d ? new Date(d).toLocaleString() : "—" },
     {
       title: "Actions", key: "actions", align: "right" as const,
-      render: (_, d) => <Button type="link" danger size="small" onClick={() => handleDelete(d.id)}>Revoke</Button>,
+      render: (_, d) => (
+        <Space size="small">
+          <Button type="link" size="small" onClick={() => showPairing(d)}>Pair</Button>
+          <Button type="link" danger size="small" onClick={() => handleDelete(d.id)}>Revoke</Button>
+        </Space>
+      ),
     },
   ];
 

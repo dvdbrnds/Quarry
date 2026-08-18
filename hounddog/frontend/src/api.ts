@@ -670,6 +670,7 @@ export const api = {
     list: () => request<Device[]>("/devices"),
     create: (data: { name: string; device_type?: string }) =>
       request<Device>("/devices", { method: "POST", body: JSON.stringify(data) }),
+    pairing: (id: string) => request<Device>(`/devices/${id}/pairing`),
     delete: (id: string) =>
       request<void>(`/devices/${id}`, { method: "DELETE" }),
   },
