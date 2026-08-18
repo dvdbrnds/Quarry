@@ -1173,10 +1173,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   </dl>
 
                   {application.status === "accepted" && (() => {
-                    const matchingPermit = myPermits.find(p =>
-                      p.plates?.includes(application.plate) ||
-                      p.permit_type === (application as any).permit_type_code
-                    );
+                    const appPlate = (application.plate || "").toUpperCase();
+                    const matchingPermit = myPermits.length === 1
+                      ? myPermits[0]
+                      : myPermits.find(p =>
+                          p.plates?.some((pl: string) => pl.toUpperCase() === appPlate)
+                        ) || myPermits[0];
                     if (!matchingPermit) return null;
                     return (
                       <PlateSwapForm
