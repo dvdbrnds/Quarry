@@ -1172,17 +1172,27 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     </div>
                   </dl>
 
-                  {application.status === "accepted" && (application as any).permit_id && (
-                    <PlateSwapForm
-                      permitId={(application as any).permit_id}
-                      currentPlate={(application as any).current_plate || application.plate}
-                      canSwap={(application as any).can_swap ?? true}
-                      nextSwapAvailable={(application as any).next_swap_available}
-                      onSwapped={(newPlate) => {
-                        setApplication((prev: any) => prev ? { ...prev, plate: newPlate, current_plate: newPlate } : prev);
-                      }}
-                    />
-                  )}
+                  {application.status === "accepted" && (() => {
+                    const matchingPermit = myPermits.find(p =>
+                      p.plates?.includes(application.plate) ||
+                      p.permit_type === (application as any).permit_type_code
+                    );
+                    if (!matchingPermit) return null;
+                    return (
+                      <PlateSwapForm
+                        permitId={matchingPermit.id}
+                        currentPlate={matchingPermit.plates?.[0] || application.plate}
+                        canSwap={matchingPermit.can_swap}
+                        nextSwapAvailable={matchingPermit.next_swap_available}
+                        onSwapped={(newPlate) => {
+                          setApplication((prev: any) => prev ? { ...prev, plate: newPlate } : prev);
+                          setMyPermits((prev) => prev.map(p =>
+                            p.id === matchingPermit.id ? { ...p, plates: [newPlate], can_swap: false, next_swap_available: new Date(Date.now() + 7 * 86400000).toISOString() } : p
+                          ));
+                        }}
+                      />
+                    );
+                  })()}
 
                   {application.status === "selected" && (
                     <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-3">
