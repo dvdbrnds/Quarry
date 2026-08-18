@@ -241,7 +241,14 @@ async def list_permits(
         else:
             query = query.where(Permit.status == status)
     if lot:
-        query = query.where(permit_lot_matches(lot))
+        query = query.where(
+            or_(
+                permit_lot_matches(lot),
+                Permit.permit_type.in_(
+                    select(PermitType.code).where(PermitType.lot_assignments.any(lot))
+                ),
+            )
+        )
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
 
@@ -1493,7 +1500,14 @@ async def export_permits(
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
     if lot:
-        query = query.where(Permit.lot_assignment == lot)
+        query = query.where(
+            or_(
+                permit_lot_matches(lot),
+                Permit.permit_type.in_(
+                    select(PermitType.code).where(PermitType.lot_assignments.any(lot))
+                ),
+            )
+        )
     if search:
         query = query.where(_permit_search_clause(search))
     permits = (await db.execute(query.order_by(Permit.name))).scalars().all()
