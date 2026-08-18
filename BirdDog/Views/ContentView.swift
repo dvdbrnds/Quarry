@@ -429,8 +429,8 @@ struct ContentView: View {
             }
 
             if officerAuth.isStaff {
-                Menu {
-                    if officerAuth.isAdmin {
+                if officerAuth.isAdmin {
+                    Menu {
                         Button {
                             viewModel.pauseScanning()
                             showDatabase = true
@@ -444,16 +444,24 @@ struct ContentView: View {
                             Label("Lots", systemImage: "map")
                         }
                         Divider()
+                        Button {
+                            viewModel.pauseScanning()
+                            showAdminSettings = true
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.body)
                     }
+                } else {
                     Button {
                         viewModel.pauseScanning()
                         showAdminSettings = true
                     } label: {
-                        Label("Settings", systemImage: "gearshape")
+                        Image(systemName: "gearshape")
+                            .font(.body)
                     }
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.body)
                 }
             }
 
