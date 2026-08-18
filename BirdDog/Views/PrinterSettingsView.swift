@@ -6,6 +6,8 @@ struct PrinterSettingsView: View {
     @State private var isPrintingTest = false
     @State private var testPrintError: String?
     @State private var showTestResult = false
+    @State private var manualName = ""
+    @State private var isManualConnecting = false
 
     var body: some View {
         List {
@@ -174,10 +176,62 @@ struct PrinterSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if !printerService.isSearching {
+                manualConnectRow
+            }
         } header: {
             Text("Available Printers")
         } footer: {
-            Text("Tap SM-S230 (PRNT Star) to connect — ignore the numbered duplicate if both appear. Connection is verified then released between jobs so the port stays free.")
+            Text("If the printer doesn't appear, use Manual Connect and enter its Bluetooth name (usually \"PRNT Star\" or the name shown in Settings → Bluetooth).")
+        }
+    }
+
+    // MARK: - Manual Connect
+
+    private var manualConnectRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Manual Connect")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField("Bluetooth name (e.g. PRNT Star)", text: $manualName)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button {
+                    attemptManualConnect()
+                } label: {
+                    if isManualConnecting {
+                        ProgressView()
+                    } else {
+                        Text("Connect")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(manualName.trimmingCharacters(in: .whitespaces).isEmpty || isManualConnecting)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func attemptManualConnect() {
+        let name = manualName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        isManualConnecting = true
+        let discovered = PrinterService.DiscoveredPrinter(
+            id: name,
+            interfaceType: .bluetooth,
+            model: name
+        )
+        Task {
+            do {
+                try await printerService.connectAndWait(to: discovered)
+                manualName = ""
+            } catch {
+                // lastError is already set by connectAndWait
+            }
+            isManualConnecting = false
         }
     }
 

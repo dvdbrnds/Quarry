@@ -139,11 +139,20 @@ final class PrinterService: ObservableObject {
         let accessories = EAAccessoryManager.shared().connectedAccessories
         for accessory in accessories {
             guard accessory.protocolStrings.contains(Self.starEAProtocol) else { continue }
+            let identifier = accessory.serialNumber.isEmpty ? accessory.name : accessory.serialNumber
             addDiscovered(
-                id: accessory.name,
+                id: identifier,
                 interfaceType: .bluetooth,
                 model: accessory.modelNumber.isEmpty ? accessory.name : accessory.modelNumber
             )
+            // Also add by name in case StarIO10 resolves it differently
+            if identifier != accessory.name {
+                addDiscovered(
+                    id: accessory.name,
+                    interfaceType: .bluetooth,
+                    model: accessory.modelNumber.isEmpty ? accessory.name : accessory.modelNumber
+                )
+            }
         }
     }
 
