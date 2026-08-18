@@ -1583,13 +1583,15 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           </div>
                           {new Date(g.check_out) >= new Date() && (
                             <div className="mt-2 pt-2 border-t border-pink-100">
-                              <p className="text-xs font-medium text-pink-700 m-0 mb-1">Authorized Lots</p>
+                              <p className="text-xs font-semibold text-pink-700 m-0 mb-1">Authorized parking lots:</p>
                               <div className="flex flex-wrap gap-1">
                                 {["X", "A", "F", "H", "M", "N", "O", "R", "S"].map(lot => (
-                                  <Tag key={lot} color="pink" className="!text-xs">{lot}</Tag>
+                                  <span key={lot} className="inline-block rounded bg-pink-100 text-pink-800 text-xs font-medium px-2 py-0.5">{lot}</span>
                                 ))}
                               </div>
-                              <p className="text-xs text-gray-600 m-0 mt-1">24-hour access during guest stay ({new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()})</p>
+                              <p className="text-xs text-gray-600 m-0 mt-1.5">
+                                <strong>Hours:</strong> Valid 24 hours during stay ({new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()})
+                              </p>
                             </div>
                           )}
                         </div>
