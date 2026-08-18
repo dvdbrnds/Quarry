@@ -1012,21 +1012,27 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         ? [application.assigned_lot]
         : [];
 
+  const GUEST_LOTS = ["X", "A", "F", "H", "M", "N", "O", "R", "S"];
+
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
-      : step === "done" && doneDefaultLots.length > 0
-        ? doneDefaultLots
-        : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
-          ? eligibleLotNames
-          : [];
+      : showGuestForm
+        ? GUEST_LOTS
+        : step === "done" && doneDefaultLots.length > 0
+          ? doneDefaultLots
+          : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
+            ? eligibleLotNames
+            : [];
 
   const lotsForMap =
-    step === "done" && doneDefaultLots.length > 0
-      ? lots.filter((l) => doneDefaultLots.some((d) => normalizeLotKey(d) === normalizeLotKey(l.name)))
-      : mapLots.length > 0
-        ? mapLots
-        : [];
+    showGuestForm
+      ? lots.filter((l) => GUEST_LOTS.some((g) => normalizeLotKey(g) === normalizeLotKey(l.name)))
+      : step === "done" && doneDefaultLots.length > 0
+        ? lots.filter((l) => doneDefaultLots.some((d) => normalizeLotKey(d) === normalizeLotKey(l.name)))
+        : mapLots.length > 0
+          ? mapLots
+          : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
   const lotteryActive = cycle?.status === "open" || cycle?.status === "drawn";
@@ -1037,27 +1043,40 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const showCommuterAccessColors = isCommuterPath && (step === "intake" || step === "choose");
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
-  const baseActiveLotColors = showCommuterAccessColors
-    ? commuterAccessColors
-    : showSouthAccessColors && step === "intake"
-      ? southIntakeColors
-      : showSouthAccessColors && step === "rank"
-        ? lotColors
-        : showTierColors
+
+  const guestLotColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const lot of GUEST_LOTS) map[lot] = "#EC4899";
+    return map;
+  }, []);
+
+  const baseActiveLotColors = showGuestForm
+    ? guestLotColors
+    : showCommuterAccessColors
+      ? commuterAccessColors
+      : showSouthAccessColors && step === "intake"
+        ? southIntakeColors
+        : showSouthAccessColors && step === "rank"
           ? lotColors
-          : undefined;
+          : showTierColors
+            ? lotColors
+            : undefined;
   // When actively hovering a card, drop lot colors so the map uses the high-contrast
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
-  const activeLegend = showCommuterAccessColors
-    ? commuterAccessLegend
-    : showSouthAccessColors && step === "intake"
-      ? southIntakeLegend
-      : showSouthAccessColors && step === "rank"
-        ? mapLegend
-        : showTierColors
+  const guestLegend = [{ label: "Guest parking (24h)", color: "#EC4899" }];
+
+  const activeLegend = showGuestForm
+    ? guestLegend
+    : showCommuterAccessColors
+      ? commuterAccessLegend
+      : showSouthAccessColors && step === "intake"
+        ? southIntakeLegend
+        : showSouthAccessColors && step === "rank"
           ? mapLegend
-          : undefined;
+          : showTierColors
+            ? mapLegend
+            : undefined;
 
   const schoolName = brand.schoolName || "Moravian University";
 
