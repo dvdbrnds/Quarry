@@ -207,6 +207,19 @@ function AdminShell({ user }: { user: AuthUser }) {
                 >
                   My Permit
                 </a>
+                <a
+                  href="/docs/staff-manual.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <svg className="w-4 h-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10.75 16.82A7.462 7.462 0 0115 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0018 15.06V4.44a.75.75 0 00-.546-.721A9.006 9.006 0 0015 3.5a9.006 9.006 0 00-4.25 1.065v12.255zM9.25 4.565A9.006 9.006 0 005 3.5a9.006 9.006 0 00-2.454.219A.75.75 0 002 4.44v10.62a.75.75 0 00.954.721A7.462 7.462 0 015 15.5c1.579 0 3.042.487 4.25 1.32V4.565z" />
+                  </svg>
+                  Staff Manual
+                </a>
               </div>
 
               <div className="border-t border-slate-100 py-1">
