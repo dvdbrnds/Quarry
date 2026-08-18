@@ -83,11 +83,13 @@ final class PrinterService: ObservableObject {
         // for other Star portables that don't use MFi.
         seedPairedBluetoothPrinters()
 
+        // If we already found paired MFi printers, mark search done quickly
+        // but still kick off a short BLE scan for other printers.
         do {
             let manager = try StarDeviceDiscoveryManagerFactory.create(
                 interfaceTypes: [.bluetooth, .bluetoothLE]
             )
-            manager.discoveryTime = 10_000
+            manager.discoveryTime = 3_000
             self.discoveryManager = manager
 
             let wrapper = DiscoveryDelegate { [weak self] found in

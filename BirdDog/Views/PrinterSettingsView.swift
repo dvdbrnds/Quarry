@@ -21,6 +21,8 @@ struct PrinterSettingsView: View {
         .onAppear {
             if printerService.hasSavedPrinter && !printerService.isConnected {
                 printerService.reconnectSaved()
+            } else if !printerService.hasSavedPrinter && !printerService.isSearching {
+                printerService.startDiscovery()
             }
         }
         .alert(testPrintError == nil ? "Test Print Sent" : "Print Failed", isPresented: $showTestResult) {
