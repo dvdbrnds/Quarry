@@ -16,9 +16,9 @@ struct AdminSettingsView: View {
 
     var body: some View {
         List {
+            printerSection
             officerSection
             cameraSection
-            printerSection
             if officerAuth.isAdmin {
                 schoolSection
                 houndDogSection
@@ -367,24 +367,39 @@ struct AdminSettingsView: View {
 
     private var dataSection: some View {
         Section {
-            HStack {
-                Label("Permits", systemImage: "doc.text.fill")
-                Spacer()
-                Text("\(PlateDatabase.shared.totalCount()) synced")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button {
-                showLotImporter = true
+            NavigationLink {
+                if PlateDatabase.isReady {
+                    DatabaseManagementView()
+                        .modelContainer(PlateDatabase.shared.container)
+                } else {
+                    ProgressView("Loading database…")
+                }
             } label: {
                 HStack {
-                    Label("Import Lots", systemImage: "map.fill")
+                    Label("Permit Database", systemImage: "server.rack")
+                    Spacer()
+                    Text("\(PlateDatabase.shared.totalCount()) synced")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            NavigationLink {
+                LotManagementView()
+            } label: {
+                HStack {
+                    Label("Lots", systemImage: "map.fill")
                     Spacer()
                     Text("\(GeofenceService.shared.lots.count) defined")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Button {
+                showLotImporter = true
+            } label: {
+                Label("Import Lots from File", systemImage: "square.and.arrow.down")
             }
         } header: {
             Text("Data Management")

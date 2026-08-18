@@ -7,8 +7,6 @@ struct ContentView: View {
     @ObservedObject private var officerAuth = OfficerAuthService.shared
     @State private var showExportSheet = false
     @State private var showClearConfirm = false
-    @State private var showDatabase = false
-    @State private var showLotManagement = false
     @State private var showAdminSettings = false
     @State private var showSessionHistory = false
     @State private var showCameraLog = false
@@ -37,17 +35,6 @@ struct ContentView: View {
                 }
             }
             .preferredColorScheme(.dark)
-            .navigationDestination(isPresented: $showDatabase) {
-                if PlateDatabase.isReady {
-                    DatabaseManagementView()
-                        .modelContainer(PlateDatabase.shared.container)
-                } else {
-                    ProgressView("Loading database…")
-                }
-            }
-            .navigationDestination(isPresented: $showLotManagement) {
-                LotManagementView()
-            }
             .navigationDestination(isPresented: $showAdminSettings) {
                 AdminSettingsView(cameraService: viewModel.cameraService)
             }
@@ -58,8 +45,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
-                || showDatabase || showLotManagement || showAdminSettings
-                || showSessionHistory
+                || showAdminSettings || showSessionHistory
             if viewModel.cameraPermission == .authorized
                 && !viewModel.isScanningPaused
                 && !anyScreenOpen {
@@ -68,8 +54,7 @@ struct ContentView: View {
         }
         .onReceive(tick) { t in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
-                || showDatabase || showLotManagement || showAdminSettings
-                || showSessionHistory
+                || showAdminSettings || showSessionHistory
             if !anyScreenOpen {
                 now = t
             }
@@ -205,12 +190,6 @@ struct ContentView: View {
             if !isOpen { viewModel.resumeScanning() }
         }
         .onChange(of: showMovingViolation) { _, isOpen in
-            if !isOpen { viewModel.resumeScanning() }
-        }
-        .onChange(of: showDatabase) { _, isOpen in
-            if !isOpen { viewModel.resumeScanning() }
-        }
-        .onChange(of: showLotManagement) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
         }
         .onChange(of: showAdminSettings) { _, isOpen in
@@ -429,39 +408,12 @@ struct ContentView: View {
             }
 
             if officerAuth.isStaff {
-                if officerAuth.isAdmin {
-                    Menu {
-                        Button {
-                            viewModel.pauseScanning()
-                            showDatabase = true
-                        } label: {
-                            Label("Database", systemImage: "server.rack")
-                        }
-                        Button {
-                            viewModel.pauseScanning()
-                            showLotManagement = true
-                        } label: {
-                            Label("Lots", systemImage: "map")
-                        }
-                        Divider()
-                        Button {
-                            viewModel.pauseScanning()
-                            showAdminSettings = true
-                        } label: {
-                            Label("Settings", systemImage: "gearshape")
-                        }
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.body)
-                    }
-                } else {
-                    Button {
-                        viewModel.pauseScanning()
-                        showAdminSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.body)
-                    }
+                Button {
+                    viewModel.pauseScanning()
+                    showAdminSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.body)
                 }
             }
 
