@@ -19,7 +19,7 @@ student_router = APIRouter(dependencies=[Depends(get_current_user)])
 
 class GuestCreate(BaseModel):
     guest_name: str = Field(..., min_length=1, max_length=256)
-    guest_plate: str | None = None
+    guest_plate: str = Field(..., min_length=1, max_length=20)
     guest_plate_state: str = "PA"
     check_in: date
     check_out: date

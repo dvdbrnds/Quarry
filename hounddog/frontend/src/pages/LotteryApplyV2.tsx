@@ -1510,8 +1510,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           <Input placeholder="Full name" />
                         </Form.Item>
                         <div className="grid grid-cols-3 gap-3">
-                          <Form.Item name="guest_plate" label="Vehicle plate" className="col-span-2">
-                            <Input placeholder="Optional - but recommended" />
+                          <Form.Item name="guest_plate" label="Vehicle plate" className="col-span-2" rules={[{ required: true, message: "License plate is required" }]}>
+                            <Input placeholder="License plate number" style={{ textTransform: "uppercase" }} />
                           </Form.Item>
                           <Form.Item name="guest_plate_state" label="State" initialValue="PA">
                             <Select options={["PA","NJ","NY","CT","DE","MD","VA","MA","OH"].map(s => ({ label: s, value: s }))} />
