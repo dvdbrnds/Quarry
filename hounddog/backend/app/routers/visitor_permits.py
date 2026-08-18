@@ -436,13 +436,19 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
                 lot_assignment = ", ".join(pt_row.lot_assignments)
             if end == start and data.duration == "semester":
                 end = start + timedelta(days=120)
+            elif end == start and data.duration == "yearly":
+                end = start + timedelta(days=365)
         else:
             permit_type = "visitor_contracted_staff"
             if end == start:
                 end = start + timedelta(days=120)
     else:
         days = (end - start).days
-        if data.duration == "semester":
+        if data.duration == "yearly":
+            permit_type = "visitor_contracted_staff"
+            if end == start:
+                end = start + timedelta(days=365)
+        elif data.duration == "semester":
             permit_type = "visitor_contracted_staff"
             if end == start:
                 end = start + timedelta(days=120)

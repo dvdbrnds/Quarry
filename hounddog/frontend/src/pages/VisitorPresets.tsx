@@ -24,6 +24,7 @@ interface PermitTypeOption {
 const DURATION_OPTIONS = [
   { value: "multi_day", label: "Multi-day" },
   { value: "semester", label: "Semester" },
+  { value: "yearly", label: "Yearly" },
 ];
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -194,7 +195,7 @@ export default function VisitorPresets() {
               dataIndex: "default_duration",
               key: "duration",
               width: 100,
-              render: (d: string) => d === "semester" ? "Semester" : "Multi-day",
+              render: (d: string) => d === "semester" ? "Semester" : d === "yearly" ? "Yearly" : "Multi-day",
             },
             {
               title: "Permit Type",
