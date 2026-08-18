@@ -387,15 +387,20 @@ export default function PermitTypes() {
       render: (_, pt) => {
         const reserved = Math.max(pt.reserved_spots || 0, Math.floor(pt.max_capacity * (pt.reserved_pct || 0) / 100));
         const reservedAvail = (pt as any).reserved_available || 0;
+        const publicAvail = pt.remaining - reservedAvail;
         return (
           <Space direction="vertical" size={0}>
             <span className="text-ink-mute">{pt.active_count} / {pt.max_capacity}</span>
-            <span className={pt.remaining === 0 ? "text-red-600 font-medium text-xs" : "text-green-600 text-xs"}>
-              {pt.remaining} available
-              {reserved > 0 && reservedAvail > 0 && (
-                <span className="text-orange-500 ml-1">({reservedAvail} reserved)</span>
-              )}
-            </span>
+            {pt.remaining === 0 ? (
+              <span className="text-red-600 font-medium text-xs">Full</span>
+            ) : reserved > 0 ? (
+              <>
+                <span className="text-green-600 text-xs">{publicAvail} open</span>
+                <span className="text-orange-500 text-xs">{reservedAvail} in reserve</span>
+              </>
+            ) : (
+              <span className="text-green-600 text-xs">{pt.remaining} open</span>
+            )}
           </Space>
         );
       },
