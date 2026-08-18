@@ -811,6 +811,7 @@ async def lifespan(app: FastAPI):
                     {"code": "south_guaranteed_resident", "label": "South Guaranteed Resident", "eligible": "Resident students (seniority-based)", "price": 250, "max_capacity": 44, "valid_days": 365, "lot_assignments": ["U"], "is_purchasable_online": False, "sort_order": 8},
                     {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 100, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 9},
                     {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
+                    {"code": "local_resident", "label": "Local Resident", "eligible": "Neighborhood residents", "price": 0, "max_capacity": 0, "valid_days": 365, "lot_assignments": [], "is_purchasable_online": False, "sort_order": 11},
                 ]
                 for row in default_permits:
                     session.add(PermitType(
@@ -821,6 +822,20 @@ async def lifespan(app: FastAPI):
                     ))
                 await session.commit()
                 logger.info("Seeded 10 default permit types")
+
+            # Backfill: add local_resident permit type if missing
+            existing_lr = await session.scalar(
+                select(func.count()).select_from(PermitType).where(PermitType.code == "local_resident")
+            )
+            if existing_lr == 0:
+                session.add(PermitType(
+                    code="local_resident", label="Local Resident",
+                    eligible="Neighborhood residents", price=Decimal("0"),
+                    max_capacity=0, valid_days=365, lot_assignments=[],
+                    is_purchasable_online=False, sort_order=11,
+                ))
+                await session.commit()
+                logger.info("Backfilled local_resident permit type")
     except Exception as e:
         logger.warning(f"Seed defaults on startup failed: {e}")
 
