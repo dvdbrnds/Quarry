@@ -16,6 +16,7 @@ final class AppSettings: ObservableObject {
     private static let oktaRedirectURIKey = "AppSettings.oktaRedirectURI"
     private static let wildcardZonesKey = "AppSettings.wildcardZones"
     private static let highBandwidthModeKey = "AppSettings.highBandwidthMode"
+    private static let showLiveStatsKey = "AppSettings.showLiveStats"
     private static let studentFacingURLKey = "AppSettings.studentFacingURL"
     private static let defaultPasscode = "1234"
     private static let defaultRedirectURI = "edu.moravian.birddog://callback"
@@ -71,6 +72,11 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(highBandwidthMode, forKey: Self.highBandwidthModeKey) }
     }
 
+    /// Show live performance stats (fps, OCR latency, skip ratio) in the camera overlay.
+    @Published var showLiveStats: Bool {
+        didSet { UserDefaults.standard.set(showLiveStats, forKey: Self.showLiveStatsKey) }
+    }
+
     /// Student-facing base URL for payment links (synced from server).
     /// Falls back to houndDogURL when empty.
     @Published var studentFacingURL: String {
@@ -108,6 +114,7 @@ final class AppSettings: ObservableObject {
         self.oktaRedirectURI = UserDefaults.standard.string(forKey: Self.oktaRedirectURIKey) ?? Self.defaultRedirectURI
         self.wildcardZones = UserDefaults.standard.string(forKey: Self.wildcardZonesKey) ?? Self.defaultWildcardZones
         self.highBandwidthMode = UserDefaults.standard.bool(forKey: Self.highBandwidthModeKey)
+        self.showLiveStats = UserDefaults.standard.bool(forKey: Self.showLiveStatsKey)
         self.studentFacingURL = UserDefaults.standard.string(forKey: Self.studentFacingURLKey) ?? ""
     }
 

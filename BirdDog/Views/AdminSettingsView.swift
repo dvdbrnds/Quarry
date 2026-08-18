@@ -101,6 +101,10 @@ struct AdminSettingsView: View {
                 cameraService.forceReconnect()
             }
 
+            Toggle(isOn: $appSettings.showLiveStats) {
+                Label("Show Live Stats", systemImage: "speedometer")
+            }
+
             Button {
                 cameraService.forceReconnect()
             } label: {

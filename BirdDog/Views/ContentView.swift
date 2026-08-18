@@ -86,26 +86,38 @@ struct ContentView: View {
                         authStatus: viewModel.latestAuthStatus
                     )
 
-                    VStack {
-                        HStack(spacing: 8) {
+                    VStack(spacing: 6) {
+                        HStack {
                             cameraStatusBadge
-                            liveStatsBadge
+                            Spacer()
                             dbStatusBanner
+                            Spacer()
                             currentLotBadge
-                            if appSettings.useCloudOCR {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.caption2)
-                                    Text("API")
-                                        .font(.caption2.bold())
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .foregroundStyle(.white)
-                                .background(.blue, in: Capsule())
-                            }
                         }
+                        .padding(.horizontal, 12)
                         .padding(.top, 8)
+
+                        if appSettings.showLiveStats {
+                            liveStatsBadge
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                        }
+
+                        if appSettings.useCloudOCR {
+                            HStack(spacing: 4) {
+                                Image(systemName: "cloud.fill")
+                                    .font(.caption2)
+                                Text("API")
+                                    .font(.caption2.bold())
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .foregroundStyle(.white)
+                            .background(.blue, in: Capsule())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                        }
+
                         Spacer()
                         if viewModel.cameraService.focusMeterEnabled {
                             focusMeterOverlay
@@ -215,8 +227,9 @@ struct ContentView: View {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
-                Text("No permit data — sync with HoundDog")
+                Text("No permit data — sync")
                     .font(.caption2.bold())
+                    .lineLimit(1)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -227,21 +240,21 @@ struct ContentView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "xmark.shield.fill")
                         Text("\(viewModel.unknownCount)")
-                            .font(.caption.bold())
+                            .font(.subheadline.bold())
                     }
                     .foregroundStyle(.red)
                 }
                 if viewModel.wrongLotCount > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "location.slash.fill")
-                        Text("\(viewModel.wrongLotCount) WRONG LOT")
-                            .font(.caption.bold())
+                        Text("\(viewModel.wrongLotCount)")
+                            .font(.subheadline.bold())
                     }
                     .foregroundStyle(.orange)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .background(.ultraThinMaterial, in: Capsule())
         }
     }
