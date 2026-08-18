@@ -1044,11 +1044,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
 
-  const guestLotColors = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const lot of GUEST_LOTS) map[lot] = "#EC4899";
-    return map;
-  }, []);
+  const guestLotColors: Record<string, string> = {};
+  for (const lot of GUEST_LOTS) guestLotColors[lot] = "#EC4899";
 
   const baseActiveLotColors = showGuestForm
     ? guestLotColors
