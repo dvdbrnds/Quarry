@@ -1558,26 +1558,39 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium m-0 text-gray-700">Your registered guests</h4>
                       {guestRegs.filter(g => g.status === "active").map((g) => (
-                        <div key={g.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                          <div>
-                            <span className="font-medium">{g.guest_name}</span>
-                            {g.guest_plate && (
-                              <span className="text-sm text-gray-500 ml-2">{g.guest_plate} ({g.guest_plate_state})</span>
-                            )}
-                            <span className="text-sm text-gray-500 ml-2">
-                              {new Date(g.check_in + "T00:00").toLocaleDateString()} - {new Date(g.check_out + "T00:00").toLocaleDateString()}
-                            </span>
-                            {new Date(g.check_out) < new Date() ? (
-                              <Tag className="ml-2" color="default">Completed</Tag>
-                            ) : (
-                              <>
-                                <Tag className="ml-2" color="green">Active</Tag>
-                                <Tag className="ml-1" color="pink">Guest Permit</Tag>
-                              </>
+                        <div key={g.id} className="rounded-lg border border-pink-200 bg-pink-50/40 p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-medium">{g.guest_name}</span>
+                              {g.guest_plate && (
+                                <span className="text-sm text-gray-500 ml-2">{g.guest_plate} ({g.guest_plate_state})</span>
+                              )}
+                              <span className="text-sm text-gray-500 ml-2">
+                                {new Date(g.check_in + "T00:00").toLocaleDateString()} - {new Date(g.check_out + "T00:00").toLocaleDateString()}
+                              </span>
+                              {new Date(g.check_out) < new Date() ? (
+                                <Tag className="ml-2" color="default">Completed</Tag>
+                              ) : (
+                                <>
+                                  <Tag className="ml-2" color="green">Active</Tag>
+                                  <Tag className="ml-1" color="pink">Guest Permit</Tag>
+                                </>
+                              )}
+                            </div>
+                            {new Date(g.check_out) >= new Date() && (
+                              <Button size="small" danger onClick={() => cancelGuest(g.id)}>Cancel</Button>
                             )}
                           </div>
                           {new Date(g.check_out) >= new Date() && (
-                            <Button size="small" danger onClick={() => cancelGuest(g.id)}>Cancel</Button>
+                            <div className="mt-2 pt-2 border-t border-pink-100">
+                              <p className="text-xs font-medium text-pink-700 m-0 mb-1">Authorized Lots</p>
+                              <div className="flex flex-wrap gap-1">
+                                {["X", "A", "F", "H", "M", "N", "O", "R", "S"].map(lot => (
+                                  <Tag key={lot} color="pink" className="!text-xs">{lot}</Tag>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-600 m-0 mt-1">24-hour access during guest stay ({new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()})</p>
+                            </div>
                           )}
                         </div>
                       ))}
