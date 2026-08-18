@@ -69,6 +69,22 @@ final class PrinterService: ObservableObject {
             self.printerName = UserDefaults.standard.string(forKey: Self.savedNameKey) ?? settings.identifier
             self.connectionState = .disconnected
         }
+
+        NotificationCenter.default.addObserver(
+            forName: .EAAccessoryDidConnect, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self, self.isSearching,
+                  let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory,
+                  accessory.protocolStrings.contains(Self.starEAProtocol) else { return }
+            Task { @MainActor in
+                self.addDiscovered(
+                    id: accessory.name,
+                    interfaceType: .bluetooth,
+                    model: accessory.modelNumber.isEmpty ? accessory.name : accessory.modelNumber
+                )
+            }
+        }
+        EAAccessoryManager.shared().registerForLocalNotifications()
     }
 
     // MARK: - Discovery
@@ -89,7 +105,7 @@ final class PrinterService: ObservableObject {
             let manager = try StarDeviceDiscoveryManagerFactory.create(
                 interfaceTypes: [.bluetooth, .bluetoothLE]
             )
-            manager.discoveryTime = 3_000
+            manager.discoveryTime = 5_000
             self.discoveryManager = manager
 
             let wrapper = DiscoveryDelegate { [weak self] found in
