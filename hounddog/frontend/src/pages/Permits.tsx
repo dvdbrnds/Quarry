@@ -831,6 +831,7 @@ export default function Permits() {
     { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true, ellipsis: true, width: 150 },
     { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => {
       const pt = permitTypes.find(p => p.code === v);
+      if (v === "student_guest") return <Tag color="pink">Student Guest</Tag>;
       return <span className="capitalize">{pt?.label || v?.replace(/_/g, " ") || "—"}</span>;
     }},
     { title: "Issued", dataIndex: "start_date", key: "start_date", sorter: true, render: (v) => v || "—" },

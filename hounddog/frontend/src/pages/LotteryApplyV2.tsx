@@ -1570,7 +1570,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             {new Date(g.check_out) < new Date() ? (
                               <Tag className="ml-2" color="default">Completed</Tag>
                             ) : (
-                              <Tag className="ml-2" color="green">Active</Tag>
+                              <>
+                                <Tag className="ml-2" color="green">Active</Tag>
+                                <Tag className="ml-1" color="pink">Guest Permit</Tag>
+                              </>
                             )}
                           </div>
                           {new Date(g.check_out) >= new Date() && (

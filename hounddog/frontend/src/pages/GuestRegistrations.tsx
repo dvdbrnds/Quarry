@@ -134,7 +134,7 @@ export default function GuestRegistrations() {
             key: "status",
             render: (v: string) => {
               if (v === "cancelled") return <Tag color="red">Cancelled</Tag>;
-              return <Tag color="green">Active</Tag>;
+              return <><Tag color="green">Active</Tag><Tag color="pink">Permit Issued</Tag></>;
             },
           },
           {

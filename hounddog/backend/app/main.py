@@ -836,6 +836,21 @@ async def lifespan(app: FastAPI):
                 ))
                 await session.commit()
                 logger.info("Backfilled local_resident permit type")
+
+            # Backfill: add student_guest permit type if missing
+            existing_sg = await session.scalar(
+                select(func.count()).select_from(PermitType).where(PermitType.code == "student_guest")
+            )
+            if existing_sg == 0:
+                session.add(PermitType(
+                    code="student_guest", label="Student Guest",
+                    eligible="Overnight guests of resident students", price=Decimal("0"),
+                    max_capacity=0, valid_days=3,
+                    lot_assignments=["X", "A", "F", "H", "M", "N", "O", "R", "S"],
+                    is_purchasable_online=False, sort_order=12,
+                ))
+                await session.commit()
+                logger.info("Backfilled student_guest permit type")
     except Exception as e:
         logger.warning(f"Seed defaults on startup failed: {e}")
 

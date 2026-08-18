@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_office
 from ..database import get_db
 from ..models.guest_registration import GuestRegistration
+from ..models.permit import Permit
 
 # ── Student-facing router ────────────────────────────────────────────
 
@@ -153,6 +154,31 @@ async def register_guest(
     db.add(reg)
     await db.flush()
     await db.refresh(reg)
+
+    # Auto-create a temporary guest permit with commuter lot access
+    plate = (data.guest_plate or "").strip().upper()
+    if plate:
+        from ..models.permit_type import PermitType
+        pt_result = await db.execute(
+            select(PermitType).where(PermitType.code == "student_guest")
+        )
+        guest_pt = pt_result.scalars().first()
+        lot_assignment = ", ".join(guest_pt.lot_assignments) if guest_pt and guest_pt.lot_assignments else "X, A, F, H, M, N, O, R, S"
+
+        from ..services.permit_numbering import next_permit_number
+        guest_permit = Permit(
+            permit_number=await next_permit_number(db),
+            name=f"Guest of {host_name} — {data.guest_name.strip()}",
+            email=(user.email or "").lower(),
+            plates=[plate],
+            lot_assignment=lot_assignment,
+            permit_type="student_guest",
+            start_date=data.check_in,
+            end_date=data.check_out,
+            status="active",
+        )
+        db.add(guest_permit)
+        await db.flush()
 
     return GuestRead(
         id=reg.id,
