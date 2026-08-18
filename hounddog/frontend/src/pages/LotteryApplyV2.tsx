@@ -171,21 +171,23 @@ function PlateSwapForm({
       ? new Date(nextSwapAvailable).toLocaleDateString()
       : null;
     return (
-      <p className="text-xs text-gray-400 mt-2 mb-0">
-        Next vehicle change available {nextDate || "soon"}
-      </p>
+      <div className="mt-3">
+        <Button size="small" type="primary" disabled>Update Vehicle</Button>
+        <p className="text-xs text-gray-400 mt-1 mb-0">
+          You can update your vehicle once every 7 days. Next change available {nextDate || "soon"}.
+        </p>
+      </div>
     );
   }
 
   if (!open) {
     return (
-      <button
-        type="button"
-        className="text-xs text-blue-600 underline bg-transparent border-0 p-0 mt-2 cursor-pointer"
-        onClick={() => setOpen(true)}
-      >
-        Change vehicle
-      </button>
+      <div className="mt-3">
+        <Button size="small" type="primary" onClick={() => setOpen(true)}>Update Vehicle</Button>
+        <p className="text-xs text-gray-500 mt-1 mb-0">
+          Got a new car? You can update the plate on your permit once every 7 days.
+        </p>
+      </div>
     );
   }
 
@@ -224,7 +226,10 @@ function PlateSwapForm({
 
   return (
     <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
-      <p className="text-xs font-medium text-gray-700 m-0 mb-2">New vehicle plate</p>
+      <p className="text-sm font-medium text-gray-700 m-0 mb-1">Update Vehicle</p>
+      <p className="text-xs text-gray-500 m-0 mb-3">
+        Enter your new license plate below. You may only update your vehicle once every 7 days.
+      </p>
       <div className="flex gap-2 items-end">
         <Input
           size="small"
@@ -249,9 +254,6 @@ function PlateSwapForm({
           Cancel
         </Button>
       </div>
-      <p className="text-[11px] text-gray-400 m-0 mt-1">
-        You may change your vehicle once per week.
-      </p>
     </div>
   );
 }
