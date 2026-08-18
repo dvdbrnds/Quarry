@@ -846,7 +846,7 @@ async def lifespan(app: FastAPI):
                     code="student_guest", label="Student Guest",
                     eligible="Overnight guests of resident students", price=Decimal("0"),
                     max_capacity=0, valid_days=3,
-                    lot_assignments=["X", "A", "F", "H", "M", "N", "O", "R", "S"],
+                    lot_assignments=["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"],
                     is_purchasable_online=False, sort_order=12,
                 ))
                 await session.commit()

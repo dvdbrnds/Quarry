@@ -1012,7 +1012,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         ? [application.assigned_lot]
         : [];
 
-  const GUEST_LOTS = ["X", "A", "F", "H", "M", "N", "O", "R", "S"];
+  const GUEST_LOTS = ["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"];
 
   const mapHighlight =
     highlightedLots.length > 0
@@ -1604,6 +1604,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                 {["X", "A", "F", "H", "M", "N", "O", "R", "S"].map(lot => (
                                   <span key={lot} className="inline-block rounded bg-pink-100 text-pink-800 text-xs font-medium px-2 py-0.5">{lot}</span>
                                 ))}
+                                <span className="inline-block rounded bg-pink-100 text-pink-800 text-xs font-medium px-2 py-0.5">U <span className="text-pink-500 font-normal">(after 4 PM)</span></span>
                               </div>
                               <p className="text-xs text-gray-600 m-0 mt-1.5">
                                 <strong>Hours:</strong> Valid 24 hours during stay ({new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()})
