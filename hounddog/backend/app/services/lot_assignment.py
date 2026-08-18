@@ -69,3 +69,13 @@ def permit_lot_matches(lot: str) -> ColumnElement[bool]:
         normalized.like(f"%,{escaped}", escape="\\"),
         normalized.like(f"%,{escaped},%", escape="\\"),
     )
+
+
+def lot_filter_variants(lot: str) -> list[str]:
+    """Return the lot name plus its short code (strip 'Lot ' prefix) for matching."""
+    import re
+    lot = (lot or "").strip()
+    if not lot:
+        return []
+    short = re.sub(r'^lot\s+', '', lot, flags=re.IGNORECASE).strip()
+    return list(dict.fromkeys([lot, short]))
