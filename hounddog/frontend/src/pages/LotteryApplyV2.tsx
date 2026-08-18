@@ -145,6 +145,117 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   ineligible: { text: "Ineligible", color: "red" },
 };
 
+const PLATE_STATES = ["PA","NJ","NY","CT","DE","MD","VA","MA","OH","FL","TX","CA"];
+
+function PlateSwapForm({
+  permitId,
+  currentPlate,
+  canSwap,
+  nextSwapAvailable,
+  onSwapped,
+}: {
+  permitId: string;
+  currentPlate: string;
+  canSwap: boolean;
+  nextSwapAvailable: string | null;
+  onSwapped: (newPlate: string) => void;
+}) {
+  const { message } = AntApp.useApp();
+  const [open, setOpen] = useState(false);
+  const [plate, setPlate] = useState("");
+  const [plateState, setPlateState] = useState("PA");
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!canSwap) {
+    const nextDate = nextSwapAvailable
+      ? new Date(nextSwapAvailable).toLocaleDateString()
+      : null;
+    return (
+      <p className="text-xs text-gray-400 mt-2 mb-0">
+        Next vehicle change available {nextDate || "soon"}
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="text-xs text-blue-600 underline bg-transparent border-0 p-0 mt-2 cursor-pointer"
+        onClick={() => setOpen(true)}
+      >
+        Change vehicle
+      </button>
+    );
+  }
+
+  async function handleSubmit() {
+    const trimmed = plate.trim().toUpperCase();
+    if (!trimmed) { message.warning("Enter a license plate"); return; }
+    setSubmitting(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/student/permits/swap-vehicle", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ permit_id: permitId, new_plate: trimmed, new_plate_state: plateState }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          message.warning(err.detail || "You can only change your vehicle once per week");
+        } else if (res.status === 409) {
+          message.error(err.detail || "That plate is already registered on another permit");
+        } else {
+          message.error(err.detail || "Failed to change vehicle");
+        }
+        return;
+      }
+      message.success("Vehicle updated");
+      onSwapped(trimmed);
+      setOpen(false);
+      setPlate("");
+    } catch {
+      message.error("Failed to change vehicle");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+      <p className="text-xs font-medium text-gray-700 m-0 mb-2">New vehicle plate</p>
+      <div className="flex gap-2 items-end">
+        <Input
+          size="small"
+          placeholder="ABC1234"
+          value={plate}
+          onChange={e => setPlate(e.target.value.toUpperCase())}
+          onPressEnter={e => { e.preventDefault(); handleSubmit(); }}
+          className="flex-1"
+          style={{ fontFamily: "monospace", textTransform: "uppercase" }}
+        />
+        <Select
+          size="small"
+          value={plateState}
+          onChange={setPlateState}
+          options={PLATE_STATES.map(s => ({ label: s, value: s }))}
+          style={{ width: 72 }}
+        />
+        <Button size="small" type="primary" loading={submitting} onClick={handleSubmit}>
+          Save
+        </Button>
+        <Button size="small" onClick={() => { setOpen(false); setPlate(""); }}>
+          Cancel
+        </Button>
+      </div>
+      <p className="text-[11px] text-gray-400 m-0 mt-1">
+        You may change your vehicle once per week.
+      </p>
+    </div>
+  );
+}
+
 export default function LotteryApplyV2() {
   const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -1061,6 +1172,18 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     </div>
                   </dl>
 
+                  {application.status === "accepted" && (application as any).permit_id && (
+                    <PlateSwapForm
+                      permitId={(application as any).permit_id}
+                      currentPlate={(application as any).current_plate || application.plate}
+                      canSwap={(application as any).can_swap ?? true}
+                      nextSwapAvailable={(application as any).next_swap_available}
+                      onSwapped={(newPlate) => {
+                        setApplication((prev: any) => prev ? { ...prev, plate: newPlate, current_plate: newPlate } : prev);
+                      }}
+                    />
+                  )}
+
                   {application.status === "selected" && (
                     <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-3">
                       <p className="m-0 font-medium text-green-900">
@@ -1331,11 +1454,17 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           </dd>
                         </div>
                       </dl>
-                      {permit.can_swap && (
-                        <p className="text-xs text-gray-500 mt-2 mb-0">
-                          Need to change your vehicle? Contact parking services.
-                        </p>
-                      )}
+                      <PlateSwapForm
+                        permitId={permit.id}
+                        currentPlate={permit.plates?.[0] || ""}
+                        canSwap={permit.can_swap}
+                        nextSwapAvailable={permit.next_swap_available}
+                        onSwapped={(newPlate) => {
+                          setMyPermits((prev) => prev.map(p =>
+                            p.id === permit.id ? { ...p, plates: [newPlate], can_swap: false, next_swap_available: new Date(Date.now() + 7 * 86400000).toISOString() } : p
+                          ));
+                        }}
+                      />
                     </div>
                   ))}
                 </div>
