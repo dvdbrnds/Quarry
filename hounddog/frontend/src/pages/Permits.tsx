@@ -848,15 +848,15 @@ export default function Permits() {
         </Space>
       ),
     },
-    {
-      title: "Actions", key: "actions", width: 140, fixed: "right",
-      render: (_, p) => (
-        <Space onClick={e => e.stopPropagation()}>
+    ...(isAdmin ? [{
+      title: "Actions", key: "actions", width: 140, fixed: "right" as const,
+      render: (_: unknown, p: Permit) => (
+        <Space onClick={(e: React.MouseEvent) => e.stopPropagation()}>
           <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
           <Button type="link" size="small" danger disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   const statCards = stats ? [
@@ -887,7 +887,7 @@ export default function Permits() {
                       const qs = params.toString();
                       downloadWithAuth(`/api/permits/export/csv${qs ? `?${qs}` : ""}`, "permits.csv");
                     }}>Export CSV</Button>
-                    <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>
+                    {isAdmin && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>}
                   </Space>
                 </div>
 
@@ -974,14 +974,14 @@ export default function Permits() {
                   )}
                 </Space>
 
-                {(creating || editing) && (
+                {isAdmin && (creating || editing) && (
                   <PermitForm initial={editing ?? undefined} permitTypes={permitTypes} lots={lots}
                     onSave={() => { setCreating(false); setEditing(null); load(); loadMeta(); }}
                     onCancel={() => { setCreating(false); setEditing(null); }}
                   />
                 )}
 
-                {selected.size > 0 && (
+                {isAdmin && selected.size > 0 && (
                   <div className="flex items-center gap-3 mb-3 bg-brand-primary/5 rounded-lg px-4 py-2">
                     <span className="text-sm font-medium">{selected.size} selected</span>
                     <Select value={bulkAction || undefined} onChange={v => setBulkAction(v || "")}
@@ -1003,10 +1003,10 @@ export default function Permits() {
                   columns={columns}
                   rowKey="id"
                   loading={loading}
-                  rowSelection={{
+                  rowSelection={isAdmin ? {
                     selectedRowKeys: Array.from(selected),
                     onChange: (keys) => setSelected(new Set(keys as string[])),
-                  }}
+                  } : undefined}
                   onRow={(p) => ({
                     onClick: () => navigate(`/permits/${p.id}`),
                     className: "cursor-pointer",

@@ -540,11 +540,12 @@ function TicketsList() {
 export default function Tickets() {
   const user = useCurrentUser();
   const isAdmin = isAdminRole(user?.role);
+  const isOffice = isOfficeRole(user?.role);
   const [activeTab, setActiveTab] = useState("tickets");
 
   const tabItems = [
     { key: "tickets", label: "Tickets", children: <TicketsList /> },
-    ...(isAdmin ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
+    ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];
 

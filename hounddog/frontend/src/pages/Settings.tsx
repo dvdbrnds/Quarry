@@ -16,13 +16,13 @@ const ALL_TABS = [
   { key: "data", label: "Data Management", children: <DataManagement /> },
 ];
 
-const OPERATOR_TAB_KEYS = new Set(["branding", "activity"]);
+const OPERATOR_TAB_KEYS = new Set(["activity"]);
 
 export default function Settings() {
   const user = useCurrentUser();
   const isAdmin = isAdminRole(user?.role);
   const tabs = isAdmin ? ALL_TABS : ALL_TABS.filter((t) => OPERATOR_TAB_KEYS.has(t.key));
-  const defaultKey = isAdmin ? "messaging" : "branding";
+  const defaultKey = isAdmin ? "messaging" : "activity";
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");

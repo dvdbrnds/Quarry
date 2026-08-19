@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { authHeaders } from "../auth";
+import { authHeaders, isAdminRole } from "../auth";
+import { useCurrentUser } from "../UserContext";
 import { Table, Button, Tag, Form, Input, InputNumber, Select, Card, Space, App, Empty } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
@@ -101,6 +102,8 @@ function ViolationTypeForm({ initial, onSave, onCancel }: {
 
 export default function ViolationTypes() {
   const { modal, message } = App.useApp();
+  const user = useCurrentUser();
+  const isAdmin = isAdminRole(user?.role);
   const [types, setTypes] = useState<ViolationType[]>([]);
   const [editing, setEditing] = useState<ViolationType | null>(null);
   const [creating, setCreating] = useState(false);
@@ -177,25 +180,25 @@ export default function ViolationTypes() {
     { title: "2nd", dataIndex: "fine_second", key: "fine_second", render: (v) => v ? `$${Number(v).toFixed(0)}` : "—" },
     { title: "3rd+", dataIndex: "fine_third_plus", key: "fine_third_plus", render: (v) => v ? `$${Number(v).toFixed(0)}` : "—" },
     { title: "Status", dataIndex: "is_active", key: "is_active", render: (v) => <Tag color={v ? "green" : "default"}>{v ? "Active" : "Inactive"}</Tag> },
-    {
+    ...(isAdmin ? [{
       title: "Actions", key: "actions", width: 140,
-      render: (_, vt) => (
+      render: (_: unknown, vt: ViolationType) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(vt); setCreating(false); }}>Edit</Button>
           {vt.is_active && <Button type="link" size="small" danger onClick={() => handleDeactivate(vt.id)}>Deactivate</Button>}
           {!vt.is_active && <Button type="link" size="small" danger onClick={() => handleDelete(vt.id, vt.label)}>Delete</Button>}
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Violation Types</h2>
-        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Violation Type</Button>
+        {isAdmin && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Violation Type</Button>}
       </div>
-      {(creating || editing) && (
+      {isAdmin && (creating || editing) && (
         <ViolationTypeForm initial={editing ?? undefined}
           onSave={() => { setCreating(false); setEditing(null); load(); }}
           onCancel={() => { setCreating(false); setEditing(null); }} />
