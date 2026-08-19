@@ -1023,11 +1023,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         ? [application.assigned_lot]
         : [];
 
-  const GUEST_LOTS_NORTH = ["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"];
-  const GUEST_LOTS_SOUTH = ["W", "A", "F", "H", "M", "N", "O", "R", "S"];
+  const GUEST_LOTS_NORTH = ["X", "A", "F", "H", "M", "N", "O", "R", "S"];
+  const GUEST_LOTS_SOUTH = ["U"];
   const GUEST_LOTS = guestCampus === "south" ? GUEST_LOTS_SOUTH : GUEST_LOTS_NORTH;
-  // For the map, only show geographically-relevant lots per campus so the map zooms correctly
-  const GUEST_MAP_LOTS = guestCampus === "south" ? ["W"] : GUEST_LOTS_NORTH;
+  // For the map, show only geographically-relevant lots per campus
+  const GUEST_MAP_LOTS = GUEST_LOTS;
 
   const mapHighlight =
     highlightedLots.length > 0
@@ -1059,7 +1059,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
 
-  const GUEST_FULL_TIME_LOTS = guestCampus === "south" ? ["W"] : ["X"];
+  const GUEST_FULL_TIME_LOTS = guestCampus === "north" ? ["X"] : [];
 
   const guestLotColors: Record<string, string> = {};
   for (const lot of GUEST_MAP_LOTS) {
@@ -1084,10 +1084,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
   const guestLegend = guestCampus === "south"
-    ? [{ label: "Lot W — Park anytime", color: "#22C55E" }]
+    ? [{ label: "Lot U — After 4 PM & weekends", color: "#EAB308" }]
     : [
         { label: "Lot X — Park anytime", color: "#22C55E" },
-        { label: "After 4 PM & weekends", color: "#EAB308" },
+        { label: "Other lots — After 4 PM & weekends", color: "#EAB308" },
       ];
 
   const activeLegend = showGuestForm
@@ -1564,7 +1564,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       </div>
                       {guestCampus === "south" && (
                         <div className="mb-3 rounded bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
-                          <strong>Lot W</strong> — park anytime. After 4 PM &amp; weekends, also use Lots A, F, H, M, N, O, R, S on North campus.
+                          <strong>Lot U</strong> (south campus) — after 4 PM &amp; weekends only. For anytime parking, use <strong>Lot X</strong> on North campus.
                         </div>
                       )}
                       <Form form={guestForm} layout="vertical" onFinish={submitGuest}>
@@ -1647,13 +1647,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             <div className="mt-2 pt-2 border-t border-pink-100">
                               <p className="text-xs font-semibold text-gray-700 m-0 mb-1">Authorized parking lots:</p>
                               <div className="flex flex-wrap gap-1">
-                                <span className="inline-block rounded bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5">{guestCampus === "south" ? "W" : "X"} <span className="text-green-600 font-normal">(anytime)</span></span>
-                                {(guestCampus === "south" ? ["A", "F", "H", "M", "N", "O", "R", "S"] : ["A", "F", "H", "M", "N", "O", "R", "S"]).map(lot => (
+                                <span className="inline-block rounded bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5">X <span className="text-green-600 font-normal">(anytime)</span></span>
+                                {["A", "F", "H", "M", "N", "O", "R", "S"].map(lot => (
                                   <span key={lot} className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">{lot}</span>
                                 ))}
-                                {guestCampus === "north" && (
-                                  <span className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">U</span>
-                                )}
+                                <span className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">U <span className="text-yellow-600 font-normal">(south)</span></span>
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
                                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500"></span> Park anytime</span>
