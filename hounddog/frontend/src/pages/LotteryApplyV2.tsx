@@ -1026,12 +1026,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const GUEST_LOTS_NORTH = ["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"];
   const GUEST_LOTS_SOUTH = ["W", "A", "F", "H", "M", "N", "O", "R", "S"];
   const GUEST_LOTS = guestCampus === "south" ? GUEST_LOTS_SOUTH : GUEST_LOTS_NORTH;
+  // For the map, only show geographically-relevant lots per campus so the map zooms correctly
+  const GUEST_MAP_LOTS = guestCampus === "south" ? ["W"] : GUEST_LOTS_NORTH;
 
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
       : showGuestForm
-        ? GUEST_LOTS
+        ? GUEST_MAP_LOTS
         : step === "done" && doneDefaultLots.length > 0
           ? doneDefaultLots
           : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
@@ -1040,7 +1042,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
   const lotsForMap =
     showGuestForm
-      ? lots.filter((l) => GUEST_LOTS.some((g) => normalizeLotKey(g) === normalizeLotKey(l.name)))
+      ? lots.filter((l) => GUEST_MAP_LOTS.some((g) => normalizeLotKey(g) === normalizeLotKey(l.name)))
       : step === "done" && doneDefaultLots.length > 0
         ? lots.filter((l) => doneDefaultLots.some((d) => normalizeLotKey(d) === normalizeLotKey(l.name)))
         : mapLots.length > 0
@@ -1060,8 +1062,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const GUEST_FULL_TIME_LOTS = guestCampus === "south" ? ["W"] : ["X"];
 
   const guestLotColors: Record<string, string> = {};
-  for (const lot of GUEST_LOTS) {
-    guestLotColors[lot] = GUEST_FULL_TIME_LOTS.includes(lot) ? "#22C55E" : "#EAB308";
+  for (const lot of GUEST_MAP_LOTS) {
+    const color = GUEST_FULL_TIME_LOTS.includes(lot) ? "#22C55E" : "#EAB308";
+    guestLotColors[lot] = color;
+    guestLotColors[`Lot ${lot}`] = color;
+    guestLotColors[lot.toLowerCase()] = color;
   }
 
   const baseActiveLotColors = showGuestForm
@@ -1078,10 +1083,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   // When actively hovering a card, drop lot colors so the map uses the high-contrast
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
-  const guestLegend = [
-    { label: "Park anytime", color: "#22C55E" },
-    { label: "After 4 PM & weekends", color: "#EAB308" },
-  ];
+  const guestLegend = guestCampus === "south"
+    ? [{ label: "Lot W — Park anytime", color: "#22C55E" }]
+    : [
+        { label: "Lot X — Park anytime", color: "#22C55E" },
+        { label: "After 4 PM & weekends", color: "#EAB308" },
+      ];
 
   const activeLegend = showGuestForm
     ? guestLegend
@@ -1555,6 +1562,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           ]}
                         />
                       </div>
+                      {guestCampus === "south" && (
+                        <div className="mb-3 rounded bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
+                          <strong>Lot W</strong> — park anytime. After 4 PM &amp; weekends, also use Lots A, F, H, M, N, O, R, S on North campus.
+                        </div>
+                      )}
                       <Form form={guestForm} layout="vertical" onFinish={submitGuest}>
                         <Form.Item name="guest_name" label="Guest name" rules={[{ required: true, message: "Enter your guest's name" }]}>
                           <Input placeholder="Full name" />

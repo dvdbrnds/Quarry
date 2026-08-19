@@ -293,11 +293,11 @@ function MapContent({
         className="absolute z-20 pointer-events-none px-2 py-1 rounded bg-[#1a2744]/90 text-white text-xs font-medium whitespace-nowrap shadow"
       />
       {legend && legend.length > 0 ? (
-        <div className="absolute top-3 left-3 z-10 bg-[#1a2744]/90 backdrop-blur rounded-lg px-3 py-2 text-white text-xs font-medium shadow-lg space-y-1.5">
+        <div className="absolute top-3 left-3 z-10 bg-[#1a2744]/95 backdrop-blur-sm rounded-lg px-4 py-3 text-white text-sm font-semibold shadow-xl space-y-2 border border-white/20">
           {legend.map((item) => (
-            <div key={item.label} className="flex items-center gap-2">
+            <div key={item.label} className="flex items-center gap-2.5">
               <span
-                className="inline-block w-3 h-3 rounded-sm shrink-0 border border-white/60"
+                className="inline-block w-4 h-4 rounded shrink-0 border-2 border-white/70"
                 style={{ background: item.color }}
               />
               <span>{item.label}</span>
