@@ -1505,11 +1505,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
             {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
               const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
-              const waitlistTiers = application.status === "waitlisted"
-                ? tiers.filter((t) => t.id !== currentTierId && t.requires_lottery)
-                : [];
-              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.is_purchasable_online && t.remaining > 0);
-              if (waitlistTiers.length === 0 && buyableTiers.length === 0) return null;
+              const otherTiers = tiers.filter((t) => t.id !== currentTierId);
+              if (otherTiers.length === 0) return null;
               return (
                 <Card className="mt-4">
                   <div className="space-y-4">
@@ -1517,7 +1514,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     <p className="text-sm text-gray-600 m-0">
                       Want a different permit? Join a waitlist or purchase one directly.
                     </p>
-                    {waitlistTiers.map((tier) => {
+                    {otherTiers.map((tier) => {
+                      const canBuy = !tier.requires_lottery && tier.is_purchasable_online && tier.remaining > 0;
                       const alreadyOn = upgradeApps.some(
                         (ua) => ua.tier_preferences?.includes(tier.id)
                       );
@@ -1540,6 +1538,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             {existingApp?.status === "selected" && (
                               <Tag color="green" className="ml-2">Offer available!</Tag>
                             )}
+                            {!canBuy && tier.remaining <= 0 && !alreadyOn && !existingApp && (
+                              <Tag color="default" className="ml-2">Full</Tag>
+                            )}
                           </div>
                           <div>
                             {existingApp?.status === "selected" ? (
@@ -1550,6 +1551,15 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                 onClick={() => acceptUpgradeOffer(existingApp)}
                               >
                                 Accept Offer
+                              </Button>
+                            ) : canBuy ? (
+                              <Button
+                                type="primary"
+                                size="small"
+                                loading={submitting}
+                                onClick={() => purchaseCommuterPermit(tier)}
+                              >
+                                Buy
                               </Button>
                             ) : (
                               <Button
@@ -1565,30 +1575,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         </div>
                       );
                     })}
-                    {buyableTiers.map((tier) => (
-                      <div
-                        key={tier.id}
-                        className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
-                        onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
-                        onMouseLeave={() => setHighlightedLots([])}
-                      >
-                        <div>
-                          <span className="font-medium">{tier.label}</span>
-                          <span className="text-sm text-gray-500 ml-2">
-                            ${Number(tier.price).toFixed(0)}
-                            {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
-                          </span>
-                        </div>
-                        <Button
-                          type="primary"
-                          size="small"
-                          loading={submitting}
-                          onClick={() => purchaseCommuterPermit(tier)}
-                        >
-                          Buy
-                        </Button>
-                      </div>
-                    ))}
                   </div>
                 </Card>
               );
