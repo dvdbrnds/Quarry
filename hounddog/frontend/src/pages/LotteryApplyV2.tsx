@@ -1293,190 +1293,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
-            {application && application.status === "waitlisted" && tiers.length > 0 && (
-              <Card className="mt-4">
-                <div className="space-y-4">
-                  <h3 className="text-base font-semibold m-0">Join Other Waitlists</h3>
-                  <p className="text-sm text-gray-600 m-0">
-                    Want to try for a different permit too? Join additional waitlists below.
-                    You'll be notified if a spot opens for any of them.
-                  </p>
-                  {(() => {
-                    const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
-                    const otherTiers = tiers.filter((t) => t.id !== currentTierId && t.requires_lottery);
-                    if (otherTiers.length === 0) {
-                      return (
-                        <p className="text-sm text-gray-400 m-0">
-                          No other permit types available for your campus.
-                        </p>
-                      );
-                    }
-                    return otherTiers.map((tier) => {
-                      const alreadyOn = upgradeApps.some(
-                        (ua) => ua.tier_preferences?.includes(tier.id)
-                      );
-                      const existingApp = upgradeApps.find(
-                        (ua) => ua.tier_preferences?.includes(tier.id)
-                      );
-                      return (
-                        <div
-                          key={tier.id}
-                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
-                          onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
-                          onMouseLeave={() => setHighlightedLots([])}
-                        >
-                          <div>
-                            <span className="font-medium">{tier.label}</span>
-                            <span className="text-sm text-gray-500 ml-2">
-                              ${Number(tier.price).toFixed(0)}
-                              {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
-                            </span>
-                            {existingApp?.status === "selected" && (
-                              <Tag color="green" className="ml-2">Offer available!</Tag>
-                            )}
-                          </div>
-                          <div>
-                            {existingApp?.status === "selected" ? (
-                              <Button
-                                type="primary"
-                                size="small"
-                                loading={accepting}
-                                onClick={() => acceptUpgradeOffer(existingApp)}
-                              >
-                                Accept Offer
-                              </Button>
-                            ) : (
-                              <Button
-                                size="small"
-                                disabled={alreadyOn}
-                                loading={joiningUpgrade === tier.id}
-                                onClick={() => joinUpgradeWaitlist(tier.id)}
-                              >
-                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </Card>
-            )}
-
-            {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
-              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.is_purchasable_online && t.remaining > 0);
-              if (buyableTiers.length === 0) return null;
-              return (
-                <Card className="mt-4">
-                  <div className="space-y-4">
-                    <h3 className="text-base font-semibold m-0">Buy Available Permits</h3>
-                    <p className="text-sm text-gray-600 m-0">
-                      These permits are available for direct purchase — no waitlist needed.
-                    </p>
-                    {buyableTiers.map((tier) => (
-                      <div
-                        key={tier.id}
-                        className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
-                        onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
-                        onMouseLeave={() => setHighlightedLots([])}
-                      >
-                        <div>
-                          <span className="font-medium">{tier.label}</span>
-                          <span className="text-sm text-gray-500 ml-2">
-                            ${Number(tier.price).toFixed(0)}
-                            {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
-                          </span>
-                          
-                        </div>
-                        <Button
-                          type="primary"
-                          size="small"
-                          loading={submitting}
-                          onClick={() => purchaseCommuterPermit(tier)}
-                        >
-                          Buy
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              );
-            })()}
-
-            {application && application.status === "accepted" && tiers.length > 0 && (
-              <Card className="mt-4">
-                <div className="space-y-4">
-                  <h3 className="text-base font-semibold m-0">Upgrade Waitlist</h3>
-                  <p className="text-sm text-gray-600 m-0">
-                    Want a higher-tier permit? Join a waitlist below. If a spot opens, you'll be
-                    offered the upgrade for just the price difference.
-                  </p>
-                  {(() => {
-                    const currentPrice = parseFloat(application.assigned_permit_type_price || "0");
-                    const higherTiers = tiers.filter(
-                      (t) => parseFloat(t.price) > currentPrice && t.id !== application.assigned_permit_type_id && t.requires_lottery
-                    );
-                    if (higherTiers.length === 0) {
-                      return (
-                        <p className="text-sm text-gray-400 m-0">
-                          You already have the highest-tier permit available.
-                        </p>
-                      );
-                    }
-                    return higherTiers.map((tier) => {
-                      const alreadyOn = upgradeApps.some(
-                        (ua) => ua.tier_preferences?.includes(tier.id)
-                      );
-                      const upgradeApp = upgradeApps.find(
-                        (ua) => ua.tier_preferences?.includes(tier.id)
-                      );
-                      const diff = (parseFloat(tier.price) - currentPrice).toFixed(2);
-                      return (
-                        <div
-                          key={tier.id}
-                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
-                          onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
-                          onMouseLeave={() => setHighlightedLots([])}
-                        >
-                          <div>
-                            <span className="font-medium">{tier.label}</span>
-                            <span className="text-sm text-gray-500 ml-2">
-                              +${diff} difference
-                            </span>
-                            {upgradeApp?.status === "selected" && (
-                              <Tag color="green" className="ml-2">Offer available!</Tag>
-                            )}
-                          </div>
-                          <div>
-                            {upgradeApp?.status === "selected" ? (
-                              <Button
-                                type="primary"
-                                size="small"
-                                loading={accepting}
-                                onClick={() => acceptUpgradeOffer(upgradeApp)}
-                              >
-                                Accept Upgrade (${diff})
-                              </Button>
-                            ) : (
-                              <Button
-                                size="small"
-                                disabled={alreadyOn}
-                                loading={joiningUpgrade === tier.id}
-                                onClick={() => joinUpgradeWaitlist(tier.id)}
-                              >
-                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </Card>
-            )}
-
             {!application && myPermits.length > 0 && (
               <Card>
                 <div className="space-y-4">
@@ -1666,6 +1482,190 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       ))}
                     </div>
                   )}
+                </div>
+              </Card>
+            )}
+
+            {application && application.status === "waitlisted" && tiers.length > 0 && (
+              <Card className="mt-4">
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold m-0">Join Other Waitlists</h3>
+                  <p className="text-sm text-gray-600 m-0">
+                    Want to try for a different permit too? Join additional waitlists below.
+                    You'll be notified if a spot opens for any of them.
+                  </p>
+                  {(() => {
+                    const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
+                    const otherTiers = tiers.filter((t) => t.id !== currentTierId && t.requires_lottery);
+                    if (otherTiers.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-400 m-0">
+                          No other permit types available for your campus.
+                        </p>
+                      );
+                    }
+                    return otherTiers.map((tier) => {
+                      const alreadyOn = upgradeApps.some(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const existingApp = upgradeApps.find(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      return (
+                        <div
+                          key={tier.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
+                          onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
+                          onMouseLeave={() => setHighlightedLots([])}
+                        >
+                          <div>
+                            <span className="font-medium">{tier.label}</span>
+                            <span className="text-sm text-gray-500 ml-2">
+                              ${Number(tier.price).toFixed(0)}
+                              {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
+                            </span>
+                            {existingApp?.status === "selected" && (
+                              <Tag color="green" className="ml-2">Offer available!</Tag>
+                            )}
+                          </div>
+                          <div>
+                            {existingApp?.status === "selected" ? (
+                              <Button
+                                type="primary"
+                                size="small"
+                                loading={accepting}
+                                onClick={() => acceptUpgradeOffer(existingApp)}
+                              >
+                                Accept Offer
+                              </Button>
+                            ) : (
+                              <Button
+                                size="small"
+                                disabled={alreadyOn}
+                                loading={joiningUpgrade === tier.id}
+                                onClick={() => joinUpgradeWaitlist(tier.id)}
+                              >
+                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </Card>
+            )}
+
+            {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
+              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.is_purchasable_online && t.remaining > 0);
+              if (buyableTiers.length === 0) return null;
+              return (
+                <Card className="mt-4">
+                  <div className="space-y-4">
+                    <h3 className="text-base font-semibold m-0">Buy Available Permits</h3>
+                    <p className="text-sm text-gray-600 m-0">
+                      These permits are available for direct purchase — no waitlist needed.
+                    </p>
+                    {buyableTiers.map((tier) => (
+                      <div
+                        key={tier.id}
+                        className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
+                        onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
+                        onMouseLeave={() => setHighlightedLots([])}
+                      >
+                        <div>
+                          <span className="font-medium">{tier.label}</span>
+                          <span className="text-sm text-gray-500 ml-2">
+                            ${Number(tier.price).toFixed(0)}
+                            {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
+                          </span>
+                          
+                        </div>
+                        <Button
+                          type="primary"
+                          size="small"
+                          loading={submitting}
+                          onClick={() => purchaseCommuterPermit(tier)}
+                        >
+                          Buy
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })()}
+
+            {application && application.status === "accepted" && tiers.length > 0 && (
+              <Card className="mt-4">
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold m-0">Upgrade Waitlist</h3>
+                  <p className="text-sm text-gray-600 m-0">
+                    Want a higher-tier permit? Join a waitlist below. If a spot opens, you'll be
+                    offered the upgrade for just the price difference.
+                  </p>
+                  {(() => {
+                    const currentPrice = parseFloat(application.assigned_permit_type_price || "0");
+                    const higherTiers = tiers.filter(
+                      (t) => parseFloat(t.price) > currentPrice && t.id !== application.assigned_permit_type_id && t.requires_lottery
+                    );
+                    if (higherTiers.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-400 m-0">
+                          You already have the highest-tier permit available.
+                        </p>
+                      );
+                    }
+                    return higherTiers.map((tier) => {
+                      const alreadyOn = upgradeApps.some(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const upgradeApp = upgradeApps.find(
+                        (ua) => ua.tier_preferences?.includes(tier.id)
+                      );
+                      const diff = (parseFloat(tier.price) - currentPrice).toFixed(2);
+                      return (
+                        <div
+                          key={tier.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-shadow hover:shadow-md cursor-pointer"
+                          onMouseEnter={() => setHighlightedLots(tier.lot_assignments || [])}
+                          onMouseLeave={() => setHighlightedLots([])}
+                        >
+                          <div>
+                            <span className="font-medium">{tier.label}</span>
+                            <span className="text-sm text-gray-500 ml-2">
+                              +${diff} difference
+                            </span>
+                            {upgradeApp?.status === "selected" && (
+                              <Tag color="green" className="ml-2">Offer available!</Tag>
+                            )}
+                          </div>
+                          <div>
+                            {upgradeApp?.status === "selected" ? (
+                              <Button
+                                type="primary"
+                                size="small"
+                                loading={accepting}
+                                onClick={() => acceptUpgradeOffer(upgradeApp)}
+                              >
+                                Accept Upgrade (${diff})
+                              </Button>
+                            ) : (
+                              <Button
+                                size="small"
+                                disabled={alreadyOn}
+                                loading={joiningUpgrade === tier.id}
+                                onClick={() => joinUpgradeWaitlist(tier.id)}
+                              >
+                                {alreadyOn ? "On Waitlist" : "Join Waitlist"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </Card>
             )}
