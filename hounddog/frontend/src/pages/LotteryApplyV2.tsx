@@ -1345,18 +1345,20 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             )}
 
             {(step === "done" || (!application && myPermits.length > 0) || (!application && !cycle && !isCommuterPath)) && (
-              <Card className="mt-4">
+              <Card className="mt-4 border-indigo-200 shadow-md">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold m-0">Overnight Guest Registration</h3>
-                      <p className="text-sm text-gray-500 m-0 mt-1">
-                        Guests may stay up to 2 consecutive nights within any 7-day period.
-                        Roommate consent is required. Guest vehicles must be registered.
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 text-lg shrink-0">🌙</div>
+                      <div>
+                        <h3 className="text-lg font-bold m-0 text-indigo-900">Overnight Guest Registration</h3>
+                        <p className="text-sm text-gray-500 m-0 mt-0.5">
+                          Register your guest's vehicle for overnight parking (up to 2 nights).
+                        </p>
+                      </div>
                     </div>
                     {!showGuestForm && (
-                      <Button icon={<PlusOutlined />} onClick={() => setShowGuestForm(true)}>
+                      <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowGuestForm(true)}>
                         Register a Guest
                       </Button>
                     )}
