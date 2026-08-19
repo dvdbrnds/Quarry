@@ -463,12 +463,32 @@ async def submit_application(
     accepted_app = next((a for a in existing if a.status == "accepted"), None)
     waitlisted_app = next((a for a in existing if a.status == "waitlisted"), None)
     if data.is_upgrade:
+        # Students can join upgrade waitlists if they have a lottery app OR an active permit
+        has_active_permit = False
         if not accepted_app and not waitlisted_app:
-            raise HTTPException(400, "You must have an existing application to join another waitlist")
-        # For accepted students, only allow higher-priced tiers (no refunds)
-        if accepted_app:
+            from sqlalchemy import or_ as sql_or
+            active_permit = (await db.execute(
+                select(Permit).where(
+                    sql_or(Permit.student_id == user.sub, Permit.email == user.email),
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )).scalars().first()
+            if active_permit:
+                has_active_permit = True
+            else:
+                raise HTTPException(400, "You must have an existing permit or application to join a waitlist")
+        # For accepted students or direct permit holders, only allow higher-priced tiers
+        if accepted_app or has_active_permit:
             pt_map = await _permit_type_map(db)
-            current_pt = pt_map.get(accepted_app.assigned_permit_type_id)
+            if accepted_app:
+                current_pt = pt_map.get(accepted_app.assigned_permit_type_id)
+            else:
+                # Look up the permit type from their active permit
+                current_pt_obj = (await db.execute(
+                    select(PermitType).where(PermitType.code == active_permit.permit_type)
+                )).scalars().first()
+                current_pt = current_pt_obj
             if not current_pt:
                 raise HTTPException(400, "Cannot determine your current permit type")
             for tid in data.tier_preferences:

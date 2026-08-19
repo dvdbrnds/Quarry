@@ -561,7 +561,12 @@ async def direct_purchase(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
-    """Buy an always-available permit directly via Stripe (no lottery)."""
+    """Buy an always-available permit directly via Stripe (no lottery).
+
+    IMPORTANT: Purchasing a permit does NOT affect the student's position on
+    any lottery waitlist. Students can hold a commuter permit and remain on
+    upgrade/premium waitlists simultaneously.
+    """
     # Advisory lock to prevent duplicate checkout sessions from rapid clicks
     lock_key = hash(f"purchase:{user.sub}:{data.permit_type_id}") % (2**31)
     await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
