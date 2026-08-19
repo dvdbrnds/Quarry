@@ -389,6 +389,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   interface GuestReg { id: string; guest_name: string; guest_plate: string | null; guest_plate_state: string; check_in: string; check_out: string; status: string; }
   const [guestRegs, setGuestRegs] = useState<GuestReg[]>([]);
   const [showGuestForm, setShowGuestForm] = useState(false);
+  const [guestCampus, setGuestCampus] = useState<"north" | "south">("north");
   const [guestSubmitting, setGuestSubmitting] = useState(false);
   const [guestForm] = Form.useForm();
 
@@ -1022,7 +1023,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         ? [application.assigned_lot]
         : [];
 
-  const GUEST_LOTS = ["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"];
+  const GUEST_LOTS_NORTH = ["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"];
+  const GUEST_LOTS_SOUTH = ["W", "A", "F", "H", "M", "N", "O", "R", "S"];
+  const GUEST_LOTS = guestCampus === "south" ? GUEST_LOTS_SOUTH : GUEST_LOTS_NORTH;
 
   const mapHighlight =
     highlightedLots.length > 0
@@ -1054,8 +1057,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
 
+  const GUEST_FULL_TIME_LOTS = guestCampus === "south" ? ["W"] : ["X"];
+
   const guestLotColors: Record<string, string> = {};
-  for (const lot of GUEST_LOTS) guestLotColors[lot] = "#EC4899";
+  for (const lot of GUEST_LOTS) {
+    guestLotColors[lot] = GUEST_FULL_TIME_LOTS.includes(lot) ? "#22C55E" : "#EAB308";
+  }
 
   const baseActiveLotColors = showGuestForm
     ? guestLotColors
@@ -1071,7 +1078,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   // When actively hovering a card, drop lot colors so the map uses the high-contrast
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
-  const guestLegend = [{ label: "Guest parking (24h)", color: "#EC4899" }];
+  const guestLegend = [
+    { label: "Park anytime", color: "#22C55E" },
+    { label: "After 4 PM & weekends", color: "#EAB308" },
+  ];
 
   const activeLegend = showGuestForm
     ? guestLegend
@@ -1531,6 +1541,20 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
                   {showGuestForm && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm font-medium text-gray-700">Campus:</span>
+                        <Radio.Group
+                          value={guestCampus}
+                          onChange={(e) => setGuestCampus(e.target.value)}
+                          size="small"
+                          optionType="button"
+                          buttonStyle="solid"
+                          options={[
+                            { label: "North", value: "north" },
+                            { label: "South", value: "south" },
+                          ]}
+                        />
+                      </div>
                       <Form form={guestForm} layout="vertical" onFinish={submitGuest}>
                         <Form.Item name="guest_name" label="Guest name" rules={[{ required: true, message: "Enter your guest's name" }]}>
                           <Input placeholder="Full name" />
@@ -1609,15 +1633,22 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           </div>
                           {new Date(g.check_out) >= new Date() && (
                             <div className="mt-2 pt-2 border-t border-pink-100">
-                              <p className="text-xs font-semibold text-pink-700 m-0 mb-1">Authorized parking lots:</p>
+                              <p className="text-xs font-semibold text-gray-700 m-0 mb-1">Authorized parking lots:</p>
                               <div className="flex flex-wrap gap-1">
-                                {["X", "A", "F", "H", "M", "N", "O", "R", "S"].map(lot => (
-                                  <span key={lot} className="inline-block rounded bg-pink-100 text-pink-800 text-xs font-medium px-2 py-0.5">{lot}</span>
+                                <span className="inline-block rounded bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5">{guestCampus === "south" ? "W" : "X"} <span className="text-green-600 font-normal">(anytime)</span></span>
+                                {(guestCampus === "south" ? ["A", "F", "H", "M", "N", "O", "R", "S"] : ["A", "F", "H", "M", "N", "O", "R", "S"]).map(lot => (
+                                  <span key={lot} className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">{lot}</span>
                                 ))}
-                                <span className="inline-block rounded bg-pink-100 text-pink-800 text-xs font-medium px-2 py-0.5">U <span className="text-pink-500 font-normal">(after 4 PM)</span></span>
+                                {guestCampus === "north" && (
+                                  <span className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">U</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+                                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500"></span> Park anytime</span>
+                                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-500"></span> After 4 PM &amp; weekends only</span>
                               </div>
                               <p className="text-xs text-gray-600 m-0 mt-1.5">
-                                <strong>Hours:</strong> Valid 24 hours during stay ({new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()})
+                                <strong>Valid:</strong> {new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()}
                               </p>
                             </div>
                           )}
