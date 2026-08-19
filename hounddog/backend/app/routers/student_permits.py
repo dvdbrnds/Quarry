@@ -44,10 +44,40 @@ from ..schemas.permit_application import (
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
+RESIDENT_CODES = {
+    "north_premium_resident", "south_premium_resident",
+    "north_guaranteed_resident", "south_guaranteed_resident",
+    "south_standalone",
+}
 
 ALL_ALERT_CATEGORIES = ["emergency", "weather", "campus_closing", "parking", "general"]
 # Permit-registration opt-in today; Phase 23 (AlertUs) expands to ALL_ALERT_CATEGORIES + all channels
 PERMIT_OPT_IN_CATEGORIES = ["emergency", "parking"]
+
+
+async def _get_housing_status(user) -> str | None:
+    """Look up housing status from Jenzabar SIS. Returns 'R', 'C', 'O', or None."""
+    moravian_id = _extract_moravian_id(user)
+    if not moravian_id:
+        return None
+    from ..services.sis_student_data import lookup_student_parking_data
+    data = await lookup_student_parking_data(moravian_id)
+    return data.housing_status if data else None
+
+
+@router.get("/housing-status")
+async def housing_status(
+    user: OktaUser = Depends(get_current_user_or_impersonated),
+):
+    """Return the student's housing classification from Jenzabar SIS."""
+    status = await _get_housing_status(user)
+    from ..services.sis_student_data import HOUSING_LABELS
+    return {
+        "housing_status": status,
+        "housing_label": HOUSING_LABELS.get(status or "", status or "unknown"),
+        "is_commuter": status == "C",
+        "is_resident": status == "R",
+    }
 
 
 async def _opt_in_alerts(
@@ -161,6 +191,14 @@ async def available_permit_types(
         pt for pt in all_types
         if not pt.eligible_groups or user_groups & set(pt.eligible_groups)
     ]
+
+    # Enforce housing status from Jenzabar: commuters only see commuter permits,
+    # residents only see resident permits. Unknown housing sees everything.
+    housing = await _get_housing_status(user)
+    if housing == "C":
+        types = [pt for pt in types if pt.code not in RESIDENT_CODES]
+    elif housing == "R":
+        types = [pt for pt in types if pt.code not in COMMUTER_CODES]
 
     lot_lookup = await _load_lot_lookup(db)
 
@@ -576,6 +614,13 @@ async def direct_purchase(
         raise HTTPException(404, "Permit type not found")
     if not pt.is_purchasable_online or pt.requires_lottery:
         raise HTTPException(400, "This permit type cannot be purchased directly")
+
+    # Enforce housing eligibility from Jenzabar
+    housing = await _get_housing_status(user)
+    if housing == "C" and pt.code in RESIDENT_CODES:
+        raise HTTPException(403, "Commuter students cannot purchase resident parking permits.")
+    if housing == "R" and pt.code in COMMUTER_CODES:
+        raise HTTPException(403, "Resident students cannot purchase commuter parking permits.")
 
     active_count = (await db.execute(
         select(func.count()).select_from(Permit).where(

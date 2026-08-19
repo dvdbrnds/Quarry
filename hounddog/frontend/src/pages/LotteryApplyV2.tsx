@@ -383,6 +383,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [commuterTiers, setCommuterTiers] = useState<Tier[]>([]);
   const [upgradeApps, setUpgradeApps] = useState<Application[]>([]);
   const [joiningUpgrade, setJoiningUpgrade] = useState<string | null>(null);
+  const [housingStatus, setHousingStatus] = useState<string | null>(null);
 
   // Overnight guest registration state
   interface GuestReg { id: string; guest_name: string; guest_plate: string | null; guest_plate_state: string; check_in: string; check_out: string; status: string; }
@@ -589,17 +590,26 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     setLoading(true);
     try {
       const headers = await authHeadersAs(impersonateEmail);
-      const [cycleRes, appRes, profileRes, lotsRes, permitsRes, upgradeRes] = await Promise.all([
+      const [cycleRes, appRes, profileRes, lotsRes, permitsRes, upgradeRes, housingRes] = await Promise.all([
         fetch("/api/lottery-v2/cycle", { headers }),
         fetch("/api/lottery-v2/applications/me", { headers }),
         fetch("/api/auth/profile", { headers }),
         fetch("/api/lots", { headers }),
         fetch("/api/student/permits/my-permits", { headers }),
         fetch("/api/lottery-v2/applications/me/upgrades", { headers }),
+        fetch("/api/student/permits/housing-status", { headers }),
       ]);
 
       const cycleData: Cycle | null = cycleRes.ok ? await cycleRes.json() : null;
       setCycle(cycleData);
+
+      // Auto-route based on Jenzabar housing classification
+      if (housingRes.ok) {
+        const h = await housingRes.json();
+        setHousingStatus(h.housing_status);
+        if (h.is_commuter) setCampus("commuter");
+        else if (h.is_resident) setCampus("north");
+      }
 
       const permits = permitsRes.ok ? await permitsRes.json() : [];
       setMyPermits(permits);
@@ -1622,7 +1632,15 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             {!application && step === "intake" && (cycle || isCommuterPath) && (
               <Card title={isCommuterPath ? "Commuter Permit — Your Info" : "1. About you"}>
                 <Form layout="vertical" onFinish={continueToRank}>
-                  {cycle && !isCommuterPath && (
+                  {housingStatus && (
+                    <div className="mb-3 text-sm">
+                      <Tag color={housingStatus === "C" ? "blue" : "green"}>
+                        {housingStatus === "C" ? "Commuter Student" : "Resident Student"}
+                      </Tag>
+                      <span className="text-gray-500 ml-1">per university records</span>
+                    </div>
+                  )}
+                  {cycle && !isCommuterPath && !housingStatus && (
                   <Form.Item label="Where do you park?" required>
                     <Radio.Group
                       value={campus}
@@ -1738,7 +1756,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
-            {step === "intake" && !isCommuterPath && commuterTiers.length > 0 && (
+            {step === "intake" && !isCommuterPath && commuterTiers.length > 0 && housingStatus !== "R" && (
               <Card title="Commuter Permits">
                 <p className="text-sm text-gray-500 mb-2">
                   Commuter parking permits are available for direct purchase — no lottery required.

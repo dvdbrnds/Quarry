@@ -419,6 +419,18 @@ async def eligible_tiers(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
+    # Enforce housing status: commuters can't browse resident tiers and vice versa
+    from ..services.sis_student_data import lookup_student_parking_data
+    from .student_permits import _extract_moravian_id
+    moravian_id = _extract_moravian_id(user)
+    if moravian_id:
+        sis_data = await lookup_student_parking_data(moravian_id)
+        if sis_data:
+            if sis_data.housing_status == "C" and campus != "commuter":
+                return []
+            if sis_data.housing_status == "R" and campus == "commuter":
+                return []
+
     from ..services.group_discount import resolve_program_discount
     prog_discount = await resolve_program_discount(db, user)
     return await _eligible_tiers_for(db, campus, class_year, prog_discount)
@@ -448,6 +460,24 @@ async def submit_application(
             raise HTTPException(400, "Application window has not opened yet")
         if cycle.closes_at and cycle.closes_at < now:
             raise HTTPException(400, "Application window has closed")
+
+    # Enforce housing eligibility from Jenzabar SIS
+    from ..services.sis_student_data import lookup_student_parking_data
+    from .student_permits import _extract_moravian_id, COMMUTER_CODES, RESIDENT_CODES
+    moravian_id = _extract_moravian_id(user)
+    if moravian_id:
+        sis_data = await lookup_student_parking_data(moravian_id)
+        if sis_data:
+            if sis_data.housing_status == "C" and data.campus != "commuter":
+                raise HTTPException(
+                    403,
+                    "You are classified as a commuter student. Resident parking permits are not available to you."
+                )
+            if sis_data.housing_status == "R" and data.campus == "commuter":
+                raise HTTPException(
+                    403,
+                    "You are classified as a resident student. Commuter parking permits are not available to you."
+                )
 
     existing = (
         await db.execute(
