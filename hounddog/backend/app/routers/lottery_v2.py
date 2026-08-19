@@ -1143,28 +1143,58 @@ async def admin_bump_waitlist(
 @router.post("/applications/{application_id}/restore-waitlist", response_model=ApplicationRead)
 async def admin_restore_waitlist(
     application_id: uuid.UUID,
+    position: int | None = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
     admin: OktaUser = Depends(require_admin()),
 ):
-    """Restore a superseded (or expired/declined) application onto the waitlist."""
+    """Restore an application onto the waitlist. For accepted apps, cancels the permit too."""
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise HTTPException(404, "Application not found")
-    if app.status in ("accepted", "waitlisted", "pending"):
+    if app.status in ("waitlisted", "pending"):
         raise HTTPException(400, f"Cannot restore an application with status '{app.status}'")
-    # Also allow clearing a selected offer back to waitlist (admin reassignment prep)
-    if app.status not in ("superseded", "expired", "declined", "selected"):
+    if app.status not in ("superseded", "expired", "declined", "selected", "accepted"):
         raise HTTPException(400, f"Cannot restore an application with status '{app.status}'")
 
-    max_pos = (
-        await db.execute(
-            select(func.max(LotteryV2Application.waitlist_position)).where(
-                LotteryV2Application.cycle_id == app.cycle_id
+    # If accepted, also cancel the associated permit
+    if app.status == "accepted":
+        from sqlalchemy import or_ as sql_or
+        permits = (
+            await db.execute(
+                select(Permit).where(
+                    sql_or(
+                        Permit.student_id == app.student_sub,
+                        Permit.email == app.student_email,
+                    ),
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
             )
-        )
-    ).scalar() or 0
+        ).scalars().all()
+        for p in permits:
+            if p.permit_type == (
+                (await db.get(PermitType, app.assigned_permit_type_id)).code
+                if app.assigned_permit_type_id else None
+            ):
+                p.status = "cancelled"
+                p.cancel_reason = "issued_in_error"
+                p.cancel_notes = f"Reversed by admin: application restored to waitlist"
+                break
+
+    if position is not None and position >= 1:
+        target_pos = position
+    else:
+        max_pos = (
+            await db.execute(
+                select(func.max(LotteryV2Application.waitlist_position)).where(
+                    LotteryV2Application.cycle_id == app.cycle_id
+                )
+            )
+        ).scalar() or 0
+        target_pos = max_pos + 1
+
     app.status = "waitlisted"
-    app.waitlist_position = max_pos + 1
+    app.waitlist_position = target_pos
     app.assigned_permit_type_id = None
     app.assigned_lot = None
     app.offer_expires_at = None

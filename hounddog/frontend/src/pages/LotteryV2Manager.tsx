@@ -394,6 +394,33 @@ export default function LotteryV2Manager() {
     });
   }
 
+  function confirmRestoreAccepted(app: Application) {
+    modal.confirm({
+      title: `Reverse permit and restore ${app.student_name} to the waitlist?`,
+      content:
+        "This will cancel their active permit (issued in error) and put them back on the waitlist at the position you specify.",
+      okText: "Reverse & restore",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const posStr = window.prompt(
+          `Enter their original waitlist position (leave blank for end of list):`,
+        );
+        const position = posStr ? parseInt(posStr, 10) : undefined;
+        const body: Record<string, unknown> = {};
+        if (position && position >= 1) body.position = position;
+        const data = await postAction(
+          `/api/lottery-v2/applications/${app.id}/restore-waitlist`,
+          Object.keys(body).length > 0 ? body : undefined,
+        );
+        if (data) {
+          message.success(
+            `${app.student_name} restored to waitlist #${data.waitlist_position ?? "?"}. Permit cancelled.`,
+          );
+        }
+      },
+    });
+  }
+
   function openManualSelect(app: Application) {
     const prefs = app.tier_preferences || [];
     setSelectTarget(app);
@@ -2068,6 +2095,9 @@ export default function LotteryV2Manager() {
               <Space>
                 <Button type="primary" disabled={busy} onClick={() => openUpgradeModal(caseApp)}>
                   Upgrade permit
+                </Button>
+                <Button danger disabled={busy} onClick={() => confirmRestoreAccepted(caseApp)}>
+                  Reverse &amp; restore to waitlist
                 </Button>
               </Space>
             )}
