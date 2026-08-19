@@ -1091,45 +1091,51 @@ async def lifespan(app: FastAPI):
         from .database import async_session
         from .models.lottery_v2 import LotteryV2Application
         from .models.permit import Permit
-        from sqlalchemy import select, or_
+        from sqlalchemy import select, or_, func
         async with async_session() as session:
-            app_row = (await session.execute(
-                select(LotteryV2Application).where(
-                    LotteryV2Application.student_email == "brensingerg@moravian.edu",
-                    LotteryV2Application.status == "accepted",
-                    LotteryV2Application.is_upgrade.is_(False),
+            # Find the permit first — we know the number for sure
+            permit_row = (await session.execute(
+                select(Permit).where(
+                    Permit.permit_number == "QPS-00351",
+                    Permit.status == "active",
                 )
             )).scalars().first()
-            if app_row:
-                permit_row = (await session.execute(
-                    select(Permit).where(
+            if permit_row:
+                permit_row.status = "cancelled"
+                permit_row.cancel_reason = "issued_in_error"
+                permit_row.cancel_notes = "Hotfix: auto-placed instead of waitlisted due to bug"
+                logger.info("HOTFIX: Cancelled permit QPS-00351")
+
+                # Find the associated application using case-insensitive email or student_sub
+                student_email = (permit_row.email or "").strip().lower()
+                student_sub = permit_row.student_id or ""
+                app_row = (await session.execute(
+                    select(LotteryV2Application).where(
                         or_(
-                            Permit.email == "brensingerg@moravian.edu",
-                            Permit.student_id == app_row.student_sub,
+                            func.lower(LotteryV2Application.student_email) == student_email,
+                            LotteryV2Application.student_sub == student_sub,
                         ),
-                        Permit.status == "active",
-                        Permit.permit_number == "QPS-00351",
+                        LotteryV2Application.status.in_(["accepted", "selected"]),
+                        LotteryV2Application.is_upgrade.is_(False),
                     )
                 )).scalars().first()
-                if permit_row:
-                    permit_row.status = "cancelled"
-                    permit_row.cancel_reason = "issued_in_error"
-                    permit_row.cancel_notes = "Hotfix: auto-placed instead of waitlisted due to bug"
-                    logger.info("HOTFIX: Cancelled permit QPS-00351 for brensingerg")
-                app_row.status = "waitlisted"
-                app_row.waitlist_position = app_row.waitlist_position or 1
-                app_row.assigned_permit_type_id = None
-                app_row.assigned_lot = None
-                app_row.offer_expires_at = None
-                from datetime import datetime, timezone
-                note = f"HOTFIX: Restored to waitlist (was auto-placed in error) at {datetime.now(timezone.utc).isoformat()}"
-                app_row.admin_notes = f"{app_row.admin_notes}\n{note}".strip() if app_row.admin_notes else note
+                if app_row:
+                    app_row.status = "waitlisted"
+                    app_row.waitlist_position = app_row.waitlist_position or 1
+                    app_row.assigned_permit_type_id = None
+                    app_row.assigned_lot = None
+                    app_row.offer_expires_at = None
+                    from datetime import datetime, timezone
+                    note = f"HOTFIX: Restored to waitlist (was auto-placed in error) at {datetime.now(timezone.utc).isoformat()}"
+                    app_row.admin_notes = f"{app_row.admin_notes}\n{note}".strip() if app_row.admin_notes else note
+                    logger.info("HOTFIX: Restored application %s to waitlist position %d", app_row.id, app_row.waitlist_position)
+                else:
+                    logger.warning("HOTFIX: Permit cancelled but no matching application found to restore")
                 await session.commit()
-                logger.info("HOTFIX: Restored brensingerg to waitlist position %d", app_row.waitlist_position)
             else:
-                logger.info("HOTFIX: brensingerg fix not needed (no accepted non-upgrade application found)")
+                logger.info("HOTFIX: Permit QPS-00351 not found or already cancelled — no action needed")
     except Exception as e:
-        logger.warning("HOTFIX brensingerg revert failed (non-fatal): %s", e)
+        logger.warning("HOTFIX brensingerg revert failed: %s", e, exc_info=True)
 
     yield
 
