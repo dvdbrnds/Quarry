@@ -375,7 +375,7 @@ async def _eligible_tiers_for(
                     .where(
                         LotteryV2Application.cycle_id == current_cycle.id,
                         LotteryV2Application.status == "waitlisted",
-                        LotteryV2Application.tier_preferences.any(pt.id),
+                        LotteryV2Application.tier_preferences[0] == pt.id,
                     )
                 )
             ).scalar() or 0
