@@ -1276,9 +1276,24 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   {application.status === "waitlisted" && (
                     <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
                       <p className="m-0 text-blue-900 font-medium">
-                        You're on the waitlist
+                        Waitlisted for: {(() => {
+                          const tierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
+                          const tier = tiers.find((t) => t.id === tierId);
+                          return tier ? tier.label : (application.assigned_permit_type_label || "Parking Permit");
+                        })()}
                       </p>
-                      <p className="m-0 mt-1 text-sm text-blue-800">
+                      {(() => {
+                        const tierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
+                        const tier = tiers.find((t) => t.id === tierId);
+                        if (!tier) return null;
+                        return (
+                          <p className="m-0 mt-1 text-sm text-blue-700">
+                            ${Number(tier.price).toFixed(0)}
+                            {tier.lot_assignments?.length ? ` — Lots: ${tier.lot_assignments.join(", ")}` : ""}
+                          </p>
+                        );
+                      })()}
+                      <p className="m-0 mt-2 text-sm text-blue-800">
                         No action needed. You'll be notified if a spot opens.
                       </p>
                     </div>
