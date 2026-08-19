@@ -638,7 +638,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         if (appBody.campus) loadTiers(appBody.campus, appBody.class_year);
       } else {
         setApplication(null);
-        setStep("intake");
+        // If student already holds an active permit, skip the intake form
+        if (permits.length > 0) {
+          setStep("done");
+        } else {
+          setStep("intake");
+        }
       }
 
       if (profileRes.ok) {
