@@ -97,6 +97,7 @@ class TierRead(BaseModel):
     campus: str
     requires_lottery: bool = False
     is_purchasable_online: bool = False
+    waitlist_count: int = 0
 
 
 class ApplicationSubmit(BaseModel):
@@ -333,6 +334,16 @@ async def _eligible_tiers_for(
     by_code = {pt.code: pt for pt in pts}
     ordered = [by_code[c] for c in codes if c in by_code]
 
+    # Get current cycle for waitlist counts
+    current_cycle = (
+        await db.execute(
+            select(LotteryV2Cycle)
+            .where(LotteryV2Cycle.status.in_(["open", "drawn", "closed"]))
+            .order_by(LotteryV2Cycle.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
     out: list[TierRead] = []
     for pt in ordered:
         # Skip class-year filter when year unknown (intake map preview shows full path)
@@ -354,6 +365,21 @@ async def _eligible_tiers_for(
         public_capacity = cap - reserved
         remaining = max(0, public_capacity - active_count)
         your_price = apply_flat_discount(pt.price, prog_discount)
+
+        waitlist_count = 0
+        if current_cycle:
+            waitlist_count = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(LotteryV2Application)
+                    .where(
+                        LotteryV2Application.cycle_id == current_cycle.id,
+                        LotteryV2Application.status == "waitlisted",
+                        LotteryV2Application.tier_preferences.any(pt.id),
+                    )
+                )
+            ).scalar() or 0
+
         out.append(
             TierRead(
                 id=pt.id,
@@ -370,6 +396,7 @@ async def _eligible_tiers_for(
                 campus=campus,
                 requires_lottery=bool(pt.requires_lottery),
                 is_purchasable_online=bool(pt.is_purchasable_online),
+                waitlist_count=waitlist_count,
             )
         )
     return out

@@ -92,6 +92,7 @@ interface Tier {
   campus: string;
   requires_lottery?: boolean;
   is_purchasable_online?: boolean;
+  waitlist_count?: number;
 }
 
 function formatTierPrice(tier: Tier) {
@@ -1290,11 +1291,15 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           <p className="m-0 mt-1 text-sm text-blue-700">
                             ${Number(tier.price).toFixed(0)}
                             {tier.lot_assignments?.length ? ` — Lots: ${tier.lot_assignments.join(", ")}` : ""}
+                            {tier.waitlist_count ? ` · ${tier.waitlist_count} on waitlist` : ""}
                           </p>
                         );
                       })()}
                       <p className="m-0 mt-2 text-sm text-blue-800">
-                        No action needed. You'll be notified if a spot opens.
+                        {application.waitlist_position
+                          ? `You are #${application.waitlist_position} in line.`
+                          : "No action needed."
+                        } You'll be notified if a spot opens.
                       </p>
                     </div>
                   )}
@@ -1539,8 +1544,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                               <Tag color="green" className="ml-2">Offer available!</Tag>
                             )}
                             {!canBuy && tier.remaining <= 0 && !alreadyOn && !existingApp && (
-                              <Tag color="default" className="ml-2">Full</Tag>
+                              <Tag color="default" className="ml-2">{tier.waitlist_count ? `${tier.waitlist_count} ahead` : "Full"}</Tag>
                             )}
+                            {alreadyOn && tier.waitlist_count ? (
+                              <span className="text-xs text-gray-400 ml-2">{tier.waitlist_count} on waitlist</span>
+                            ) : null}
                           </div>
                           <div>
                             {existingApp?.status === "selected" ? (
