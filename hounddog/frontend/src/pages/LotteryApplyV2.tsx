@@ -1522,10 +1522,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                   <div className="space-y-4">
                     <h3 className="text-base font-semibold m-0">Other Permit Options</h3>
                     <p className="text-sm text-gray-600 m-0">
-                      Want a different permit? Join a waitlist or purchase one directly.
+                      Want a different permit? Join a waitlist and you'll be notified if a spot opens.
                     </p>
                     {otherTiers.map((tier) => {
-                      const canBuy = !tier.requires_lottery && tier.is_purchasable_online && tier.remaining > 0;
                       const alreadyOn = upgradeApps.some(
                         (ua) => ua.tier_preferences?.includes(tier.id)
                       );
@@ -1548,8 +1547,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             {existingApp?.status === "selected" && (
                               <Tag color="green" className="ml-2">Offer available!</Tag>
                             )}
-                            {!canBuy && tier.remaining <= 0 && !alreadyOn && !existingApp && (
+                            {tier.remaining <= 0 && !alreadyOn && !existingApp && (
                               <Tag color="default" className="ml-2">{tier.waitlist_count ? `${tier.waitlist_count} ahead` : "Full"}</Tag>
+                            )}
+                            {tier.remaining > 0 && !alreadyOn && !existingApp && (
+                              <Tag color="blue" className="ml-2">{tier.remaining} spot{tier.remaining !== 1 ? "s" : ""} open</Tag>
                             )}
                             {alreadyOn && tier.waitlist_count ? (
                               <span className="text-xs text-gray-400 ml-2">{tier.waitlist_count} on waitlist</span>
@@ -1564,15 +1566,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                                 onClick={() => acceptUpgradeOffer(existingApp)}
                               >
                                 Accept Offer
-                              </Button>
-                            ) : canBuy ? (
-                              <Button
-                                type="primary"
-                                size="small"
-                                loading={submitting}
-                                onClick={() => purchaseCommuterPermit(tier)}
-                              >
-                                Buy
                               </Button>
                             ) : (
                               <Button
