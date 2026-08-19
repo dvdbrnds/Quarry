@@ -34,7 +34,6 @@ from ..services.lottery_v2_runner import (
     promote_from_waitlist,
     repair_cycle_placements,
     run_waterfall_draw,
-    try_place_application,
     notify_waitlisted_applicants,
 )
 from ..services.permit_numbering import next_permit_number
@@ -652,27 +651,22 @@ async def submit_application(
     if exempt:
         app.fee_exempt = True
 
-    # If the draw already happened, try open seats first — only waitlist if full
-    # Upgrade waitlist entries always go straight to waitlist (they already hold a permit)
+    # After the draw, ALL new applications go straight to waitlist.
+    # Spots are only filled via admin action (promote from waitlist).
     if cycle.status == "drawn":
         if not revived:
             db.add(app)
         await db.flush()
-        if data.is_upgrade:
-            placed = False
-        else:
-            placed = await try_place_application(db, app, send_notification=True)
-        if not placed:
-            max_pos = (
-                await db.execute(
-                    select(func.max(LotteryV2Application.waitlist_position)).where(
-                        LotteryV2Application.cycle_id == cycle.id
-                    )
+        max_pos = (
+            await db.execute(
+                select(func.max(LotteryV2Application.waitlist_position)).where(
+                    LotteryV2Application.cycle_id == cycle.id
                 )
-            ).scalar() or 0
-            app.status = "waitlisted"
-            app.waitlist_position = max_pos + 1
-            await db.flush()
+            )
+        ).scalar() or 0
+        app.status = "waitlisted"
+        app.waitlist_position = max_pos + 1
+        await db.flush()
     else:
         if not revived:
             db.add(app)

@@ -864,7 +864,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       setRanked(useRanked);
       setStep("done");
       if (app.status === "selected") {
-        message.success("A seat was available — accept your offer below.");
+        message.success("You've been offered a spot — accept your offer below.");
       } else if (app.status === "waitlisted") {
         message.success("You're on the waitlist. You'll be notified if a spot opens.");
       } else {
@@ -878,13 +878,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   }
 
   function joinWaitlist(tier: Tier) {
-    const soldOut = tier.remaining <= 0;
     modal.confirm({
-      title: soldOut ? `Join waitlist for ${tier.label}?` : `Request ${tier.label}?`,
-      content: soldOut
-        ? `This permit is currently full (lots: ${tier.lot_assignments.join(", ") || "—"}). You'll be notified if a spot opens.`
-        : `If a seat is still open, you'll get an offer right away. Otherwise you'll join the waitlist for ${tier.label}.`,
-      okText: soldOut ? "Join waitlist" : "Request / waitlist",
+      title: `Join waitlist for ${tier.label}?`,
+      content: `You'll be added to the waitlist for ${tier.label} (lots: ${tier.lot_assignments.join(", ") || "—"}). You'll be notified when a spot becomes available.`,
+      okText: "Join waitlist",
       onOk: () => doSubmit([tier]),
     });
   }
