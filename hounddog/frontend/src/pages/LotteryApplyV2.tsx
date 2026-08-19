@@ -1488,25 +1488,21 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
-            {application && application.status === "waitlisted" && tiers.length > 0 && (
-              <Card className="mt-4">
-                <div className="space-y-4">
-                  <h3 className="text-base font-semibold m-0">Join Other Waitlists</h3>
-                  <p className="text-sm text-gray-600 m-0">
-                    Want to try for a different permit too? Join additional waitlists below.
-                    You'll be notified if a spot opens for any of them.
-                  </p>
-                  {(() => {
-                    const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
-                    const otherTiers = tiers.filter((t) => t.id !== currentTierId && t.requires_lottery);
-                    if (otherTiers.length === 0) {
-                      return (
-                        <p className="text-sm text-gray-400 m-0">
-                          No other permit types available for your campus.
-                        </p>
-                      );
-                    }
-                    return otherTiers.map((tier) => {
+            {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
+              const currentTierId = application.tier_preferences?.[0] || application.assigned_permit_type_id;
+              const waitlistTiers = application.status === "waitlisted"
+                ? tiers.filter((t) => t.id !== currentTierId && t.requires_lottery)
+                : [];
+              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.is_purchasable_online && t.remaining > 0);
+              if (waitlistTiers.length === 0 && buyableTiers.length === 0) return null;
+              return (
+                <Card className="mt-4">
+                  <div className="space-y-4">
+                    <h3 className="text-base font-semibold m-0">Other Permit Options</h3>
+                    <p className="text-sm text-gray-600 m-0">
+                      Want a different permit? Join a waitlist or purchase one directly.
+                    </p>
+                    {waitlistTiers.map((tier) => {
                       const alreadyOn = upgradeApps.some(
                         (ua) => ua.tier_preferences?.includes(tier.id)
                       );
@@ -1553,22 +1549,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           </div>
                         </div>
                       );
-                    });
-                  })()}
-                </div>
-              </Card>
-            )}
-
-            {application && (application.status === "waitlisted" || application.status === "accepted") && tiers.length > 0 && (() => {
-              const buyableTiers = tiers.filter((t) => !t.requires_lottery && t.is_purchasable_online && t.remaining > 0);
-              if (buyableTiers.length === 0) return null;
-              return (
-                <Card className="mt-4">
-                  <div className="space-y-4">
-                    <h3 className="text-base font-semibold m-0">Buy Available Permits</h3>
-                    <p className="text-sm text-gray-600 m-0">
-                      These permits are available for direct purchase — no waitlist needed.
-                    </p>
+                    })}
                     {buyableTiers.map((tier) => (
                       <div
                         key={tier.id}
@@ -1582,7 +1563,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             ${Number(tier.price).toFixed(0)}
                             {tier.lot_assignments?.length ? ` — ${tier.lot_assignments.join(", ")}` : ""}
                           </span>
-                          
                         </div>
                         <Button
                           type="primary"
