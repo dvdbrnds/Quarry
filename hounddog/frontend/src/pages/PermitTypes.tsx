@@ -393,6 +393,47 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     }
   }
 
+  async function handleSelectApplicant(entry: WaitlistEntry, pt: PermitTypeRow) {
+    modal.confirm({
+      title: `Select ${entry.student_name}?`,
+      content: `This will send them an offer email for ${pt.label}. They will have ${pt.offer_window_days || 5} days to accept and pay.`,
+      okText: "Send Offer",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/lottery-v2/applications/${entry.id}/manual-select`, {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ permit_type_id: pt.id, send_notification: true, allow_any_type: true, force_capacity: false }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error((err as any).detail || `Failed (${res.status})`);
+          }
+          message.success(`${entry.student_name} selected — offer sent`);
+          setWaitlistCache(prev => { const copy = { ...prev }; delete copy[pt.id]; return copy; });
+          fetchWaitlist(pt);
+          load();
+        } catch (e: any) { message.error(e.message || "Failed to select"); }
+      },
+    });
+  }
+
+  async function handleBumpToTop(entry: WaitlistEntry, pt: PermitTypeRow) {
+    try {
+      const res = await fetch(`/api/lottery-v2/applications/${entry.id}/bump-waitlist`, {
+        method: "POST",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).detail || `Failed (${res.status})`);
+      }
+      message.success(`${entry.student_name} moved to #1`);
+      setWaitlistCache(prev => { const copy = { ...prev }; delete copy[pt.id]; return copy; });
+      fetchWaitlist(pt);
+    } catch (e: any) { message.error(e.message || "Failed to bump"); }
+  }
+
   function renderExpandedRow(pt: PermitTypeRow) {
     const pct = pt.max_capacity > 0 ? Math.round((pt.active_count / pt.max_capacity) * 100) : 0;
     const waitlist = waitlistCache[pt.id];
@@ -414,6 +455,21 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
           {new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </span>
       )},
+      ...(!readOnly ? [{
+        title: "Actions", key: "actions", width: 180,
+        render: (_: unknown, entry: WaitlistEntry, index: number) => (
+          <Space size="small">
+            <Button type="link" size="small" onClick={() => handleSelectApplicant(entry, pt)}>
+              Select
+            </Button>
+            {index > 0 && (
+              <Button type="link" size="small" onClick={() => handleBumpToTop(entry, pt)}>
+                Move to #1
+              </Button>
+            )}
+          </Space>
+        ),
+      }] : []),
     ];
 
     return (
