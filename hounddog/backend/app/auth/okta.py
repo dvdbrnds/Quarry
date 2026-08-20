@@ -163,6 +163,7 @@ async def verify_token_string(token: str) -> OktaUser:
         _need_userinfo = (
             not groups
             or not given_name
+            or "@" not in email
             or (settings.admin_okta_groups not in groups
                 and settings.staff_okta_groups not in groups)
         )
@@ -181,6 +182,9 @@ async def verify_token_string(token: str) -> OktaUser:
             if class_year is None:
                 cy = userinfo.get(settings.okta_class_year_claim)
                 class_year = int(cy) if cy else None
+            ui_email = userinfo.get("email")
+            if ui_email and ("@" not in email):
+                email = ui_email
 
         user = OktaUser(
             sub=payload.get("sub", ""),
@@ -237,6 +241,7 @@ async def get_current_user(request: Request) -> OktaUser:
         _need_userinfo = (
             not groups
             or not given_name
+            or "@" not in email
             or (settings.admin_okta_groups not in groups
                 and settings.staff_okta_groups not in groups)
         )
@@ -255,6 +260,9 @@ async def get_current_user(request: Request) -> OktaUser:
             if class_year is None:
                 cy = userinfo.get(settings.okta_class_year_claim)
                 class_year = int(cy) if cy else None
+            ui_email = userinfo.get("email")
+            if ui_email and ("@" not in email):
+                email = ui_email
 
         log.debug("Auth resolved: email=%s groups=%s", email, groups)
 

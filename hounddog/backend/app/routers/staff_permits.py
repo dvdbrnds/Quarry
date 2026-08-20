@@ -167,6 +167,19 @@ async def my_vehicles(
     )
     permits = result.scalars().all()
 
+    # Backfill missing email/student_id on any permits belonging to this user
+    if user.email and "@" in user.email:
+        for p in permits:
+            changed = False
+            if not p.email or "@" not in (p.email or ""):
+                p.email = user.email
+                changed = True
+            if not p.student_id and user.sub:
+                p.student_id = user.sub
+                changed = True
+            if changed:
+                await db.flush()
+
     pt_codes = {p.permit_type for p in permits if p.permit_type}
     label_map: dict[str, str] = {}
     if pt_codes:

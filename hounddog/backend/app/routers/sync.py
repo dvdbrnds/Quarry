@@ -568,20 +568,39 @@ async def _upload_ticket_impl(
     notification_sent = False
     notification_email: str | None = None
 
-    # Resolve notification email: permit.email, or fall back to any other
-    # permit with the same student_id that has an email populated.
+    # Resolve notification email with multiple fallback strategies:
+    # 1. permit.email directly
+    # 2. Other permits with the same student_id
+    # 3. Other permits with the same plate (handles imports without student_id)
+    # 4. customer_email from Stripe sessions for this plate
     recipient_email: str | None = None
     if permit:
-        recipient_email = getattr(permit, "email", None)
+        _raw_email = getattr(permit, "email", None) or ""
+        if "@" in _raw_email:
+            recipient_email = _raw_email
+
         if not recipient_email and getattr(permit, "student_id", None):
             fallback_result = await db.execute(
                 select(Permit.email).where(
                     Permit.student_id == permit.student_id,
                     Permit.email.isnot(None),
                     Permit.email != "",
+                    Permit.email.contains("@"),
                 ).limit(1)
             )
             recipient_email = fallback_result.scalar()
+
+    if not recipient_email:
+        plate_email_result = await db.execute(
+            select(Permit.email).where(
+                Permit.plates.contains([ticket.plate.upper()]),
+                Permit.email.isnot(None),
+                Permit.email != "",
+                Permit.email.contains("@"),
+                Permit.deleted_at.is_(None),
+            ).order_by(Permit.updated_at.desc()).limit(1)
+        )
+        recipient_email = plate_email_result.scalar()
 
     try:
         if recipient_email:
