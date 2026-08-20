@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip,
+  Table, Button, Input, InputNumber, Select, Checkbox, Tag, Card, Form, DatePicker, Space, App, Empty, Tooltip, Progress, Spin,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -10,6 +10,24 @@ import dayjs from "dayjs";
 const NO_ONLINE_PURCHASE_CODES = new Set([
   "south_standalone",
 ]);
+
+interface WaitlistEntry {
+  id: string;
+  student_name: string;
+  student_email: string;
+  plate: string;
+  waitlist_position: number | null;
+  status: string;
+  created_at: string;
+  assigned_permit_type_id?: string | null;
+  tier_preferences?: string[];
+}
+
+function progressColor(pct: number): string {
+  if (pct >= 90) return "#dc2626";
+  if (pct >= 70) return "#d97706";
+  return "#16a34a";
+}
 
 interface PermitTypeRow {
   id: string; code: string; label: string; eligible: string; price: string;
@@ -223,6 +241,9 @@ export default function PermitTypes() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const formRef = useRef<HTMLDivElement>(null);
+  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
+  const [waitlistCache, setWaitlistCache] = useState<Record<string, WaitlistEntry[]>>({});
+  const [waitlistLoading, setWaitlistLoading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if ((editing || creating) && formRef.current) {
@@ -313,6 +334,121 @@ export default function PermitTypes() {
       message.success(enable ? "Purchasing enabled" : "Purchasing disabled");
       load();
     } catch (e: any) { message.error(e.message); }
+  }
+
+  async function fetchWaitlist(pt: PermitTypeRow) {
+    if (waitlistCache[pt.id]) return;
+    setWaitlistLoading(prev => ({ ...prev, [pt.id]: true }));
+    try {
+      let waitlisted: WaitlistEntry[] = [];
+
+      if (pt.requires_lottery) {
+        const cyclesRes = await fetch("/api/lottery-v2/cycles", { headers: await authHeaders() });
+        if (cyclesRes.ok) {
+          const cycles = await cyclesRes.json();
+          const activeCycle = cycles.find((c: any) => c.status === "drawn" || c.status === "closed");
+          if (activeCycle) {
+            const appsRes = await fetch(`/api/lottery-v2/cycles/${activeCycle.id}/applications`, { headers: await authHeaders() });
+            if (appsRes.ok) {
+              const apps: WaitlistEntry[] = await appsRes.json();
+              waitlisted = apps.filter(a =>
+                a.status === "waitlisted" && (
+                  a.assigned_permit_type_id === pt.id ||
+                  (a.tier_preferences && a.tier_preferences[0] === pt.id)
+                )
+              );
+            }
+          }
+        }
+      } else {
+        const res = await fetch(`/api/permit-types/${pt.id}/applications`, { headers: await authHeaders() });
+        if (res.ok) {
+          const apps: WaitlistEntry[] = await res.json();
+          waitlisted = apps.filter(a => a.status === "waitlisted");
+        }
+      }
+
+      waitlisted.sort((a, b) => (a.waitlist_position ?? 999) - (b.waitlist_position ?? 999));
+      setWaitlistCache(prev => ({ ...prev, [pt.id]: waitlisted }));
+    } catch {
+      setWaitlistCache(prev => ({ ...prev, [pt.id]: [] }));
+    } finally {
+      setWaitlistLoading(prev => ({ ...prev, [pt.id]: false }));
+    }
+  }
+
+  function handleExpand(expanded: boolean, pt: PermitTypeRow) {
+    if (expanded) {
+      setExpandedRowKeys(prev => [...prev, pt.id]);
+      fetchWaitlist(pt);
+    } else {
+      setExpandedRowKeys(prev => prev.filter(k => k !== pt.id));
+    }
+  }
+
+  function renderExpandedRow(pt: PermitTypeRow) {
+    const pct = pt.max_capacity > 0 ? Math.round((pt.active_count / pt.max_capacity) * 100) : 0;
+    const waitlist = waitlistCache[pt.id];
+    const isLoading = waitlistLoading[pt.id];
+
+    const waitlistColumns: ColumnsType<WaitlistEntry> = [
+      { title: "#", key: "pos", width: 50, render: (_, r) => (
+        <span className="font-semibold">{r.waitlist_position ?? "—"}</span>
+      )},
+      { title: "Name", dataIndex: "student_name", key: "name" },
+      { title: "Email", dataIndex: "student_email", key: "email", render: v => (
+        <span className="text-xs">{v}</span>
+      )},
+      { title: "Plate", dataIndex: "plate", key: "plate", render: v => (
+        <span className="font-mono text-xs">{v}</span>
+      )},
+      { title: "Applied", dataIndex: "created_at", key: "date", render: v => (
+        <span className="text-xs text-gray-500">
+          {new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        </span>
+      )},
+    ];
+
+    return (
+      <div className="px-4 py-3 bg-gray-50">
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm font-medium">Capacity</span>
+            <span className="text-xs text-gray-500">
+              {pt.active_count} / {pt.max_capacity}
+              <span className="ml-2 text-gray-400">({pt.remaining} remaining)</span>
+            </span>
+          </div>
+          <Progress
+            percent={pct}
+            strokeColor={progressColor(pct)}
+            showInfo={false}
+            size="small"
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-gray-500">
+            <Spin size="small" /> Loading waitlist...
+          </div>
+        ) : waitlist && waitlist.length > 0 ? (
+          <div>
+            <div className="text-sm font-medium mb-2">
+              Waitlisted <Tag className="ml-1">{waitlist.length}</Tag>
+            </div>
+            <Table
+              dataSource={waitlist}
+              columns={waitlistColumns}
+              rowKey="id"
+              size="small"
+              pagination={waitlist.length > 10 ? { pageSize: 10, size: "small" } : false}
+            />
+          </div>
+        ) : (
+          <div className="text-sm text-gray-400 py-2">No one on the waitlist</div>
+        )}
+      </div>
+    );
   }
 
   const COMMUTER_CODES = new Set(["commuter_undergrad", "commuter_grad"]);
@@ -495,8 +631,14 @@ export default function PermitTypes() {
         </div>
       )}
       <Table dataSource={types} columns={columns} rowKey="id" loading={loading} size="small"
-        rowClassName={pt => !pt.is_active ? "opacity-50" : ""}
+        rowClassName={pt => !pt.is_active ? "opacity-50" : "cursor-pointer"}
         pagination={false}
+        expandable={{
+          expandedRowKeys,
+          onExpand: handleExpand,
+          expandedRowRender: renderExpandedRow,
+          expandRowByClick: true,
+        }}
         locale={{ emptyText: <Empty description="No permit types configured" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
     </div>
