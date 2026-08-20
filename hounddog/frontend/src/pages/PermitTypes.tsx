@@ -342,29 +342,36 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     try {
       let waitlisted: WaitlistEntry[] = [];
 
-      if (pt.requires_lottery) {
-        const cyclesRes = await fetch("/api/lottery-v2/cycles", { headers: await authHeaders() });
-        if (cyclesRes.ok) {
-          const cycles = await cyclesRes.json();
-          const activeCycle = cycles.find((c: any) => c.status === "drawn" || c.status === "closed");
-          if (activeCycle) {
-            const appsRes = await fetch(`/api/lottery-v2/cycles/${activeCycle.id}/applications`, { headers: await authHeaders() });
-            if (appsRes.ok) {
-              const apps: WaitlistEntry[] = await appsRes.json();
-              waitlisted = apps.filter(a =>
-                a.status === "waitlisted" && (
-                  a.assigned_permit_type_id === pt.id ||
-                  (a.tier_preferences && a.tier_preferences[0] === pt.id)
-                )
-              );
+      // Check old-style lottery applications
+      const res = await fetch(`/api/permit-types/${pt.id}/applications`, { headers: await authHeaders() });
+      if (res.ok) {
+        const apps: WaitlistEntry[] = await res.json();
+        waitlisted = apps.filter(a => a.status === "waitlisted");
+      }
+
+      // Also check lottery v2 — waitlist persists even after draw completes
+      const cyclesRes = await fetch("/api/lottery-v2/cycles", { headers: await authHeaders() });
+      if (cyclesRes.ok) {
+        const cycles = await cyclesRes.json();
+        const activeCycle = cycles.find((c: any) => c.status === "drawn" || c.status === "closed");
+        if (activeCycle) {
+          const appsRes = await fetch(`/api/lottery-v2/cycles/${activeCycle.id}/applications`, { headers: await authHeaders() });
+          if (appsRes.ok) {
+            const apps: WaitlistEntry[] = await appsRes.json();
+            const v2Waitlisted = apps.filter(a =>
+              a.status === "waitlisted" && (
+                a.assigned_permit_type_id === pt.id ||
+                (a.tier_preferences && a.tier_preferences[0] === pt.id)
+              )
+            );
+            // Merge, deduplicating by id
+            const existingIds = new Set(waitlisted.map(w => w.id));
+            for (const entry of v2Waitlisted) {
+              if (!existingIds.has(entry.id)) {
+                waitlisted.push(entry);
+              }
             }
           }
-        }
-      } else {
-        const res = await fetch(`/api/permit-types/${pt.id}/applications`, { headers: await authHeaders() });
-        if (res.ok) {
-          const apps: WaitlistEntry[] = await res.json();
-          waitlisted = apps.filter(a => a.status === "waitlisted");
         }
       }
 
