@@ -399,8 +399,8 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     const isLoading = waitlistLoading[pt.id];
 
     const waitlistColumns: ColumnsType<WaitlistEntry> = [
-      { title: "#", key: "pos", width: 50, render: (_, r) => (
-        <span className="font-semibold">{r.waitlist_position ?? "—"}</span>
+      { title: "#", key: "pos", width: 50, render: (_, _r, index) => (
+        <span className="font-semibold">{index + 1}</span>
       )},
       { title: "Name", dataIndex: "student_name", key: "name" },
       { title: "Email", dataIndex: "student_email", key: "email", render: v => (
