@@ -533,9 +533,7 @@ async def _upload_ticket_impl(
         violation_type=ticket.violation_type or "unknown",
         violation_type_id=violation_type_id,
         fine_amount=fine_amount,
-        photo_url=photo_url,
-        photo_data=photo_data,
-        photo_mime=photo_mime,
+        photo_url=None,
         officer_id=officer_id,
         officer_name=ticket.officer_name,
         officer_email=ticket.officer_email,
@@ -559,7 +557,17 @@ async def _upload_ticket_impl(
     await db.flush()
     await db.refresh(new_ticket)
 
-    if photo_data and not new_ticket.photo_url:
+    if photo_data:
+        # Explicitly UPDATE the photo after initial INSERT — deferred columns
+        # may not be included in the initial INSERT by SQLAlchemy's unit of work.
+        from sqlalchemy import update as _update
+        await db.execute(
+            _update(Ticket).where(Ticket.id == new_ticket.id).values(
+                photo_data=photo_data,
+                photo_mime=photo_mime,
+                photo_url=f"/api/tickets/{new_ticket.id}/photo",
+            )
+        )
         new_ticket.photo_url = f"/api/tickets/{new_ticket.id}/photo"
         await db.flush()
 
