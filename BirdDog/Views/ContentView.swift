@@ -77,6 +77,7 @@ struct ContentView: View {
                             Spacer()
                             dbStatusBanner
                             Spacer()
+                            motionModeBadge
                             currentLotBadge
                         }
                         .padding(.horizontal, 12)
@@ -235,6 +236,37 @@ struct ContentView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(.ultraThinMaterial, in: Capsule())
+        }
+    }
+
+    @ViewBuilder
+    private var motionModeBadge: some View {
+        let motion = MotionSpeedService.shared
+        HStack(spacing: 3) {
+            Image(systemName: motionIcon(for: motion.mode))
+                .font(.system(size: 9))
+            Text(motion.mode.rawValue)
+                .font(.system(size: 9, weight: .medium))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .foregroundStyle(.white.opacity(0.85))
+        .background(motionColor(for: motion.mode).opacity(0.7), in: Capsule())
+    }
+
+    private func motionIcon(for mode: MotionSpeedService.MovementMode) -> String {
+        switch mode {
+        case .stationary: return "figure.stand"
+        case .walking: return "figure.walk"
+        case .vehicle: return "car.fill"
+        }
+    }
+
+    private func motionColor(for mode: MotionSpeedService.MovementMode) -> Color {
+        switch mode {
+        case .stationary: return .blue
+        case .walking: return .cyan
+        case .vehicle: return .green
         }
     }
 

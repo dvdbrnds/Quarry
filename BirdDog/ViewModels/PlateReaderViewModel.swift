@@ -61,6 +61,7 @@ final class PlateReaderViewModel: ObservableObject {
     let geofenceService = GeofenceService.shared
     private let authService = PlateAuthService()
     private let sessionManager = SessionHistoryManager.shared
+    private let motionService = MotionSpeedService.shared
 
     nonisolated(unsafe) private let recognitionService = PlateRecognitionService()
     nonisolated(unsafe) private var cloudService: PlateRecognizerService?
@@ -74,6 +75,7 @@ final class PlateReaderViewModel: ObservableObject {
     private var candidateCounts: [String: (count: Int, bestConfidence: Float)] = [:]
     private var candidateFirstSeen: [String: Date] = [:]
     private let candidateVoter = CandidateVoter()
+    private var regionLastSeen: [String: Date] = [:]
 
     private var alertPlayer: AVAudioPlayer?
     private var currentDayStart: Date = Calendar.current.startOfDay(for: Date())
@@ -145,11 +147,13 @@ final class PlateReaderViewModel: ObservableObject {
             activeSession = session
         }
         cameraService.start()
+        motionService.start()
         isScanning = true
     }
 
     func stopScanning() {
         cameraService.stop()
+        motionService.stop()
         isScanning = false
         isScanningPaused = false
         finalizeSession()
@@ -253,13 +257,18 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     private func pruneExpiredSeenPlates() {
-        let cutoff = Date().addingTimeInterval(-dedupWindow)
+        let activeDedupWindow = motionService.dedupWindow
+        let cutoff = Date().addingTimeInterval(-activeDedupWindow)
         seenPlates.removeAll { $0.time < cutoff }
+        regionLastSeen = regionLastSeen.filter { $0.value > cutoff }
     }
 
     private func handleResult(_ result: RecognitionResult) {
         currentPlates = result.plates
         diagnosticLog.append(contentsOf: result.diagnostics)
+
+        // Update camera frame skip floor based on current motion state
+        cameraService.motionMinFrameSkip = motionService.frameSkipFloor
 
         let now = Date()
         let todayStart = Calendar.current.startOfDay(for: now)
@@ -276,6 +285,14 @@ final class PlateReaderViewModel: ObservableObject {
         for plate in result.plates {
             let voterKey = findVoterKey(for: plate.text) ?? plate.text
             guard !isFuzzyDuplicate(voterKey) else { continue }
+
+            // Region-based suppression: when stationary/walking, don't re-process
+            // the same physical area of the frame within the cooldown period.
+            let regionKey = regionKeyForBoundingBox(plate.boundingBox)
+            if let lastTime = regionLastSeen[regionKey],
+               Date().timeIntervalSince(lastTime) < motionService.regionCooldown {
+                continue
+            }
 
             candidateVoter.record(
                 key: voterKey,
@@ -299,7 +316,8 @@ final class PlateReaderViewModel: ObservableObject {
             if PlatePatternMatcher.isLocalFormat(voterKey) {
                 threshold = 1
             } else {
-                threshold = isExternal ? 2 : confirmationThreshold
+                let motionThreshold = motionService.confirmationThreshold
+                threshold = isExternal ? 2 : motionThreshold
             }
 
             if newCount == 1 && isExternal {
@@ -335,6 +353,7 @@ final class PlateReaderViewModel: ObservableObject {
             }
 
             seenPlates.append((text: consensusText, time: now))
+            regionLastSeen[regionKey] = now
             let frames = newCount
 
             let firstSeen = candidateFirstSeen[voterKey] ?? now
@@ -530,6 +549,15 @@ final class PlateReaderViewModel: ObservableObject {
             if editDistance(Array(a), Array(b)) <= 1 { return true }
         }
         return false
+    }
+
+    /// Quantize a bounding box into a grid cell key for region-based suppression.
+    /// Divides the frame into a 4x4 grid — plates in the same cell are considered
+    /// the "same region" for cooldown purposes.
+    private func regionKeyForBoundingBox(_ box: CGRect) -> String {
+        let col = Int(box.midX * 4)
+        let row = Int(box.midY * 4)
+        return "\(col),\(row)"
     }
 
     private func editDistance(_ a: [Character], _ b: [Character]) -> Int {

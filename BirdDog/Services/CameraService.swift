@@ -347,6 +347,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var lastFrameTime: Date?
     private var burstUntil: Date = .distantPast
 
+    /// Minimum frame skip set by motion/speed service to prevent over-scanning when stationary
+    var motionMinFrameSkip: Int = 2
+
     func markProcessingComplete(elapsed: TimeInterval) {
         isProcessing = false
 
@@ -362,16 +365,16 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
 
-        // External cameras (especially global shutter) produce clean frames
-        // at high FPS — allow processing every other frame (minSkip 1 at 60fps
-        // = 30 processed fps). Built-in stays more conservative.
         let maxSkip = isUsingExternalCamera ? 6 : 8
-        let minSkip = isUsingExternalCamera ? 1 : 2
+        let minSkip = max(isUsingExternalCamera ? 1 : 2, motionMinFrameSkip)
 
         if elapsed > 0.20 {
             frameSkip = min(frameSkip + 1, maxSkip)
         } else if elapsed < 0.10, frameSkip > minSkip {
             frameSkip -= 1
+        }
+        if frameSkip < minSkip {
+            frameSkip = minSkip
         }
     }
 
