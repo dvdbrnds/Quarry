@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func, or_, cast, Date, String
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from ..auth.okta import get_current_user, OktaUser, require_admin, require_office
 from ..config import settings
@@ -74,6 +75,7 @@ async def list_tickets(
     items = (
         await db.execute(
             query.order_by(Ticket.issued_at.desc())
+            .options(defer(Ticket.photo_data))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -263,6 +265,7 @@ async def dashboard(
     items_q = await db.execute(
         select(Ticket)
         .where(Ticket.status.in_(["appealed", "escalated"]))
+        .options(defer(Ticket.photo_data))
         .order_by(Ticket.issued_at.asc())
         .limit(20)
     )
@@ -274,6 +277,7 @@ async def dashboard(
     activity_q = await db.execute(
         select(Ticket)
         .where(or_(Ticket.issued_at >= since, Ticket.updated_at >= since))
+        .options(defer(Ticket.photo_data))
         .order_by(Ticket.updated_at.desc())
         .limit(30)
     )
@@ -575,10 +579,9 @@ async def serve_photo(
     ticket_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    from sqlalchemy.orm import undefer
     from sqlalchemy import select as _select
     result = await db.execute(
-        _select(Ticket).where(Ticket.id == ticket_id).options(undefer(Ticket.photo_data))
+        _select(Ticket).where(Ticket.id == ticket_id)
     )
     ticket = result.scalar()
     if not ticket:

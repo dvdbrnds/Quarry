@@ -25,6 +25,8 @@ interface Ticket {
   status: string;
   ticket_category: string;
   location_text: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
   vehicle_description: string | null;
   driver_name: string | null;
   driver_license: string | null;
@@ -442,6 +444,18 @@ function TicketsList() {
               {selected.owner_name && <Descriptions.Item label="Owner">{selected.owner_name}</Descriptions.Item>}
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
               <Descriptions.Item label="Issued" span={2}>{new Date(selected.issued_at).toLocaleString()}</Descriptions.Item>
+              {selected.location_lat && selected.location_lng && (
+                <Descriptions.Item label="GPS" span={2}>
+                  <a
+                    href={`https://maps.google.com/?q=${selected.location_lat},${selected.location_lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline font-mono text-xs"
+                  >
+                    {selected.location_lat.toFixed(6)}, {selected.location_lng.toFixed(6)}
+                  </a>
+                </Descriptions.Item>
+              )}
             </Descriptions>
 
             {selected.ticket_category === "moving" && (
