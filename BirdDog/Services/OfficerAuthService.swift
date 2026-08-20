@@ -190,11 +190,28 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
     private func parseIDToken(_ token: String, accessToken: String? = nil) {
         let parts = token.split(separator: ".")
-        guard parts.count >= 2 else {
+        guard parts.count == 3 else {
             loginError = "Malformed ID token"
             return
         }
 
+        // Verify signature before trusting claims
+        let settings = AppSettings.shared
+        Task {
+            let verified = await verifyJWTSignature(token: token, issuer: settings.oktaIssuer)
+            await MainActor.run {
+                if !verified {
+                    self.loginError = "ID token signature verification failed"
+                    self.isLoggedIn = false
+                    return
+                }
+                self.extractAndApplyClaims(from: token, accessToken: accessToken)
+            }
+        }
+    }
+
+    private func extractAndApplyClaims(from token: String, accessToken: String?) {
+        let parts = token.split(separator: ".")
         var base64 = String(parts[1])
         while base64.count % 4 != 0 { base64.append("=") }
 
@@ -204,13 +221,33 @@ final class OfficerAuthService: NSObject, ObservableObject {
             return
         }
 
+        let settings = AppSettings.shared
+
+        // Validate issuer
+        if let iss = claims["iss"] as? String, iss != settings.oktaIssuer {
+            loginError = "Token issuer mismatch"
+            return
+        }
+
+        // Validate audience
+        if let aud = claims["aud"] as? String, aud != settings.oktaClientId {
+            loginError = "Token audience mismatch"
+            return
+        }
+
+        // Validate expiration
+        if let exp = claims["exp"] as? TimeInterval, Date(timeIntervalSince1970: exp) < Date() {
+            loginError = "Token has expired"
+            return
+        }
+
         let name = claims["name"] as? String
             ?? claims["preferred_username"] as? String
             ?? ""
         let email = claims["email"] as? String
             ?? claims["sub"] as? String
             ?? ""
-        let groups = claims[AppSettings.shared.oktaGroupsClaim] as? [String] ?? []
+        let groups = claims[settings.oktaGroupsClaim] as? [String] ?? []
 
         let expiry: Date
         if let exp = claims["exp"] as? TimeInterval {
@@ -235,6 +272,138 @@ final class OfficerAuthService: NSObject, ObservableObject {
         }
 
         saveToKeychain(name: name, email: email, groups: groups, expiry: expiry)
+    }
+
+    // MARK: - JWT Signature Verification
+
+    private nonisolated func verifyJWTSignature(token: String, issuer: String) async -> Bool {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return false }
+
+        // Decode header to get kid and algorithm
+        var headerBase64 = String(parts[0])
+        while headerBase64.count % 4 != 0 { headerBase64.append("=") }
+        guard let headerData = Data(base64Encoded: headerBase64),
+              let header = try? JSONSerialization.jsonObject(with: headerData) as? [String: Any],
+              let kid = header["kid"] as? String,
+              let alg = header["alg"] as? String, alg == "RS256" else {
+            return false
+        }
+
+        // Fetch JWKS
+        guard let jwks = await fetchJWKS(issuer: issuer),
+              let keys = jwks["keys"] as? [[String: Any]] else {
+            return false
+        }
+
+        // Find the matching key
+        guard let jwk = keys.first(where: { ($0["kid"] as? String) == kid }),
+              let n = jwk["n"] as? String,
+              let e = jwk["e"] as? String else {
+            return false
+        }
+
+        // Verify RS256 signature
+        let signedPortion = Data(("\(parts[0]).\(parts[1])").utf8)
+        guard let signatureData = base64URLDecode(String(parts[2])) else { return false }
+
+        guard let publicKey = buildRSAPublicKey(modulus: n, exponent: e) else { return false }
+
+        var error: Unmanaged<CFError>?
+        let result = SecKeyVerifySignature(
+            publicKey,
+            .rsaSignatureMessagePKCS1v15SHA256,
+            signedPortion as CFData,
+            signatureData as CFData,
+            &error
+        )
+        return result
+    }
+
+    private nonisolated func fetchJWKS(issuer: String) async -> [String: Any]? {
+        guard let url = URL(string: "\(issuer)/v1/keys") else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } catch {
+            return nil
+        }
+    }
+
+    private nonisolated func base64URLDecode(_ string: String) -> Data? {
+        var base64 = string
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64.append("=") }
+        return Data(base64Encoded: base64)
+    }
+
+    private nonisolated func buildRSAPublicKey(modulus: String, exponent: String) -> SecKey? {
+        guard let modulusData = base64URLDecode(modulus),
+              let exponentData = base64URLDecode(exponent) else { return nil }
+
+        // Build DER-encoded RSA public key
+        let modulusBytes = [UInt8](modulusData)
+        let exponentBytes = [UInt8](exponentData)
+
+        var modIntBytes = modulusBytes
+        if modIntBytes.first! >= 0x80 {
+            modIntBytes.insert(0x00, at: 0)
+        }
+
+        var expIntBytes = exponentBytes
+        if expIntBytes.first! >= 0x80 {
+            expIntBytes.insert(0x00, at: 0)
+        }
+
+        let modInteger = derInteger(modIntBytes)
+        let expInteger = derInteger(expIntBytes)
+        let sequence = derSequence(modInteger + expInteger)
+        let bitString = derBitString(sequence)
+        let algorithmIdentifier = derSequence(
+            derOID([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]) + derNull()
+        )
+        let outerSequence = derSequence(algorithmIdentifier + bitString)
+
+        let keyData = Data(outerSequence)
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+            kSecAttrKeySizeInBits as String: modulusData.count * 8,
+        ]
+
+        return SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, nil)
+    }
+
+    private nonisolated func derLength(_ length: Int) -> [UInt8] {
+        if length < 0x80 {
+            return [UInt8(length)]
+        } else if length < 0x100 {
+            return [0x81, UInt8(length)]
+        } else {
+            return [0x82, UInt8(length >> 8), UInt8(length & 0xFF)]
+        }
+    }
+
+    private nonisolated func derInteger(_ bytes: [UInt8]) -> [UInt8] {
+        [0x02] + derLength(bytes.count) + bytes
+    }
+
+    private nonisolated func derSequence(_ content: [UInt8]) -> [UInt8] {
+        [0x30] + derLength(content.count) + content
+    }
+
+    private nonisolated func derBitString(_ content: [UInt8]) -> [UInt8] {
+        [0x03] + derLength(content.count + 1) + [0x00] + content
+    }
+
+    private nonisolated func derOID(_ bytes: [UInt8]) -> [UInt8] {
+        [0x06] + derLength(bytes.count) + bytes
+    }
+
+    private nonisolated func derNull() -> [UInt8] {
+        [0x05, 0x00]
     }
 
     private func fetchUserInfoGroups(accessToken: String) async -> [String] {

@@ -332,6 +332,18 @@ final class PlateDatabase {
         recordsByLengthCache.removeAll()
     }
 
+    /// Find all records belonging to a given permit (by permitNumber).
+    func recordsForPermitNumber(_ permitNumber: String) -> [PermitRecord] {
+        let target = permitNumber
+        var descriptor = FetchDescriptor<PermitRecord>(
+            predicate: #Predicate<PermitRecord> { record in
+                record.permitNumber == target
+            }
+        )
+        descriptor.fetchLimit = 50
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
     func totalCount() -> Int {
         (try? context.fetchCount(FetchDescriptor<PermitRecord>())) ?? 0
     }

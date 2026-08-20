@@ -175,10 +175,17 @@ final class HoundDogSyncService: ObservableObject {
                         deleted += 1
                     }
                 } else {
-                    for plate in plateNormalized {
-                        guard !plate.isEmpty else { continue }
+                    let validPlates = Set(plateNormalized.filter { !$0.isEmpty })
+                    for plate in validPlates {
                         try db.upsertRecord(makePermitEntry(permit, plateNormalized: plate))
                         upserted += 1
+                    }
+                    // Remove stale plates that were previously on this permit (e.g. plate swap)
+                    let stale = db.recordsForPermitNumber(permit.studentId)
+                        .filter { !validPlates.contains($0.plateNormalized) }
+                    for record in stale {
+                        db.deleteRecord(normalizedPlate: record.plateNormalized)
+                        deleted += 1
                     }
                 }
             }
@@ -288,7 +295,8 @@ final class HoundDogSyncService: ObservableObject {
             let boundary = lot.boundary.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
             let parkingLot = ParkingLot(
                 id: lot.id, name: lot.name, boundary: boundary,
-                spotCount: lot.spotCount ?? 0, hasSheepDog: lot.hasSheepDog ?? false
+                spotCount: lot.spotCount ?? 0, hasSheepDog: lot.hasSheepDog ?? false,
+                accessSchedule: lot.accessSchedule ?? []
             )
 
             if geofence.lots.contains(where: { $0.id == lot.id }) {
@@ -496,12 +504,33 @@ struct SyncLot: Decodable {
     let hasSheepDog: Bool?
     let spots: [SyncSpot]?
     let deletedAt: String?
+    let accessSchedule: [SyncSeasonSchedule]?
 
     enum CodingKeys: String, CodingKey {
         case id, name, boundary, spots
         case spotCount = "spot_count"
         case hasSheepDog = "has_sheepdog"
         case deletedAt = "deleted_at"
+        case accessSchedule = "access_schedule"
+    }
+}
+
+struct SyncSeasonSchedule: Codable, Sendable, Equatable {
+    let season: String
+    let label: String?
+    let rules: [SyncTimeRule]
+}
+
+struct SyncTimeRule: Codable, Sendable, Equatable {
+    let start: String
+    let end: String
+    let days: [String]
+    let allowedPermitTypes: [String]
+    let label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case start, end, days, label
+        case allowedPermitTypes = "allowed_permit_types"
     }
 }
 

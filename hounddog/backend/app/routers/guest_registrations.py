@@ -208,6 +208,23 @@ async def cancel_guest(
     if reg.host_email.lower() != (user.email or "").lower():
         raise HTTPException(403, "You can only cancel your own guest registrations")
     reg.status = "cancelled"
+
+    # Expire the auto-created guest permit so BirdDog stops accepting the plate
+    if reg.guest_plate:
+        plate_upper = reg.guest_plate.strip().upper()
+        permit_result = await db.execute(
+            select(Permit).where(
+                Permit.permit_type == "student_guest",
+                Permit.status == "active",
+                Permit.plates.contains([plate_upper]),
+                Permit.start_date == reg.check_in,
+                Permit.end_date == reg.check_out,
+            )
+        )
+        guest_permit = permit_result.scalars().first()
+        if guest_permit:
+            guest_permit.status = "expired"
+
     await db.flush()
 
 

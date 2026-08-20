@@ -92,6 +92,14 @@ final class PlateAuthService: PlateCheckable {
             return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
         }
 
+        // Time-of-day enforcement: check lot's access_schedule against permit type
+        if let currentLot,
+           let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot }),
+           !lot.accessSchedule.isEmpty,
+           !lot.isPermitTypeAllowed(record.permitType) {
+            return .wrongLot(permit: info, expectedLot: "\(currentLot) (time-restricted)", actualLot: currentLot)
+        }
+
         // Allowed to park in this lot at this time
         return .authorized(permit: info)
     }
