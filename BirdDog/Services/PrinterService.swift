@@ -63,6 +63,7 @@ final class PrinterService: ObservableObject {
     private var savedSettings: StarConnectionSettings?
     private var discoveryManager: StarDeviceDiscoveryManager?
     private var _discoveryDelegate: DiscoveryDelegate?
+    private var radioScanner: BluetoothRadioScanner?
 
     private init() {
         self.autoPrintEnabled = UserDefaults.standard.bool(forKey: Self.autoPrintKey)
@@ -154,6 +155,23 @@ final class PrinterService: ObservableObject {
             let msg = detailedErrorMessage(error)
             lastError = "Discovery failed: \(msg)"
             log("Discovery error: \(msg)")
+        }
+
+        radioScanner = BluetoothRadioScanner()
+        radioScanner?.scan(seconds: 6) { [weak self] names in
+            Task { @MainActor in
+                guard let self else { return }
+                if names.isEmpty {
+                    self.log("BLE radio scan: no Star devices seen by Bluetooth radio")
+                } else {
+                    self.log("BLE radio scan found: \(names)")
+                    self.log("⚠ Printer visible to BLE but not to MFi/StarIO10 — likely connected to another device. Disconnect it from the other device first.")
+                    if self.discoveredPrinters.isEmpty {
+                        self.lastError = "Printer \"\(names.first ?? "")\" is visible but its MFi channel may be held by another device. Disconnect the printer from your other iPhone/iPad first, then try again."
+                    }
+                }
+                self.radioScanner = nil
+            }
         }
     }
 
@@ -508,7 +526,7 @@ final class PrinterService: ObservableObject {
             return "Printer port is busy. Wait a few seconds and try again."
         }
         if case StarIO10Error.notFound = error {
-            return "Printer not found. Make sure it is powered on and paired in iOS Bluetooth Settings (PIN 1234)."
+            return "Printer not found. It may be connected to another device (the SM-S230i only connects to one at a time). Disconnect it from the other device, then try again."
         }
         if case StarIO10Error.communication = error {
             return "Lost communication with the printer. Power-cycle it and try again."
@@ -572,5 +590,59 @@ private class DiscoveryDelegate: NSObject, StarDeviceDiscoveryManagerDelegate {
 
     func managerDidFinishDiscovery(_ manager: StarDeviceDiscoveryManager) {
         onFinished()
+    }
+}
+
+// MARK: - CoreBluetooth Scanner (diagnostic only)
+
+/// Runs a quick BLE scan to see what the device's Bluetooth radio can actually detect.
+/// This helps diagnose when iOS Settings shows "Connected" but StarIO10 can't find it
+/// (usually means the printer's MFi channel is held by another device).
+class BluetoothRadioScanner: NSObject, CBCentralManagerDelegate {
+    private var central: CBCentralManager?
+    private var foundNames: [String] = []
+    private var onComplete: (([String]) -> Void)?
+    private var scanTimer: Timer?
+
+    func scan(seconds: TimeInterval, completion: @escaping ([String]) -> Void) {
+        foundNames = []
+        onComplete = completion
+        central = CBCentralManager(delegate: self, queue: .main)
+        scanTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            self?.finish()
+        }
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard central.state == .poweredOn else {
+            if central.state == .unauthorized || central.state == .unsupported {
+                finish()
+            }
+            return
+        }
+        central.scanForPeripherals(withServices: nil, options: [
+            CBCentralManagerScanOptionAllowDuplicatesKey: false
+        ])
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        guard let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String else { return }
+        let lower = name.lowercased()
+        if lower.contains("star") || lower.contains("sm-") || lower.contains("prnt")
+            || lower.contains("tsp") || lower.contains("mcp") {
+            if !foundNames.contains(name) {
+                foundNames.append(name)
+            }
+        }
+    }
+
+    private func finish() {
+        scanTimer?.invalidate()
+        scanTimer = nil
+        central?.stopScan()
+        central = nil
+        onComplete?(foundNames)
+        onComplete = nil
     }
 }
