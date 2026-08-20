@@ -568,8 +568,23 @@ async def _upload_ticket_impl(
     notification_sent = False
     notification_email: str | None = None
 
+    # Resolve notification email: permit.email, or fall back to any other
+    # permit with the same student_id that has an email populated.
+    recipient_email: str | None = None
+    if permit:
+        recipient_email = getattr(permit, "email", None)
+        if not recipient_email and getattr(permit, "student_id", None):
+            fallback_result = await db.execute(
+                select(Permit.email).where(
+                    Permit.student_id == permit.student_id,
+                    Permit.email.isnot(None),
+                    Permit.email != "",
+                ).limit(1)
+            )
+            recipient_email = fallback_result.scalar()
+
     try:
-        if permit and getattr(permit, "email", None):
+        if recipient_email:
             vtype_label = ticket.violation_type or "Parking Violation"
             if ticket.violation_type:
                 vt_row = await db.execute(
@@ -579,7 +594,7 @@ async def _upload_ticket_impl(
                 if vt_label_row:
                     vtype_label = vt_label_row
             email_ok = await send_citation_email(
-                recipient_email=permit.email,
+                recipient_email=recipient_email,
                 plate=new_ticket.plate,
                 lot=new_ticket.lot or "",
                 violation_label=vtype_label,
@@ -591,7 +606,7 @@ async def _upload_ticket_impl(
             )
             if email_ok:
                 notification_sent = True
-                notification_email = permit.email
+                notification_email = recipient_email
     except Exception as e:
         import logging
         logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
@@ -604,7 +619,7 @@ async def _upload_ticket_impl(
                 plate=new_ticket.plate,
                 student_id=permit.student_id,
                 student_name=permit.name,
-                student_email=getattr(permit, 'email', None),
+                student_email=recipient_email or getattr(permit, 'email', None),
             )
     except Exception as e:
         logger.warning("Escalation check failed (non-fatal): %s", e)
