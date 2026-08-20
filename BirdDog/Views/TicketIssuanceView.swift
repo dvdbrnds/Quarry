@@ -319,10 +319,12 @@ struct TicketIssuanceView: View {
             permitNumber: permit?.permitNumber
         )
 
+        // Persist locally FIRST so the retry queue works even if the server is unreachable
+        try? db.savePendingTicket(ticket)
+
         Task {
             do {
                 let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
-                try? db.savePendingTicket(ticket)
                 db.markTicketUploaded(ticket)
                 ticket.paymentUrl = serverResult.paymentUrl
                 ticket.fineAmount = serverResult.fineAmount
@@ -335,9 +337,18 @@ struct TicketIssuanceView: View {
                     isSubmitting = false
                 }
             } catch {
+                // Ticket is already saved locally — it will retry on next sync
                 await MainActor.run {
-                    errorMessage = "Could not reach the server. Check your connection and try again."
+                    onTicketIssued?(normalizedPlate)
                     isSubmitting = false
+                    submittedResult = HoundDogSyncService.TicketUploadResponse(
+                        ticketId: ticket.ticketId,
+                        paymentUrl: "",
+                        fineAmount: ViolationTypeStore.shared.fineAmount(forCode: ticket.violationType),
+                        offenseNumber: db.offenseCount(forPlate: normalizedPlate),
+                        notificationSent: false,
+                        notificationEmail: nil
+                    )
                 }
             }
         }

@@ -526,7 +526,7 @@ final class PrinterService: ObservableObject {
             return "Printer port is busy. Wait a few seconds and try again."
         }
         if case StarIO10Error.notFound = error {
-            return "Printer not found. It may be connected to another device (the SM-S230i only connects to one at a time). Disconnect it from the other device, then try again."
+            return "Printer not found. Pull the battery for 10 seconds to reset it, re-pair in iOS Bluetooth (PIN 1234), then Search again."
         }
         if case StarIO10Error.communication = error {
             return "Lost communication with the printer. Power-cycle it and try again."

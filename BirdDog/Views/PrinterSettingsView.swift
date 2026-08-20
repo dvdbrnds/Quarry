@@ -218,7 +218,7 @@ struct PrinterSettingsView: View {
         } header: {
             Text("Connect")
         } footer: {
-            Text("Step 1: Pair the printer in iOS Settings → Bluetooth (PIN 1234). Step 2: Tap Connect First Available or enter the Bluetooth name (shown in Settings, e.g. \"PRNT Star\").")
+            Text("If the printer doesn't appear: pull the battery out for 10 seconds, put it back in, then pair it in iOS Settings → Bluetooth (PIN 1234). The battery pull clears the printer's connection cache.")
         }
     }
 
