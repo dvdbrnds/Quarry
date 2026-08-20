@@ -307,6 +307,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 if self.lastFrameTime != nil {
                     self.isUsingExternalCamera = true
                     self.cachedOrientation = self.externalCameraOrientation
+                    self.lastConnectedAt = Date()
                     self.log("RECONNECT: external camera LIVE on attempt \(attempt)")
                     self.publishCameraInfo(camera)
                     DispatchQueue.main.async { [weak self] in
@@ -435,6 +436,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var isReconnecting = false
     private var hubReconnectWork: DispatchWorkItem?
     private var pollIteration = 0
+    /// Suppress reconnect triggers for a stability window after successful connection
+    private var lastConnectedAt: Date = .distantPast
+    private let stabilityWindow: TimeInterval = 30
 
     /// Debounced reconnect for hot-plug through USB hubs.
     /// When a camera is plugged in, multiple observers fire in rapid
@@ -442,6 +446,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     /// streaming endpoints. This coalesces them into a single attempt
     /// after a 5-second delay to let the hub fully enumerate.
     private func scheduleHubReconnect() {
+        if isUsingExternalCamera && Date().timeIntervalSince(lastConnectedAt) < stabilityWindow {
+            log("Ignoring reconnect trigger — within stability window")
+            return
+        }
         hubReconnectWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.isRunning, !self.isUsingExternalCamera else { return }
@@ -518,6 +526,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @objc private func sessionWasInterrupted(_ notification: Notification) {
         guard !isReconnecting else { return }
 
+        // If we recently connected and are getting frames, this is spurious
+        if isUsingExternalCamera && Date().timeIntervalSince(lastConnectedAt) < stabilityWindow {
+            log("SESSION INTERRUPTED (suppressed — within stability window)")
+            return
+        }
+
         var reasonStr = "unknown"
         if let rawValue = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue,
            let reason = AVCaptureSession.InterruptionReason(rawValue: rawValue) {
@@ -551,6 +565,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     @objc private func sessionInterruptionEnded(_ notification: Notification) {
         guard !isReconnecting else { return }
+        // If within stability window, the camera is fine — don't tear it down
+        if isUsingExternalCamera && Date().timeIntervalSince(lastConnectedAt) < stabilityWindow {
+            log("SESSION INTERRUPTION ENDED (suppressed — within stability window)")
+            return
+        }
         log("SESSION INTERRUPTION ENDED — full reconnect to reacquire camera")
         forceReconnect()
     }
@@ -578,6 +597,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         ) { [weak self] _ in
             guard let self else { return }
             guard !self.isReconnecting else { return }
+            // Suppress if camera is stable
+            if self.isUsingExternalCamera && Date().timeIntervalSince(self.lastConnectedAt) < self.stabilityWindow { return }
             guard let newCamera = AVCaptureDevice.systemPreferredCamera else { return }
             if newCamera.deviceType == .external, !self.isUsingExternalCamera, !self.isReconnecting {
                 self.log("System preferred external camera — scheduling reconnect")
@@ -602,6 +623,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         ) { [weak self] session, _ in
             guard let self else { return }
             guard !self.isReconnecting else { return }
+            // Suppress if camera is connected and stable
+            if self.isUsingExternalCamera && Date().timeIntervalSince(self.lastConnectedAt) < self.stabilityWindow { return }
             let devices = session.devices
             let external = devices.first(where: { $0.deviceType == .external })
 
@@ -684,7 +707,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
             log("SWITCHED TO: \(camera.localizedName) (\(isExternal ? "EXTERNAL" : "built-in"))")
             publishCameraInfo(camera)
-            if isExternal { stopPolling() }
+            if isExternal {
+                stopPolling()
+                lastConnectedAt = Date()
+            }
             DispatchQueue.main.async { [weak self] in
                 self?.cameraSwitchCount += 1
                 self?.cameraStatus = isExternal ? .externalActive : .builtIn

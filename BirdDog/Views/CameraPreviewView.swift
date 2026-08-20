@@ -87,11 +87,11 @@ struct CameraPreviewView: UIViewRepresentable {
                     connection.isVideoMirrored = false
                 }
 
-                // External cameras deliver landscape frames. The built-in camera
-                // default rotation is 90° (landscape sensor → portrait display),
-                // which is wrong for external cameras. Reset to 0 so the landscape
-                // frame displays as-is, matching what the camera actually sees.
-                if connection.isVideoRotationAngleSupported(0) {
+                let degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
+                let angle = CGFloat(degrees)
+                if connection.isVideoRotationAngleSupported(angle) {
+                    connection.videoRotationAngle = angle
+                } else if connection.isVideoRotationAngleSupported(0) {
                     connection.videoRotationAngle = 0
                 }
             }

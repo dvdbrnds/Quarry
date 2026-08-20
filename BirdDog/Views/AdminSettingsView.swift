@@ -116,7 +116,7 @@ struct AdminSettingsView: View {
                 Label("External Camera Rotation", systemImage: "rotate.right")
             }
             .onChange(of: appSettings.externalCameraRotation) { _, _ in
-                cameraService.forceReconnect()
+                NotificationCenter.default.post(name: NSNotification.Name("BirdDogCameraDidChange"), object: nil)
             }
 
             Button {
