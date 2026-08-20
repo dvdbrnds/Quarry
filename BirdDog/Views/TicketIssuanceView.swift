@@ -322,6 +322,8 @@ struct TicketIssuanceView: View {
         // Persist locally FIRST so the retry queue works even if the server is unreachable
         try? db.savePendingTicket(ticket)
 
+        let paymentBaseURL = AppSettings.shared.paymentBaseURL
+
         Task {
             do {
                 let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
@@ -338,12 +340,14 @@ struct TicketIssuanceView: View {
                 }
             } catch {
                 // Ticket is already saved locally — it will retry on next sync
+                let offlinePaymentUrl = paymentBaseURL.isEmpty ? "" : "\(paymentBaseURL)/pay?ticket=\(ticket.ticketId)"
+
                 await MainActor.run {
                     onTicketIssued?(normalizedPlate)
                     isSubmitting = false
                     submittedResult = HoundDogSyncService.TicketUploadResponse(
                         ticketId: ticket.ticketId,
-                        paymentUrl: "",
+                        paymentUrl: offlinePaymentUrl,
                         fineAmount: ViolationTypeStore.shared.fineAmount(forCode: ticket.violationType),
                         offenseNumber: db.offenseCount(forPlate: normalizedPlate),
                         notificationSent: false,
