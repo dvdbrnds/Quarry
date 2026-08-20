@@ -1136,6 +1136,7 @@ app.include_router(resident_plates.router, prefix="/api/resident-plates", tags=[
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(sync.diagnostic_router, prefix="/api/sync", tags=["sync-diagnostic"])
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])
+app.include_router(tickets.public_router, prefix="/api/tickets", tags=["tickets-public"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
 app.include_router(appeals.router, prefix="/api/appeals", tags=["appeals"])
 app.include_router(appeals.public_router, prefix="/api/appeals", tags=["appeals-public"])

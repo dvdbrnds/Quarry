@@ -35,6 +35,7 @@ from ..schemas.ticket import (
 )
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+public_router = APIRouter()
 
 VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
 
@@ -574,7 +575,7 @@ async def upload_photo(
     return {"photo_url": ticket.photo_url}
 
 
-@router.get("/{ticket_id}/photo")
+@public_router.get("/{ticket_id}/photo")
 async def serve_photo(
     ticket_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
