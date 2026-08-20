@@ -493,8 +493,15 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     private func isFuzzyDuplicate(_ text: String) -> Bool {
+        let now = Date()
         for seen in seenPlates {
-            if isFuzzyMatch(text, seen.text) { return true }
+            // Use stricter match for older reads, looser for very recent ones
+            let age = now.timeIntervalSince(seen.time)
+            if age < 5.0 {
+                if isFuzzyMatchRecent(text, seen.text) { return true }
+            } else {
+                if isFuzzyMatch(text, seen.text) { return true }
+            }
         }
         for key in candidateCounts.keys where key != text {
             if isCandidateMerge(text, key) {
@@ -520,6 +527,7 @@ final class PlateReaderViewModel: ObservableObject {
         if lenDiff == 0 {
             let diffs = zip(a, b).filter { $0 != $1 }.count
             if diffs <= 1 { return true }
+            if diffs <= 2 && PlatePatternMatcher.confusableDistance(a, b) <= 1.0 { return true }
             if PlatePatternMatcher.confusableDistance(a, b) <= 1.0 { return true }
         }
 
@@ -539,6 +547,19 @@ final class PlateReaderViewModel: ObservableObject {
             }
         }
 
+        return false
+    }
+
+    /// Looser fuzzy match for recent reads — if a plate was logged within the last
+    /// few seconds, any nearby reading is almost certainly the same physical plate.
+    private func isFuzzyMatchRecent(_ a: String, _ b: String) -> Bool {
+        if isFuzzyMatch(a, b) { return true }
+
+        let lenDiff = abs(a.count - b.count)
+        if lenDiff <= 1 {
+            if PlatePatternMatcher.confusableDistance(a, b) <= 2.0 { return true }
+            if editDistance(Array(a), Array(b)) <= 3 { return true }
+        }
         return false
     }
 
