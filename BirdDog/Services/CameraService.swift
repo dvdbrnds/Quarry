@@ -126,6 +126,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             guard let self, self.isRunning else { return }
             self.session.stopRunning()
             self.isRunning = false
+            self.latestSampleBuffer = nil
             self.logFileHandle?.closeFile()
             self.logFileHandle = nil
         }
@@ -149,10 +150,13 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     /// Grab a photo from the camera. Uses the latest buffered frame if available,
     /// otherwise briefly restarts the camera to capture one fresh frame.
     func captureOneShotPhoto() async -> String? {
-        if latestSampleBuffer != nil {
+        // If session is running and we have a recent buffer, use it directly
+        if isRunning && latestSampleBuffer != nil {
             return captureViolationPhoto()
         }
 
+        // Need to start the session to get a fresh frame
+        let wasRunning = isRunning
         let savedSuppressed = outputSuppressed
         oneShotCapture = true
         outputSuppressed = false
@@ -170,14 +174,19 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         let path = captureViolationPhoto()
 
-        await withCheckedContinuation { cont in
-            sessionQueue.async { [weak self] in
-                guard let self, self.isRunning else { cont.resume(); return }
-                self.session.stopRunning()
-                self.isRunning = false
-                self.oneShotCapture = false
-                cont.resume()
+        // Only stop the session if it wasn't running before we started it
+        if !wasRunning {
+            await withCheckedContinuation { cont in
+                sessionQueue.async { [weak self] in
+                    guard let self, self.isRunning else { cont.resume(); return }
+                    self.session.stopRunning()
+                    self.isRunning = false
+                    self.oneShotCapture = false
+                    cont.resume()
+                }
             }
+        } else {
+            oneShotCapture = false
         }
         outputSuppressed = savedSuppressed
         return path
@@ -188,7 +197,18 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let context = CIContext()
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
-        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+        let imageOrientation: UIImage.Orientation
+        if isUsingExternalCamera {
+            switch externalCameraOrientation {
+            case .right: imageOrientation = .right
+            case .down:  imageOrientation = .down
+            case .left:  imageOrientation = .left
+            default:     imageOrientation = .up
+            }
+        } else {
+            imageOrientation = .right
+        }
+        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: imageOrientation)
         let targetSize = CGSize(width: 640, height: 480)
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
