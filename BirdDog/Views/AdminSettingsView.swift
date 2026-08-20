@@ -156,7 +156,7 @@ struct AdminSettingsView: View {
         } header: {
             Text("Printer")
         } footer: {
-            Text("Pair the SM-S230i in iOS Settings → Bluetooth, then connect it here to print tickets in the field.")
+            Text("Open Thermal Printer, tap Pair Printer, and select the Star printer. Works with SM-S210i through SM-S230i, T300, and L200/L300.")
         }
     }
 

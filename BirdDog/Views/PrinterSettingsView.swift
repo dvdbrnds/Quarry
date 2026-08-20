@@ -8,6 +8,7 @@ struct PrinterSettingsView: View {
     @State private var showTestResult = false
     @State private var manualName = ""
     @State private var isManualConnecting = false
+    @State private var isConnectingFirstAvailable = false
 
     var body: some View {
         List {
@@ -86,7 +87,7 @@ struct PrinterSettingsView: View {
         } header: {
             Text("Thermal Printer")
         } footer: {
-            Text("Pair the SM-S230i in iOS Settings → Bluetooth first, then search here. Classic Bluetooth (MFi) printers appear after pairing.")
+            Text("Works with SM-S210i, SM-S220i, SM-S230i, SM-T300/T300i, and SM-L200/L300. Pair Printer is the most reliable on older iPhones.")
         }
     }
 
@@ -135,6 +136,19 @@ struct PrinterSettingsView: View {
     private var discoverySection: some View {
         Section {
             Button {
+                Task { await printerService.presentSystemPairingPicker() }
+            } label: {
+                HStack {
+                    Label("Pair Printer", systemImage: "antenna.radiowaves.left.and.right")
+                    if printerService.isPairing {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(printerService.isPairing || printerService.connectionState == .connecting)
+
+            Button {
                 printerService.startDiscovery()
             } label: {
                 HStack {
@@ -145,12 +159,28 @@ struct PrinterSettingsView: View {
                     }
                 }
             }
-            .disabled(printerService.isSearching)
+            .disabled(printerService.isSearching || printerService.isPairing)
+
+            Button {
+                connectFirstAvailable()
+            } label: {
+                HStack {
+                    Label("Connect First Available", systemImage: "link")
+                    if isConnectingFirstAvailable {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(
+                isConnectingFirstAvailable
+                    || printerService.isPairing
+                    || printerService.connectionState == .connecting
+            )
 
             ForEach(printerService.discoveredPrinters) { discovered in
                 Button {
                     printerService.connect(to: discovered)
-                    printerService.stopDiscovery()
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -171,20 +201,43 @@ struct PrinterSettingsView: View {
                 }
             }
 
-            if printerService.discoveredPrinters.isEmpty && !printerService.isSearching {
-                Text("No printers found. For SM-S230i: power on the printer, pair it in iPhone Settings → Bluetooth (PIN 1234), confirm it shows Connected, then search again.")
+            if printerService.discoveredPrinters.isEmpty && !printerService.isSearching && !printerService.isPairing {
+                Text("No printers found. Power the printer on, tap Pair Printer, select it (PIN 1234), or use Connect First Available if it is already paired.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             if !printerService.isSearching {
+                quickNameRows
                 manualConnectRow
             }
         } header: {
             Text("Available Printers")
         } footer: {
-            Text("If the printer doesn't appear, use Manual Connect and enter its Bluetooth name (usually \"PRNT Star\" or the name shown in Settings → Bluetooth).")
+            Text("If Search misses the printer (common on older iPhones), use Pair Printer or Connect First Available. Manual name is the Bluetooth name shown in Settings — usually “PRNT Star” or “Star Micronics”.")
         }
+    }
+
+    // MARK: - Common names
+
+    private var quickNameRows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Common names")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(Array(PrinterBluetoothNames.commonPortNames.prefix(3)), id: \.self) { name in
+                    Button(name) {
+                        manualName = name
+                        attemptManualConnect(name)
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+                    .disabled(isManualConnecting || printerService.connectionState == .connecting)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Manual Connect
@@ -200,7 +253,7 @@ struct PrinterSettingsView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                 Button {
-                    attemptManualConnect()
+                    attemptManualConnect(manualName)
                 } label: {
                     if isManualConnecting {
                         ProgressView()
@@ -215,18 +268,25 @@ struct PrinterSettingsView: View {
         .padding(.vertical, 4)
     }
 
-    private func attemptManualConnect() {
-        let name = manualName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        isManualConnecting = true
-        let discovered = PrinterService.DiscoveredPrinter(
-            id: name,
-            interfaceType: .bluetooth,
-            model: name
-        )
+    private func connectFirstAvailable() {
+        isConnectingFirstAvailable = true
         Task {
             do {
-                try await printerService.connectAndWait(to: discovered)
+                try await printerService.connectFirstAvailable()
+            } catch {
+                // lastError is already set
+            }
+            isConnectingFirstAvailable = false
+        }
+    }
+
+    private func attemptManualConnect(_ rawName: String) {
+        let name = rawName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        isManualConnecting = true
+        Task {
+            do {
+                try await printerService.connectByName(name)
                 manualName = ""
             } catch {
                 // lastError is already set by connectAndWait
