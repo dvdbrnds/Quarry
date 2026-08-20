@@ -252,9 +252,25 @@ struct PrinterSettingsView: View {
 
     private var diagnosticsSection: some View {
         Section {
+            let btAuth = printerService.bluetoothAuthStatus
+            if btAuth != "allowed" {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Bluetooth permission: \(btAuth.uppercased())")
+                            .font(.caption.bold())
+                            .foregroundStyle(.red)
+                        Text("Go to Settings → Privacy & Security → Bluetooth and enable Bird Dog.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             DisclosureGroup("Diagnostic Log", isExpanded: $showDiagnostics) {
                 if printerService.diagnosticLog.isEmpty {
-                    Text("No log entries yet.")
+                    Text("No log entries yet. Tap Search or Connect to populate.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {

@@ -1,5 +1,6 @@
 import Foundation
 import ExternalAccessory
+import CoreBluetooth
 import StarIO10
 
 @MainActor
@@ -91,6 +92,18 @@ final class PrinterService: ObservableObject {
 
     // MARK: - Discovery
 
+    /// Check CoreBluetooth authorization. On managed iPads this can be restricted.
+    var bluetoothAuthStatus: String {
+        let auth = CBCentralManager.authorization
+        switch auth {
+        case .allowedAlways: return "allowed"
+        case .denied: return "DENIED"
+        case .restricted: return "RESTRICTED"
+        case .notDetermined: return "not determined"
+        @unknown default: return "unknown(\(auth.rawValue))"
+        }
+    }
+
     func startDiscovery() {
         stopDiscovery()
         discoveredPrinters = []
@@ -98,8 +111,15 @@ final class PrinterService: ObservableObject {
         lastError = nil
         diagnosticLog = []
 
+        let btAuth = bluetoothAuthStatus
+        log("Bluetooth permission: \(btAuth)")
+        if btAuth == "DENIED" || btAuth == "RESTRICTED" {
+            lastError = "Bluetooth access is \(btAuth). Go to Settings → Privacy & Security → Bluetooth and enable Bird Dog."
+        }
+
+        let accessories = EAAccessoryManager.shared().connectedAccessories
+        log("EA accessories (\(accessories.count)): \(accessories.map { "\($0.name) [proto: \($0.protocolStrings)]" })")
         seedPairedBluetoothPrinters()
-        log("EA accessories: \(EAAccessoryManager.shared().connectedAccessories.map { $0.name })")
         log("Seeded \(discoveredPrinters.count) from EA")
 
         do {
@@ -192,7 +212,7 @@ final class PrinterService: ObservableObject {
     }
 
     func connectFirstAvailable() async throws {
-        log("Attempting first-found (no identifier)")
+        log("Attempting first-found — BT permission: \(bluetoothAuthStatus)")
         try await connectWithIdentifier(
             identifier: StarConnectionSettings.FIRST_FOUND_DEVICE,
             interfaceType: .bluetooth,
