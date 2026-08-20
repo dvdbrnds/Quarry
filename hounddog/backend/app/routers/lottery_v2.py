@@ -133,6 +133,7 @@ class ApplicationRead(BaseModel):
     status: str
     lottery_rank: int | None
     waitlist_position: int | None
+    tier_waitlist_position: int | None = None
     offer_expires_at: datetime | None
     admin_notes: str | None = None
     is_test_entry: bool
@@ -206,6 +207,25 @@ async def _app_to_read(
     preference_labels = [
         pt_by_id[tid].label if tid in pt_by_id else str(tid) for tid in prefs
     ]
+
+    # Calculate per-tier waitlist position (how many people ahead wanting same permit)
+    tier_waitlist_pos: int | None = None
+    if app.status == "waitlisted" and prefs and app.waitlist_position is not None:
+        first_pref = prefs[0]
+        ahead_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(LotteryV2Application)
+                .where(
+                    LotteryV2Application.cycle_id == app.cycle_id,
+                    LotteryV2Application.status == "waitlisted",
+                    LotteryV2Application.tier_preferences[0] == first_pref,
+                    LotteryV2Application.waitlist_position < app.waitlist_position,
+                )
+            )
+        ).scalar() or 0
+        tier_waitlist_pos = ahead_count + 1
+
     return ApplicationRead(
         id=app.id,
         cycle_id=app.cycle_id,
@@ -228,6 +248,7 @@ async def _app_to_read(
         status=app.status,
         lottery_rank=app.lottery_rank,
         waitlist_position=app.waitlist_position,
+        tier_waitlist_position=tier_waitlist_pos,
         offer_expires_at=app.offer_expires_at,
         admin_notes=app.admin_notes,
         is_test_entry=app.is_test_entry,

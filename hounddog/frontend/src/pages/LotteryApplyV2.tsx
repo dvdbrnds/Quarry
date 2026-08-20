@@ -127,6 +127,7 @@ interface Application {
   status: string;
   lottery_rank: number | null;
   waitlist_position: number | null;
+  tier_waitlist_position?: number | null;
   phone: string | null;
   offer_expires_at: string | null;
   fee_exempt?: boolean;
@@ -1298,9 +1299,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         );
                       })()}
                       <p className="m-0 mt-2 text-sm text-blue-800">
-                        {application.waitlist_position
-                          ? `You are #${application.waitlist_position} in line.`
-                          : "No action needed."
+                        {application.tier_waitlist_position
+                          ? `You are #${application.tier_waitlist_position} in line for this permit.`
+                          : application.waitlist_position
+                            ? `You are on the waitlist.`
+                            : "No action needed."
                         } You'll be notified if a spot opens.
                       </p>
                     </div>
