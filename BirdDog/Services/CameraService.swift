@@ -306,6 +306,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
                 if self.lastFrameTime != nil {
                     self.isUsingExternalCamera = true
+                    self.cachedOrientation = .right
                     self.log("RECONNECT: external camera LIVE on attempt \(attempt)")
                     self.publishCameraInfo(camera)
                     DispatchQueue.main.async { [weak self] in
@@ -339,8 +340,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
             self.isRunning = true
             self.isReconnecting = false
-            self.stopPolling()
-            self.startPollingIfNeeded()
+            if connected {
+                self.stopPolling()
+            } else {
+                self.stopPolling()
+                self.startPollingIfNeeded()
+            }
         }
     }
 
@@ -511,6 +516,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     @objc private func sessionWasInterrupted(_ notification: Notification) {
+        guard !isReconnecting else { return }
+
         var reasonStr = "unknown"
         if let rawValue = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue,
            let reason = AVCaptureSession.InterruptionReason(rawValue: rawValue) {
@@ -543,6 +550,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     @objc private func sessionInterruptionEnded(_ notification: Notification) {
+        guard !isReconnecting else { return }
         log("SESSION INTERRUPTION ENDED — full reconnect to reacquire camera")
         forceReconnect()
     }
@@ -569,11 +577,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             queue: nil
         ) { [weak self] _ in
             guard let self else { return }
+            guard !self.isReconnecting else { return }
             guard let newCamera = AVCaptureDevice.systemPreferredCamera else { return }
             if newCamera.deviceType == .external, !self.isUsingExternalCamera, !self.isReconnecting {
                 self.log("System preferred external camera — scheduling reconnect")
                 self.scheduleHubReconnect()
-            } else if newCamera.deviceType != .external {
+            } else if newCamera.deviceType != .external, !self.isUsingExternalCamera {
                 self.sessionQueue.async {
                     self.switchToCamera(newCamera)
                 }
@@ -592,6 +601,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             options: [.new]
         ) { [weak self] session, _ in
             guard let self else { return }
+            guard !self.isReconnecting else { return }
             let devices = session.devices
             let external = devices.first(where: { $0.deviceType == .external })
 
@@ -603,7 +613,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                     self.log("External camera appeared — scheduling reconnect")
                     self.scheduleHubReconnect()
                 }
-            } else {
+            } else if !self.isUsingExternalCamera {
                 let best = devices.first(where: { $0.position == .back }) ?? devices.first
                 if let best {
                     AVCaptureDevice.userPreferredCamera = best
@@ -1134,7 +1144,8 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
 
         isProcessing = true
-        delegate?.cameraService(self, didOutput: sampleBuffer, orientation: cachedOrientation)
+        let effectiveOrientation: CGImagePropertyOrientation = isUsingExternalCamera ? .right : cachedOrientation
+        delegate?.cameraService(self, didOutput: sampleBuffer, orientation: effectiveOrientation)
     }
 
     /// Laplacian variance: high = sharp, low = blurry.
