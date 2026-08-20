@@ -17,6 +17,7 @@
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
 		2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */; };
 		2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */; };
+		C1D4A83F7B2E91D03F8B6A01 /* MotionSpeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D4A83F7B2E91D03F8B6A02 /* MotionSpeedService.swift */; };
 		28BAF0B4445935525197A945 /* PrinterSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */; };
 		2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */; };
 		37569C3C0139FED6C7584B07 /* PlatePatternMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */; };
@@ -96,6 +97,7 @@
 		5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcher.swift; sourceTree = "<group>"; };
 		56771E1D5749AF106C7BF205 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoundDogSyncService.swift; sourceTree = "<group>"; };
+		C1D4A83F7B2E91D03F8B6A02 /* MotionSpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSpeedService.swift; sourceTree = "<group>"; };
 		64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDogApp.swift; sourceTree = "<group>"; };
 		6B998945CBE0A6AA9B29E85F /* OfficerAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficerAuthService.swift; sourceTree = "<group>"; };
 		6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryView.swift; sourceTree = "<group>"; };
@@ -183,6 +185,7 @@
 				F3A6EF72A87EC98B04A49AE5 /* EnforcementSettingsStore.swift */,
 				2E381758AC904764909D151F /* GeofenceService.swift */,
 				61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */,
+				C1D4A83F7B2E91D03F8B6A02 /* MotionSpeedService.swift */,
 				6B998945CBE0A6AA9B29E85F /* OfficerAuthService.swift */,
 				32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */,
 				07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */,
@@ -432,6 +435,7 @@
 				A8F9198C4F341CF90FAB9CE5 /* EnforcementSettingsStore.swift in Sources */,
 				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
 				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,
+				C1D4A83F7B2E91D03F8B6A01 /* MotionSpeedService.swift in Sources */,
 				5994879595E847E9856A1071 /* LogExporter.swift in Sources */,
 				035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */,
 				9F6ED9D0556F74E906B630E1 /* MovingViolationView.swift in Sources */,
