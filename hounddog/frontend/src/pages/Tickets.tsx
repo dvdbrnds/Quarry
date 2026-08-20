@@ -97,6 +97,111 @@ function TicketsList() {
 
   useEffect(() => { load(); }, [load]);
 
+  function handlePrintTicket(ticket: Ticket) {
+    const photoUrl = ticket.photo_url ? `${window.location.origin}${ticket.photo_url}` : null;
+    const gpsLink = ticket.location_lat && ticket.location_lng
+      ? `https://maps.google.com/?q=${ticket.location_lat},${ticket.location_lng}`
+      : null;
+
+    const printWindow = window.open("", "_blank", "width=800,height=900");
+    if (!printWindow) return;
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>${ticket.ticket_number || "Ticket"} — Case Report</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; color: #1a1a1a; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a5f; padding-bottom: 16px; margin-bottom: 24px; }
+    .header h1 { font-size: 22px; color: #1e3a5f; }
+    .header .meta { text-align: right; font-size: 12px; color: #555; }
+    .section { margin-bottom: 20px; }
+    .section-title { font-size: 13px; font-weight: 600; text-transform: uppercase; color: #1e3a5f; margin-bottom: 8px; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    td { padding: 8px 12px; border: 1px solid #ddd; }
+    td.label { font-weight: 600; background: #f5f7fa; width: 140px; }
+    .photo { max-width: 100%; max-height: 300px; border-radius: 6px; border: 1px solid #ddd; margin-top: 8px; }
+    .status { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .status-issued { background: #fee2e2; color: #991b1b; }
+    .status-paid { background: #dcfce7; color: #166534; }
+    .status-voided { background: #f3f4f6; color: #6b7280; }
+    .status-appealed { background: #fef9c3; color: #854d0e; }
+    .status-escalated { background: #f3e8ff; color: #6b21a8; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 11px; color: #777; text-align: center; }
+    @media print { body { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Parking Citation Case Report</h1>
+      <div style="font-size:14px; margin-top:4px; color:#333;">${ticket.ticket_number || ""}</div>
+    </div>
+    <div class="meta">
+      <div>Printed: ${new Date().toLocaleString()}</div>
+      <div>Moravian University Parking Services</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Citation Details</div>
+    <table>
+      <tr><td class="label">Ticket #</td><td>${ticket.ticket_number || "—"}</td><td class="label">Status</td><td><span class="status status-${ticket.status}">${ticket.status}</span></td></tr>
+      <tr><td class="label">Plate</td><td style="font-family:monospace;font-size:15px;font-weight:600;">${ticket.plate}</td><td class="label">Fine</td><td>$${Number(ticket.fine_amount).toFixed(2)}</td></tr>
+      <tr><td class="label">Violation</td><td>${ticket.violation_type.replace(/_/g, " ")}</td><td class="label">${ticket.ticket_category === "moving" ? "Location" : "Lot"}</td><td>${ticket.ticket_category === "moving" ? (ticket.location_text || "—") : ticket.lot}</td></tr>
+      <tr><td class="label">Issued</td><td>${new Date(ticket.issued_at).toLocaleString()}</td><td class="label">Officer</td><td>${ticket.officer_name || ticket.officer_id}</td></tr>
+      ${ticket.owner_name ? `<tr><td class="label">Owner</td><td>${ticket.owner_name}</td><td class="label">Permit #</td><td>${ticket.permit_number || "—"}</td></tr>` : ""}
+      ${gpsLink ? `<tr><td class="label">GPS</td><td colspan="3"><a href="${gpsLink}" style="font-family:monospace;font-size:12px;">${ticket.location_lat!.toFixed(6)}, ${ticket.location_lng!.toFixed(6)}</a></td></tr>` : ""}
+    </table>
+  </div>
+
+  ${ticket.ticket_category === "moving" ? `
+  <div class="section">
+    <div class="section-title">Driver & Vehicle</div>
+    <table>
+      ${ticket.driver_name ? `<tr><td class="label">Driver</td><td>${ticket.driver_name}</td></tr>` : ""}
+      ${ticket.driver_license ? `<tr><td class="label">License</td><td style="font-family:monospace;">${ticket.driver_license}</td></tr>` : ""}
+      ${ticket.vehicle_description ? `<tr><td class="label">Vehicle</td><td>${ticket.vehicle_description}</td></tr>` : ""}
+      ${ticket.officer_notes ? `<tr><td class="label">Notes</td><td>${ticket.officer_notes}</td></tr>` : ""}
+    </table>
+  </div>` : ""}
+
+  ${ticket.appeal_note ? `
+  <div class="section">
+    <div class="section-title">Appeal</div>
+    <table>
+      <tr><td class="label">Note</td><td>${ticket.appeal_note}</td></tr>
+      <tr><td class="label">Decision</td><td>${ticket.appeal_decision || "Pending"}</td></tr>
+      ${ticket.appeal_decided_by ? `<tr><td class="label">Decided By</td><td>${ticket.appeal_decided_by}</td></tr>` : ""}
+    </table>
+  </div>` : ""}
+
+  ${photoUrl ? `
+  <div class="section">
+    <div class="section-title">Evidence Photo</div>
+    <img src="${photoUrl}" class="photo" />
+  </div>` : ""}
+
+  <div class="footer">
+    This document was generated from the Quarry Parking Management System. Citation ID: ${ticket.id}
+  </div>
+
+  <script>
+    ${photoUrl ? `
+    const img = document.querySelector('.photo');
+    if (img) {
+      img.onload = () => { window.print(); };
+      img.onerror = () => { window.print(); };
+      setTimeout(() => { window.print(); }, 3000);
+    } else { window.print(); }
+    ` : "window.print();"}
+  </script>
+</body>
+</html>`);
+    printWindow.document.close();
+  }
+
   async function handleVoid(id: string) {
     if (!isAdmin) return;
     modal.confirm({
@@ -413,6 +518,9 @@ function TicketsList() {
         footer={
           <Space>
             <Button onClick={() => setSelected(null)}>Close</Button>
+            {selected && (
+              <Button onClick={() => handlePrintTicket(selected)}>Print Case</Button>
+            )}
             {isAdmin && selected?.appeal_decision === "pending" && (
               <>
                 <Button type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
