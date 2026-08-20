@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api, Permit } from "../api";
-import { authHeaders, isAdminRole } from "../auth";
+import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
   Space, Tabs, Alert, App, Checkbox, InputNumber, Typography,
@@ -730,7 +730,9 @@ export default function Permits() {
                   ? "visitor-presets"
                 : "permits";
   const [tab, setTab] = useState(
-    !isAdmin && (initTab === "lottery" || initTab === "types") ? "permits" : initTab,
+    !isAdmin && !isOfficeRole(user?.role) && (initTab === "lottery" || initTab === "types") ? "permits"
+    : !isAdmin && initTab === "lottery" ? "permits"
+    : initTab,
   );
   const [permits, setPermits] = useState<Permit[]>([]);
   const [total, setTotal] = useState(0);
@@ -1028,7 +1030,7 @@ export default function Permits() {
           {
             key: "types",
             label: "Manage Permits",
-            children: <PermitTypes />,
+            children: <PermitTypes readOnly={!isAdmin} />,
           },
           {
             key: "visitor-presets",
@@ -1065,7 +1067,7 @@ export default function Permits() {
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
           },
-  ].filter((t) => isAdmin || (t.key !== "lottery" && t.key !== "types"));
+  ].filter((t) => isAdmin || (t.key !== "lottery" && (t.key !== "types" || isOfficeRole(user?.role))));
 
   return (
     <div>

@@ -233,7 +233,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   );
 }
 
-export default function PermitTypes() {
+export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }) {
   const { modal, message } = App.useApp();
   const [types, setTypes] = useState<PermitTypeRow[]>([]);
   const [lots, setLots] = useState<LotForSelect[]>([]);
@@ -594,9 +594,9 @@ export default function PermitTypes() {
       },
     },
     { title: "Code", dataIndex: "code", key: "code", render: v => <span className="font-mono text-xs">{v}</span> },
-    {
+    ...(!readOnly ? [{
       title: "Actions", key: "actions", width: 280,
-      render: (_, pt) => (
+      render: (_: unknown, pt: PermitTypeRow) => (
         <Space>
           <Button type="link" size="small" onClick={() => { setEditing(pt); setCreating(false); }}>Edit</Button>
           {pt.is_active && !NO_ONLINE_PURCHASE_CODES.has(pt.code) && (
@@ -614,16 +614,16 @@ export default function PermitTypes() {
           }
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Permit Types</h2>
-        <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>
+        {!readOnly && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit Type</Button>}
       </div>
-      {(creating || editing) && (
+      {!readOnly && (creating || editing) && (
         <div ref={formRef}>
           <PermitTypeForm key={editing?.id ?? "new"} initial={editing ?? undefined} lots={lots}
             onSave={() => { setCreating(false); setEditing(null); load(); }}
