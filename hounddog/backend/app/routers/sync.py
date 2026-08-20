@@ -481,6 +481,31 @@ async def _upload_ticket_impl(
 
     officer_id = ticket.officer_email or ticket.officer_name or device.name
 
+    # Duplicate ticket prevention: reject if same plate has an open ticket
+    # in the same lot within the last 4 hours (they haven't moved)
+    from datetime import timedelta as _td
+    dupe_cutoff = datetime.now(timezone.utc) - _td(hours=4)
+    dupe_result = await db.execute(
+        select(Ticket).where(
+            Ticket.plate == ticket.plate.upper(),
+            Ticket.lot == ticket.lot,
+            Ticket.issued_at >= dupe_cutoff,
+            Ticket.status.notin_(["voided", "paid"]),
+        ).limit(1)
+    )
+    existing_ticket = dupe_result.scalar()
+    if existing_ticket:
+        payment_url = f"{settings.student_facing_url}/pay?ticket={existing_ticket.id}" if settings.student_facing_url else ""
+        return TicketUploadResponse(
+            status="duplicate",
+            ticket_id=existing_ticket.id,
+            payment_url=payment_url,
+            fine_amount=existing_ticket.fine_amount or Decimal("0"),
+            offense_number=existing_ticket.offense_number or 1,
+            notification_sent=False,
+            notification_email=None,
+        )
+
     # Look up permit by plate to link ticket
     permit_id = None
     owner_name = ticket.owner_name

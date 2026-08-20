@@ -327,6 +327,21 @@ struct TicketIssuanceView: View {
         Task {
             do {
                 let serverResult = try await HoundDogSyncService.shared.uploadTicket(ticket)
+
+                if serverResult.isDuplicate {
+                    // Server says this plate already has an open ticket in this lot.
+                    // Remove from local pending queue (already handled server-side).
+                    db.markTicketUploaded(ticket)
+                    try? db.saveContext()
+
+                    await MainActor.run {
+                        submittedResult = serverResult
+                        onTicketIssued?(normalizedPlate)
+                        isSubmitting = false
+                    }
+                    return
+                }
+
                 db.markTicketUploaded(ticket)
                 ticket.paymentUrl = serverResult.paymentUrl
                 ticket.fineAmount = serverResult.fineAmount
@@ -346,6 +361,7 @@ struct TicketIssuanceView: View {
                     onTicketIssued?(normalizedPlate)
                     isSubmitting = false
                     submittedResult = HoundDogSyncService.TicketUploadResponse(
+                        status: "accepted",
                         ticketId: ticket.ticketId,
                         paymentUrl: offlinePaymentUrl,
                         fineAmount: ViolationTypeStore.shared.fineAmount(forCode: ticket.violationType),
@@ -385,12 +401,26 @@ struct TicketConfirmationView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.green)
+            if result.isDuplicate {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(.orange)
 
-            Text("Ticket Issued")
-                .font(.title2.bold())
+                Text("Already Ticketed")
+                    .font(.title2.bold())
+
+                Text("This vehicle already has an open ticket in this lot.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(.green)
+
+                Text("Ticket Issued")
+                    .font(.title2.bold())
+            }
 
             VStack(spacing: 8) {
                 Text(plate)

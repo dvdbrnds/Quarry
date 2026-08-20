@@ -351,12 +351,15 @@ final class HoundDogSyncService: ObservableObject {
     // MARK: - Ticket Upload
 
     struct TicketUploadResponse {
+        let status: String
         let ticketId: String
         let paymentUrl: String
         let fineAmount: String
         let offenseNumber: Int
         let notificationSent: Bool
         let notificationEmail: String?
+
+        var isDuplicate: Bool { status == "duplicate" }
     }
 
     func uploadTicket(_ ticket: PendingTicket) async throws -> TicketUploadResponse {
@@ -413,6 +416,7 @@ final class HoundDogSyncService: ObservableObject {
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         return TicketUploadResponse(
+            status: json["status"] as? String ?? "accepted",
             ticketId: json["ticket_id"] as? String ?? ticket.ticketId,
             paymentUrl: json["payment_url"] as? String ?? "",
             fineAmount: json["fine_amount"] as? String ?? "0.00",

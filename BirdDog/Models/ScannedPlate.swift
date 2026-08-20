@@ -22,6 +22,8 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
     /// Seconds between first candidate sighting and confirmation
     let detectionLatency: TimeInterval
     var violationPhotoPath: String?
+    /// The lot in which this plate was ticketed (nil if not ticketed)
+    var ticketedInLot: String?
 
     init(
         text: String,
@@ -33,7 +35,8 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         matchedPlate: String,
         cameraName: String = "",
         detectionLatency: TimeInterval = 0,
-        violationPhotoPath: String? = nil
+        violationPhotoPath: String? = nil,
+        ticketedInLot: String? = nil
     ) {
         self.id = UUID()
         self.text = text
@@ -46,6 +49,7 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         self.cameraName = cameraName
         self.detectionLatency = detectionLatency
         self.violationPhotoPath = violationPhotoPath
+        self.ticketedInLot = ticketedInLot
     }
 }
 

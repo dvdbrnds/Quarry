@@ -68,7 +68,7 @@ final class PlateReaderViewModel: ObservableObject {
     private let hapticMedium = UIImpactFeedbackGenerator(style: .medium)
     private let hapticHeavy = UIImpactFeedbackGenerator(style: .heavy)
     private let hapticLight = UIImpactFeedbackGenerator(style: .light)
-    private(set) var ticketedPlates: Set<String> = []
+    private(set) var ticketedPlates: [String: String] = [:]
     private var seenPlates: [(text: String, time: Date)] = []
     private let confirmationThreshold = 2
     private let dedupWindow: TimeInterval = 30
@@ -210,9 +210,10 @@ final class PlateReaderViewModel: ObservableObject {
         deletePersistedScanLog()
     }
 
-    func markPlateTicketed(_ plate: String) {
+    func markPlateTicketed(_ plate: String, lot: String? = nil) {
         let normalized = plate.uppercased().trimmingCharacters(in: .whitespaces)
-        ticketedPlates.insert(normalized)
+        let ticketLot = lot ?? geofenceService.currentLotName ?? ""
+        ticketedPlates[normalized] = ticketLot
 
         for i in scanLog.indices where scanLog[i].text.uppercased() == normalized {
             let old = scanLog[i]
@@ -226,7 +227,8 @@ final class PlateReaderViewModel: ObservableObject {
                 matchedPlate: old.matchedPlate,
                 cameraName: old.cameraName,
                 detectionLatency: old.detectionLatency,
-                violationPhotoPath: old.violationPhotoPath
+                violationPhotoPath: old.violationPhotoPath,
+                ticketedInLot: ticketLot
             )
         }
 
@@ -366,7 +368,15 @@ final class PlateReaderViewModel: ObservableObject {
             let authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
 
             let normalizedPlate = consensusText.uppercased().trimmingCharacters(in: .whitespaces)
-            let effectiveStatus = ticketedPlates.contains(normalizedPlate) ? .ticketed : authResult.status
+            let currentLotName = geofenceService.currentLotName ?? ""
+            let isTicketedHere: Bool
+            if let ticketedLot = ticketedPlates[normalizedPlate] {
+                // Only show as ticketed if same lot (or either lot is unknown)
+                isTicketedHere = ticketedLot.isEmpty || currentLotName.isEmpty || ticketedLot == currentLotName
+            } else {
+                isTicketedHere = false
+            }
+            let effectiveStatus = isTicketedHere ? .ticketed : authResult.status
             latestAuthStatus = effectiveStatus
 
             if authResult.matchedPlate != consensusText {
@@ -636,7 +646,8 @@ final class PlateReaderViewModel: ObservableObject {
                     seenPlates.append((text: entry.text, time: entry.timestamp))
                     // Reconstruct ticketedPlates so the UI correctly marks already-ticketed plates.
                     if case .ticketed = entry.authStatus {
-                        ticketedPlates.insert(entry.text.uppercased().trimmingCharacters(in: .whitespaces))
+                        let plateKey = entry.text.uppercased().trimmingCharacters(in: .whitespaces)
+                        ticketedPlates[plateKey] = entry.ticketedInLot ?? ""
                     }
                 }
             }
