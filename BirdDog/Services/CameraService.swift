@@ -279,7 +279,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
                 self.session.sessionPreset = .inputPriority
                 self.configureCameraForStreetUse(camera, isExternal: true)
-                self.cachedOrientation = .up
+                self.cachedOrientation = .right
                 self.frameSkip = 2
 
                 let output = AVCaptureVideoDataOutput()
@@ -657,7 +657,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             configureCameraForStreetUse(camera, isExternal: isExternal)
 
             if isExternal {
-                cachedOrientation = .up
+                cachedOrientation = .right
                 frameSkip = 2
             } else {
                 updateOrientationFromDevice()
@@ -739,7 +739,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         configureCameraForStreetUse(camera, isExternal: isExternal)
 
         if isExternal {
-            cachedOrientation = .up
+            cachedOrientation = .right
             frameSkip = 2
         }
 
