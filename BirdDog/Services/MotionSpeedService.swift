@@ -3,7 +3,7 @@ import CoreMotion
 
 @MainActor
 final class MotionSpeedService: ObservableObject {
-    nonisolated static let shared = MotionSpeedService()
+    static let shared = MotionSpeedService()
 
     enum MovementMode: String {
         case stationary = "Stationary"
