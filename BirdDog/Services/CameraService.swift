@@ -279,7 +279,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
                 self.session.sessionPreset = .inputPriority
                 self.configureCameraForStreetUse(camera, isExternal: true)
-                self.cachedOrientation = .right
+                self.cachedOrientation = self.externalCameraOrientation
                 self.frameSkip = 2
 
                 let output = AVCaptureVideoDataOutput()
@@ -306,7 +306,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
                 if self.lastFrameTime != nil {
                     self.isUsingExternalCamera = true
-                    self.cachedOrientation = .right
+                    self.cachedOrientation = self.externalCameraOrientation
                     self.log("RECONNECT: external camera LIVE on attempt \(attempt)")
                     self.publishCameraInfo(camera)
                     DispatchQueue.main.async { [weak self] in
@@ -667,7 +667,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             configureCameraForStreetUse(camera, isExternal: isExternal)
 
             if isExternal {
-                cachedOrientation = .right
+                cachedOrientation = externalCameraOrientation
                 frameSkip = 2
             } else {
                 updateOrientationFromDevice()
@@ -749,7 +749,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         configureCameraForStreetUse(camera, isExternal: isExternal)
 
         if isExternal {
-            cachedOrientation = .right
+            cachedOrientation = externalCameraOrientation
             frameSkip = 2
         }
 
@@ -1079,6 +1079,15 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         default: break
         }
     }
+
+    private var externalCameraOrientation: CGImagePropertyOrientation {
+        switch AppSettings.shared.externalCameraRotation {
+        case 90:  return .right
+        case 180: return .down
+        case 270: return .left
+        default:  return .up
+        }
+    }
 }
 
 extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -1144,7 +1153,7 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
 
         isProcessing = true
-        let effectiveOrientation: CGImagePropertyOrientation = isUsingExternalCamera ? .right : cachedOrientation
+        let effectiveOrientation: CGImagePropertyOrientation = isUsingExternalCamera ? externalCameraOrientation : cachedOrientation
         delegate?.cameraService(self, didOutput: sampleBuffer, orientation: effectiveOrientation)
     }
 

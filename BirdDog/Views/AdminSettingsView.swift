@@ -107,6 +107,18 @@ struct AdminSettingsView: View {
                 Label("Show Live Stats", systemImage: "speedometer")
             }
 
+            Picker(selection: $appSettings.externalCameraRotation) {
+                Text("0°").tag(0)
+                Text("90°").tag(90)
+                Text("180°").tag(180)
+                Text("270°").tag(270)
+            } label: {
+                Label("External Camera Rotation", systemImage: "rotate.right")
+            }
+            .onChange(of: appSettings.externalCameraRotation) { _, _ in
+                cameraService.forceReconnect()
+            }
+
             Button {
                 cameraService.forceReconnect()
             } label: {

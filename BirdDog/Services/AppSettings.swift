@@ -18,6 +18,7 @@ final class AppSettings: ObservableObject {
     private static let highBandwidthModeKey = "AppSettings.highBandwidthMode"
     private static let showLiveStatsKey = "AppSettings.showLiveStats"
     private static let studentFacingURLKey = "AppSettings.studentFacingURL"
+    private static let externalCameraRotationKey = "AppSettings.externalCameraRotation"
     private static let defaultPasscode = "1234"
     private static let defaultRedirectURI = "edu.moravian.birddog://callback"
     /// Default wildcard zone labels — permits with these lot-zone strings are valid in any lot.
@@ -83,6 +84,11 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(studentFacingURL, forKey: Self.studentFacingURLKey) }
     }
 
+    /// Rotation correction for external camera frames (0, 90, 180, 270 degrees clockwise).
+    @Published var externalCameraRotation: Int {
+        didSet { UserDefaults.standard.set(externalCameraRotation, forKey: Self.externalCameraRotationKey) }
+    }
+
     /// The base URL to use for payment QR codes and deep links.
     var paymentBaseURL: String {
         let url = studentFacingURL.isEmpty ? houndDogURL : studentFacingURL
@@ -116,6 +122,7 @@ final class AppSettings: ObservableObject {
         self.highBandwidthMode = UserDefaults.standard.bool(forKey: Self.highBandwidthModeKey)
         self.showLiveStats = UserDefaults.standard.bool(forKey: Self.showLiveStatsKey)
         self.studentFacingURL = UserDefaults.standard.string(forKey: Self.studentFacingURLKey) ?? ""
+        self.externalCameraRotation = UserDefaults.standard.integer(forKey: Self.externalCameraRotationKey)
     }
 
     func attemptUnlock(with code: String) -> Bool {
