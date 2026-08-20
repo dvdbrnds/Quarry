@@ -2,29 +2,10 @@ import Foundation
 import ExternalAccessory
 import StarIO10
 
-/// Well-known iOS Bluetooth port names for Star portable printers.
-/// Classic MFi models (SM-S210i / S220i / S230i / T300 / T400) advertise a name,
-/// not a serial number. StarIO10 on iOS connects by that port name.
-enum PrinterBluetoothNames {
-    static let commonPortNames = [
-        "PRNT Star",
-        "Star Micronics",
-        "SM-S230i",
-        "SM-S210i",
-        "SM-S220i",
-        "SM-T300i",
-        "SM-T300",
-        "SM-T400i",
-        "SM-L200",
-        "SM-L300"
-    ]
-}
-
 @MainActor
 final class PrinterService: ObservableObject {
     static let shared = PrinterService()
 
-    /// SM-S230i and other Star portable i-series printers use classic Bluetooth (MFi).
     private static let starEAProtocol = "jp.star-m.starpro"
 
     @Published private(set) var connectionState: ConnectionState = .disconnected
@@ -32,9 +13,9 @@ final class PrinterService: ObservableObject {
     @Published private(set) var isPrinting = false
     @Published private(set) var lastError: String?
     @Published private(set) var isPairing = false
-
     @Published private(set) var discoveredPrinters: [DiscoveredPrinter] = []
     @Published private(set) var isSearching = false
+    @Published private(set) var diagnosticLog: [String] = []
 
     @Published var autoPrintEnabled: Bool {
         didSet { UserDefaults.standard.set(autoPrintEnabled, forKey: Self.autoPrintKey) }
@@ -47,21 +28,18 @@ final class PrinterService: ObservableObject {
         case error = "Error"
     }
 
-    struct DiscoveredPrinter: Identifiable, Hashable {
-        /// StarIO10 identifier: iOS port name for classic Bluetooth, MAC for BLE.
+    struct DiscoveredPrinter: Identifiable {
         let identifier: String
         let interfaceType: InterfaceType
         let model: String
-        var alternateIdentifiers: [String] = []
 
         var id: String { "\(interfaceType.rawValue)::\(identifier)" }
 
         var displayName: String {
             if !model.isEmpty, model != identifier {
-                return "\(model) (\(identifier.isEmpty ? "first available" : identifier))"
+                return "\(model) (\(identifier))"
             }
-            if identifier.isEmpty { return model.isEmpty ? "First available printer" : model }
-            return identifier
+            return identifier.isEmpty ? "First Available" : identifier
         }
 
         var interfaceLabel: String {
@@ -81,11 +59,9 @@ final class PrinterService: ObservableObject {
     private static let savedNameKey = "PrinterService.displayName"
     private static let autoPrintKey = "PrinterService.autoPrint"
 
-    /// Saved connection only — do not hold an open StarPrinter session between jobs.
     private var savedSettings: StarConnectionSettings?
     private var discoveryManager: StarDeviceDiscoveryManager?
     private var _discoveryDelegate: DiscoveryDelegate?
-    private var discoveryTask: Task<Void, Never>?
 
     private init() {
         self.autoPrintEnabled = UserDefaults.standard.bool(forKey: Self.autoPrintKey)
@@ -108,6 +84,11 @@ final class PrinterService: ObservableObject {
         EAAccessoryManager.shared().registerForLocalNotifications()
     }
 
+    private func log(_ message: String) {
+        diagnosticLog.append(message)
+        if diagnosticLog.count > 30 { diagnosticLog.removeFirst() }
+    }
+
     // MARK: - Discovery
 
     func startDiscovery() {
@@ -115,150 +96,121 @@ final class PrinterService: ObservableObject {
         discoveredPrinters = []
         isSearching = true
         lastError = nil
+        diagnosticLog = []
 
-        // Classic Bluetooth (MFi) printers only appear in connectedAccessories
-        // after they are actually connected — pairing in Settings is not enough
-        // on some iPhones. Seed whatever is already up, then scan both radios.
         seedPairedBluetoothPrinters()
+        log("EA accessories: \(EAAccessoryManager.shared().connectedAccessories.map { $0.name })")
+        log("Seeded \(discoveredPrinters.count) from EA")
 
-        discoveryTask = Task { [weak self] in
-            await self?.runDiscoverySequence()
+        do {
+            let manager = try StarDeviceDiscoveryManagerFactory.create(
+                interfaceTypes: [.bluetooth, .bluetoothLE]
+            )
+            manager.discoveryTime = 8_000
+            self.discoveryManager = manager
+
+            let wrapper = DiscoveryDelegate { [weak self] found in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let id = found.connectionSettings.identifier
+                    let iface = found.connectionSettings.interfaceType
+                    let modelName = Self.modelLabel(from: found.information?.model)
+                    self.log("SDK found: \(id) (\(iface))")
+                    self.addDiscovered(identifier: id, interfaceType: iface, model: modelName)
+                }
+            } onFinished: { [weak self] in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.log("Discovery finished. Found \(self.discoveredPrinters.count)")
+                    self.isSearching = false
+                }
+            }
+            manager.delegate = wrapper
+            _discoveryDelegate = wrapper
+            try manager.startDiscovery()
+            log("StarIO10 discovery started (BT + BLE, 8s)")
+        } catch {
+            isSearching = false
+            let msg = detailedErrorMessage(error)
+            lastError = "Discovery failed: \(msg)"
+            log("Discovery error: \(msg)")
         }
     }
 
-    /// In-app MFi pairing sheet. More reliable than sending officers to
-    /// Settings → Bluetooth, especially on older iPhones where EA discovery is empty.
     func presentSystemPairingPicker() async {
         isPairing = true
         lastError = nil
+        log("Opening system Bluetooth picker…")
 
-        // SwiftUI can swallow the system picker if it is presented in the same
-        // run loop as the button tap. Yield so the alert can appear.
         await Task.yield()
         try? await Task.sleep(nanoseconds: 200_000_000)
 
-        var pickerFailed = false
         do {
             try await EAAccessoryManager.shared().showBluetoothAccessoryPicker(withNameFilter: nil)
+            log("Picker dismissed (success)")
         } catch {
-            if isPickerCancelled(error) {
+            let ns = error as NSError
+            if ns.domain == EABluetoothAccessoryPickerError.errorDomain {
+                if ns.code == EABluetoothAccessoryPickerError.Code.resultCancelled.rawValue {
+                    log("Picker cancelled by user")
+                    isPairing = false
+                    return
+                }
+                if ns.code == EABluetoothAccessoryPickerError.Code.alreadyConnected.rawValue {
+                    log("Picker: printer already connected")
+                }
+            } else {
+                log("Picker error: \(error.localizedDescription)")
+                lastError = "Bluetooth picker failed: \(error.localizedDescription). Try Settings → Bluetooth instead."
                 isPairing = false
                 return
             }
-            if !isPickerAlreadyConnected(error) {
-                pickerFailed = true
-                lastError = "Could not open the Bluetooth pairing sheet. Pair the printer in iOS Settings → Bluetooth (PIN 1234), then search here."
-            }
         }
 
-        // Accessory list updates a beat after the picker dismisses.
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
         seedPairedBluetoothPrinters()
+        log("Post-picker EA accessories: \(discoveredPrinters.map { $0.identifier })")
 
         if let first = discoveredPrinters.first {
+            log("Auto-connecting to \(first.identifier)")
             isPairing = false
             do {
                 try await connectAndWait(to: first)
             } catch {
-                // lastError already set
+                log("Auto-connect failed: \(detailedErrorMessage(error))")
             }
             return
         }
 
-        if !pickerFailed {
-            // Picker succeeded (or printer was already connected) but EA still
-            // did not list it — fall back to first classic-Bluetooth device.
-            isPairing = false
-            do {
-                try await connectFirstAvailable()
-            } catch {
-                // lastError already set
-            }
-            return
-        }
-
+        log("No EA printers after picker — trying first-found")
         isPairing = false
+        do {
+            try await connectFirstAvailable()
+        } catch {
+            log("First-found also failed: \(detailedErrorMessage(error))")
+        }
     }
 
-    /// Opens the first Star printer the SDK can see. Used when discovery lists
-    /// nothing (common on older iPhones) but the printer is already paired.
     func connectFirstAvailable() async throws {
-        let discovered = DiscoveredPrinter(
-            identifier: "",
+        log("Attempting first-found (no identifier)")
+        try await connectWithIdentifier(
+            identifier: StarConnectionSettings.FIRST_FOUND_DEVICE,
             interfaceType: .bluetooth,
-            model: "Star Printer",
-            alternateIdentifiers: Array(PrinterBluetoothNames.commonPortNames.prefix(3))
+            label: "First Available"
         )
-        try await connectAndWait(to: discovered)
     }
 
     func connectByName(_ name: String) async throws {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PrintError.notConfigured }
-
-        let looksLikeMAC = Self.isBluetoothAddress(trimmed)
-        let discovered = DiscoveredPrinter(
+        log("Manual connect: \"\(trimmed)\"")
+        try await connectWithIdentifier(
             identifier: trimmed,
-            interfaceType: looksLikeMAC ? .bluetoothLE : .bluetooth,
-            model: trimmed
+            interfaceType: .bluetooth,
+            label: trimmed
         )
-        try await connectAndWait(to: discovered)
     }
 
-    private func runDiscoverySequence() async {
-        // Sequential scans: combined bluetooth+BLE discovery misses classic
-        // MFi printers on some older radios. EA-seeded printers stay visible
-        // the whole time so officers can connect without waiting.
-        await discover(interfaceTypes: [.bluetooth], timeoutMs: 10_000)
-        guard !Task.isCancelled, isSearching else { return }
-        await discover(interfaceTypes: [.bluetoothLE], timeoutMs: 8_000)
-        if isSearching {
-            isSearching = false
-        }
-        if discoveredPrinters.isEmpty, lastError == nil {
-            lastError = "No printers found. Power the printer on, pair it with Pair Printer (or Settings → Bluetooth, PIN 1234), then try Connect First Available."
-        }
-    }
-
-    private func discover(interfaceTypes: [InterfaceType], timeoutMs: Int) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var resumed = false
-            func finish() {
-                guard !resumed else { return }
-                resumed = true
-                continuation.resume()
-            }
-
-            if Task.isCancelled {
-                finish()
-                return
-            }
-
-            do {
-                let manager = try StarDeviceDiscoveryManagerFactory.create(interfaceTypes: interfaceTypes)
-                manager.discoveryTime = timeoutMs
-
-                let wrapper = DiscoveryDelegate { [weak self] found in
-                    Task { @MainActor in
-                        self?.addFromStarPrinter(found)
-                    }
-                } onFinished: {
-                    finish()
-                }
-                manager.delegate = wrapper
-                self.discoveryManager = manager
-                self._discoveryDelegate = wrapper
-                try manager.startDiscovery()
-            } catch {
-                if discoveredPrinters.isEmpty {
-                    lastError = friendlyMessage(for: error)
-                }
-                finish()
-            }
-        }
-    }
-
-    /// Surfaces printers already paired/connected in iOS Settings (classic BT / MFi).
     private func seedPairedBluetoothPrinters() {
         for accessory in EAAccessoryManager.shared().connectedAccessories {
             addAccessory(accessory)
@@ -267,59 +219,18 @@ final class PrinterService: ObservableObject {
 
     private func addAccessory(_ accessory: EAAccessory) {
         guard accessory.protocolStrings.contains(Self.starEAProtocol) else { return }
-
-        // StarIO10 on iOS Bluetooth uses the iOS port name (Settings name),
-        // not the accessory serial. Prefer name; keep serial as a fallback.
         let portName = accessory.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let serial = accessory.serialNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        let model = accessory.modelNumber.isEmpty ? (portName.isEmpty ? serial : portName) : accessory.modelNumber
-        let primary = portName.isEmpty ? serial : portName
-        guard !primary.isEmpty else { return }
-
-        var alternates: [String] = []
-        if !serial.isEmpty, serial.caseInsensitiveCompare(primary) != .orderedSame {
-            alternates.append(serial)
-        }
-
-        addDiscovered(
-            identifier: primary,
-            interfaceType: .bluetooth,
-            model: model,
-            alternateIdentifiers: alternates
-        )
+        guard !portName.isEmpty else { return }
+        let model = accessory.modelNumber.isEmpty ? portName : accessory.modelNumber
+        addDiscovered(identifier: portName, interfaceType: .bluetooth, model: model)
     }
 
-    private func addFromStarPrinter(_ found: StarPrinter) {
-        let identifier = found.connectionSettings.identifier
-        let modelName = Self.modelLabel(from: found.information?.model)
-        addDiscovered(
-            identifier: identifier,
-            interfaceType: found.connectionSettings.interfaceType,
-            model: modelName
-        )
-    }
-
-    private func addDiscovered(
-        identifier: String,
-        interfaceType: InterfaceType,
-        model: String,
-        alternateIdentifiers: [String] = []
-    ) {
-        let dp = DiscoveredPrinter(
-            identifier: identifier,
-            interfaceType: interfaceType,
-            model: model,
-            alternateIdentifiers: alternateIdentifiers
-        )
-        if let index = discoveredPrinters.firstIndex(where: {
+    private func addDiscovered(identifier: String, interfaceType: InterfaceType, model: String) {
+        let dp = DiscoveredPrinter(identifier: identifier, interfaceType: interfaceType, model: model)
+        if !discoveredPrinters.contains(where: {
             $0.identifier.caseInsensitiveCompare(dp.identifier) == .orderedSame
                 && $0.interfaceType == dp.interfaceType
         }) {
-            var existing = discoveredPrinters[index]
-            let merged = Array(Set(existing.alternateIdentifiers + dp.alternateIdentifiers))
-            existing.alternateIdentifiers = merged
-            discoveredPrinters[index] = existing
-        } else {
             discoveredPrinters.append(dp)
         }
     }
@@ -327,7 +238,6 @@ final class PrinterService: ObservableObject {
     private static func modelLabel(from model: StarPrinterModel?) -> String {
         guard let model else { return "" }
         let raw = String(describing: model)
-        // Avoid dumping opaque enum junk like "17" into the UI.
         if raw.allSatisfy(\.isNumber) { return "" }
         return raw
             .replacingOccurrences(of: "StarPrinterModel.", with: "")
@@ -335,67 +245,99 @@ final class PrinterService: ObservableObject {
     }
 
     func stopDiscovery() {
-        discoveryTask?.cancel()
-        discoveryTask = nil
         discoveryManager?.stopDiscovery()
         discoveryManager = nil
+        _discoveryDelegate = nil
         isSearching = false
     }
 
-    // MARK: - Connect / Disconnect
+    // MARK: - Connect
 
     func connect(to discovered: DiscoveredPrinter) {
         Task {
-            do {
-                try await connectAndWait(to: discovered)
-            } catch {
-                // lastError / connectionState already set by connectAndWait
-            }
+            try? await connectAndWait(to: discovered)
         }
     }
 
-    /// Verifies the printer can be opened, then closes it. Settings are saved for
-    /// per-job open/print/close — holding the port open causes "Already Opened."
-    /// Tries port name, serial, the other radio (classic vs BLE), then first-found.
     @discardableResult
     func connectAndWait(to discovered: DiscoveredPrinter) async throws -> Bool {
+        return try await connectWithIdentifier(
+            identifier: discovered.identifier,
+            interfaceType: discovered.interfaceType,
+            label: discovered.displayName
+        )
+    }
+
+    /// Core connection logic. Tries the given identifier, then falls back to
+    /// FIRST_FOUND_DEVICE on the same interface, then on the other BT radio.
+    @discardableResult
+    private func connectWithIdentifier(
+        identifier: String,
+        interfaceType: InterfaceType,
+        label: String
+    ) async throws -> Bool {
         stopDiscovery()
         connectionState = .connecting
         lastError = nil
 
-        let attempts = connectionAttempts(for: discovered)
-        var lastFailure: Error?
+        // Build a short list of (interface, identifier) to try.
+        var attempts: [(InterfaceType, String)] = []
 
-        for (index, attempt) in attempts.enumerated() {
-            let settings = makeSettings(
-                interfaceType: attempt.interface,
-                identifier: attempt.identifier,
-                autoSwitch: false
+        let isFirstFound = identifier == StarConnectionSettings.FIRST_FOUND_DEVICE
+            || identifier.isEmpty
+
+        if !isFirstFound {
+            attempts.append((interfaceType, identifier))
+        }
+        // Always try first-found as fallback on both radios.
+        attempts.append((.bluetooth, StarConnectionSettings.FIRST_FOUND_DEVICE))
+        attempts.append((.bluetoothLE, StarConnectionSettings.FIRST_FOUND_DEVICE))
+
+        var lastFailure: Error?
+        for attempt in attempts {
+            let ifaceLabel = attempt.0 == .bluetooth ? "BT" : "BLE"
+            let idLabel = attempt.1 == StarConnectionSettings.FIRST_FOUND_DEVICE
+                ? "FIRST_FOUND" : "\"\(attempt.1)\""
+            log("Try open: \(ifaceLabel) / \(idLabel)")
+
+            let settings = StarConnectionSettings(
+                interfaceType: attempt.0,
+                identifier: attempt.1
             )
             let printer = StarPrinter(settings)
 
             do {
-                try await openWithRetry(printer, extraAttempts: index == 0 ? 2 : 0)
+                try await printer.open()
+                let actualId = printer.connectionSettings.identifier
+                log("Opened OK (actual id: \(actualId))")
                 await printer.close()
 
-                savedSettings = makeSettings(
-                    interfaceType: attempt.interface,
-                    identifier: attempt.identifier,
-                    autoSwitch: true
+                let saveId = actualId.isEmpty ? attempt.1 : actualId
+                savedSettings = StarConnectionSettings(
+                    interfaceType: attempt.0,
+                    identifier: saveId
                 )
-                let label = discovered.displayName
-                printerName = label.isEmpty ? (attempt.identifier.isEmpty ? "Star Printer" : attempt.identifier) : label
+                printerName = label.isEmpty ? (saveId.isEmpty ? "Star Printer" : saveId) : label
                 connectionState = .connected
 
-                UserDefaults.standard.set(attempt.identifier, forKey: Self.savedIdentifierKey)
-                UserDefaults.standard.set(attempt.interface.rawValue, forKey: Self.savedInterfaceKey)
+                UserDefaults.standard.set(saveId, forKey: Self.savedIdentifierKey)
+                UserDefaults.standard.set(attempt.0.rawValue, forKey: Self.savedInterfaceKey)
                 UserDefaults.standard.set(printerName, forKey: Self.savedNameKey)
                 return true
             } catch {
                 await printer.close()
                 lastFailure = error
+                let msg = detailedErrorMessage(error)
+                log("Failed: \(msg)")
+
                 if isFatalBluetoothUnavailable(error) {
+                    log("Bluetooth unavailable — stopping")
                     break
+                }
+
+                if isBusyOrAlreadyOpen(error) {
+                    log("Port busy — waiting 600ms before next attempt")
+                    try? await Task.sleep(nanoseconds: 600_000_000)
                 }
             }
         }
@@ -415,19 +357,30 @@ final class PrinterService: ObservableObject {
 
     func reconnectSaved() {
         Task {
-            try? await reconnectSavedAndWait()
+            do {
+                try await reconnectSavedAndWait()
+            } catch {
+                log("Reconnect failed: \(detailedErrorMessage(error))")
+                log("Clearing stale saved printer")
+                await clearSavedPrinter()
+            }
         }
     }
 
     @discardableResult
     func reconnectSavedAndWait() async throws -> Bool {
-        guard let discovered = savedDiscoveredPrinter() else {
+        guard let settings = loadSavedSettings() else {
             throw PrintError.notConfigured
         }
-        return try await connectAndWait(to: discovered)
+        let name = UserDefaults.standard.string(forKey: Self.savedNameKey) ?? settings.identifier
+        log("Reconnecting saved: \"\(settings.identifier)\" (\(settings.interfaceType))")
+        return try await connectWithIdentifier(
+            identifier: settings.identifier,
+            interfaceType: settings.interfaceType,
+            label: name
+        )
     }
 
-    /// Ensures saved settings exist. Does not hold an open session.
     func ensureConnected() async throws {
         if savedSettings != nil, connectionState == .connected { return }
         if hasSavedPrinter {
@@ -454,206 +407,98 @@ final class PrinterService: ObservableObject {
         isPrinting = true
         lastError = nil
 
+        let printer = StarPrinter(settings)
         do {
-            try await printOnce(commands, settings: settings, autoSwitch: true)
+            try await openForPrint(printer)
+            try await printer.print(command: commands)
+            await printer.close()
             connectionState = .connected
             isPrinting = false
         } catch {
-            if isNotFoundOrCommunication(error), let recovered = try? await recoverConnection() {
-                do {
-                    try await printOnce(commands, settings: recovered, autoSwitch: true)
-                    connectionState = .connected
-                    isPrinting = false
-                    return
-                } catch {
-                    await failPrint(error)
-                    throw error
-                }
-            }
-            await failPrint(error)
+            await printer.close()
+            isPrinting = false
+            lastError = friendlyMessage(for: error)
+            connectionState = .error
             throw error
         }
     }
 
-    private func printOnce(_ commands: String, settings: StarConnectionSettings, autoSwitch: Bool) async throws {
-        let jobSettings = makeSettings(
-            interfaceType: settings.interfaceType,
-            identifier: settings.identifier,
-            autoSwitch: autoSwitch
-        )
-        let printer = StarPrinter(jobSettings)
+    /// Open with one retry for busy/already-open errors.
+    private func openForPrint(_ printer: StarPrinter) async throws {
         do {
-            try await openWithRetry(printer, extraAttempts: 2)
-            try await printer.print(command: commands)
-            await printer.close()
+            try await printer.open()
         } catch {
-            await printer.close()
-            throw error
-        }
-    }
-
-    private func failPrint(_ error: Error) async {
-        isPrinting = false
-        lastError = friendlyMessage(for: error)
-        connectionState = .error
-    }
-
-    /// Re-seed EA accessories and try first-found if the saved identifier went stale.
-    private func recoverConnection() async throws -> StarConnectionSettings {
-        seedPairedBluetoothPrinters()
-        if let live = discoveredPrinters.first {
-            _ = try await connectAndWait(to: live)
-            if let settings = savedSettings { return settings }
-        }
-        try await connectFirstAvailable()
-        guard let settings = savedSettings else { throw PrintError.notConfigured }
-        return settings
-    }
-
-    /// Open with retries. Classic Bluetooth on older iPhones often fails the first open.
-    private func openWithRetry(_ printer: StarPrinter, extraAttempts: Int) async throws {
-        var attempt = 0
-        let maxAttempts = 1 + extraAttempts
-        var lastError: Error?
-        while attempt < maxAttempts {
-            do {
-                try await printer.open()
-                return
-            } catch {
-                lastError = error
+            if isBusyOrAlreadyOpen(error) {
                 await printer.close()
-                if isFatalBluetoothUnavailable(error) { throw error }
-                attempt += 1
-                if attempt < maxAttempts {
-                    let delay = UInt64(400_000_000 + (attempt * 250_000_000))
-                    try await Task.sleep(nanoseconds: delay)
-                }
+                try await Task.sleep(nanoseconds: 500_000_000)
+                try await printer.open()
+            } else {
+                throw error
             }
         }
-        throw lastError ?? PrintError.notConnected
     }
 
-    private func makeSettings(
-        interfaceType: InterfaceType,
-        identifier: String,
-        autoSwitch: Bool
-    ) -> StarConnectionSettings {
-        let settings = StarConnectionSettings(
-            interfaceType: interfaceType,
-            identifier: identifier,
-            autoSwitchInterface: autoSwitch
-        )
-        return settings
-    }
-
-    /// Ordered (interface, identifier) probes. Empty identifier = first device found.
-    /// Classic Bluetooth uses an iOS port name; BLE uses a MAC address — do not
-    /// cross those, or each failed open() burns several seconds.
-    private func connectionAttempts(for discovered: DiscoveredPrinter) -> [(interface: InterfaceType, identifier: String)] {
-        var attempts: [(InterfaceType, String)] = []
-        var seen = Set<String>()
-
-        func add(_ interface: InterfaceType, _ identifier: String) {
-            let key = "\(interface.rawValue)|\(identifier.lowercased())"
-            if seen.insert(key).inserted {
-                attempts.append((interface, identifier))
-            }
-        }
-
-        if discovered.identifier.isEmpty {
-            for name in discovered.alternateIdentifiers {
-                add(.bluetooth, name)
-            }
-            add(.bluetooth, StarConnectionSettings.FIRST_FOUND_DEVICE)
-            add(.bluetoothLE, StarConnectionSettings.FIRST_FOUND_DEVICE)
-            return attempts
-        }
-
-        add(discovered.interfaceType, discovered.identifier)
-        for alternate in discovered.alternateIdentifiers where !alternate.isEmpty {
-            add(discovered.interfaceType, alternate)
-        }
-
-        if Self.isBluetoothAddress(discovered.identifier) {
-            add(.bluetoothLE, discovered.identifier)
-        } else {
-            add(.bluetooth, discovered.identifier)
-            for alternate in discovered.alternateIdentifiers
-            where !alternate.isEmpty && !Self.isBluetoothAddress(alternate) {
-                add(.bluetooth, alternate)
-            }
-        }
-
-        add(.bluetooth, StarConnectionSettings.FIRST_FOUND_DEVICE)
-        add(.bluetoothLE, StarConnectionSettings.FIRST_FOUND_DEVICE)
-        return attempts
-    }
+    // MARK: - Error classification
 
     private func isBusyOrAlreadyOpen(_ error: Error) -> Bool {
         if case StarIO10Error.inUse = error { return true }
         if case StarIO10Error.invalidOperation = error { return true }
-        let message = error.localizedDescription.lowercased()
-        return message.contains("already open")
-            || message.contains("in use")
-            || message.contains("another process")
-    }
-
-    private func isNotFoundOrCommunication(_ error: Error) -> Bool {
-        if case StarIO10Error.notFound = error { return true }
-        if case StarIO10Error.communication = error { return true }
-        let message = error.localizedDescription.lowercased()
-        return message.contains("not found")
-            || message.contains("communication")
-            || message.contains("timeout")
+        let msg = error.localizedDescription.lowercased()
+        return msg.contains("already open") || msg.contains("in use")
     }
 
     private func isFatalBluetoothUnavailable(_ error: Error) -> Bool {
         if case StarIO10Error.illegalDeviceState(_, let code) = error {
             return code == .bluetoothUnavailable
         }
-        let message = error.localizedDescription.lowercased()
-        return message.contains("bluetoothunavailable")
-            || message.contains("bluetooth unavailable")
-            || message.contains("bluetooth is off")
+        return false
+    }
+
+    private func detailedErrorMessage(_ error: Error) -> String {
+        switch error {
+        case StarIO10Error.notFound(let message, let code):
+            return "notFound[\(code)]: \(message)"
+        case StarIO10Error.communication(let message, let code):
+            return "communication[\(code)]: \(message)"
+        case StarIO10Error.inUse(let message, let code):
+            return "inUse[\(code)]: \(message)"
+        case StarIO10Error.invalidOperation(let message, let code):
+            return "invalidOperation[\(code)]: \(message)"
+        case StarIO10Error.illegalDeviceState(let message, let code):
+            return "illegalDeviceState[\(code)]: \(message)"
+        case StarIO10Error.argument(let message, let code):
+            return "argument[\(code)]: \(message)"
+        case StarIO10Error.badResponse(let message, let code):
+            return "badResponse[\(code)]: \(message)"
+        case StarIO10Error.unsupportedModel(let message, let code):
+            return "unsupportedModel[\(code)]: \(message)"
+        default:
+            return error.localizedDescription
+        }
     }
 
     private func friendlyMessage(for error: Error?) -> String {
         guard let error else {
-            return "Could not reach the printer. Power it on, pair it, and try again."
+            return "Could not reach the printer. Power it on and try again."
         }
         if isFatalBluetoothUnavailable(error) {
-            return "Bluetooth is off. Turn it on in iOS Settings and try again."
+            return "Bluetooth is turned off on this device."
         }
         if isBusyOrAlreadyOpen(error) {
-            return "Printer is busy. Close other Star apps, wait a second, and try again."
+            return "Printer port is busy. Wait a few seconds and try again."
         }
-        if isNotFoundOrCommunication(error) {
-            return "Printer not found. Power it on, pair it with Pair Printer (PIN 1234), then try Connect First Available."
+        if case StarIO10Error.notFound = error {
+            return "Printer not found. Make sure it is powered on and paired in iOS Bluetooth Settings (PIN 1234)."
+        }
+        if case StarIO10Error.communication = error {
+            return "Lost communication with the printer. Power-cycle it and try again."
         }
         return error.localizedDescription
     }
 
-    private func isPickerAlreadyConnected(_ error: Error) -> Bool {
-        let ns = error as NSError
-        return ns.domain == EABluetoothAccessoryPickerError.errorDomain
-            && ns.code == EABluetoothAccessoryPickerError.Code.alreadyConnected.rawValue
-    }
+    // MARK: - Persistence
 
-    private func isPickerCancelled(_ error: Error) -> Bool {
-        let ns = error as NSError
-        return ns.domain == EABluetoothAccessoryPickerError.errorDomain
-            && ns.code == EABluetoothAccessoryPickerError.Code.resultCancelled.rawValue
-    }
-
-    private static func isBluetoothAddress(_ value: String) -> Bool {
-        let parts = value.split(separator: ":")
-        guard parts.count == 6 else { return false }
-        return parts.allSatisfy { $0.count == 2 && $0.allSatisfy(\.isHexDigit) }
-    }
-
-    var isConnected: Bool {
-        connectionState == .connected
-    }
+    var isConnected: Bool { connectionState == .connected }
 
     var hasSavedPrinter: Bool {
         UserDefaults.standard.string(forKey: Self.savedIdentifierKey) != nil
@@ -672,28 +517,7 @@ final class PrinterService: ObservableObject {
               let interfaceType = InterfaceType(rawValue: rawInterface) else {
             return nil
         }
-        return makeSettings(interfaceType: interfaceType, identifier: identifier, autoSwitch: true)
-    }
-
-    private func savedDiscoveredPrinter() -> DiscoveredPrinter? {
-        guard let settings = loadSavedSettings() else { return nil }
-        let name = UserDefaults.standard.string(forKey: Self.savedNameKey) ?? settings.identifier
-        var alternates: [String] = []
-        if settings.identifier.isEmpty {
-            alternates = PrinterBluetoothNames.commonPortNames
-        } else {
-            for accessory in EAAccessoryManager.shared().connectedAccessories
-            where accessory.protocolStrings.contains(Self.starEAProtocol) {
-                if !accessory.name.isEmpty { alternates.append(accessory.name) }
-                if !accessory.serialNumber.isEmpty { alternates.append(accessory.serialNumber) }
-            }
-        }
-        return DiscoveredPrinter(
-            identifier: settings.identifier,
-            interfaceType: settings.interfaceType,
-            model: name,
-            alternateIdentifiers: alternates
-        )
+        return StarConnectionSettings(interfaceType: interfaceType, identifier: identifier)
     }
 
     // MARK: - Errors
@@ -705,7 +529,7 @@ final class PrinterService: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .notConnected: return "No printer connected"
-            case .notConfigured: return "No printer paired. Open Settings → Printer to connect a Star Micronics printer."
+            case .notConfigured: return "No printer paired. Open Settings → Printer to connect."
             }
         }
     }
