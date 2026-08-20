@@ -1081,7 +1081,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     private var externalCameraOrientation: CGImagePropertyOrientation {
-        switch AppSettings.shared.externalCameraRotation {
+        let degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
+        switch degrees {
         case 90:  return .right
         case 180: return .down
         case 270: return .left
