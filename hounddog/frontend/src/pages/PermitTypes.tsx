@@ -418,20 +418,42 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     });
   }
 
-  async function handleBumpToTop(entry: WaitlistEntry, pt: PermitTypeRow) {
-    try {
-      const res = await fetch(`/api/lottery-v2/applications/${entry.id}/bump-waitlist`, {
-        method: "POST",
-        headers: await authHeaders(),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).detail || `Failed (${res.status})`);
-      }
-      message.success(`${entry.student_name} moved to #1`);
-      setWaitlistCache(prev => { const copy = { ...prev }; delete copy[pt.id]; return copy; });
-      fetchWaitlist(pt);
-    } catch (e: any) { message.error(e.message || "Failed to bump"); }
+  async function handleMoveToPosition(entry: WaitlistEntry, pt: PermitTypeRow, currentIndex: number) {
+    let targetPosition = 1;
+    modal.confirm({
+      title: `Move ${entry.student_name}`,
+      content: (
+        <div className="mt-2">
+          <p className="text-sm text-gray-600 mb-3">
+            Currently at position #{currentIndex + 1}. Enter the new position:
+          </p>
+          <InputNumber
+            min={1}
+            max={waitlistCache[pt.id]?.length ?? 999}
+            defaultValue={1}
+            className="w-full"
+            onChange={(v) => { targetPosition = v ?? 1; }}
+          />
+        </div>
+      ),
+      okText: "Move",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/lottery-v2/applications/${entry.id}/move-to-position`, {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ position: targetPosition }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error((err as any).detail || `Failed (${res.status})`);
+          }
+          message.success(`${entry.student_name} moved to #${targetPosition}`);
+          setWaitlistCache(prev => { const copy = { ...prev }; delete copy[pt.id]; return copy; });
+          fetchWaitlist(pt);
+        } catch (e: any) { message.error(e.message || "Failed to move"); }
+      },
+    });
   }
 
   function renderExpandedRow(pt: PermitTypeRow) {
@@ -462,11 +484,9 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
             <Button type="link" size="small" onClick={() => handleSelectApplicant(entry, pt)}>
               Select
             </Button>
-            {index > 0 && (
-              <Button type="link" size="small" onClick={() => handleBumpToTop(entry, pt)}>
-                Move to #1
-              </Button>
-            )}
+            <Button type="link" size="small" onClick={() => handleMoveToPosition(entry, pt, index)}>
+              Move
+            </Button>
           </Space>
         ),
       }] : []),

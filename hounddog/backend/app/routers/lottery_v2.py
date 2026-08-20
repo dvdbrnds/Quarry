@@ -1161,6 +1161,54 @@ async def admin_bump_waitlist(
     return await _app_to_read(db, app)
 
 
+class MoveToPositionRequest(BaseModel):
+    position: int = Field(..., ge=1)
+
+
+@router.post("/applications/{application_id}/move-to-position", response_model=ApplicationRead)
+async def admin_move_to_position(
+    application_id: uuid.UUID,
+    data: MoveToPositionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Move a waitlisted applicant to a specific position without notifying others."""
+    app = await db.get(LotteryV2Application, application_id)
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app.status != "waitlisted":
+        raise HTTPException(400, f"Only waitlisted applicants can be moved (status is '{app.status}')")
+
+    others = (
+        await db.execute(
+            select(LotteryV2Application)
+            .where(
+                LotteryV2Application.cycle_id == app.cycle_id,
+                LotteryV2Application.status == "waitlisted",
+                LotteryV2Application.id != app.id,
+            )
+            .order_by(
+                LotteryV2Application.waitlist_position.asc().nullslast(),
+                LotteryV2Application.created_at.asc(),
+            )
+        )
+    ).scalars().all()
+
+    target = min(data.position, len(others) + 1)
+
+    ordered = list(others)
+    ordered.insert(target - 1, app)
+
+    for i, entry in enumerate(ordered, 1):
+        entry.waitlist_position = i
+
+    note = f"Admin moved to position #{target} by {admin.email or admin.sub} at {datetime.now(timezone.utc).isoformat()}"
+    app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+
+    await db.flush()
+    return await _app_to_read(db, app)
+
+
 @router.post("/applications/{application_id}/restore-waitlist", response_model=ApplicationRead)
 async def admin_restore_waitlist(
     application_id: uuid.UUID,
