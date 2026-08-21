@@ -1086,7 +1086,7 @@ export default function Permits() {
             : key === "visitor-presets" ? "#visitor-presets"
             : "#types";
           window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
-        }}}
+        }}
         items={permitTabs}
       />
       <CancelPermitModal
