@@ -166,6 +166,13 @@ async def lifespan(app: FastAPI):
             from .middleware.audit import verify_audit_table
             await verify_audit_table()
 
+            # Inline migrations for columns that create_all won't add to existing tables
+            async with engine.begin() as conn:
+                await conn.execute(text("""
+                    ALTER TABLE visitor_presets
+                    ADD COLUMN IF NOT EXISTS allowed_lots VARCHAR[] NOT NULL DEFAULT '{}'::varchar[]
+                """))
+
             break
         except Exception as exc:
             logger.warning("DB connect attempt %d/10 failed: %s", attempt, exc)
