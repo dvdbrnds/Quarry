@@ -244,6 +244,7 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
   const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [waitlistCache, setWaitlistCache] = useState<Record<string, WaitlistEntry[]>>({});
   const [waitlistLoading, setWaitlistLoading] = useState<Record<string, boolean>>({});
+  const [waitlistPage, setWaitlistPage] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if ((editing || creating) && formRef.current) {
@@ -462,9 +463,10 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     const isLoading = waitlistLoading[pt.id];
 
     const waitlistColumns: ColumnsType<WaitlistEntry> = [
-      { title: "#", key: "pos", width: 50, render: (_, _r, index) => (
-        <span className="font-semibold">{index + 1}</span>
-      )},
+      { title: "#", key: "pos", width: 50, render: (_, _r, index) => {
+        const page = waitlistPage[pt.id] || 1;
+        return <span className="font-semibold">{(page - 1) * 10 + index + 1}</span>;
+      }},
       { title: "Name", dataIndex: "student_name", key: "name" },
       { title: "Email", dataIndex: "student_email", key: "email", render: v => (
         <span className="text-xs">{v}</span>
@@ -524,7 +526,7 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
               columns={waitlistColumns}
               rowKey="id"
               size="small"
-              pagination={waitlist.length > 10 ? { pageSize: 10, size: "small" } : false}
+              pagination={waitlist.length > 10 ? { pageSize: 10, size: "small", onChange: (p: number) => setWaitlistPage(prev => ({ ...prev, [pt.id]: p })) } : false}
             />
           </div>
         ) : (
