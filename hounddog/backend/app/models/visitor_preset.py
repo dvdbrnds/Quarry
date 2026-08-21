@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import String, Boolean, Integer, DateTime, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -19,6 +19,7 @@ class VisitorPreset(Base):
     sponsor_department: Mapped[str] = mapped_column(String(256), default="", server_default=text("''"))
     default_duration: Mapped[str] = mapped_column(String(32), default="semester", server_default=text("'semester'"))
     permit_type_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    allowed_lots: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default=text("'{}'::varchar[]"))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { authHeaders, getAccessToken } from "../auth";
+import { api, Lot } from "../api";
 
 interface Preset {
   id: string;
@@ -12,6 +13,7 @@ interface Preset {
   sponsor_department: string;
   default_duration: string;
   permit_type_code: string | null;
+  allowed_lots: string[];
   active: boolean;
   sort_order: number;
 }
@@ -51,6 +53,7 @@ export default function VisitorPresets() {
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const [permitTypes, setPermitTypes] = useState<PermitTypeOption[]>([]);
+  const [lots, setLots] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -61,6 +64,10 @@ export default function VisitorPresets() {
           const data = await res.json();
           setPermitTypes(data.map((pt: any) => ({ code: pt.code, label: pt.label })));
         }
+      } catch { /* ignore */ }
+      try {
+        const lotData = await api.lots.list();
+        setLots(lotData.map((l: Lot) => ({ value: l.name, label: l.name })));
       } catch { /* ignore */ }
     })();
   }, []);
@@ -82,7 +89,7 @@ export default function VisitorPresets() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ default_duration: "semester", sort_order: 0 });
+    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [] });
     setModalOpen(true);
   };
 
@@ -209,6 +216,16 @@ export default function VisitorPresets() {
               },
             },
             {
+              title: "Allowed Lots",
+              dataIndex: "allowed_lots",
+              key: "allowed_lots",
+              width: 180,
+              render: (lots: string[]) => {
+                if (!lots || lots.length === 0) return <span className="text-gray-400">—</span>;
+                return <span className="text-xs">{lots.join(", ")}</span>;
+              },
+            },
+            {
               title: "Active",
               dataIndex: "active",
               key: "active",
@@ -305,6 +322,18 @@ export default function VisitorPresets() {
               allowClear
               placeholder="Default (Visitor)"
               options={permitTypes.map((pt) => ({ value: pt.code, label: pt.label }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="allowed_lots"
+            label="Allowed lots"
+            extra="Directly assign lot access without needing a permit type (e.g., partnership arrangements)"
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="No specific lots (uses permit type)"
+              options={lots}
             />
           </Form.Item>
         </Form>

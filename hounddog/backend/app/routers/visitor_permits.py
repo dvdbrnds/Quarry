@@ -99,6 +99,7 @@ class PresetCreate(BaseModel):
     sponsor_department: str = ""
     default_duration: str = "semester"
     permit_type_code: str | None = None
+    allowed_lots: list[str] = []
     sort_order: int = 0
 
 
@@ -110,6 +111,7 @@ class PresetUpdate(BaseModel):
     sponsor_department: str | None = None
     default_duration: str | None = None
     permit_type_code: str | None = None
+    allowed_lots: list[str] | None = None
     active: bool | None = None
     sort_order: int | None = None
 
@@ -137,6 +139,7 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "sponsor_department": p.sponsor_department,
             "default_duration": p.default_duration,
             "permit_type_code": p.permit_type_code,
+            "allowed_lots": p.allowed_lots or [],
         }
         for p in rows
     ]
@@ -163,6 +166,7 @@ async def list_all_presets(
             "sponsor_department": p.sponsor_department,
             "default_duration": p.default_duration,
             "permit_type_code": p.permit_type_code,
+            "allowed_lots": p.allowed_lots or [],
             "active": p.active,
             "sort_order": p.sort_order,
         }
@@ -185,6 +189,7 @@ async def create_preset(
         sponsor_department=data.sponsor_department.strip(),
         default_duration=data.default_duration,
         permit_type_code=data.permit_type_code or None,
+        allowed_lots=data.allowed_lots or [],
         sort_order=data.sort_order,
     )
     db.add(preset)
@@ -442,6 +447,21 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
             permit_type = "visitor_contracted_staff"
             if end == start:
                 end = start + timedelta(days=120)
+    elif preset and preset.allowed_lots:
+        lot_assignment = ", ".join(preset.allowed_lots)
+        days = (end - start).days
+        if data.duration == "yearly":
+            permit_type = "visitor_contracted_staff"
+            if end == start:
+                end = start + timedelta(days=365)
+        elif data.duration == "semester":
+            permit_type = "visitor_contracted_staff"
+            if end == start:
+                end = start + timedelta(days=120)
+        elif days > 0:
+            permit_type = "visitor_vendor_longterm"
+        else:
+            permit_type = "visitor_day"
     else:
         days = (end - start).days
         if data.duration == "yearly":
