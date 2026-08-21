@@ -1075,17 +1075,18 @@ export default function Permits() {
         activeKey={tab === "vouchers" && !vouchersEnabled ? "permits" : tab}
         onChange={(key) => {
           setTab(key);
-          window.location.hash =
+          const hash =
             key === "permits" ? ""
-            : key === "lottery" ? "lottery"
-            : key === "live" ? "live"
-            : key === "fee-exempt" ? "fee-exempt"
-            : key === "discounts" ? "absn"
-            : key === "vouchers" ? "vouchers"
-            : key === "guests" ? "guests"
-            : key === "visitor-presets" ? "visitor-presets"
-            : "types";
-        }}
+            : key === "lottery" ? "#lottery"
+            : key === "live" ? "#live"
+            : key === "fee-exempt" ? "#fee-exempt"
+            : key === "discounts" ? "#absn"
+            : key === "vouchers" ? "#vouchers"
+            : key === "guests" ? "#guests"
+            : key === "visitor-presets" ? "#visitor-presets"
+            : "#types";
+          window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
+        }}}
         items={permitTabs}
       />
       <CancelPermitModal
