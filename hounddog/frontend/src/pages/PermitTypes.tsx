@@ -418,14 +418,15 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     });
   }
 
-  async function handleMoveToPosition(entry: WaitlistEntry, pt: PermitTypeRow, currentIndex: number) {
+  async function handleMoveToPosition(entry: WaitlistEntry & { _position?: number }, pt: PermitTypeRow) {
+    const currentPos = (entry as any)._position ?? "?";
     let targetPosition = 1;
     modal.confirm({
       title: `Move ${entry.student_name}`,
       content: (
         <div className="mt-2">
           <p className="text-sm text-gray-600 mb-3">
-            Currently at position #{currentIndex + 1}. Enter the new position:
+            Currently at position #{currentPos}. Enter the new position:
           </p>
           <InputNumber
             min={1}
@@ -484,7 +485,7 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
             <Button type="link" size="small" onClick={() => handleSelectApplicant(entry, pt)}>
               Select
             </Button>
-            <Button type="link" size="small" onClick={() => handleMoveToPosition(entry, pt, index)}>
+            <Button type="link" size="small" onClick={() => handleMoveToPosition(entry, pt)}>
               Move
             </Button>
           </Space>
