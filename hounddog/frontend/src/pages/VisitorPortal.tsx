@@ -402,13 +402,13 @@ function VisitorFlow() {
                           </Form.Item>
                           <Form.Item
                             name="sponsor_email"
-                            label="Sponsor email (moravian.edu)"
+                            label="Sponsor email"
                             rules={[
                               { required: true, message: "Sponsor email required" },
                               { type: "email", message: "Enter a valid email" },
                             ]}
                           >
-                            <Input placeholder="johnsonm@moravian.edu" />
+                            <Input placeholder="sponsor@example.edu" />
                           </Form.Item>
                           <Form.Item name="sponsor_department" label="Department">
                             <Input placeholder="Facilities, IT, Athletics, etc." />
