@@ -219,7 +219,7 @@ async def _app_to_read(
                 .where(
                     LotteryV2Application.cycle_id == app.cycle_id,
                     LotteryV2Application.status == "waitlisted",
-                    LotteryV2Application.tier_preferences[0] == first_pref,
+                    LotteryV2Application.tier_preferences[1] == first_pref,
                     LotteryV2Application.waitlist_position < app.waitlist_position,
                 )
             )
@@ -295,7 +295,7 @@ async def _maybe_auto_draw(db: AsyncSession, cycle: LotteryV2Cycle) -> None:
     ).scalars().all()
     tiers = await build_tier_capacities(db, list(pts))
 
-    # For each tier, count first-choice demand (tier_preferences[0])
+    # For each tier, count first-choice demand (tier_preferences[1] in PG, 1-indexed)
     for pt_id, tier in tiers.items():
         if tier.remaining <= 0:
             continue
@@ -395,7 +395,7 @@ async def _eligible_tiers_for(
                     .where(
                         LotteryV2Application.cycle_id == current_cycle.id,
                         LotteryV2Application.status == "waitlisted",
-                        LotteryV2Application.tier_preferences[0] == pt.id,
+                        LotteryV2Application.tier_preferences[1] == pt.id,
                     )
                 )
             ).scalar() or 0
