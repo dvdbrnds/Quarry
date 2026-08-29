@@ -187,6 +187,7 @@ export default function LotteryV2Manager() {
   const [selectForceCapacity, setSelectForceCapacity] = useState(false);
   const [capacityAudit, setCapacityAudit] = useState<any | null>(null);
   const [dupesReport, setDupesReport] = useState<any | null>(null);
+  const [supersededAudit, setSupersededAudit] = useState<any | null>(null);
 
   const [deskQuery, setDeskQuery] = useState("");
   const [deskFilter, setDeskFilter] = useState<DeskFilter>("all");
@@ -567,6 +568,25 @@ export default function LotteryV2Manager() {
         throw new Error(err.detail || "Capacity audit failed");
       }
       setCapacityAudit(await res.json());
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadSupersededAudit() {
+    if (!activeId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/lottery-v2/cycles/${activeId}/superseded-audit`, {
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Superseded audit failed");
+      }
+      setSupersededAudit(await res.json());
     } catch (e: any) {
       message.error(e.message);
     } finally {
@@ -1157,6 +1177,9 @@ export default function LotteryV2Manager() {
                   <Button disabled={busy} onClick={loadCapacityAudit}>
                     Capacity audit
                   </Button>
+                  <Button disabled={busy} onClick={loadSupersededAudit}>
+                    Superseded audit
+                  </Button>
                   <Button disabled={busy} onClick={loadDupesReport}>
                     Duplicates
                   </Button>
@@ -1453,6 +1476,73 @@ export default function LotteryV2Manager() {
 
                 {dupesReport.duplicates?.length === 0 && (
                   <p className="text-green-700 font-medium m-0">No duplicate offers found.</p>
+                )}
+              </div>
+            )}
+
+            {supersededAudit && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium m-0">Superseded Audit</h4>
+                  <Button type="link" size="small" onClick={() => setSupersededAudit(null)}>Dismiss</Button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3 text-center">
+                  <div className="bg-white rounded p-2 border">
+                    <div className="text-lg font-bold">{supersededAudit.total_superseded}</div>
+                    <div className="text-xs text-gray-500">Total superseded</div>
+                  </div>
+                  <div className="bg-white rounded p-2 border">
+                    <div className="text-lg font-bold text-green-600">{supersededAudit.has_permit}</div>
+                    <div className="text-xs text-gray-500">Have permit</div>
+                  </div>
+                  <div className="bg-white rounded p-2 border">
+                    <div className="text-lg font-bold text-blue-600">{supersededAudit.has_other_app}</div>
+                    <div className="text-xs text-gray-500">Have other app</div>
+                  </div>
+                  <div className="bg-white rounded p-2 border">
+                    <div className={`text-lg font-bold ${supersededAudit.unresolved > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {supersededAudit.unresolved}
+                    </div>
+                    <div className="text-xs text-gray-500">Unresolved</div>
+                  </div>
+                </div>
+
+                {supersededAudit.unresolved > 0 && (
+                  <div>
+                    <h5 className="text-xs font-semibold uppercase text-red-600 mt-2 mb-1">
+                      Unresolved — no permit, no active application
+                    </h5>
+                    <div className="max-h-64 overflow-y-auto border rounded">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-blue-50">
+                          <tr className="text-left border-b">
+                            <th className="py-1 px-2">Name</th>
+                            <th className="py-1 px-2">Email</th>
+                            <th className="py-1 px-2">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {supersededAudit.unresolved_students.map((s: any) => (
+                            <tr key={s.id} className="border-b">
+                              <td className="py-1 px-2 font-medium">{s.student_name}</td>
+                              <td className="py-1 px-2">{s.student_email}</td>
+                              <td className="py-1 px-2 text-gray-500 max-w-xs truncate">{s.admin_notes || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-2 mb-0">
+                      Use the "Superseded" filter above to find these students and restore them to the waitlist or select them for a permit.
+                    </p>
+                  </div>
+                )}
+
+                {supersededAudit.unresolved === 0 && (
+                  <p className="text-green-700 font-medium m-0">
+                    All superseded students are accounted for — they all have active permits or other applications.
+                  </p>
                 )}
               </div>
             )}
