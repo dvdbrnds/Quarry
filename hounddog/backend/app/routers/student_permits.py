@@ -47,7 +47,7 @@ COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
 RESIDENT_CODES = {
     "north_premium_resident", "south_premium_resident",
     "north_guaranteed_resident", "south_guaranteed_resident",
-    "south_standalone",
+    "south_standalone", "steel_field_resident",
 }
 
 ALL_ALERT_CATEGORIES = ["emergency", "weather", "campus_closing", "parking", "general"]
@@ -59,10 +59,18 @@ async def _get_housing_status(user) -> str | None:
     """Look up housing status from Jenzabar SIS. Returns 'R', 'C', 'O', or None."""
     moravian_id = _extract_moravian_id(user)
     if not moravian_id:
+        _logger.debug("No moravian_id for user %s — housing filter skipped", getattr(user, "email", "?"))
         return None
     from ..services.sis_student_data import lookup_student_parking_data
-    data = await lookup_student_parking_data(moravian_id)
-    return data.housing_status if data else None
+    try:
+        data = await lookup_student_parking_data(moravian_id)
+        if data:
+            return data.housing_status
+        _logger.warning("SIS returned no data for moravian_id=%s — housing filter skipped", moravian_id)
+        return None
+    except Exception as e:
+        _logger.warning("SIS housing lookup failed for %s: %s — housing filter skipped", moravian_id, e)
+        return None
 
 
 @router.get("/housing-status")
