@@ -1451,12 +1451,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         );
                       })()}
                       <p className="m-0 mt-2 text-sm text-blue-800">
-                        {application.tier_waitlist_position
-                          ? `You are #${application.tier_waitlist_position} in line for this permit.`
-                          : application.waitlist_position
-                            ? `You are on the waitlist.`
-                            : "No action needed."
-                        } You'll be notified if a spot opens.
+                        You are on the waitlist. You'll be notified if a spot opens.
                       </p>
                     </div>
                   )}
