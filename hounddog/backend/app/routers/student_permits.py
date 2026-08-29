@@ -9,10 +9,13 @@ from decimal import Decimal
 def _extract_moravian_id(user) -> str | None:
     """Extract the Moravian numeric ID from an OktaUser profile."""
     profile = getattr(user, "profile", None) or {}
-    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+    for field in ("altId", "studentId", "employeeNumber", "moravianId",
+                  "preferred_username", "login"):
         val = profile.get(field)
         if val:
-            return str(val).split("@")[0].strip()
+            candidate = str(val).split("@")[0].strip()
+            if candidate.isdigit():
+                return candidate
     return None
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -55,9 +58,35 @@ ALL_ALERT_CATEGORIES = ["emergency", "weather", "campus_closing", "parking", "ge
 PERMIT_OPT_IN_CATEGORIES = ["emergency", "parking"]
 
 
-async def _get_housing_status(user) -> str | None:
+async def _get_housing_status(user, db: AsyncSession | None = None) -> str | None:
     """Look up housing status from Jenzabar SIS. Returns 'R', 'C', 'O', or None."""
     moravian_id = _extract_moravian_id(user)
+
+    # Fallback: look up moravian_id from the student's existing permits
+    if not moravian_id and db:
+        email = getattr(user, "email", None)
+        sub = getattr(user, "sub", None)
+        if email or sub:
+            from sqlalchemy import or_
+            conditions = []
+            if email:
+                conditions.append(Permit.email == email)
+            if sub:
+                conditions.append(Permit.student_id == sub)
+            row = (await db.execute(
+                select(Permit.moravian_id)
+                .where(
+                    or_(*conditions),
+                    Permit.moravian_id.isnot(None),
+                    Permit.moravian_id != "",
+                    Permit.deleted_at.is_(None),
+                )
+                .limit(1)
+            )).scalar()
+            if row:
+                moravian_id = row
+                _logger.debug("Fell back to permit-stored moravian_id=%s for %s", moravian_id, email)
+
     if not moravian_id:
         _logger.debug("No moravian_id for user %s — housing filter skipped", getattr(user, "email", "?"))
         return None
@@ -76,9 +105,10 @@ async def _get_housing_status(user) -> str | None:
 @router.get("/housing-status")
 async def housing_status(
     user: OktaUser = Depends(get_current_user_or_impersonated),
+    db: AsyncSession = Depends(get_db),
 ):
     """Return the student's housing classification from Jenzabar SIS."""
-    status = await _get_housing_status(user)
+    status = await _get_housing_status(user, db)
     from ..services.sis_student_data import HOUSING_LABELS
     return {
         "housing_status": status,
@@ -202,7 +232,7 @@ async def available_permit_types(
 
     # Enforce housing status from Jenzabar: commuters only see commuter permits,
     # residents only see resident permits. Unknown housing sees everything.
-    housing = await _get_housing_status(user)
+    housing = await _get_housing_status(user, db)
     if housing == "C":
         types = [pt for pt in types if pt.code not in RESIDENT_CODES]
     elif housing == "R":
@@ -637,7 +667,7 @@ async def direct_purchase(
         raise HTTPException(400, "This permit type cannot be purchased directly")
 
     # Enforce housing eligibility from Jenzabar
-    housing = await _get_housing_status(user)
+    housing = await _get_housing_status(user, db)
     if housing == "C" and pt.code in RESIDENT_CODES:
         raise HTTPException(403, "Commuter students cannot purchase resident parking permits.")
     if housing == "R" and pt.code in COMMUTER_CODES:

@@ -331,6 +331,7 @@ async def get_current_user_or_impersonated(request: Request) -> OktaUser:
     target_name = impersonate_email
     target_groups: list[str] = []
     target_class_year: int | None = None
+    target_profile: dict = {}
 
     # Fetch groups and profile from Okta (authoritative source)
     if settings.okta_domain and settings.okta_api_token:
@@ -346,6 +347,7 @@ async def get_current_user_or_impersonated(request: Request) -> OktaUser:
                     okta_user = user_res.json()
                     target_sub = okta_user.get("id", "")
                     profile = okta_user.get("profile", {})
+                    target_profile = profile
                     target_name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip() or impersonate_email
 
                     # Fetch groups
@@ -419,4 +421,5 @@ async def get_current_user_or_impersonated(request: Request) -> OktaUser:
         family_name=family,
         display_name=target_name,
         class_year=target_class_year,
+        profile=target_profile,
     )
