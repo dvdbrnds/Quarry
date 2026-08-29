@@ -718,6 +718,7 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_permit ON vehicle_requests(permit_id)",
             "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_status ON vehicle_requests(status)",
             "ALTER TABLE vehicle_requests ADD COLUMN IF NOT EXISTS approval_token VARCHAR(128) UNIQUE",
+            "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS vehicle_request_notify_email VARCHAR(256) DEFAULT ''",
             ]
             for migration in migrations:
                 try:

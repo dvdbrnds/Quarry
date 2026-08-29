@@ -176,7 +176,13 @@ async def submit_multi_vehicle_request(
     # Email the chief with one-click approve/deny links
     try:
         from ..services.email import send_multi_vehicle_request_email
-        notify_email = settings.vehicle_request_notify_email or settings.smtp_from_address
+        from ..models.branding_settings import BrandingSettings
+        bs = (await db.execute(select(BrandingSettings))).scalar()
+        notify_email = (
+            (bs.vehicle_request_notify_email if bs else "")
+            or settings.vehicle_request_notify_email
+            or settings.smtp_from_address
+        )
         base_url = settings.student_facing_url or settings.public_url or ""
         approval_url = f"{base_url.rstrip('/')}/vehicle-approve/{token}"
         if notify_email:

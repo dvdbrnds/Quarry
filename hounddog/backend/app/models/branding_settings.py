@@ -15,6 +15,7 @@ class BrandingSettings(Base):
     accent_color: Mapped[str] = mapped_column(String(32), default="#c9a84c")
     department_name: Mapped[str] = mapped_column(String(256), default="Parking Authority")
     vouchers_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    vehicle_request_notify_email: Mapped[str] = mapped_column(String(256), default="")
 
     logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     logo_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)

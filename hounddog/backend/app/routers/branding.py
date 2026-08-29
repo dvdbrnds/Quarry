@@ -100,6 +100,7 @@ async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = De
 
 class FeatureFlagsUpdate(BaseModel):
     vouchers_enabled: bool
+    vehicle_request_notify_email: str = ""
 
 
 @admin_router.get("/features")
@@ -110,6 +111,7 @@ async def get_feature_flags(
     bs = await _get_or_create(db)
     return {
         "vouchers_enabled": True if bs.vouchers_enabled is None else bool(bs.vouchers_enabled),
+        "vehicle_request_notify_email": bs.vehicle_request_notify_email or "",
     }
 
 
@@ -121,11 +123,13 @@ async def update_feature_flags(
 ):
     bs = await _get_or_create(db)
     bs.vouchers_enabled = body.vouchers_enabled
+    bs.vehicle_request_notify_email = body.vehicle_request_notify_email.strip()
     await db.flush()
     invalidate_branding_cache()
     return {
         "ok": True,
         "vouchers_enabled": bool(bs.vouchers_enabled),
+        "vehicle_request_notify_email": bs.vehicle_request_notify_email or "",
     }
 
 
