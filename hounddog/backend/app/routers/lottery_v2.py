@@ -1280,6 +1280,10 @@ async def list_stale_offers(
         }
         for a in apps
     ]
+
+
+@router.post("/applications/{application_id}/restore-waitlist", response_model=ApplicationRead)
+async def admin_restore_waitlist(
     application_id: uuid.UUID,
     position: int | None = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
