@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "../auth";
-import { Table, Input, Select, Tag, Button, Space, Empty } from "antd";
+import { Table, Input, Select, Tag, Button, Space, Empty, Modal, Timeline, Spin, Card } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { UserOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
 
 interface AuditEntry {
   id: string; timestamp: string; user_email: string; action: string;
@@ -84,6 +85,29 @@ export default function ActivityLog() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Student Timeline state
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timelineEmail, setTimelineEmail] = useState("");
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineData, setTimelineData] = useState<any | null>(null);
+
+  async function loadTimeline(email?: string) {
+    const target = (email || timelineEmail).trim();
+    if (!target) return;
+    setTimelineLoading(true);
+    setTimelineData(null);
+    try {
+      const res = await fetch(`/api/audit/student-summary/${encodeURIComponent(target)}`, {
+        headers: await authHeaders(),
+      });
+      if (res.ok) {
+        setTimelineData(await res.json());
+      }
+    } finally {
+      setTimelineLoading(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -149,6 +173,31 @@ export default function ActivityLog() {
         >
           Payment started
         </Button>
+        <Button
+          type="primary"
+          size="small"
+          icon={<UserOutlined />}
+          onClick={() => {
+            setTimelineEmail(filterUser || "");
+            setTimelineOpen(true);
+            if (filterUser) loadTimeline(filterUser);
+          }}
+        >
+          Student Timeline
+        </Button>
+        {filterUser && (
+          <Button
+            size="small"
+            type="dashed"
+            onClick={() => {
+              setTimelineEmail(filterUser);
+              setTimelineOpen(true);
+              loadTimeline(filterUser);
+            }}
+          >
+            Summarize {filterUser}
+          </Button>
+        )}
         {(filterUser || filterResource || filterAction || search) && (
           <Button type="link" danger size="small"
             onClick={() => { setFilterUser(""); setFilterResource(""); setFilterAction(""); setSearch(""); setPage(1); }}>
@@ -156,6 +205,86 @@ export default function ActivityLog() {
           </Button>
         )}
       </Space>
+
+      <Modal
+        title={<span><UserOutlined className="mr-2" />Student Activity Timeline</span>}
+        open={timelineOpen}
+        onCancel={() => { setTimelineOpen(false); setTimelineData(null); }}
+        footer={null}
+        width={700}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
+      >
+        <div className="mb-4">
+          <Input.Search
+            placeholder="Enter student email (e.g. smithj@moravian.edu)"
+            value={timelineEmail}
+            onChange={(e) => setTimelineEmail(e.target.value)}
+            onSearch={() => loadTimeline()}
+            enterButton="Load Timeline"
+            loading={timelineLoading}
+            size="large"
+          />
+        </div>
+
+        {timelineLoading && (
+          <div className="text-center py-8">
+            <Spin size="large" />
+            <p className="mt-2 text-gray-500">Loading student activity...</p>
+          </div>
+        )}
+
+        {timelineData && !timelineLoading && (
+          <div className="space-y-4">
+            {/* Verdict Card */}
+            <Card
+              size="small"
+              className={`border-l-4 ${
+                timelineData.verdict.color === "green" ? "border-l-green-500 bg-green-50" :
+                timelineData.verdict.color === "orange" ? "border-l-orange-500 bg-orange-50" :
+                timelineData.verdict.color === "blue" ? "border-l-blue-500 bg-blue-50" :
+                "border-l-red-500 bg-red-50"
+              }`}
+            >
+              <h4 className="font-bold text-sm mb-1">Payment Verdict</h4>
+              <p className="m-0 text-sm">{timelineData.verdict.summary}</p>
+            </Card>
+
+            <p className="text-xs text-gray-500">{timelineData.total_events} meaningful events found</p>
+
+            {/* Timeline */}
+            <Timeline
+              items={timelineData.events.map((ev: any, i: number) => ({
+                key: i,
+                color: ev.success ? (ev.type === "payment" || ev.label.includes("paid") || ev.label.includes("Paid") ? "green" : "blue") : "red",
+                dot: ev.success
+                  ? (ev.type === "payment" || ev.label.includes("paid") ? <CheckCircleOutlined /> : <ClockCircleOutlined />)
+                  : (ev.label.includes("expired") ? <ExclamationCircleOutlined /> : <CloseCircleOutlined />),
+                children: (
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{ev.label}</span>
+                      {!ev.success && ev.status_code > 0 && (
+                        <Tag color="red" className="text-[10px]">{ev.status_code}</Tag>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 m-0">{ev.detail}</p>
+                    <p className="text-[10px] text-gray-400 m-0">
+                      {new Date(ev.timestamp).toLocaleString("en-US", {
+                        month: "short", day: "numeric", year: "numeric",
+                        hour: "numeric", minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                ),
+              }))}
+            />
+
+            {timelineData.events.length === 0 && (
+              <Empty description="No activity found for this email" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Table dataSource={entries} columns={columns} rowKey="id" loading={loading} size="small"
         expandable={{
