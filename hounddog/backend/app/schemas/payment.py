@@ -65,6 +65,7 @@ class TicketLookup(BaseModel):
     ticket_category: str = "parking"
     vehicle_description: str | None = None
     is_commuter_lot: bool = False
+    processing_fee: str = "0.00"
 
 
 class TicketLookupList(BaseModel):

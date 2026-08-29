@@ -98,6 +98,9 @@ async def _ticket_to_lookup(ticket: Ticket, db: AsyncSession) -> dict:
         if c.key in TicketLookup.model_fields
     }
     data["is_commuter_lot"] = await _check_commuter_lot(ticket.lot, db)
+    fine_cents = int(float(ticket.fine_amount) * 100)
+    processing_fee_cents = round(fine_cents * settings.citation_processing_fee_pct / 100) + settings.citation_processing_fee_fixed_cents
+    data["processing_fee"] = f"{processing_fee_cents / 100:.2f}"
     return data
 
 
@@ -146,19 +149,35 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
 
     ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
 
+    fine_cents = int(ticket.fine_amount * 100)
+    processing_fee_cents = round(fine_cents * settings.citation_processing_fee_pct / 100) + settings.citation_processing_fee_fixed_cents
+
     session = stripe.checkout.Session.create(
         customer_email=payer_email,
-        line_items=[{
-            "price_data": {
-                "currency": "usd",
-                "product_data": {
-                    "name": f"Parking Citation {ticket_ref}",
-                    "description": f"Plate: {ticket.plate} | Violation: {ticket.violation_type}",
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": f"Parking Citation {ticket_ref}",
+                        "description": f"Plate: {ticket.plate} | Violation: {ticket.violation_type}",
+                    },
+                    "unit_amount": fine_cents,
                 },
-                "unit_amount": int(ticket.fine_amount * 100),
+                "quantity": 1,
             },
-            "quantity": 1,
-        }],
+            {
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": "Processing Fee",
+                        "description": "Non-refundable online payment processing fee",
+                    },
+                    "unit_amount": processing_fee_cents,
+                },
+                "quantity": 1,
+            },
+        ],
         mode="payment",
         payment_intent_data={
             "statement_descriptor_suffix": f"CITE {ticket_ref}"[:22],

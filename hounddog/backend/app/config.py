@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     stripe_publishable_key: str = ""
+    citation_processing_fee_pct: float = 2.9
+    citation_processing_fee_fixed_cents: int = 30
 
     # Oracle ERP GL Configuration
     gl_ledger: str = "Moravian Primary Ledger"

@@ -8,7 +8,7 @@ interface TicketResult {
   id: string; plate: string; lot: string; violation_type: string;
   fine_amount: string; status: string; issued_at: string;
   ticket_category: string; vehicle_description: string | null;
-  is_commuter_lot: boolean;
+  is_commuter_lot: boolean; processing_fee: string;
 }
 
 interface AvailablePermit {
@@ -148,10 +148,17 @@ export default function Pay() {
                 <div className="text-sm text-ink-mute capitalize">{t.violation_type.replace(/_/g, " ")} &middot; {t.lot || "N/A"}</div>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold" style={{ color: brand.primaryColor }}>${Number(t.fine_amount).toFixed(2)}</div>
+                <div className="text-2xl font-bold" style={{ color: brand.primaryColor }}>${(Number(t.fine_amount) + Number(t.processing_fee)).toFixed(2)}</div>
                 <div className="text-xs text-ink-mute">{new Date(t.issued_at).toLocaleDateString()}</div>
               </div>
             </div>
+            {Number(t.processing_fee) > 0 && (
+              <div className="text-xs text-gray-500 mb-3 border-t pt-2">
+                <div className="flex justify-between"><span>Citation fine</span><span>${Number(t.fine_amount).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span>Processing fee</span><span>${Number(t.processing_fee).toFixed(2)}</span></div>
+                <div className="flex justify-between font-medium mt-1 pt-1 border-t"><span>Total due</span><span>${(Number(t.fine_amount) + Number(t.processing_fee)).toFixed(2)}</span></div>
+              </div>
+            )}
             <Space direction="vertical" className="w-full">
               <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
               {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: brand.accentColor, color: brand.accentColor }}>Buy a Commuter Permit</Button>}

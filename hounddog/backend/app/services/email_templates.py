@@ -288,6 +288,7 @@ def render_citation_email(
         + _detail_table("Citation Details", rows)
         + _cta_button(payment_url, "Pay Citation Online", primary)
         + _small(
+            'A processing fee will be added at checkout for online payments. '
             'If you believe this citation was issued in error, you may file '
             'an appeal through the payment portal above.'
         )
@@ -311,6 +312,7 @@ def render_citation_email(
         plain += f"Officer: {officer_name}\n"
     plain += (
         f"\nPay online: {payment_url}\n"
+        f"\nNote: A processing fee will be added at checkout for online payments.\n"
         f"\n{school} {department_name}"
     )
     return html, plain
