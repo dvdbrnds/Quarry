@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert, Badge, Button, Card, Collapse, Divider, Drawer, Input, Modal, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, App as AntApp, InputNumber,
+  Alert, Badge, Button, Card, Collapse, DatePicker, Divider, Drawer, Input, Modal, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, App as AntApp, InputNumber,
 } from "antd";
 import { authHeaders } from "../auth";
+import dayjs from "dayjs";
 
 interface Cycle {
   id: string;
@@ -188,6 +189,8 @@ export default function LotteryV2Manager() {
   const [capacityAudit, setCapacityAudit] = useState<any | null>(null);
   const [dupesReport, setDupesReport] = useState<any | null>(null);
   const [supersededAudit, setSupersededAudit] = useState<any | null>(null);
+  const [sameDayReport, setSameDayReport] = useState<any | null>(null);
+  const [sameDayDate, setSameDayDate] = useState<dayjs.Dayjs>(dayjs());
 
   const [deskQuery, setDeskQuery] = useState("");
   const [deskFilter, setDeskFilter] = useState<DeskFilter>("all");
@@ -624,6 +627,26 @@ export default function LotteryV2Manager() {
         throw new Error(err.detail || "Duplicates report failed");
       }
       setDupesReport(await res.json());
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadSameDayOffers() {
+    if (!activeId) return;
+    setBusy(true);
+    try {
+      const dateStr = sameDayDate.format("YYYY-MM-DD");
+      const res = await fetch(`/api/lottery-v2/cycles/${activeId}/same-day-offers?date=${dateStr}`, {
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Same-day offers query failed");
+      }
+      setSameDayReport(await res.json());
     } catch (e: any) {
       message.error(e.message);
     } finally {
@@ -1183,6 +1206,16 @@ export default function LotteryV2Manager() {
                   <Button disabled={busy} onClick={loadDupesReport}>
                     Duplicates
                   </Button>
+                  <DatePicker
+                    size="small"
+                    value={sameDayDate}
+                    onChange={(d) => d && setSameDayDate(d)}
+                    allowClear={false}
+                    style={{ width: 130 }}
+                  />
+                  <Button disabled={busy} onClick={loadSameDayOffers}>
+                    Same-Day Offers
+                  </Button>
                 </Space>
               </div>
               <Button
@@ -1476,6 +1509,124 @@ export default function LotteryV2Manager() {
 
                 {dupesReport.duplicates?.length === 0 && (
                   <p className="text-green-700 font-medium m-0">No duplicate offers found.</p>
+                )}
+              </div>
+            )}
+
+            {sameDayReport && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium m-0">
+                    Same-Day Offers — {sameDayReport.date} — {sameDayReport.cycle_name}
+                  </h4>
+                  <Button type="link" size="small" onClick={() => setSameDayReport(null)}>Dismiss</Button>
+                </div>
+
+                <p className="m-0">
+                  <strong>{sameDayReport.total_offers_on_date}</strong> offer{sameDayReport.total_offers_on_date !== 1 ? "s" : ""} issued on {sameDayReport.date}
+                  {sameDayReport.students_with_multiple.length > 0 && (
+                    <span className="text-red-700 font-semibold ml-2">
+                      — {sameDayReport.students_with_multiple.length} student{sameDayReport.students_with_multiple.length !== 1 ? "s" : ""} received multiple offers
+                    </span>
+                  )}
+                </p>
+
+                {sameDayReport.students_with_multiple.length > 0 && (
+                  <div>
+                    <h5 className="text-xs font-semibold uppercase text-red-600 mt-2 mb-1">
+                      Students with multiple offers on this date
+                    </h5>
+                    <div className="max-h-64 overflow-y-auto border rounded bg-white">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-amber-50">
+                          <tr className="text-left border-b">
+                            <th className="py-1 px-2">Email</th>
+                            <th className="py-1 px-2">Name</th>
+                            <th className="py-1 px-2">Status</th>
+                            <th className="py-1 px-2">Tier</th>
+                            <th className="py-1 px-2">Lot</th>
+                            <th className="py-1 px-2">Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sameDayReport.students_with_multiple.map((s: any) =>
+                            s.applications.map((app: any, i: number) => (
+                              <tr key={app.id} className={`border-b ${i === 0 ? "border-t-2 border-t-red-300" : ""}`}>
+                                {i === 0 && (
+                                  <td className="py-1 px-2 font-medium align-top" rowSpan={s.applications.length}>
+                                    {s.email}
+                                  </td>
+                                )}
+                                <td className="py-1 px-2">{app.name}</td>
+                                <td className="py-1 px-2">
+                                  <Tag
+                                    color={app.status === "accepted" ? "green" : app.status === "superseded" ? "default" : "blue"}
+                                    className="text-[10px]"
+                                  >
+                                    {app.status}
+                                  </Tag>
+                                </td>
+                                <td className="py-1 px-2">{app.tier || "—"}</td>
+                                <td className="py-1 px-2">{app.lot || "—"}</td>
+                                <td className="py-1 px-2">{app.updated_at ? new Date(app.updated_at).toLocaleTimeString() : "—"}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {sameDayReport.total_offers_on_date > 0 && (
+                  <Collapse
+                    size="small"
+                    items={[{
+                      key: "all",
+                      label: `All ${sameDayReport.total_offers_on_date} offers on ${sameDayReport.date}`,
+                      children: (
+                        <div className="max-h-80 overflow-y-auto">
+                          <table className="w-full text-xs border-collapse">
+                            <thead className="sticky top-0 bg-amber-50">
+                              <tr className="text-left border-b">
+                                <th className="py-1 px-2">Email</th>
+                                <th className="py-1 px-2">Name</th>
+                                <th className="py-1 px-2">Status</th>
+                                <th className="py-1 px-2">Tier</th>
+                                <th className="py-1 px-2">Lot</th>
+                                <th className="py-1 px-2">Updated</th>
+                                <th className="py-1 px-2">Expires</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sameDayReport.all_offers.map((app: any) => (
+                                <tr key={app.id} className="border-b">
+                                  <td className="py-1 px-2">{app.email}</td>
+                                  <td className="py-1 px-2">{app.name}</td>
+                                  <td className="py-1 px-2">
+                                    <Tag
+                                      color={app.status === "accepted" ? "green" : app.status === "superseded" ? "default" : "blue"}
+                                      className="text-[10px]"
+                                    >
+                                      {app.status}
+                                    </Tag>
+                                  </td>
+                                  <td className="py-1 px-2">{app.tier || "—"}</td>
+                                  <td className="py-1 px-2">{app.lot || "—"}</td>
+                                  <td className="py-1 px-2">{app.updated_at ? new Date(app.updated_at).toLocaleTimeString() : "—"}</td>
+                                  <td className="py-1 px-2">{app.offer_expires_at ? new Date(app.offer_expires_at).toLocaleDateString() : "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ),
+                    }]}
+                  />
+                )}
+
+                {sameDayReport.total_offers_on_date === 0 && (
+                  <p className="text-green-700 font-medium m-0">No offers were issued on this date.</p>
                 )}
               </div>
             )}

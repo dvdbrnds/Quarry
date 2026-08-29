@@ -3251,6 +3251,84 @@ async def duplicates_report(
     }
 
 
+@router.get("/cycles/{cycle_id}/same-day-offers")
+async def same_day_offers(
+    cycle_id: uuid.UUID,
+    date: str = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Audit: find all offers issued on a given date, highlighting students with multiple."""
+    from sqlalchemy import cast, Date as SADate
+
+    cycle = await db.get(LotteryV2Cycle, cycle_id)
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+
+    if date:
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "Invalid date format — use YYYY-MM-DD")
+    else:
+        from ..services.closure_scheduler import today_local
+        target_date = today_local()
+
+    pts = (await db.execute(select(PermitType))).scalars().all()
+    pt_by_id = {pt.id: pt for pt in pts}
+
+    apps = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status.in_(["selected", "accepted", "superseded"]),
+                cast(LotteryV2Application.updated_at, SADate) == target_date,
+            )
+        )
+    ).scalars().all()
+
+    def app_dict(a: LotteryV2Application) -> dict:
+        pt = pt_by_id.get(a.assigned_permit_type_id) if a.assigned_permit_type_id else None
+        return {
+            "id": str(a.id),
+            "email": a.student_email,
+            "name": a.student_name,
+            "status": a.status,
+            "tier": pt.label if pt else None,
+            "tier_code": pt.code if pt else None,
+            "lot": a.assigned_lot,
+            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            "offer_expires_at": a.offer_expires_at.isoformat() if a.offer_expires_at else None,
+        }
+
+    all_offers = [app_dict(a) for a in sorted(apps, key=lambda x: x.updated_at or datetime.min)]
+
+    by_email: dict[str, list] = {}
+    for a in apps:
+        key = (a.student_email or "").strip().lower()
+        if key:
+            by_email.setdefault(key, []).append(a)
+
+    students_with_multiple = []
+    for email, group in sorted(by_email.items()):
+        if len(group) < 2:
+            continue
+        students_with_multiple.append({
+            "email": email,
+            "name": group[0].student_name,
+            "offer_count": len(group),
+            "applications": [app_dict(a) for a in sorted(group, key=lambda x: x.updated_at or datetime.min)],
+        })
+
+    return {
+        "date": target_date.isoformat(),
+        "cycle_name": cycle.name,
+        "total_offers_on_date": len(apps),
+        "students_with_multiple": students_with_multiple,
+        "all_offers": all_offers,
+    }
+
+
 @router.get("/cycles/{cycle_id}/results")
 async def get_results(
     cycle_id: uuid.UUID,
