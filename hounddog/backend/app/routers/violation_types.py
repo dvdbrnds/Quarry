@@ -42,6 +42,14 @@ async def create_violation_type(
     if existing.scalar():
         raise HTTPException(409, f"Violation type with code '{data.code}' already exists")
 
+    # Shift existing items at or above this sort_order up by 1
+    from sqlalchemy import update
+    await db.execute(
+        update(ViolationType)
+        .where(ViolationType.sort_order >= data.sort_order)
+        .values(sort_order=ViolationType.sort_order + 1)
+    )
+
     vtype = ViolationType(**data.model_dump())
     db.add(vtype)
     await db.flush()
@@ -60,7 +68,35 @@ async def update_violation_type(
     if not vtype:
         raise HTTPException(404, "Violation type not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    update_data = data.model_dump(exclude_unset=True)
+
+    # If sort_order is changing, shift others to make room
+    if "sort_order" in update_data and update_data["sort_order"] != vtype.sort_order:
+        from sqlalchemy import update
+        new_order = update_data["sort_order"]
+        old_order = vtype.sort_order
+        if new_order < old_order:
+            await db.execute(
+                update(ViolationType)
+                .where(
+                    ViolationType.sort_order >= new_order,
+                    ViolationType.sort_order < old_order,
+                    ViolationType.id != vtype_id,
+                )
+                .values(sort_order=ViolationType.sort_order + 1)
+            )
+        else:
+            await db.execute(
+                update(ViolationType)
+                .where(
+                    ViolationType.sort_order > old_order,
+                    ViolationType.sort_order <= new_order,
+                    ViolationType.id != vtype_id,
+                )
+                .values(sort_order=ViolationType.sort_order - 1)
+            )
+
+    for field, value in update_data.items():
         setattr(vtype, field, value)
 
     await db.flush()
