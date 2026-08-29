@@ -1511,11 +1511,11 @@ export default function LotteryV2Manager() {
                 {supersededAudit.unresolved > 0 && (
                   <div>
                     <h5 className="text-xs font-semibold uppercase text-red-600 mt-2 mb-1">
-                      Unresolved — no permit, no active application
+                      Unresolved — no permit, no active application ({supersededAudit.unresolved})
                     </h5>
-                    <div className="max-h-64 overflow-y-auto border rounded">
+                    <div className="max-h-48 overflow-y-auto border border-red-200 rounded">
                       <table className="w-full text-xs border-collapse">
-                        <thead className="sticky top-0 bg-blue-50">
+                        <thead className="sticky top-0 bg-red-50">
                           <tr className="text-left border-b">
                             <th className="py-1 px-2">Name</th>
                             <th className="py-1 px-2">Email</th>
@@ -1538,6 +1538,51 @@ export default function LotteryV2Manager() {
                     </p>
                   </div>
                 )}
+
+                <div>
+                  <h5 className="text-xs font-semibold uppercase text-gray-500 mt-2 mb-1">
+                    All superseded students ({supersededAudit.total_superseded})
+                  </h5>
+                  <div className="max-h-72 overflow-y-auto border rounded">
+                    <table className="w-full text-xs border-collapse">
+                      <thead className="sticky top-0 bg-blue-50">
+                        <tr className="text-left border-b">
+                          <th className="py-1 px-2">Name</th>
+                          <th className="py-1 px-2">Email</th>
+                          <th className="py-1 px-2">Resolution</th>
+                          <th className="py-1 px-2">Details</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {supersededAudit.all.map((s: any) => (
+                          <tr key={s.id} className={`border-b ${s.resolution === "unresolved" ? "bg-red-50" : ""}`}>
+                            <td className="py-1 px-2 font-medium">{s.student_name}</td>
+                            <td className="py-1 px-2">{s.student_email}</td>
+                            <td className="py-1 px-2">
+                              {s.resolution === "has_permit" && (
+                                <Tag color="green" className="text-[10px]">Has Permit</Tag>
+                              )}
+                              {s.resolution === "has_other_app" && (
+                                <Tag color="blue" className="text-[10px]">{s.other_app_status}</Tag>
+                              )}
+                              {s.resolution === "unresolved" && (
+                                <Tag color="red" className="text-[10px]">Unresolved</Tag>
+                              )}
+                            </td>
+                            <td className="py-1 px-2 text-gray-500">
+                              {s.active_permit
+                                ? `${s.active_permit.type} — ${s.active_permit.permit_number || ""} (${(s.active_permit.plates || []).join(", ")})`
+                                : s.other_app_status
+                                  ? `Other app: ${s.other_app_status}`
+                                  : s.admin_notes || "—"
+                              }
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
                 {supersededAudit.unresolved === 0 && (
                   <p className="text-green-700 font-medium m-0">
