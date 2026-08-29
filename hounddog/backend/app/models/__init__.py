@@ -32,6 +32,7 @@ from .subscriber_group import SubscriberGroup, subscriber_group_members
 from .ticket import Ticket
 from .violation_type import ViolationType
 from .visitor_approval_token import VisitorApprovalToken
+from .vehicle_request import VehicleRequest
 
 __all__ = [
     "AcademicSeason",
@@ -71,4 +72,5 @@ __all__ = [
     "Ticket",
     "ViolationType",
     "VisitorApprovalToken",
+    "VehicleRequest",
 ]

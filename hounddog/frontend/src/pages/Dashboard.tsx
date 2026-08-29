@@ -66,6 +66,7 @@ interface DashboardData {
   action_items: ActionItem[];
   activity: ActivityEvent[];
   trend: TrendDay[];
+  pending_vehicle_requests: number;
 }
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -199,12 +200,17 @@ export default function Dashboard() {
             <Card size="small" className="!bg-red-50 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/tickets?status=appealed")}>
               <Statistic
                 title={<span className="text-red-700">Needs action</span>}
-                value={data.needs_action.total}
+                value={data.needs_action.total + (data.pending_vehicle_requests || 0)}
                 valueStyle={{ color: "#b91c1c", fontWeight: 700 }}
               />
               <div className="text-xs text-red-600/70 mt-1">
                 {data.needs_action.appealed} appeal{data.needs_action.appealed !== 1 ? "s" : ""},
                 {" "}{data.needs_action.escalated} escalation{data.needs_action.escalated !== 1 ? "s" : ""}
+                {data.pending_vehicle_requests > 0 && (
+                  <span className="ml-1 cursor-pointer underline" onClick={(e) => { e.stopPropagation(); navigate("/permits#vehicle-requests"); }}>
+                    , {data.pending_vehicle_requests} vehicle request{data.pending_vehicle_requests !== 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
             </Card>
 

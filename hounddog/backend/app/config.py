@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     selection_emails_enabled: bool = True
     lot_closure_mailing_list: str = ""
     citation_from_address: str = ""
+    vehicle_request_notify_email: str = ""
 
     # Twilio SMS
     twilio_account_sid: str = ""

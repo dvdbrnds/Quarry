@@ -16,6 +16,7 @@ import DiscountRoster from "./DiscountRoster";
 import VoucherManager from "./VoucherManager";
 import VisitorPresets from "./VisitorPresets";
 import GuestRegistrations from "./GuestRegistrations";
+import VehicleRequests from "./VehicleRequests";
 import { useBranding } from "../useBranding";
 import { useCurrentUser } from "../UserContext";
 
@@ -728,6 +729,8 @@ export default function Permits() {
                 ? "guests"
                 : location.hash === "#visitor-presets" || location.hash === "#presets"
                   ? "visitor-presets"
+                : location.hash === "#vehicle-requests"
+                  ? "vehicle-requests"
                 : "permits";
   const [tab, setTab] = useState(
     !isAdmin && !isOfficeRole(user?.role) && (initTab === "lottery" || initTab === "types") ? "permits"
@@ -1063,11 +1066,16 @@ export default function Permits() {
             children: <GuestRegistrations />,
           },
           {
+            key: "vehicle-requests",
+            label: "Vehicle Requests",
+            children: <VehicleRequests />,
+          },
+          {
             key: "live",
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
           },
-  ].filter((t) => isAdmin || (t.key !== "lottery" && (t.key !== "types" || isOfficeRole(user?.role))));
+  ].filter((t) => isAdmin || (t.key !== "lottery" && t.key !== "vehicle-requests" && (t.key !== "types" || isOfficeRole(user?.role))));
 
   return (
     <div>
@@ -1084,6 +1092,7 @@ export default function Permits() {
             : key === "vouchers" ? "#vouchers"
             : key === "guests" ? "#guests"
             : key === "visitor-presets" ? "#visitor-presets"
+            : key === "vehicle-requests" ? "#vehicle-requests"
             : "#types";
           window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
         }}

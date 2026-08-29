@@ -260,6 +260,143 @@ function PlateSwapForm({
   );
 }
 
+const COMMUTER_PERMIT_CODES = new Set(["commuter_undergrad", "commuter_grad", "premium_commuter"]);
+
+interface VehicleRequestEntry {
+  id: string;
+  permit_id: string;
+  plate: string;
+  plate_state: string;
+  reason: string;
+  status: string;
+  decision_note: string | null;
+  created_at: string | null;
+  decided_at: string | null;
+}
+
+function MultiVehicleRequestForm({
+  permitId,
+  permitType,
+  existingRequests,
+  onSubmitted,
+}: {
+  permitId: string;
+  permitType: string;
+  existingRequests: VehicleRequestEntry[];
+  onSubmitted: () => void;
+}) {
+  const { message } = AntApp.useApp();
+  const [open, setOpen] = useState(false);
+  const [plate, setPlate] = useState("");
+  const [plateState, setPlateState] = useState("PA");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!COMMUTER_PERMIT_CODES.has(permitType)) return null;
+
+  const pendingRequest = existingRequests.find(r => r.permit_id === permitId && r.status === "pending");
+  const permitRequests = existingRequests.filter(r => r.permit_id === permitId);
+
+  async function handleSubmit() {
+    const trimmed = plate.trim().toUpperCase();
+    if (!trimmed) { message.warning("Enter a license plate"); return; }
+    setSubmitting(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/student/permits/multi-vehicle-request", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ permit_id: permitId, plate: trimmed, plate_state: plateState, reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        message.error(err.detail || "Request failed");
+        return;
+      }
+      message.success("Request submitted for review");
+      setOpen(false);
+      setPlate("");
+      setReason("");
+      onSubmitted();
+    } catch {
+      message.error("Failed to submit request");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      {permitRequests.length > 0 && (
+        <div className="mb-2">
+          {permitRequests.map(r => (
+            <div key={r.id} className="text-xs flex items-center gap-2 mb-1">
+              <span className="font-mono">{r.plate}</span>
+              {r.status === "pending" && <Tag color="gold" className="text-xs">Pending Review</Tag>}
+              {r.status === "approved" && <Tag color="green" className="text-xs">Approved</Tag>}
+              {r.status === "denied" && (
+                <span>
+                  <Tag color="red" className="text-xs">Denied</Tag>
+                  {r.decision_note && <span className="text-gray-500 ml-1">{r.decision_note}</span>}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!open && !pendingRequest && (
+        <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+          Add Another Vehicle
+        </Button>
+      )}
+
+      {open && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
+          <p className="text-sm font-medium text-gray-700 m-0 mb-1">Request Additional Vehicle</p>
+          <p className="text-xs text-gray-500 m-0 mb-3">
+            Commuter students may request to register a second vehicle. Approval is required.
+          </p>
+          <div className="flex gap-2 items-end flex-wrap">
+            <Input
+              size="small"
+              placeholder="ABC1234"
+              value={plate}
+              onChange={e => setPlate(e.target.value.toUpperCase())}
+              className="flex-1"
+              style={{ fontFamily: "monospace", textTransform: "uppercase", minWidth: 100 }}
+            />
+            <Select
+              size="small"
+              value={plateState}
+              onChange={setPlateState}
+              options={PLATE_STATES.map(s => ({ label: s, value: s }))}
+              style={{ width: 72 }}
+            />
+          </div>
+          <Input.TextArea
+            size="small"
+            placeholder="Brief reason (optional)"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            rows={2}
+            className="mt-2"
+            maxLength={500}
+          />
+          <div className="flex gap-2 mt-2">
+            <Button size="small" type="primary" loading={submitting} onClick={handleSubmit}>
+              Submit Request
+            </Button>
+            <Button size="small" onClick={() => { setOpen(false); setPlate(""); setReason(""); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LotteryApplyV2() {
   const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -386,6 +523,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [upgradeApps, setUpgradeApps] = useState<Application[]>([]);
   const [joiningUpgrade, setJoiningUpgrade] = useState<string | null>(null);
   const [housingStatus, setHousingStatus] = useState<string | null>(null);
+  const [vehicleRequests, setVehicleRequests] = useState<VehicleRequestEntry[]>([]);
 
   // Overnight guest registration state
   interface GuestReg { id: string; guest_name: string; guest_plate: string | null; guest_plate_state: string; check_in: string; check_out: string; status: string; }
@@ -400,6 +538,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       const headers = await authHeadersAs(impersonateEmail);
       const res = await fetch("/api/student/guests", { headers });
       if (res.ok) setGuestRegs(await res.json());
+    } catch { /* ignore */ }
+  }, [impersonateEmail]);
+
+  const reloadVehicleRequests = useCallback(async () => {
+    try {
+      const headers = await authHeadersAs(impersonateEmail);
+      const res = await fetch("/api/student/permits/multi-vehicle-requests", { headers });
+      if (res.ok) setVehicleRequests(await res.json());
     } catch { /* ignore */ }
   }, [impersonateEmail]);
 
@@ -616,6 +762,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
       const permits = permitsRes.ok ? await permitsRes.json() : [];
       setMyPermits(permits);
+
+      // Load multi-vehicle requests
+      try {
+        const vReqRes = await fetch("/api/student/permits/multi-vehicle-requests", { headers });
+        if (vReqRes.ok) setVehicleRequests(await vReqRes.json());
+      } catch { /* optional */ }
 
       const upgradeData = upgradeRes.ok ? await upgradeRes.json() : [];
       setUpgradeApps(Array.isArray(upgradeData) ? upgradeData : []);
@@ -1362,6 +1514,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             p.id === permit.id ? { ...p, plates: [newPlate], can_swap: false, next_swap_available: new Date(Date.now() + 7 * 86400000).toISOString() } : p
                           ));
                         }}
+                      />
+                      <MultiVehicleRequestForm
+                        permitId={permit.id}
+                        permitType={permit.permit_type}
+                        existingRequests={vehicleRequests}
+                        onSubmitted={reloadVehicleRequests}
                       />
                     </div>
                   ))}

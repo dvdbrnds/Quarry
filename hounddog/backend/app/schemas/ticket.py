@@ -179,3 +179,4 @@ class DashboardData(BaseModel):
     action_items: list[ActionItem]
     activity: list[ActivityEvent]
     trend: list[TrendDay]
+    pending_vehicle_requests: int = 0

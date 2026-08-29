@@ -307,6 +307,12 @@ async def dashboard(
             count=counts_by_day.get(d, 0),
         ))
 
+    # Pending vehicle requests
+    from ..models.vehicle_request import VehicleRequest
+    vr_count = (await db.execute(
+        select(func.count()).select_from(VehicleRequest).where(VehicleRequest.status == "pending")
+    )).scalar() or 0
+
     return DashboardData(
         needs_action=needs_action,
         issued_count=issued_count,
@@ -315,6 +321,7 @@ async def dashboard(
         action_items=action_items,
         activity=activity,
         trend=trend,
+        pending_vehicle_requests=vr_count,
     )
 
 

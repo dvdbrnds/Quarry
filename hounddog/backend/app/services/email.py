@@ -568,3 +568,106 @@ async def send_payment_link_email(
     )
     return await send_email([recipient_email], subject, body_html, body_text)
 
+
+async def send_multi_vehicle_request_email(
+    admin_email: str,
+    student_name: str,
+    student_email: str,
+    plate: str,
+    permit_number: str,
+) -> bool:
+    """Notify admin/chief that a student has requested to add a second vehicle."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    primary = b["primary_color"]
+    department = b.get("department_name", "Parking Authority")
+    subject = f"Multi-Vehicle Request — {student_name}"
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 8px;font-size:20px;">'
+        f'Multi-Vehicle Request</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">'
+        f'<strong>{student_name}</strong> ({student_email}) has requested to add '
+        f'an additional vehicle to their commuter permit.</p>'
+        f'<table style="margin:16px 0;font-size:14px;border-collapse:collapse;">'
+        f'<tr><td style="padding:4px 12px 4px 0;color:#666;">Permit #</td>'
+        f'<td style="padding:4px 0;font-weight:600;">{permit_number}</td></tr>'
+        f'<tr><td style="padding:4px 12px 4px 0;color:#666;">Requested Plate</td>'
+        f'<td style="padding:4px 0;font-weight:600;">{plate}</td></tr>'
+        f'</table>'
+        f'<p style="color:#333;font-size:14px;">Please review this request in the '
+        f'admin panel under Permits &rarr; Vehicle Requests.</p>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"MULTI-VEHICLE REQUEST\n\n"
+        f"{student_name} ({student_email}) has requested to add an additional "
+        f"vehicle to their commuter permit.\n\n"
+        f"Permit #: {permit_number}\n"
+        f"Requested Plate: {plate}\n\n"
+        f"Please review this request in the admin panel under Permits > Vehicle Requests.\n\n"
+        f"{school} {department}"
+    )
+    return await send_email([admin_email], subject, body_html, body_text)
+
+
+async def send_multi_vehicle_decision_email(
+    student_email: str,
+    student_name: str,
+    plate: str,
+    approved: bool,
+    note: str | None = None,
+) -> bool:
+    """Notify a student that their multi-vehicle request was approved or denied."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    primary = b["primary_color"]
+    department = b.get("department_name", "Parking Authority")
+    first_name = extract_first_name(student_name)
+
+    if approved:
+        subject = f"Multi-Vehicle Request Approved — {plate}"
+        status_text = "approved"
+        detail = (
+            f'Your additional vehicle (<strong>{plate}</strong>) has been added to your '
+            f'commuter parking permit. It is now active and recognized by our system.'
+        )
+    else:
+        subject = f"Multi-Vehicle Request Denied — {plate}"
+        status_text = "denied"
+        detail = (
+            f'Your request to add vehicle <strong>{plate}</strong> to your commuter '
+            f'parking permit has been denied.'
+        )
+        if note:
+            detail += f'<br><br><em>Reason: {note}</em>'
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 8px;font-size:20px;">'
+        f'Multi-Vehicle Request {status_text.title()}</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name},</p>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">{detail}</p>'
+        f'<p style="color:#666;font-size:13px;line-height:1.5;">'
+        f'If you have questions, please contact the {department}.</p>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"MULTI-VEHICLE REQUEST {status_text.upper()}\n\n"
+        f"Dear {first_name},\n\n"
+    )
+    if approved:
+        body_text += (
+            f"Your additional vehicle ({plate}) has been added to your commuter "
+            f"parking permit. It is now active and recognized by our system.\n\n"
+        )
+    else:
+        body_text += (
+            f"Your request to add vehicle {plate} to your commuter parking permit "
+            f"has been denied.\n"
+        )
+        if note:
+            body_text += f"Reason: {note}\n\n"
+        else:
+            body_text += "\n"
+    body_text += f"{school} {department}"
+    return await send_email([student_email], subject, body_html, body_text)

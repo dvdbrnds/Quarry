@@ -60,6 +60,7 @@ from .routers import (
     student_permits,
     sync,
     tickets,
+    vehicle_requests,
     violation_types,
     visitor_permits,
 )
@@ -697,6 +698,24 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_guest_reg_host ON guest_registrations(host_email)",
             "CREATE INDEX IF NOT EXISTS idx_guest_reg_checkin ON guest_registrations(check_in)",
+            # Multi-vehicle requests
+            """CREATE TABLE IF NOT EXISTS vehicle_requests (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                permit_id UUID NOT NULL REFERENCES permits(id) ON DELETE CASCADE,
+                student_sub VARCHAR(256) NOT NULL,
+                student_email VARCHAR(256) NOT NULL,
+                student_name VARCHAR(256) NOT NULL,
+                plate VARCHAR(32) NOT NULL,
+                plate_state VARCHAR(2) DEFAULT '',
+                reason TEXT DEFAULT '',
+                status VARCHAR(32) DEFAULT 'pending',
+                decided_by VARCHAR(256),
+                decision_note TEXT,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                decided_at TIMESTAMPTZ
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_permit ON vehicle_requests(permit_id)",
+            "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_status ON vehicle_requests(status)",
             ]
             for migration in migrations:
                 try:
@@ -1174,6 +1193,8 @@ app.include_router(guest_registrations.student_router, prefix="/api/student/gues
 app.include_router(guest_registrations.admin_router, prefix="/api/admin/guests", tags=["admin-guests"])
 app.include_router(vouchers.admin_router, prefix="/api/vouchers", tags=["vouchers"])
 app.include_router(vouchers.router, prefix="/api/vouchers", tags=["vouchers"])
+app.include_router(vehicle_requests.student_router, tags=["vehicle-requests"])
+app.include_router(vehicle_requests.admin_router, tags=["vehicle-requests"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])
