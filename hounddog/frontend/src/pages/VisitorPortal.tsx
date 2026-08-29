@@ -130,7 +130,27 @@ function VisitorFlow() {
           setVisitorLots(lots.filter(isVisitorLot).map(toMapLot));
         }
         if (presetsRes.ok) {
-          setPresets(await presetsRes.json());
+          const loadedPresets: VisitorPreset[] = await presetsRes.json();
+          setPresets(loadedPresets);
+
+          // Auto-select preset from URL query param (e.g. /visitor?preset=moravian-archives)
+          const params = new URLSearchParams(window.location.search);
+          const presetParam = params.get("preset");
+          if (presetParam && loadedPresets.length > 0) {
+            const match = loadedPresets.find(
+              (p) =>
+                p.id === presetParam ||
+                p.label.toLowerCase().replace(/\s+/g, "-") === presetParam.toLowerCase() ||
+                p.label.toLowerCase() === presetParam.toLowerCase()
+            );
+            if (match) {
+              setSelectedPreset(match.id);
+              form.setFieldsValue({
+                company_name: match.company_name,
+                sponsor_email: match.sponsor_email,
+              });
+            }
+          }
         }
       } catch {
         /* map optional */
