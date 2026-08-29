@@ -3259,7 +3259,8 @@ async def same_day_offers(
     _admin: OktaUser = Depends(require_admin()),
 ):
     """Audit: find all offers issued on a given date, highlighting students with multiple."""
-    from sqlalchemy import cast, Date as SADate
+    import re as _re
+    from sqlalchemy import cast, Date as SADate, text as sa_text
 
     cycle = await db.get(LotteryV2Cycle, cycle_id)
     if not cycle:
@@ -3274,10 +3275,31 @@ async def same_day_offers(
         from ..services.closure_scheduler import today_local
         target_date = today_local()
 
+    offer_window = cycle.offer_window_days or 5
+
     pts = (await db.execute(select(PermitType))).scalars().all()
     pt_by_id = {pt.id: pt for pt in pts}
+    pt_by_code = {pt.code: pt for pt in pts}
 
-    apps = (
+    # Strategy 1: offer_expires_at - window = target_date (stable even after accept)
+    apps_by_expiry = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.status.in_(["selected", "accepted", "superseded",
+                                                  "expired", "declined"]),
+                LotteryV2Application.offer_expires_at.isnot(None),
+                cast(
+                    LotteryV2Application.offer_expires_at
+                    - sa_text(f"interval '{offer_window} days'"),
+                    SADate,
+                ) == target_date,
+            )
+        )
+    ).scalars().all()
+
+    # Strategy 2: updated_at on target date (catches rows where offer_expires_at was cleared)
+    apps_by_updated = (
         await db.execute(
             select(LotteryV2Application).where(
                 LotteryV2Application.cycle_id == cycle_id,
@@ -3287,9 +3309,17 @@ async def same_day_offers(
         )
     ).scalars().all()
 
-    def app_dict(a: LotteryV2Application) -> dict:
+    # Merge both sets by id
+    seen_ids = set()
+    all_matched: list[LotteryV2Application] = []
+    for a in [*apps_by_expiry, *apps_by_updated]:
+        if a.id not in seen_ids:
+            seen_ids.add(a.id)
+            all_matched.append(a)
+
+    def app_dict(a: LotteryV2Application, *, prior_tier: str | None = None) -> dict:
         pt = pt_by_id.get(a.assigned_permit_type_id) if a.assigned_permit_type_id else None
-        return {
+        d = {
             "id": str(a.id),
             "email": a.student_email,
             "name": a.student_name,
@@ -3300,30 +3330,101 @@ async def same_day_offers(
             "updated_at": a.updated_at.isoformat() if a.updated_at else None,
             "offer_expires_at": a.offer_expires_at.isoformat() if a.offer_expires_at else None,
         }
+        if prior_tier:
+            d["reassigned_from"] = prior_tier
+        return d
 
-    all_offers = [app_dict(a) for a in sorted(apps, key=lambda x: x.updated_at or datetime.min)]
+    # Strategy 3: detect reassigned offers via admin_notes timestamps on target_date
+    # Notes contain lines like "Offer sent by X at 2026-08-04T14:22:00+00:00 → Tier Label (Lot)"
+    target_str = target_date.isoformat()
+    offer_note_re = _re.compile(
+        r"Offer sent by .+ at (\d{4}-\d{2}-\d{2})T.+? → (.+?) \("
+    )
+    placed_note_re = _re.compile(
+        r"Placed into open capacity at (\d{4}-\d{2}-\d{2})T"
+    )
+
+    # Also check ALL apps in cycle for admin_notes mentioning the target date
+    all_cycle_apps = (
+        await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.admin_notes.isnot(None),
+            )
+        )
+    ).scalars().all()
+
+    # Build extra offer events from notes
+    extra_offers_by_email: dict[str, list[dict]] = {}
+    for a in all_cycle_apps:
+        if not a.admin_notes:
+            continue
+        notes_offers = []
+        for line in a.admin_notes.split("\n"):
+            m = offer_note_re.search(line)
+            if m and m.group(1) == target_str:
+                notes_offers.append({"tier_label": m.group(2), "note": line.strip()})
+            m2 = placed_note_re.search(line)
+            if m2 and m2.group(1) == target_str:
+                pt = pt_by_id.get(a.assigned_permit_type_id) if a.assigned_permit_type_id else None
+                notes_offers.append({
+                    "tier_label": pt.label if pt else "unknown",
+                    "note": line.strip(),
+                })
+
+        if len(notes_offers) >= 2:
+            email_key = (a.student_email or "").strip().lower()
+            if email_key:
+                extra_offers_by_email[email_key] = [{
+                    **app_dict(a, prior_tier=notes_offers[0]["tier_label"]),
+                    "offer_notes": notes_offers,
+                    "multiple_offers_on_single_app": True,
+                }]
+            if a.id not in seen_ids:
+                seen_ids.add(a.id)
+                all_matched.append(a)
+
+    all_offers = [app_dict(a) for a in sorted(all_matched, key=lambda x: x.updated_at or datetime.min)]
 
     by_email: dict[str, list] = {}
-    for a in apps:
+    for a in all_matched:
         key = (a.student_email or "").strip().lower()
         if key:
             by_email.setdefault(key, []).append(a)
 
     students_with_multiple = []
+    seen_multi_emails = set()
+
+    # First: students with multiple application ROWS
     for email, group in sorted(by_email.items()):
-        if len(group) < 2:
+        if len(group) >= 2:
+            seen_multi_emails.add(email)
+            students_with_multiple.append({
+                "email": email,
+                "name": group[0].student_name,
+                "offer_count": len(group),
+                "applications": [app_dict(a) for a in sorted(group, key=lambda x: x.updated_at or datetime.min)],
+            })
+
+    # Second: students with a single app that received multiple offers (from admin_notes)
+    for email, entries in extra_offers_by_email.items():
+        if email in seen_multi_emails:
             continue
+        entry = entries[0]
+        notes = entry.get("offer_notes", [])
         students_with_multiple.append({
             "email": email,
-            "name": group[0].student_name,
-            "offer_count": len(group),
-            "applications": [app_dict(a) for a in sorted(group, key=lambda x: x.updated_at or datetime.min)],
+            "name": entry["name"],
+            "offer_count": len(notes),
+            "reassigned": True,
+            "applications": [entry],
+            "offer_history": notes,
         })
 
     return {
         "date": target_date.isoformat(),
         "cycle_name": cycle.name,
-        "total_offers_on_date": len(apps),
+        "total_offers_on_date": len(all_matched),
         "students_with_multiple": students_with_multiple,
         "all_offers": all_offers,
     }

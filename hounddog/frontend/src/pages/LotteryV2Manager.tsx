@@ -1542,36 +1542,52 @@ export default function LotteryV2Manager() {
                           <tr className="text-left border-b">
                             <th className="py-1 px-2">Email</th>
                             <th className="py-1 px-2">Name</th>
-                            <th className="py-1 px-2">Status</th>
-                            <th className="py-1 px-2">Tier</th>
-                            <th className="py-1 px-2">Lot</th>
-                            <th className="py-1 px-2">Updated</th>
+                            <th className="py-1 px-2">Details</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {sameDayReport.students_with_multiple.map((s: any) =>
-                            s.applications.map((app: any, i: number) => (
-                              <tr key={app.id} className={`border-b ${i === 0 ? "border-t-2 border-t-red-300" : ""}`}>
-                                {i === 0 && (
-                                  <td className="py-1 px-2 font-medium align-top" rowSpan={s.applications.length}>
-                                    {s.email}
-                                  </td>
+                          {sameDayReport.students_with_multiple.map((s: any) => (
+                            <tr key={s.email} className="border-b border-t-2 border-t-red-300 align-top">
+                              <td className="py-1 px-2 font-medium">{s.email}</td>
+                              <td className="py-1 px-2">{s.name}</td>
+                              <td className="py-1 px-2">
+                                {s.reassigned ? (
+                                  <div>
+                                    <Tag color="orange" className="text-[10px] mb-1">Reassigned</Tag>
+                                    <span className="text-gray-500 ml-1">Single application received {s.offer_count} offers:</span>
+                                    <ul className="list-disc ml-4 mt-1 mb-0">
+                                      {(s.offer_history || []).map((h: any, i: number) => (
+                                        <li key={i} className="text-[11px] text-gray-700">{h.note}</li>
+                                      ))}
+                                    </ul>
+                                    <div className="mt-1 text-gray-500">
+                                      Current: <strong>{s.applications[0]?.tier || "—"}</strong> · {s.applications[0]?.lot || "—"} ·{" "}
+                                      <Tag
+                                        color={s.applications[0]?.status === "accepted" ? "green" : s.applications[0]?.status === "superseded" ? "default" : "blue"}
+                                        className="text-[10px]"
+                                      >
+                                        {s.applications[0]?.status}
+                                      </Tag>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-0.5">
+                                    {s.applications.map((app: any) => (
+                                      <div key={app.id}>
+                                        <Tag
+                                          color={app.status === "accepted" ? "green" : app.status === "superseded" ? "default" : "blue"}
+                                          className="text-[10px]"
+                                        >
+                                          {app.status}
+                                        </Tag>
+                                        {" "}{app.tier || "—"} · {app.lot || "—"} · {app.updated_at ? new Date(app.updated_at).toLocaleTimeString() : "—"}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
-                                <td className="py-1 px-2">{app.name}</td>
-                                <td className="py-1 px-2">
-                                  <Tag
-                                    color={app.status === "accepted" ? "green" : app.status === "superseded" ? "default" : "blue"}
-                                    className="text-[10px]"
-                                  >
-                                    {app.status}
-                                  </Tag>
-                                </td>
-                                <td className="py-1 px-2">{app.tier || "—"}</td>
-                                <td className="py-1 px-2">{app.lot || "—"}</td>
-                                <td className="py-1 px-2">{app.updated_at ? new Date(app.updated_at).toLocaleTimeString() : "—"}</td>
-                              </tr>
-                            ))
-                          )}
+                              </td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
