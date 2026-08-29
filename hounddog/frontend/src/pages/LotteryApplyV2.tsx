@@ -1701,10 +1701,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                               <Tag color="green" className="ml-2">Offer available!</Tag>
                             )}
                             {tier.remaining <= 0 && !alreadyOn && !existingApp && (
-                              <Tag color="default" className="ml-2">{tier.waitlist_count ? `${tier.waitlist_count} ahead` : "Full"}</Tag>
-                            )}
-                            {tier.remaining > 0 && !alreadyOn && !existingApp && (
-                              <Tag color="blue" className="ml-2">{tier.remaining} spot{tier.remaining !== 1 ? "s" : ""} open</Tag>
+                              <Tag color="default" className="ml-2">Full</Tag>
                             )}
                             {alreadyOn && tier.waitlist_count ? (
                               <span className="text-xs text-gray-400 ml-2">{tier.waitlist_count} on waitlist</span>
