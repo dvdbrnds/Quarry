@@ -26,6 +26,7 @@ def upgrade() -> None:
         sa.Column("plate_state", sa.String(2), server_default=""),
         sa.Column("reason", sa.Text(), server_default=""),
         sa.Column("status", sa.String(32), server_default="pending"),
+        sa.Column("approval_token", sa.String(128), unique=True, nullable=False),
         sa.Column("decided_by", sa.String(256), nullable=True),
         sa.Column("decision_note", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),

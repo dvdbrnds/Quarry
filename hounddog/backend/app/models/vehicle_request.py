@@ -20,6 +20,7 @@ class VehicleRequest(Base):
     plate_state: Mapped[str] = mapped_column(String(2), default="")
     reason: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(32), default="pending")
+    approval_token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     decided_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

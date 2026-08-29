@@ -709,6 +709,7 @@ async def lifespan(app: FastAPI):
                 plate_state VARCHAR(2) DEFAULT '',
                 reason TEXT DEFAULT '',
                 status VARCHAR(32) DEFAULT 'pending',
+                approval_token VARCHAR(128) NOT NULL UNIQUE,
                 decided_by VARCHAR(256),
                 decision_note TEXT,
                 created_at TIMESTAMPTZ DEFAULT now(),
@@ -716,6 +717,7 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_permit ON vehicle_requests(permit_id)",
             "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_status ON vehicle_requests(status)",
+            "ALTER TABLE vehicle_requests ADD COLUMN IF NOT EXISTS approval_token VARCHAR(128) UNIQUE",
             ]
             for migration in migrations:
                 try:
@@ -1195,6 +1197,7 @@ app.include_router(vouchers.admin_router, prefix="/api/vouchers", tags=["voucher
 app.include_router(vouchers.router, prefix="/api/vouchers", tags=["vouchers"])
 app.include_router(vehicle_requests.student_router, tags=["vehicle-requests"])
 app.include_router(vehicle_requests.admin_router, tags=["vehicle-requests"])
+app.include_router(vehicle_requests.public_router, tags=["vehicle-requests-public"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

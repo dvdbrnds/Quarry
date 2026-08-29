@@ -575,6 +575,7 @@ async def send_multi_vehicle_request_email(
     student_email: str,
     plate: str,
     permit_number: str,
+    approval_url: str = "",
 ) -> bool:
     """Notify admin/chief that a student has requested to add a second vehicle."""
     b = await _load_branding()
@@ -582,6 +583,16 @@ async def send_multi_vehicle_request_email(
     primary = b["primary_color"]
     department = b.get("department_name", "Parking Authority")
     subject = f"Multi-Vehicle Request — {student_name}"
+
+    buttons_html = ""
+    if approval_url:
+        buttons_html = (
+            '<div style="text-align:center;margin:24px 0;">'
+            f'<a href="{approval_url}" style="display:inline-block;background:{primary};'
+            'color:#fff;padding:14px 36px;border-radius:6px;text-decoration:none;'
+            'font-size:16px;font-weight:600;margin-right:12px;">Review &amp; Approve</a>'
+            '</div>'
+        )
 
     inner = (
         f'<h2 style="color:{primary};margin:0 0 8px;font-size:20px;">'
@@ -595,7 +606,8 @@ async def send_multi_vehicle_request_email(
         f'<tr><td style="padding:4px 12px 4px 0;color:#666;">Requested Plate</td>'
         f'<td style="padding:4px 0;font-weight:600;">{plate}</td></tr>'
         f'</table>'
-        f'<p style="color:#333;font-size:14px;">Please review this request in the '
+        f'{buttons_html}'
+        f'<p style="color:#666;font-size:13px;">You can also review this request in the '
         f'admin panel under Permits &rarr; Vehicle Requests.</p>'
     )
     body_html = await branded_email_shell(school, inner)
@@ -605,7 +617,11 @@ async def send_multi_vehicle_request_email(
         f"vehicle to their commuter permit.\n\n"
         f"Permit #: {permit_number}\n"
         f"Requested Plate: {plate}\n\n"
-        f"Please review this request in the admin panel under Permits > Vehicle Requests.\n\n"
+    )
+    if approval_url:
+        body_text += f"Review and approve: {approval_url}\n\n"
+    body_text += (
+        f"You can also review this request in the admin panel under Permits > Vehicle Requests.\n\n"
         f"{school} {department}"
     )
     return await send_email([admin_email], subject, body_html, body_text)
