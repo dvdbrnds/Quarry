@@ -313,38 +313,113 @@ async def _expire_lottery_offers():
         )
         expired = expired_result.scalars().all()
         if not expired:
+            pass
+        else:
+            type_ids_affected: set = set()
+            for app in expired:
+                app.status = "expired"
+                type_ids_affected.add(app.permit_type_id)
+
+            for pt_id in type_ids_affected:
+                pt = await db.get(PermitType, pt_id)
+                if not pt:
+                    continue
+
+                if not pt.auto_advance_waitlist:
+                    logger.info(
+                        "Skipping auto-advance for %s — auto_advance_waitlist disabled",
+                        pt.code,
+                    )
+                    continue
+
+                next_app = (await db.execute(
+                    select(PermitApplication)
+                    .where(
+                        PermitApplication.permit_type_id == pt_id,
+                        PermitApplication.status == "waitlisted",
+                    )
+                    .order_by(PermitApplication.waitlist_position.asc())
+                    .limit(1)
+                )).scalar()
+
+                if next_app:
+                    next_app.status = "selected"
+                    next_app.offer_expires_at = now + timedelta(days=pt.offer_window_days)
+
+                    from .email import send_lottery_selection_email
+                    from ..config import settings
+                    await send_lottery_selection_email(
+                        recipient_email=next_app.student_email,
+                        student_name=next_app.student_name,
+                        permit_type_label=pt.label,
+                        price=str(pt.price),
+                        deadline=next_app.offer_expires_at.strftime("%B %d, %Y"),
+                        portal_url=f"{settings.student_facing_url.rstrip('/')}/parking",
+                        assigned_lot=next_app.assigned_lot,
+                        lot_assignments=list(pt.lot_assignments or []),
+                    )
+                    logger.info(
+                        "Lottery waitlist advanced: type=%s, promoted=%s",
+                        pt.code, next_app.student_email,
+                    )
+
+            await db.commit()
+            logger.info("Expired %d lottery offers (v1)", len(expired))
+
+    # Lottery V2 offers
+    from ..models.lottery_v2 import LotteryV2Application, LotteryV2Cycle
+    async with async_session() as db:
+        v2_expired_result = await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.status == "selected",
+                LotteryV2Application.offer_expires_at.isnot(None),
+                LotteryV2Application.offer_expires_at < now,
+            )
+        )
+        v2_expired = v2_expired_result.scalars().all()
+        if not v2_expired:
             return
 
-        type_ids_affected: set = set()
-        for app in expired:
+        v2_type_ids_affected: set = set()
+        for app in v2_expired:
             app.status = "expired"
-            type_ids_affected.add(app.permit_type_id)
+            if app.assigned_permit_type_id:
+                v2_type_ids_affected.add((app.cycle_id, app.assigned_permit_type_id))
 
-        for pt_id in type_ids_affected:
+        for cycle_id, pt_id in v2_type_ids_affected:
             pt = await db.get(PermitType, pt_id)
             if not pt:
                 continue
 
             if not pt.auto_advance_waitlist:
                 logger.info(
-                    "Skipping auto-advance for %s — auto_advance_waitlist disabled",
+                    "Skipping V2 auto-advance for %s — auto_advance_waitlist disabled",
                     pt.code,
                 )
                 continue
 
+            cycle = await db.get(LotteryV2Cycle, cycle_id)
+            offer_days = (cycle.offer_window_days if cycle else None) or pt.offer_window_days or 5
+
             next_app = (await db.execute(
-                select(PermitApplication)
+                select(LotteryV2Application)
                 .where(
-                    PermitApplication.permit_type_id == pt_id,
-                    PermitApplication.status == "waitlisted",
+                    LotteryV2Application.cycle_id == cycle_id,
+                    LotteryV2Application.status == "waitlisted",
+                    LotteryV2Application.tier_preferences.contains([pt_id]),
                 )
-                .order_by(PermitApplication.waitlist_position.asc())
+                .order_by(
+                    LotteryV2Application.waitlist_position.asc().nullslast(),
+                    LotteryV2Application.created_at.asc(),
+                )
                 .limit(1)
             )).scalar()
 
             if next_app:
                 next_app.status = "selected"
-                next_app.offer_expires_at = now + timedelta(days=pt.offer_window_days)
+                next_app.assigned_permit_type_id = pt_id
+                next_app.offer_expires_at = now + timedelta(days=offer_days)
+                next_app.waitlist_position = None
 
                 from .email import send_lottery_selection_email
                 from ..config import settings
@@ -359,12 +434,12 @@ async def _expire_lottery_offers():
                     lot_assignments=list(pt.lot_assignments or []),
                 )
                 logger.info(
-                    "Lottery waitlist advanced: type=%s, promoted=%s",
+                    "Lottery V2 waitlist advanced: type=%s, promoted=%s",
                     pt.code, next_app.student_email,
                 )
 
         await db.commit()
-        logger.info("Expired %d lottery offers", len(expired))
+        logger.info("Expired %d lottery V2 offers", len(v2_expired))
 
 
 async def _run_loop():

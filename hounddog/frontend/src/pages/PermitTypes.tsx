@@ -244,6 +244,8 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
   const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [waitlistCache, setWaitlistCache] = useState<Record<string, WaitlistEntry[]>>({});
   const [waitlistLoading, setWaitlistLoading] = useState<Record<string, boolean>>({});
+  const [staleOffers, setStaleOffers] = useState<Record<string, any[]>>({});
+  const [staleLoading, setStaleLoading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if ((editing || creating) && formRef.current) {
@@ -384,10 +386,52 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
     }
   }
 
+  async function fetchStaleOffers(permitTypeId: string) {
+    setStaleLoading(prev => ({ ...prev, [permitTypeId]: true }));
+    try {
+      const res = await fetch(`/api/lottery-v2/stale-offers/${permitTypeId}`, { headers: await authHeaders() });
+      if (res.ok) {
+        const offers = await res.json();
+        setStaleOffers(prev => ({ ...prev, [permitTypeId]: offers }));
+      } else {
+        setStaleOffers(prev => ({ ...prev, [permitTypeId]: [] }));
+      }
+    } catch {
+      setStaleOffers(prev => ({ ...prev, [permitTypeId]: [] }));
+    } finally {
+      setStaleLoading(prev => ({ ...prev, [permitTypeId]: false }));
+    }
+  }
+
+  async function expireStaleOffers(permitTypeId: string) {
+    try {
+      const res = await fetch(`/api/lottery-v2/expire-stale-offers/${permitTypeId}`, {
+        method: "POST",
+        headers: await authHeaders(),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        message.success(`Expired ${result.total_freed} stale offer(s) — capacity freed`);
+        setStaleOffers(prev => ({ ...prev, [permitTypeId]: [] }));
+        // Refresh waitlist and data
+        setWaitlistCache(prev => { const n = { ...prev }; delete n[permitTypeId]; return n; });
+        const pt = data.find(p => p.id === permitTypeId);
+        if (pt) fetchWaitlist(pt);
+        fetchData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        message.error(err.detail || "Failed to expire offers");
+      }
+    } catch (e: any) {
+      message.error(e.message || "Failed to expire offers");
+    }
+  }
+
   function handleExpand(expanded: boolean, pt: PermitTypeRow) {
     if (expanded) {
       setExpandedRowKeys(prev => [...prev, pt.id]);
       fetchWaitlist(pt);
+      fetchStaleOffers(pt.id);
     } else {
       setExpandedRowKeys(prev => prev.filter(k => k !== pt.id));
     }
@@ -510,6 +554,74 @@ export default function PermitTypes({ readOnly = false }: { readOnly?: boolean }
             size="small"
           />
         </div>
+
+        {/* Stale Offers Section */}
+        {!readOnly && (() => {
+          const offers = staleOffers[pt.id];
+          const loading = staleLoading[pt.id];
+          const overdueOffers = offers?.filter((o: any) => o.is_overdue) || [];
+          const pendingOffers = offers?.filter((o: any) => !o.is_overdue) || [];
+          if (loading) return null;
+          if (!offers || offers.length === 0) return null;
+          return (
+            <div className="mb-4 border border-orange-200 rounded bg-orange-50 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-orange-700">
+                  Pending Offers ({offers.length}) — blocking capacity
+                </span>
+                {overdueOffers.length > 0 && (
+                  <Button
+                    type="primary"
+                    danger
+                    size="small"
+                    onClick={() => expireStaleOffers(pt.id)}
+                  >
+                    Expire {overdueOffers.length} Overdue
+                  </Button>
+                )}
+              </div>
+              <div className="text-xs text-gray-600 mb-2">
+                These students were offered permits but haven't paid. Each one reserves a spot.
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-orange-200">
+                    <th className="text-left py-1 font-medium">Student</th>
+                    <th className="text-left py-1 font-medium">Email</th>
+                    <th className="text-left py-1 font-medium">Expires</th>
+                    <th className="text-left py-1 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {offers.map((o: any) => (
+                    <tr key={o.id} className="border-b border-orange-100">
+                      <td className="py-1">{o.student_name}</td>
+                      <td className="py-1">{o.student_email}</td>
+                      <td className="py-1">
+                        {o.offer_expires_at
+                          ? new Date(o.offer_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                          : "No deadline"
+                        }
+                      </td>
+                      <td className="py-1">
+                        {o.is_overdue ? (
+                          <Tag color="red" className="text-xs">Overdue ({o.days_overdue}d)</Tag>
+                        ) : (
+                          <Tag color="orange" className="text-xs">Pending</Tag>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {pendingOffers.length > 0 && overdueOffers.length === 0 && (
+                <div className="mt-2 text-xs text-gray-500">
+                  All offers are still within their deadline window. They will auto-expire when overdue.
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-gray-500">

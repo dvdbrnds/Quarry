@@ -1209,8 +1209,77 @@ async def admin_move_to_position(
     return await _app_to_read(db, app)
 
 
-@router.post("/applications/{application_id}/restore-waitlist", response_model=ApplicationRead)
-async def admin_restore_waitlist(
+@router.post("/expire-stale-offers/{permit_type_id}")
+async def expire_stale_offers(
+    permit_type_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    """Admin: immediately expire all overdue 'selected' offers for a permit type and free capacity."""
+    now = datetime.now(timezone.utc)
+
+    stale = (await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.assigned_permit_type_id == permit_type_id,
+            LotteryV2Application.status == "selected",
+            LotteryV2Application.offer_expires_at.isnot(None),
+            LotteryV2Application.offer_expires_at < now,
+        )
+    )).scalars().all()
+
+    for app in stale:
+        app.status = "expired"
+        note = f"Offer expired by admin {admin.email or admin.sub} at {now.isoformat()}"
+        app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+
+    # Also find offers without an expiry date (stuck indefinitely)
+    no_expiry = (await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.assigned_permit_type_id == permit_type_id,
+            LotteryV2Application.status == "selected",
+            LotteryV2Application.offer_expires_at.is_(None),
+        )
+    )).scalars().all()
+
+    for app in no_expiry:
+        app.status = "expired"
+        note = f"Stale offer (no expiry) expired by admin {admin.email or admin.sub} at {now.isoformat()}"
+        app.admin_notes = f"{app.admin_notes}\n{note}".strip() if app.admin_notes else note
+
+    await db.commit()
+    return {
+        "expired_overdue": len(stale),
+        "expired_no_deadline": len(no_expiry),
+        "total_freed": len(stale) + len(no_expiry),
+    }
+
+
+@router.get("/stale-offers/{permit_type_id}")
+async def list_stale_offers(
+    permit_type_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Admin: view all 'selected' (pending payment) offers for a permit type."""
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.assigned_permit_type_id == permit_type_id,
+            LotteryV2Application.status == "selected",
+        ).order_by(LotteryV2Application.offer_expires_at.asc().nullslast())
+    )
+    apps = result.scalars().all()
+    return [
+        {
+            "id": str(a.id),
+            "student_name": a.student_name,
+            "student_email": a.student_email,
+            "offer_expires_at": a.offer_expires_at.isoformat() if a.offer_expires_at else None,
+            "is_overdue": a.offer_expires_at < now if a.offer_expires_at else True,
+            "days_overdue": (now - a.offer_expires_at).days if a.offer_expires_at and a.offer_expires_at < now else 0,
+        }
+        for a in apps
+    ]
     application_id: uuid.UUID,
     position: int | None = Body(None, embed=True),
     db: AsyncSession = Depends(get_db),
