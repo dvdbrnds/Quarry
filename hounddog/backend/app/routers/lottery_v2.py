@@ -2428,6 +2428,85 @@ async def list_applications(
     return [await _app_to_read(db, a, pt_by_id) for a in apps]
 
 
+@router.get("/cycles/{cycle_id}/superseded-audit")
+async def superseded_audit(
+    cycle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Audit all superseded applications: check if each student ended up with an active permit."""
+    from ..models.permit import Permit
+
+    superseded = (await db.execute(
+        select(LotteryV2Application).where(
+            LotteryV2Application.cycle_id == cycle_id,
+            LotteryV2Application.status == "superseded",
+        ).order_by(LotteryV2Application.student_email.asc())
+    )).scalars().all()
+
+    results = []
+    for app in superseded:
+        email = (app.student_email or "").strip().lower()
+        sub = app.student_sub or ""
+
+        # Check if they have another non-dead application in this cycle
+        other_app = (await db.execute(
+            select(LotteryV2Application).where(
+                LotteryV2Application.cycle_id == cycle_id,
+                LotteryV2Application.id != app.id,
+                func.lower(LotteryV2Application.student_email) == email,
+                LotteryV2Application.status.in_(["selected", "accepted", "waitlisted"]),
+            ).limit(1)
+        )).scalar()
+
+        # Check if they have an active permit
+        active_permit = None
+        conditions = []
+        if email:
+            conditions.append(func.lower(Permit.email) == email)
+        if sub:
+            conditions.append(Permit.student_id == sub)
+        if conditions:
+            from sqlalchemy import or_
+            permit_row = (await db.execute(
+                select(Permit).where(
+                    or_(*conditions),
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                ).limit(1)
+            )).scalar()
+            if permit_row:
+                active_permit = {
+                    "permit_number": permit_row.permit_number,
+                    "type": permit_row.permit_type,
+                    "plates": list(permit_row.plates or []),
+                }
+
+        status_label = "has_permit" if active_permit else (
+            "has_other_app" if other_app else "unresolved"
+        )
+
+        results.append({
+            "id": str(app.id),
+            "student_name": app.student_name,
+            "student_email": app.student_email,
+            "admin_notes": app.admin_notes,
+            "resolution": status_label,
+            "other_app_status": other_app.status if other_app else None,
+            "active_permit": active_permit,
+        })
+
+    unresolved = [r for r in results if r["resolution"] == "unresolved"]
+    return {
+        "total_superseded": len(results),
+        "has_permit": len([r for r in results if r["resolution"] == "has_permit"]),
+        "has_other_app": len([r for r in results if r["resolution"] == "has_other_app"]),
+        "unresolved": len(unresolved),
+        "unresolved_students": unresolved,
+        "all": results,
+    }
+
+
 @router.get("/cycles/{cycle_id}/capacity-audit")
 async def capacity_audit(
     cycle_id: uuid.UUID,
