@@ -115,6 +115,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "prompt", value: "login"),
         ]
 
         return components?.url

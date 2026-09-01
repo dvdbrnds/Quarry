@@ -497,8 +497,8 @@ struct ContentView: View {
             }
 
             Menu {
-                Text(officerAuth.officerName)
                 Text(officerAuth.officerEmail)
+                    .font(.caption)
                 Divider()
                 Button(role: .destructive) {
                     officerAuth.logout()
@@ -506,9 +506,15 @@ struct ContentView: View {
                     Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             } label: {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.body)
-                    .foregroundStyle(.green)
+                HStack(spacing: 4) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(.green)
+                    Text(officerAuth.officerName.isEmpty ? "Officer" : officerAuth.officerName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                }
             }
         }
     }
