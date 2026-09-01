@@ -236,9 +236,42 @@ enum PlatePatternMatcher {
         }
 
         if !matchesAnyNAFormat(cleaned) {
+            // Try stripping a graphic artifact before rejecting.
+            // Some state plates (FL oranges, GA peach) have graphics between
+            // the letter and digit groups that OCR reads as a phantom digit.
+            if let repaired = stripGraphicArtifact(cleaned), matchesAnyNAFormat(repaired) {
+                return nil
+            }
             return .noFormatMatch
         }
 
+        return nil
+    }
+
+    /// If a 7-char string has the pattern LLL + D + DDD (or similar), try
+    /// dropping the middle digit that sits at the letter→digit boundary.
+    /// Returns the 6-char result only when it matches a known format.
+    static func stripGraphicArtifact(_ text: String) -> String? {
+        guard text.count == 7 else { return nil }
+        let chars = Array(text)
+
+        // Find the boundary where letters end and digits begin
+        // Pattern: letters then a digit blob. The phantom digit is the first
+        // digit when stripping it produces a valid 6-char plate.
+        for i in 1..<(chars.count - 1) {
+            let prev = chars[i - 1]
+            let curr = chars[i]
+            let next = chars[i + 1]
+            // Phantom digit sits right at the letter→digit transition
+            if prev.isLetter && curr.isNumber && next.isNumber {
+                var candidate = chars
+                candidate.remove(at: i)
+                let result = String(candidate)
+                if matchesAnyNAFormat(result) {
+                    return result
+                }
+            }
+        }
         return nil
     }
 

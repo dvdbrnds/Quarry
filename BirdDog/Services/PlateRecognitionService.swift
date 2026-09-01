@@ -218,6 +218,16 @@ final class PlateRecognitionService {
                     plateText = normalized
                 }
 
+                // State plate graphics (FL oranges, GA peach) can be OCR'd
+                // as a phantom digit between the letter and digit groups
+                // (e.g. "XIL6416" instead of "XIL416"). Always add the
+                // stripped version as an alternate for the voter/DB lookup.
+                if let stripped = PlatePatternMatcher.stripGraphicArtifact(plateText) {
+                    if !alternates.contains(stripped) {
+                        alternates.insert(stripped, at: 0)
+                    }
+                }
+
                 if PlatePatternMatcher.evaluatePlate(plateText) != nil {
                     let recovered = self.recoverFormatViaConfusables(plateText)
                     for alt in recovered where !alternates.contains(alt) {
