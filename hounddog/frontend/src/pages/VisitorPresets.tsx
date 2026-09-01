@@ -396,7 +396,7 @@ export default function VisitorPresets() {
                 <Form.Item
                   name="student_name_label"
                   label="Field label"
-                  extra='Customize the label visitors see, e.g. "Student name", "Child's name", "Attendee name"'
+                  extra={'Customize the label visitors see, e.g. "Student name", "Child\'s name", "Attendee name"'}
                 >
                   <Input placeholder="Student name" />
                 </Form.Item>
