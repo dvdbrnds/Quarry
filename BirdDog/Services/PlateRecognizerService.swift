@@ -28,7 +28,7 @@ final class PlateRecognizerService {
                          completion: @escaping (RecognitionResult) -> Void) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             print("[PlateRecognizer] No pixel buffer")
-            completion(RecognitionResult(plates: [], diagnostics: []))
+            completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
             return
         }
         let imageWidth = CVPixelBufferGetWidth(pixelBuffer)
@@ -37,7 +37,7 @@ final class PlateRecognizerService {
         lock.lock()
         if inFlight {
             lock.unlock()
-            completion(RecognitionResult(plates: [], diagnostics: []))
+            completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
             return
         }
         inFlight = true
@@ -46,7 +46,7 @@ final class PlateRecognizerService {
         guard let jpegData = pixelBufferToJPEG(pixelBuffer, quality: 0.80) else {
             print("[PlateRecognizer] JPEG conversion failed")
             lock.lock(); inFlight = false; lock.unlock()
-            completion(RecognitionResult(plates: [], diagnostics: []))
+            completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
             return
         }
 
@@ -78,7 +78,7 @@ final class PlateRecognizerService {
 
             if let error = error {
                 print("[PlateRecognizer] Network error: \(error.localizedDescription)")
-                completion(RecognitionResult(plates: [], diagnostics: []))
+                completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
                 return
             }
 
@@ -88,14 +88,14 @@ final class PlateRecognizerService {
                     if let data = data, let body = String(data: data, encoding: .utf8) {
                         print("[PlateRecognizer] Response: \(body.prefix(500))")
                     }
-                    completion(RecognitionResult(plates: [], diagnostics: []))
+                    completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
                     return
                 }
             }
 
             guard let data = data else {
                 print("[PlateRecognizer] No data in response")
-                completion(RecognitionResult(plates: [], diagnostics: []))
+                completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
                 return
             }
 
@@ -108,7 +108,7 @@ final class PlateRecognizerService {
                 if let raw = String(data: data, encoding: .utf8) {
                     print("[PlateRecognizer] Raw: \(raw.prefix(500))")
                 }
-                completion(RecognitionResult(plates: [], diagnostics: []))
+                completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
             }
         }
         task.resume()
@@ -117,7 +117,7 @@ final class PlateRecognizerService {
     private func parseResponse(_ data: Data, imageWidth: Int = 1920, imageHeight: Int = 1080) throws -> RecognitionResult {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("[PlateRecognizer] Could not parse JSON")
-            return RecognitionResult(plates: [], diagnostics: [])
+            return RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false)
         }
 
         let now = Date()
@@ -130,7 +130,7 @@ final class PlateRecognizerService {
             } else {
                 print("[PlateRecognizer] No 'results' key in response: \(json.keys)")
             }
-            return RecognitionResult(plates: [], diagnostics: [])
+            return RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false)
         }
 
         for result in results {
@@ -188,7 +188,7 @@ final class PlateRecognizerService {
             print("[PlateRecognizer] PLATE: \(normalized) conf=\(String(format: "%.3f", score)) det=\(String(format: "%.3f", dscore)) region=\(region)")
         }
 
-        return RecognitionResult(plates: plates, diagnostics: diagnostics)
+        return RecognitionResult(plates: plates, diagnostics: diagnostics, rectangleDetected: !plates.isEmpty)
     }
 
     private func pixelBufferToJPEG(_ pixelBuffer: CVPixelBuffer, quality: CGFloat) -> Data? {

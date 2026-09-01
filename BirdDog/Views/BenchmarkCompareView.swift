@@ -73,6 +73,10 @@ struct BenchmarkCompareView: View {
             compareRow("Chip", valA: a.deviceChip ?? "—", valB: b.deviceChip ?? "—")
             compareRow("Connection", valA: a.connectionType ?? "—", valB: b.connectionType ?? "—")
             compareRow("Camera", valA: a.primaryCamera, valB: b.primaryCamera)
+            compareRow("Hardware", valA: a.cameraHardware ?? "—", valB: b.cameraHardware ?? "—")
+            if a.testConditions != nil || b.testConditions != nil {
+                compareRow("Conditions", valA: a.testConditions ?? "—", valB: b.testConditions ?? "—")
+            }
         }
     }
 

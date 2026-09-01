@@ -5,18 +5,20 @@ import CoreImage
 struct RecognitionResult: Sendable {
     let plates: [RecognizedPlate]
     let diagnostics: [DiagnosticEntry]
+    let rectangleDetected: Bool
 }
 
 final class PlateRecognitionService {
 
     private let requestQueue = DispatchQueue(label: "com.birddog.recognition", qos: .utility)
     private let builtInScanRegion = CGRect(x: 0, y: 0.2, width: 1.0, height: 0.6)
-    private let defaultExternalScanRegion = CGRect(x: 0, y: 0.0, width: 1.0, height: 1.0)
+    private let defaultExternalScanRegion = CGRect(x: 0.05, y: 0.15, width: 0.9, height: 0.7)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     var isExternalCamera = false
 
     private var consecutiveEmptyFrames: Int = 0
+    private var lastRectangleDetected = false
 
     private var recentPlateYPositions: [CGFloat] = []
     private var lastPlateDetectionTime: Date = .distantPast
@@ -37,12 +39,44 @@ final class PlateRecognitionService {
     }
 
     private var enhancedBuffer: CVPixelBuffer?
+    private var downscaledBuffer: CVPixelBuffer?
+    private let downscaleWidth = 960
+    private let downscaleHeight = 540
+
+    /// Renders the pixel buffer into a reusable half-resolution buffer for the
+    /// cheap .fast OCR pass. Avoids allocating on every frame.
+    private func downscaleForDetection(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
+        let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
+        guard srcWidth > downscaleWidth || srcHeight > downscaleHeight else { return pixelBuffer }
+
+        if downscaledBuffer == nil
+            || CVPixelBufferGetWidth(downscaledBuffer!) != downscaleWidth
+            || CVPixelBufferGetHeight(downscaledBuffer!) != downscaleHeight {
+            let attrs: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: downscaleWidth,
+                kCVPixelBufferHeightKey as String: downscaleHeight,
+            ]
+            var buf: CVPixelBuffer?
+            CVPixelBufferCreate(kCFAllocatorDefault, downscaleWidth, downscaleHeight, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &buf)
+            downscaledBuffer = buf
+        }
+        guard let output = downscaledBuffer else { return nil }
+
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let scaleX = CGFloat(downscaleWidth) / CGFloat(srcWidth)
+        let scaleY = CGFloat(downscaleHeight) / CGFloat(srcHeight)
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        ciContext.render(scaled, to: output)
+        return output
+    }
 
     func recognizePlates(in sampleBuffer: CMSampleBuffer,
                          orientation: CGImagePropertyOrientation,
                          completion: @escaping (RecognitionResult) -> Void) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            completion(RecognitionResult(plates: [], diagnostics: []))
+            completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: lastRectangleDetected))
             return
         }
 
@@ -51,25 +85,64 @@ final class PlateRecognitionService {
         requestQueue.async { [self] in
             let roi = useExternal ? externalScanRegion : builtInScanRegion
 
-            func runOCR(on buffer: CVPixelBuffer, level: VNRequestTextRecognitionLevel = .accurate) -> [VNRecognizedTextObservation] {
+            // Rectangle pre-filter: skip expensive OCR if no plate-shaped objects visible.
+            // Uses the downscaled buffer for speed (~3-5ms).
+            if useExternal {
+                let detectBuffer = self.downscaleForDetection(pixelBuffer) ?? pixelBuffer
+                let hasRects = self.detectPlateRectangles(in: detectBuffer, orientation: orientation, roi: roi)
+                self.lastRectangleDetected = hasRects
+                if !hasRects && self.consecutiveEmptyFrames > 2 {
+                    self.consecutiveEmptyFrames += 1
+                    completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
+                    return
+                }
+            }
+
+            func runOCR(on buffer: CVPixelBuffer, level: VNRequestTextRecognitionLevel = .accurate, region: CGRect? = nil) -> [VNRecognizedTextObservation] {
                 let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation)
                 let req = VNRecognizeTextRequest()
                 req.recognitionLevel = level
                 req.usesLanguageCorrection = false
                 req.revision = VNRecognizeTextRequestRevision3
-                req.regionOfInterest = roi
+                req.regionOfInterest = region ?? roi
                 try? handler.perform([req])
                 return req.results ?? []
             }
 
-            let rawObs = runOCR(on: pixelBuffer)
+            // Two-stage OCR for external cameras: .fast on a downscaled buffer first,
+            // .accurate on auto-levels-normalized full-res only when needed.
+            let rawObs: [VNRecognizedTextObservation]
+            if useExternal {
+                let detectBuffer = self.downscaleForDetection(pixelBuffer) ?? pixelBuffer
+                let fastObs = runOCR(on: detectBuffer, level: .fast)
+                let fastHasPlate = fastObs.contains { obs in
+                    guard let text = obs.topCandidates(1).first?.string else { return false }
+                    let norm = PlatePatternMatcher.normalize(text)
+                    return PlatePatternMatcher.evaluatePlate(norm) == nil
+                }
+                if fastHasPlate {
+                    rawObs = fastObs
+                } else if !fastObs.isEmpty {
+                    let normalizedBuf = self.autoLevelsNormalize(pixelBuffer) ?? pixelBuffer
+                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
+                    rawObs = mergeObservations(primary: fastObs, secondary: accurateObs)
+                } else {
+                    let normalizedBuf = self.autoLevelsNormalize(pixelBuffer) ?? pixelBuffer
+                    rawObs = runOCR(on: normalizedBuf, level: .accurate)
+                }
+            } else {
+                rawObs = runOCR(on: pixelBuffer)
+            }
 
-            // Only fall back to enhanced grayscale if the fast pass found nothing
-            // — avoids doubling OCR cost on every single frame.
             let observations: [VNRecognizedTextObservation]
             if useExternal && rawObs.isEmpty, let enhanced = enhanceFrameReusing(pixelBuffer) {
-                let grayObs = runOCR(on: enhanced)
-                observations = grayObs
+                let grayObs = runOCR(on: enhanced, level: .fast)
+                let grayHasPlate = grayObs.contains { obs in
+                    guard let text = obs.topCandidates(1).first?.string else { return false }
+                    let norm = PlatePatternMatcher.normalize(text)
+                    return PlatePatternMatcher.evaluatePlate(norm) == nil
+                }
+                observations = grayHasPlate ? grayObs : (grayObs.isEmpty ? [] : runOCR(on: enhanced, level: .accurate))
             } else if useExternal && !rawObs.isEmpty {
                 let hasPlateCandidate = rawObs.contains { obs in
                     guard let text = obs.topCandidates(1).first?.string else { return false }
@@ -79,7 +152,7 @@ final class PlateRecognitionService {
                 if hasPlateCandidate {
                     observations = rawObs
                 } else if let enhanced = enhanceFrameReusing(pixelBuffer) {
-                    let grayObs = runOCR(on: enhanced)
+                    let grayObs = runOCR(on: enhanced, level: .fast)
                     observations = mergeObservations(primary: rawObs, secondary: grayObs)
                 } else {
                     observations = rawObs
@@ -90,7 +163,7 @@ final class PlateRecognitionService {
 
             guard !observations.isEmpty else {
                 self.consecutiveEmptyFrames += 1
-                completion(RecognitionResult(plates: [], diagnostics: []))
+                completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: self.lastRectangleDetected))
                 return
             }
 
@@ -239,7 +312,7 @@ final class PlateRecognitionService {
                 }
             }
 
-            completion(RecognitionResult(plates: plates, diagnostics: diagnostics))
+            completion(RecognitionResult(plates: plates, diagnostics: diagnostics, rectangleDetected: self.lastRectangleDetected))
         }
     }
 
@@ -273,9 +346,68 @@ final class PlateRecognitionService {
         return best
     }
 
+    private var normalizedBuffer: CVPixelBuffer?
+
+    /// Lightweight auto-levels normalization: adjusts brightness and contrast
+    /// based on the frame's actual luminance range. Always-on for external cameras
+    /// to compensate for shadow/highlight variation without the cost of the full
+    /// grayscale tone-curve pipeline.
+    private func autoLevelsNormalize(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let stats = frameBrightnessStats(pixelBuffer)
+        let brightnessAdj = (0.5 - stats.mean) * 0.3
+        let contrastAdj = stats.range < 0.4 ? 1.3 : (stats.range > 0.8 ? 0.9 : 1.1)
+
+        guard let adjusted = CIFilter(name: "CIColorControls", parameters: [
+            kCIInputImageKey: ciImage,
+            "inputSaturation": 1.0,
+            "inputContrast": NSNumber(value: contrastAdj),
+            "inputBrightness": NSNumber(value: brightnessAdj),
+        ])?.outputImage else { return nil }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let output = ensureBuffer(&normalizedBuffer, width: width, height: height)
+        guard let output else { return nil }
+        ciContext.render(adjusted, to: output)
+        return output
+    }
+
+    /// Samples a sparse grid to estimate frame brightness statistics.
+    private func frameBrightnessStats(_ pixelBuffer: CVPixelBuffer) -> (mean: Double, range: Double) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return (0.5, 0.5) }
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+
+        let gridSize = 8
+        let stepX = width / gridSize
+        let stepY = height / gridSize
+        var minVal: Double = 255, maxVal: Double = 0, total: Double = 0
+        var count: Double = 0
+        for row in 0..<gridSize {
+            for col in 0..<gridSize {
+                let x = col * stepX + stepX / 2
+                let y = row * stepY + stepY / 2
+                let g = Double(ptr[y * bytesPerRow + x * 4 + 1])
+                total += g
+                minVal = min(minVal, g)
+                maxVal = max(maxVal, g)
+                count += 1
+            }
+        }
+        let mean = total / count / 255.0
+        let range = (maxVal - minVal) / 255.0
+        return (mean, range)
+    }
+
     /// High-contrast grayscale pipeline tuned for colored plates (yellow NJ,
-    /// green specialty). Reuses a single pixel buffer across frames to avoid
-    /// allocating ~8MB of BGRA memory on every call.
+    /// green specialty) with CLAHE-style tiled contrast enhancement.
+    /// Reuses a single pixel buffer across frames.
     private func enhanceFrameReusing(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
 
@@ -297,10 +429,76 @@ final class PlateRecognitionService {
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
+        let output = ensureBuffer(&enhancedBuffer, width: width, height: height)
+        guard let output else { return nil }
+        ciContext.render(highContrast, to: output)
 
-        if enhancedBuffer == nil
-            || CVPixelBufferGetWidth(enhancedBuffer!) != width
-            || CVPixelBufferGetHeight(enhancedBuffer!) != height {
+        applyTiledContrastEnhancement(output)
+        return output
+    }
+
+    /// CLAHE-style tiled contrast enhancement for mixed shadow/sun conditions.
+    /// Splits the buffer into a 4x4 grid, computes per-tile brightness offset,
+    /// and applies a simple normalization pass.
+    private func applyTiledContrastEnhancement(_ pixelBuffer: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+
+        let tilesX = 4, tilesY = 4
+        let tileW = width / tilesX
+        let tileH = height / tilesY
+
+        // Compute per-tile mean brightness
+        var tileMeans = [[Double]](repeating: [Double](repeating: 0, count: tilesX), count: tilesY)
+        for ty in 0..<tilesY {
+            for tx in 0..<tilesX {
+                var sum: Double = 0, count: Double = 0
+                let step = 8
+                var y = ty * tileH
+                while y < (ty + 1) * tileH {
+                    var x = tx * tileW
+                    while x < (tx + 1) * tileW {
+                        sum += Double(ptr[y * bytesPerRow + x * 4 + 1])
+                        count += 1
+                        x += step
+                    }
+                    y += step
+                }
+                tileMeans[ty][tx] = count > 0 ? sum / count : 128
+            }
+        }
+
+        let globalMean = tileMeans.flatMap { $0 }.reduce(0, +) / Double(tilesX * tilesY)
+
+        // Apply per-tile brightness correction toward the global mean
+        for ty in 0..<tilesY {
+            for tx in 0..<tilesX {
+                let offset = Int(globalMean - tileMeans[ty][tx]) / 2
+                guard abs(offset) > 5 else { continue }
+                for y in (ty * tileH)..<min((ty + 1) * tileH, height) {
+                    for x in (tx * tileW)..<min((tx + 1) * tileW, width) {
+                        let idx = y * bytesPerRow + x * 4
+                        for c in 0..<3 {
+                            let val = Int(ptr[idx + c]) + offset
+                            ptr[idx + c] = UInt8(max(0, min(255, val)))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Allocates or reuses a BGRA pixel buffer at the given dimensions.
+    private func ensureBuffer(_ buffer: inout CVPixelBuffer?, width: Int, height: Int) -> CVPixelBuffer? {
+        if buffer == nil
+            || CVPixelBufferGetWidth(buffer!) != width
+            || CVPixelBufferGetHeight(buffer!) != height {
             let attrs: [String: Any] = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: width,
@@ -308,12 +506,9 @@ final class PlateRecognitionService {
             ]
             var buf: CVPixelBuffer?
             CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &buf)
-            enhancedBuffer = buf
+            buffer = buf
         }
-
-        guard let output = enhancedBuffer else { return nil }
-        ciContext.render(highContrast, to: output)
-        return output
+        return buffer
     }
 
     /// Groups text observations by vertical proximity, then keeps only the
@@ -420,6 +615,27 @@ final class PlateRecognitionService {
             score += 0.5
         }
         return score
+    }
+
+    // MARK: - Rectangle Pre-filter
+
+    /// Fast check for plate-shaped rectangles before running expensive OCR.
+    /// Returns true if at least one rectangle with plate-like aspect ratio is found.
+    private func detectPlateRectangles(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation, roi: CGRect) -> Bool {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+        let req = VNDetectRectanglesRequest()
+        req.minimumAspectRatio = 0.15
+        req.maximumAspectRatio = 0.85
+        req.minimumSize = 0.02
+        req.maximumObservations = 8
+        req.regionOfInterest = roi
+        try? handler.perform([req])
+        guard let results = req.results, !results.isEmpty else { return false }
+        return results.contains { obs in
+            let box = obs.boundingBox
+            let aspect = box.height > 0 ? box.width / box.height : 0
+            return aspect > 1.5 && aspect < 8.0
+        }
     }
 
     // MARK: - Quadrilateral Aspect Ratio

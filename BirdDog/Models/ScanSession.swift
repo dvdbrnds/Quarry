@@ -24,6 +24,8 @@ struct ScanSession: Identifiable, Codable, Hashable {
     var framesSkipped: Int?
     var pixelThroughput: Double?
     var isBenchmark: Bool?
+    var cameraHardware: String?
+    var testConditions: String?
 
     var isActive: Bool { endTime == nil }
 

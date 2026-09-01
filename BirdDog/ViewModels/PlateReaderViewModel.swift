@@ -192,6 +192,7 @@ final class PlateReaderViewModel: ObservableObject {
         session.framesProcessed = metrics.framesProcessed
         session.framesSkipped = metrics.framesSkipped
         session.pixelThroughput = metrics.pixelThroughput
+        session.cameraHardware = cameraService.activeCameraName
 
         sessionManager.save(session)
         activeSession = nil
@@ -269,6 +270,15 @@ final class PlateReaderViewModel: ObservableObject {
         currentPlates = result.plates
         diagnosticLog.append(contentsOf: result.diagnostics)
 
+        // Feed rectangle-detection hint back to camera for scene-change bypass
+        cameraService.rectangleDetectedHint = result.rectangleDetected
+
+        // Predictive burst: rectangle detected but no plates read yet means a
+        // plate is approaching readability. Pre-burst to capture more frames.
+        if result.rectangleDetected && result.plates.isEmpty && cameraService.isUsingExternalCamera {
+            cameraService.triggerBurst(duration: 0.8)
+        }
+
         // Update camera frame skip floor based on current motion state
         cameraService.motionMinFrameSkip = motionService.frameSkipFloor
 
@@ -326,11 +336,39 @@ final class PlateReaderViewModel: ObservableObject {
                 cameraService.triggerBurst()
             }
 
+            // Single-frame instant confirm for external camera:
+            // high confidence + known NA format = reliable enough for 1-frame
+            if newCount == 1 && isExternal && plate.confidence >= 0.90
+                && PlatePatternMatcher.matchesAnyNAFormat(voterKey)
+                && !PlatePatternMatcher.isVanityPlate(voterKey) {
+                threshold = 1
+            }
+
             // Single-frame instant confirm: high-confidence exact or fuzzy DB match
             if newCount == 1 && plate.confidence >= 0.85 && !PlatePatternMatcher.isVanityPlate(voterKey) {
                 let dbHit = authService.checkDetailed(plate: voterKey, currentLot: nil)
                 if dbHit.matchMethod == .exact || dbHit.matchMethod == .fuzzy {
                     threshold = 1
+                }
+            }
+
+            // Parallel alternate verification: while accumulating frames,
+            // pre-check alternates against the DB and boost the voter if any
+            // alternate is an exact hit. This accelerates convergence.
+            if newCount < threshold && isExternal {
+                for alt in plate.alternates {
+                    let altHit = authService.checkDetailed(plate: alt, currentLot: nil)
+                    if altHit.matchMethod == .exact {
+                        candidateVoter.record(
+                            key: voterKey,
+                            ballot: CandidateVoter.Ballot(
+                                primary: alt,
+                                alternates: [],
+                                confidence: plate.confidence + 0.1
+                            )
+                        )
+                        break
+                    }
                 }
             }
 

@@ -84,8 +84,25 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var discoverySession: AVCaptureDevice.DiscoverySession?
     private var hasSetInitialPreference = false
     private var pollTimer: Timer?
-    private let sharpnessThreshold: Double = 12.0
+    private let baseSharpnessThreshold: Double = 12.0
     private var lastFrameSharpness: Double = 999
+    private var recentSharpnessValues: [Double] = []
+    private let sharpnessHistorySize = 30
+
+    /// Adaptive sharpness threshold: rejects the bottom 20% of recent frames.
+    /// Falls back to the base threshold until enough history is collected.
+    private var adaptiveSharpnessThreshold: Double {
+        guard recentSharpnessValues.count >= 10 else { return baseSharpnessThreshold }
+        let sorted = recentSharpnessValues.sorted()
+        let idx = sorted.count / 5
+        return max(baseSharpnessThreshold, sorted[idx])
+    }
+
+    // Scene-change detection: skip OCR on frames where the scene hasn't changed
+    private var lastProcessedFingerprint: [UInt8] = []
+    private let sceneChangeThreshold: Double = 0.08
+    /// Set when rectangle detector hints a plate-shaped object is visible
+    var rectangleDetectedHint = false
 
     func start() {
         if !isRunning {
@@ -122,6 +139,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         stopPolling()
         exposureLockTimer?.invalidate()
         exposureRefreshTimer?.invalidate()
+        brightnessCheckTimer?.invalidate()
         sessionQueue.async { [weak self] in
             guard let self, self.isRunning else { return }
             self.session.stopRunning()
@@ -929,23 +947,45 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     private var exposureLockTimer: Timer?
     private var exposureRefreshTimer: Timer?
+    private var brightnessCheckTimer: Timer?
+    /// Mean brightness (0-1) at the time exposure was locked. Used to detect
+    /// lighting changes that warrant an immediate exposure refresh.
+    private var lockedBrightnessBaseline: Double = 0.5
+    @Published var lastFrameBrightness: Double = 0.5
 
     private func scheduleExposureLock(for camera: AVCaptureDevice) {
         exposureLockTimer?.invalidate()
         exposureRefreshTimer?.invalidate()
+        brightnessCheckTimer?.invalidate()
         DispatchQueue.main.async { [weak self] in
             self?.exposureLocked = false
         }
         exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
-            self?.lockExposure(camera)
+            self?.lockExposureAndRecordBaseline(camera)
             self?.startExposureRefreshCycle(for: camera)
+            self?.startBrightnessMonitoring(for: camera)
         }
     }
 
     private func startExposureRefreshCycle(for camera: AVCaptureDevice) {
         exposureRefreshTimer?.invalidate()
-        exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: 45.0, repeats: true) { [weak self] _ in
+        let interval: TimeInterval = MotionSpeedService.shared.mode == .vehicle ? 25.0 : 45.0
+        exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.refreshExposure(camera)
+        }
+    }
+
+    /// Checks frame brightness every 2 seconds and forces an exposure refresh
+    /// if brightness has drifted more than 30% from when exposure was locked.
+    private func startBrightnessMonitoring(for camera: AVCaptureDevice) {
+        brightnessCheckTimer?.invalidate()
+        brightnessCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self, self.exposureLocked, self.isUsingExternalCamera else { return }
+            let delta = abs(self.lastFrameBrightness - self.lockedBrightnessBaseline)
+            if delta > 0.30 {
+                self.log("exposure: brightness drift \(String(format: "%.0f%%", delta * 100)) — forcing refresh")
+                self.refreshExposure(camera)
+            }
         }
     }
 
@@ -967,7 +1007,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             }
 
             DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                self?.lockExposure(camera)
+                self?.lockExposureAndRecordBaseline(camera)
             }
         }
     }
@@ -983,6 +1023,24 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             camera.exposureMode = .locked
             camera.unlockForConfiguration()
             self.log("exposure: LOCKED at current level (ISO=\(camera.iso), shutter=\(camera.exposureDuration.seconds)s)")
+            DispatchQueue.main.async {
+                self.exposureLocked = true
+            }
+        }
+    }
+
+    private func lockExposureAndRecordBaseline(_ camera: AVCaptureDevice) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard camera.isExposureModeSupported(.locked) else {
+                self.log("exposure: camera does not support locked mode")
+                return
+            }
+            try? camera.lockForConfiguration()
+            camera.exposureMode = .locked
+            camera.unlockForConfiguration()
+            self.lockedBrightnessBaseline = self.lastFrameBrightness
+            self.log("exposure: LOCKED (ISO=\(camera.iso), shutter=\(camera.exposureDuration.seconds)s, brightness baseline=\(String(format: "%.2f", self.lockedBrightnessBaseline)))")
             DispatchQueue.main.async {
                 self.exposureLocked = true
             }
@@ -1172,6 +1230,8 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
         }
 
+        // Sharpness + brightness check runs early for external cameras so blurry
+        // frames never consume a processing slot. Computed every 4th raw frame.
         if isUsingExternalCamera && frameCount % 4 == 0,
            let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let score = laplacianVariance(buf)
@@ -1183,6 +1243,13 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
                 }
             }
             lastFrameSharpness = score
+            lastFrameBrightness = sampleMeanBrightness(buf)
+        }
+
+        // Gate on sharpness before frameSkip to avoid wasting OCR slots on blur
+        if isUsingExternalCamera && lastFrameSharpness < adaptiveSharpnessThreshold {
+            metricsAccumulator.framesSkipped += 1
+            return
         }
 
         guard frameCount % UInt64(frameSkip) == 0 else {
@@ -1194,14 +1261,94 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        if isUsingExternalCamera && lastFrameSharpness < sharpnessThreshold {
-            metricsAccumulator.framesSkipped += 1
-            return
+        // Track sharpness of frames that pass all gates for adaptive threshold
+        if isUsingExternalCamera {
+            recentSharpnessValues.append(lastFrameSharpness)
+            if recentSharpnessValues.count > sharpnessHistorySize {
+                recentSharpnessValues.removeFirst()
+            }
+        }
+
+        // Scene-change detection: skip unchanged frames unless in burst or
+        // rectangle-detected mode (something new entering the view).
+        if isUsingExternalCamera && Date() >= burstUntil && !rectangleDetectedHint,
+           let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            let fp = sceneFingerprint(buf)
+            if !lastProcessedFingerprint.isEmpty {
+                let delta = fingerprintDelta(fp, lastProcessedFingerprint)
+                if delta < sceneChangeThreshold {
+                    metricsAccumulator.framesSkipped += 1
+                    return
+                }
+            }
+            lastProcessedFingerprint = fp
         }
 
         isProcessing = true
         let effectiveOrientation: CGImagePropertyOrientation = isUsingExternalCamera ? externalCameraOrientation : cachedOrientation
         delegate?.cameraService(self, didOutput: sampleBuffer, orientation: effectiveOrientation)
+    }
+
+    /// Fast mean brightness estimate from a sparse grid sample (0.0-1.0).
+    private func sampleMeanBrightness(_ pixelBuffer: CVPixelBuffer) -> Double {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return 0.5 }
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+
+        let gridSize = 6
+        let stepX = width / gridSize
+        let stepY = height / gridSize
+        var total: Double = 0, count: Double = 0
+        for row in 0..<gridSize {
+            for col in 0..<gridSize {
+                let x = col * stepX + stepX / 2
+                let y = row * stepY + stepY / 2
+                total += Double(ptr[y * bytesPerRow + x * 4 + 1])
+                count += 1
+            }
+        }
+        return count > 0 ? total / count / 255.0 : 0.5
+    }
+
+    /// Cheap scene fingerprint: sample a sparse grid of green-channel pixel values.
+    /// Comparing two fingerprints tells us how much the scene has changed.
+    private func sceneFingerprint(_ pixelBuffer: CVPixelBuffer) -> [UInt8] {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return [] }
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+
+        let gridSize = 8
+        let stepX = width / gridSize
+        let stepY = height / gridSize
+        var fingerprint = [UInt8](repeating: 0, count: gridSize * gridSize)
+        for row in 0..<gridSize {
+            for col in 0..<gridSize {
+                let x = col * stepX + stepX / 2
+                let y = row * stepY + stepY / 2
+                fingerprint[row * gridSize + col] = ptr[y * bytesPerRow + x * 4 + 1]
+            }
+        }
+        return fingerprint
+    }
+
+    /// Normalized mean absolute difference between two fingerprints (0.0 = identical, 1.0 = max change).
+    private func fingerprintDelta(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return 1.0 }
+        var total: Int = 0
+        for i in 0..<a.count {
+            total += abs(Int(a[i]) - Int(b[i]))
+        }
+        return Double(total) / Double(a.count) / 255.0
     }
 
     /// Laplacian variance: high = sharp, low = blurry.
