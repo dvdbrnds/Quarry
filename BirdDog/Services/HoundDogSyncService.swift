@@ -113,9 +113,9 @@ final class HoundDogSyncService: ObservableObject {
 
         let dbEmpty = PlateDatabase.shared.totalCount() == 0
         let lotsEmpty = GeofenceService.shared.lots.isEmpty
-        if (dbEmpty || lotsEmpty) && (lastPermitSync != nil || lastLotSync != nil) {
-            if dbEmpty { lastPermitSync = nil }
-            if lotsEmpty { lastLotSync = nil }
+        if dbEmpty || lotsEmpty {
+            lastPermitSync = nil
+            lastLotSync = nil
             print("[HoundDog] Local data missing (permits=\(dbEmpty), lots=\(lotsEmpty)) — forcing full sync")
         }
 
