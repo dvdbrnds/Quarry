@@ -47,12 +47,7 @@ struct TicketIssuanceView: View {
     var onTicketIssued: ((String) -> Void)?
 
     private func ensureValidViolationSelection(preferred: [String] = []) {
-        let codes = Set(violationTypes.map(\.0))
-        if !selectedViolation.isEmpty, codes.contains(selectedViolation) { return }
-        selectedViolation = ViolationTypeStore.shared.resolveCode(
-            preferred: preferred.isEmpty ? ["no_permit_displayed", "no_permit", "unauthorized_permit"] : preferred,
-            category: "parking"
-        )
+        // No-op: officers must deliberately choose a violation type
     }
 
     var body: some View {
