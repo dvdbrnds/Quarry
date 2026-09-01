@@ -91,6 +91,11 @@ final class HoundDogSyncService: ObservableObject {
         start()
     }
 
+    func resetSyncDates() {
+        lastPermitSync = nil
+        lastLotSync = nil
+    }
+
     func syncNow() async {
         let settings = AppSettings.shared
         guard !settings.houndDogURL.isEmpty, !settings.houndDogAPIKey.isEmpty else {
@@ -105,6 +110,14 @@ final class HoundDogSyncService: ObservableObject {
 
         syncState = .syncing
         lastError = nil
+
+        let dbEmpty = PlateDatabase.shared.totalCount() == 0
+        let lotsEmpty = GeofenceService.shared.lots.isEmpty
+        if (dbEmpty || lotsEmpty) && (lastPermitSync != nil || lastLotSync != nil) {
+            if dbEmpty { lastPermitSync = nil }
+            if lotsEmpty { lastLotSync = nil }
+            print("[HoundDog] Local data missing (permits=\(dbEmpty), lots=\(lotsEmpty)) — forcing full sync")
+        }
 
         do {
             try await syncPermits()

@@ -120,6 +120,7 @@ struct QRScannerView: View {
             settings.oktaClientId = payload.oktaClientId
         }
 
+        HoundDogSyncService.shared.resetSyncDates()
         HoundDogSyncService.shared.startIfConfigured()
         isPairing = false
         isPresented = false
