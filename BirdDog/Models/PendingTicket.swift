@@ -31,6 +31,9 @@ final class PendingTicket {
     var isWarning: Bool
     var warningReason: String?
 
+    // Plate correction (officer reports OCR misread)
+    var ocrOriginalPlate: String?
+
     // Permit holder info (when available from scan)
     var ownerName: String?
     var permitNumber: String?
@@ -59,6 +62,7 @@ final class PendingTicket {
         officerEmail: String? = nil,
         isWarning: Bool = false,
         warningReason: String? = nil,
+        ocrOriginalPlate: String? = nil,
         ownerName: String? = nil,
         permitNumber: String? = nil
     ) {
@@ -83,6 +87,7 @@ final class PendingTicket {
         self.officerEmail = officerEmail
         self.isWarning = isWarning
         self.warningReason = warningReason
+        self.ocrOriginalPlate = ocrOriginalPlate
         self.ownerName = ownerName
         self.permitNumber = permitNumber
     }

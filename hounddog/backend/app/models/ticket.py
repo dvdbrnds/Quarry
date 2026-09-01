@@ -47,6 +47,9 @@ class Ticket(Base):
     driver_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     driver_license: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # OCR correction — stores what the camera read when the officer corrected the plate
+    ocr_original_plate: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     # Mail notice tracking (for guests/visitors without email)
     mailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     mailed_address: Mapped[str | None] = mapped_column(Text, nullable=True)

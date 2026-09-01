@@ -72,6 +72,7 @@ class TicketRead(BaseModel):
     officer_notes: str | None = None
     driver_name: str | None = None
     driver_license: str | None = None
+    ocr_original_plate: str | None = None
     appeal_note: str | None = None
     appeal_decision: str | None = None
     appeal_decided_by: str | None = None

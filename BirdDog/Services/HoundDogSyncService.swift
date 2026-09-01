@@ -404,6 +404,7 @@ final class HoundDogSyncService: ObservableObject {
         if let officerEmail = ticket.officerEmail { body["officer_email"] = officerEmail }
         if ticket.isWarning { body["is_warning"] = true }
         if let warningReason = ticket.warningReason { body["warning_reason"] = warningReason }
+        if let ocrOriginal = ticket.ocrOriginalPlate { body["ocr_original_plate"] = ocrOriginal }
         if let ownerName = ticket.ownerName { body["owner_name"] = ownerName }
         if let permitNumber = ticket.permitNumber { body["permit_number"] = permitNumber }
 

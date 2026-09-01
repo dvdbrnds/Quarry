@@ -85,6 +85,7 @@ class TicketUpload(BaseModel):
     permit_number: str | None = None
     is_warning: bool = False
     warning_reason: str | None = None
+    ocr_original_plate: str | None = None
     confidence: float = 0.0
     camera_name: str = ""
     timestamp: datetime

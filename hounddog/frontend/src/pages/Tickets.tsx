@@ -37,6 +37,7 @@ interface Ticket {
   dispute_name: string | null;
   dispute_email: string | null;
   dispute_phone: string | null;
+  ocr_original_plate: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -150,7 +151,7 @@ function TicketsList() {
     <div class="section-title">Citation Details</div>
     <table>
       <tr><td class="label">Ticket #</td><td>${ticket.ticket_number || "—"}</td><td class="label">Status</td><td><span class="status status-${ticket.status}">${ticket.status}</span></td></tr>
-      <tr><td class="label">Plate</td><td style="font-family:monospace;font-size:15px;font-weight:600;">${ticket.plate}</td><td class="label">Fine</td><td>$${Number(ticket.fine_amount).toFixed(2)}</td></tr>
+      <tr><td class="label">Plate</td><td style="font-family:monospace;font-size:15px;font-weight:600;">${ticket.plate}${ticket.ocr_original_plate ? ` <span style="font-size:11px;color:#c2410c;">(corrected from ${ticket.ocr_original_plate})</span>` : ""}</td><td class="label">Fine</td><td>$${Number(ticket.fine_amount).toFixed(2)}</td></tr>
       <tr><td class="label">Violation</td><td>${ticket.violation_type.replace(/_/g, " ")}</td><td class="label">${ticket.ticket_category === "moving" ? "Location" : "Lot"}</td><td>${ticket.ticket_category === "moving" ? (ticket.location_text || "—") : ticket.lot}</td></tr>
       <tr><td class="label">Issued</td><td>${new Date(ticket.issued_at).toLocaleString()}</td><td class="label">Officer</td><td>${ticket.officer_name || ticket.officer_id}</td></tr>
       ${ticket.owner_name ? `<tr><td class="label">Owner</td><td>${ticket.owner_name}</td><td class="label">Permit #</td><td>${ticket.permit_number || "—"}</td></tr>` : ""}
@@ -271,7 +272,14 @@ function TicketsList() {
       title: "Plate",
       dataIndex: "plate",
       key: "plate",
-      render: (plate: string) => <span className="font-mono">{plate}</span>,
+      render: (plate: string, t: Ticket) => (
+        <span>
+          <span className="font-mono">{plate}</span>
+          {t.ocr_original_plate && (
+            <Tag color="volcano" className="ml-1" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>corrected</Tag>
+          )}
+        </span>
+      ),
     },
     {
       title: "Location",
@@ -543,7 +551,14 @@ function TicketsList() {
         {selected && (
           <div className="space-y-4">
             <Descriptions size="small" column={2} bordered>
-              <Descriptions.Item label="Plate"><span className="font-mono">{selected.plate}</span></Descriptions.Item>
+              <Descriptions.Item label="Plate">
+                <span className="font-mono">{selected.plate}</span>
+                {selected.ocr_original_plate && (
+                  <Tag color="volcano" className="ml-2" style={{ fontSize: 11 }}>
+                    OCR read: {selected.ocr_original_plate}
+                  </Tag>
+                )}
+              </Descriptions.Item>
               <Descriptions.Item label={selected.ticket_category === "moving" ? "Location" : "Lot"}>
                 {selected.ticket_category === "moving" ? (selected.location_text || "—") : selected.lot}
               </Descriptions.Item>

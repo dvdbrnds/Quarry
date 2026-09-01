@@ -19,6 +19,8 @@ struct TicketIssuanceView: View {
     @State private var isWarning = false
     @State private var selectedWarningReason = ""
     @State private var warningDetail = ""
+    @State private var plateMisread = false
+    @State private var correctedPlate = ""
 
     private static let commonWarningReasons = [
         "No permit displayed",
@@ -118,6 +120,28 @@ struct TicketIssuanceView: View {
                     .font(.system(.title3, design: .monospaced))
                 TextField("Vehicle Description", text: $vehicleDescription)
                     .textInputAutocapitalization(.sentences)
+            }
+
+            if prefilledEntry != nil {
+                Section {
+                    Toggle(isOn: $plateMisread.animation()) {
+                        Label("Plate Misread", systemImage: "eye.trianglebadge.exclamationmark")
+                    }
+                    .tint(.red)
+
+                    if plateMisread {
+                        TextField("Correct plate number", text: $correctedPlate)
+                            .textInputAutocapitalization(.characters)
+                            .font(.system(.title3, design: .monospaced))
+                            .onChange(of: correctedPlate) { _, newValue in
+                                correctedPlate = newValue.uppercased()
+                            }
+                    }
+                } footer: {
+                    Text(plateMisread
+                         ? "Enter the actual plate you see on the vehicle. The ticket will use this corrected plate and the misread will be reported."
+                         : "Toggle on if the camera read the plate incorrectly.")
+                }
             }
 
             Section {
@@ -340,7 +364,16 @@ struct TicketIssuanceView: View {
         isSubmitting = true
         errorMessage = nil
 
-        let normalizedPlate = plate.uppercased().trimmingCharacters(in: .whitespaces)
+        let ocrPlate = plate.uppercased().trimmingCharacters(in: .whitespaces)
+        let normalizedPlate: String
+        let ocrOriginal: String?
+        if plateMisread && !correctedPlate.trimmingCharacters(in: .whitespaces).isEmpty {
+            normalizedPlate = correctedPlate.uppercased().trimmingCharacters(in: .whitespaces)
+            ocrOriginal = ocrPlate
+        } else {
+            normalizedPlate = ocrPlate
+            ocrOriginal = nil
+        }
         let permit = prefilledEntry?.authStatus.permit
         let db = PlateDatabase.shared
 
@@ -368,6 +401,7 @@ struct TicketIssuanceView: View {
             officerEmail: officerEmail.isEmpty ? nil : officerEmail,
             isWarning: isWarning,
             warningReason: isWarning ? selectedWarningReason : nil,
+            ocrOriginalPlate: ocrOriginal,
             ownerName: permit?.ownerName,
             permitNumber: permit?.permitNumber
         )

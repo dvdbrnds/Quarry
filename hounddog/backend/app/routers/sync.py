@@ -554,6 +554,7 @@ async def _upload_ticket_impl(
         officer_notes=ticket.officer_notes,
         driver_name=ticket.driver_name,
         driver_license=ticket.driver_license,
+        ocr_original_plate=ticket.ocr_original_plate,
         status="warning" if ticket.is_warning else "issued",
     )
     if ticket.client_ticket_id:
