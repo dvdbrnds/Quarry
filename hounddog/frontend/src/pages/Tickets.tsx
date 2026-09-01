@@ -51,7 +51,7 @@ const STATUS_COLORS: Record<string, string> = {
   voided: "default",
 };
 
-function TicketsList() {
+function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const { modal, message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useCurrentUser();
@@ -84,6 +84,7 @@ function TicketsList() {
       if (search) qs.set("search", search);
       if (statusFilter) qs.set("status", statusFilter);
       if (categoryFilter) qs.set("category", categoryFilter);
+      if (officerEmail) qs.set("officer_email", officerEmail);
       const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
       if (res.ok) {
         const data = await res.json();
@@ -95,7 +96,7 @@ function TicketsList() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, categoryFilter, message]);
+  }, [page, search, statusFilter, categoryFilter, officerEmail, message]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -310,6 +311,14 @@ function TicketsList() {
         <Tag color={STATUS_COLORS[status] || "default"}>
           {status.replace("_", " ")}
         </Tag>
+      ),
+    },
+    {
+      title: "Officer",
+      key: "officer",
+      width: 140,
+      render: (_: unknown, t: Ticket) => (
+        <span className="text-xs text-gray-500">{t.officer_name || t.officer_email || t.officer_id || "—"}</span>
       ),
     },
     {
@@ -684,6 +693,7 @@ export default function Tickets() {
 
   const tabItems = [
     { key: "tickets", label: "Tickets", children: <TicketsList /> },
+    ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];

@@ -48,6 +48,7 @@ async def list_tickets(
     status: str | None = None,
     lot: str | None = None,
     category: str | None = None,
+    officer_email: str | None = None,
     db: AsyncSession = Depends(get_db),
     _office: OktaUser = Depends(require_office()),
 ):
@@ -60,6 +61,7 @@ async def list_tickets(
                 Ticket.plate.ilike(like),
                 Ticket.officer_id.ilike(like),
                 Ticket.ticket_number.ilike(like),
+                Ticket.officer_name.ilike(like),
                 cast(Ticket.id, String).ilike(like),
             )
         )
@@ -69,6 +71,8 @@ async def list_tickets(
         query = query.where(Ticket.lot == lot)
     if category:
         query = query.where(Ticket.ticket_category == category)
+    if officer_email:
+        query = query.where(Ticket.officer_email == officer_email)
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
