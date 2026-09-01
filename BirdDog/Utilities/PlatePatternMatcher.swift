@@ -27,6 +27,10 @@ enum PlatePatternMatcher {
         try! NSRegularExpression(pattern: "^[0-9]{2}[A-Z]{3}[0-9]$"), // some states: 12ABC3
         try! NSRegularExpression(pattern: "^[A-Z][0-9]{3}[A-Z]{2}$"), // some states: A123BC
         try! NSRegularExpression(pattern: "^[0-9]{2}[A-Z]{2}[0-9]{2}$"), // some: 12AB34
+        try! NSRegularExpression(pattern: "^[0-9][A-Z]{3}[0-9]{2}$"), // MA: 1AAA12 (e.g. 2ZKV79)
+        try! NSRegularExpression(pattern: "^[0-9][A-Z]{2}[0-9]{3}$"), // MA: 1AB234
+        try! NSRegularExpression(pattern: "^[0-9]{3}[A-Z]{2}[0-9]$"), // MA: 123AB4
+        try! NSRegularExpression(pattern: "^[0-9]{4}[A-Z]{2}$"),      // MA: 1234AB
     ]]
 
     private static let rejectList: Set<String> = [
