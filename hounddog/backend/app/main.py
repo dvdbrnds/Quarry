@@ -1595,3 +1595,43 @@ async def health():
             content={"status": "degraded", "error": str(exc)},
         )
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/health/sync-check")
+async def sync_check(plate: str | None = None):
+    """Public diagnostic: permit/lot counts and optional plate search."""
+    from sqlalchemy import text, select, func
+    from .database import async_session
+    from .models.permit import Permit
+    from .models.lot import ParkingLot
+
+    async with async_session() as db:
+        permit_count = (await db.execute(
+            select(func.count()).select_from(Permit).where(Permit.deleted_at.is_(None))
+        )).scalar() or 0
+        lot_count = (await db.execute(
+            select(func.count()).select_from(ParkingLot).where(ParkingLot.deleted_at.is_(None))
+        )).scalar() or 0
+
+        result: dict = {"permits": permit_count, "lots": lot_count}
+
+        if plate:
+            needle = plate.upper().replace(" ", "").replace("-", "")
+            rows = (await db.execute(
+                select(Permit.id, Permit.name, Permit.plates, Permit.permit_type, Permit.status)
+                .where(Permit.deleted_at.is_(None))
+            )).all()
+            matches = []
+            for r in rows:
+                for p in (r.plates or []):
+                    if needle in p.upper().replace(" ", "").replace("-", ""):
+                        matches.append({
+                            "id": str(r.id), "name": r.name,
+                            "plates": r.plates, "type": r.permit_type,
+                            "status": r.status,
+                        })
+                        break
+            result["plate_query"] = needle
+            result["plate_matches"] = matches
+
+        return result
