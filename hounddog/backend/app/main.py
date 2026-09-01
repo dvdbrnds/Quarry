@@ -44,6 +44,7 @@ from .routers import (
     enforcement_settings,
     fee_exempt,
     guest_registrations,
+    housing_overrides,
     discount_roster,
     lots,
     lottery_v2,
@@ -1162,6 +1163,7 @@ app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
 app.include_router(permits.router, prefix="/api/permits", tags=["permits"])
 app.include_router(lots.router, prefix="/api/lots", tags=["lots"])
 app.include_router(resident_plates.router, prefix="/api/resident-plates", tags=["resident-plates"])
+app.include_router(housing_overrides.router, prefix="/api/admin/housing-overrides", tags=["housing-overrides"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(sync.diagnostic_router, prefix="/api/sync", tags=["sync-diagnostic"])
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])

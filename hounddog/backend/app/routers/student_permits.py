@@ -59,7 +59,8 @@ PERMIT_OPT_IN_CATEGORIES = ["emergency", "parking"]
 
 
 async def _get_housing_status(user, db: AsyncSession | None = None) -> str | None:
-    """Look up housing status from Jenzabar SIS. Returns 'R', 'C', 'O', or None."""
+    """Look up housing status. Checks manual overrides first, then Jenzabar SIS.
+    Returns 'R', 'C', 'O', or None."""
     moravian_id = _extract_moravian_id(user)
 
     # Fallback: look up moravian_id from the student's existing permits
@@ -90,6 +91,15 @@ async def _get_housing_status(user, db: AsyncSession | None = None) -> str | Non
     if not moravian_id:
         _logger.debug("No moravian_id for user %s — housing filter skipped", getattr(user, "email", "?"))
         return None
+
+    # Manual override takes priority over the SIS feed
+    if db:
+        from .housing_overrides import get_housing_override
+        override = await get_housing_override(moravian_id, db)
+        if override:
+            _logger.info("Housing override active for %s → %s", moravian_id, override)
+            return override
+
     from ..services.sis_student_data import lookup_student_parking_data
     try:
         data = await lookup_student_parking_data(moravian_id)

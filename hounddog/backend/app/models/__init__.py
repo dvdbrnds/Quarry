@@ -12,6 +12,7 @@ from .device import Device
 from .enforcement_settings import EnforcementSettings
 from .fee_exempt_roster import FeeExemptRoster
 from .guest_registration import GuestRegistration
+from .housing_override import HousingOverride
 from .discount_roster import DiscountRoster
 from .lot import ParkingLot
 from .lot_closure import LotClosure
@@ -49,6 +50,7 @@ __all__ = [
     "EnforcementSettings",
     "FeeExemptRoster",
     "GuestRegistration",
+    "HousingOverride",
     "DiscountRoster",
     "LotClosure",
     "LotZone",

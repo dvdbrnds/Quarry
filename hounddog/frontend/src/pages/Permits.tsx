@@ -17,6 +17,7 @@ import VoucherManager from "./VoucherManager";
 import VisitorPresets from "./VisitorPresets";
 import GuestRegistrations from "./GuestRegistrations";
 import VehicleRequests from "./VehicleRequests";
+import HousingOverrides from "./HousingOverrides";
 import { useBranding } from "../useBranding";
 import { useCurrentUser } from "../UserContext";
 
@@ -1036,6 +1037,11 @@ export default function Permits() {
             children: <PermitTypes readOnly={!isAdmin} />,
           },
           {
+            key: "housing-overrides",
+            label: "Housing Overrides",
+            children: <HousingOverrides />,
+          },
+          {
             key: "visitor-presets",
             label: "Visitor Presets",
             children: <VisitorPresets />,
@@ -1075,7 +1081,7 @@ export default function Permits() {
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
           },
-  ].filter((t) => isAdmin || (t.key !== "lottery" && t.key !== "vehicle-requests" && (t.key !== "types" || isOfficeRole(user?.role))));
+  ].filter((t) => isAdmin || (t.key !== "lottery" && t.key !== "vehicle-requests" && t.key !== "housing-overrides" && (t.key !== "types" || isOfficeRole(user?.role))));
 
   return (
     <div>
