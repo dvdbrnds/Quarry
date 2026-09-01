@@ -170,7 +170,7 @@ final class HoundDogSyncService: ObservableObject {
             for permit in syncResponse.permits {
                 guard permit.deletedAt == nil else { continue }
                 for plate in permit.plates {
-                    let normalized = plate.uppercased().replacingOccurrences(of: " ", with: "")
+                    let normalized = PlatePatternMatcher.normalize(plate)
                     guard !normalized.isEmpty else { continue }
                     entries.append(makePermitEntry(permit, plateNormalized: normalized))
                 }
@@ -185,7 +185,7 @@ final class HoundDogSyncService: ObservableObject {
             var deleted = 0
             for permit in syncResponse.permits {
                 let plateNormalized = permit.plates.map {
-                    $0.uppercased().replacingOccurrences(of: " ", with: "")
+                    PlatePatternMatcher.normalize($0)
                 }
                 if permit.deletedAt != nil {
                     for plate in plateNormalized {
