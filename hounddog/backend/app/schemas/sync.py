@@ -83,6 +83,8 @@ class TicketUpload(BaseModel):
     officer_email: str | None = None
     owner_name: str | None = None
     permit_number: str | None = None
+    is_warning: bool = False
+    warning_reason: str | None = None
     confidence: float = 0.0
     camera_name: str = ""
     timestamp: datetime

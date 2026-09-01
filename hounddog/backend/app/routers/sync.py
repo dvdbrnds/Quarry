@@ -416,8 +416,11 @@ async def _upload_ticket_impl(
     device: Device,
     db: AsyncSession,
 ) -> TicketUploadResponse:
-    # Look up violation type to determine fine
-    fine_amount = ticket.fine_amount or Decimal("50.00")
+    # Warnings always have $0 fine regardless of violation type
+    if ticket.is_warning:
+        fine_amount = Decimal("0.00")
+    else:
+        fine_amount = ticket.fine_amount or Decimal("50.00")
     violation_type_id = None
     offense_number = 1
 
@@ -463,7 +466,7 @@ async def _upload_ticket_impl(
             prior_count = prior_count_result.scalar() or 0
             offense_number = prior_count + 1
 
-            if ticket.fine_amount is None:
+            if not ticket.is_warning and ticket.fine_amount is None:
                 if offense_number >= 3 and vtype.fine_third_plus:
                     fine_amount = vtype.fine_third_plus
                 elif offense_number == 2 and vtype.fine_second:
@@ -551,6 +554,7 @@ async def _upload_ticket_impl(
         officer_notes=ticket.officer_notes,
         driver_name=ticket.driver_name,
         driver_license=ticket.driver_license,
+        status="warning" if ticket.is_warning else "issued",
     )
     if ticket.client_ticket_id:
         ticket_kwargs["id"] = ticket.client_ticket_id

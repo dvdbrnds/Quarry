@@ -16,6 +16,21 @@ struct TicketIssuanceView: View {
     @State private var capturedPhotoPath: String?
     @State private var capturedPhotoImage: UIImage?
     @State private var captureTimestamp = Date()
+    @State private var isWarning = false
+    @State private var selectedWarningReason = ""
+    @State private var warningDetail = ""
+
+    private static let commonWarningReasons = [
+        "No permit displayed",
+        "Parked in wrong lot",
+        "Expired permit",
+        "First offense — verbal/written warning",
+        "Improper parking (over the line, etc.)",
+        "Blocking access / fire lane",
+        "Loading zone overstay",
+        "Temporary grace — new student",
+        "Permit pending / in process",
+    ]
 
     @State private var lots: [ParkingLot] = []
     @State private var officerName = ""
@@ -50,7 +65,8 @@ struct TicketIssuanceView: View {
                     officerNotes: officerNotes,
                     officerName: officerName,
                     officerEmail: officerEmail,
-                    violationLabel: violationLabel(for: selectedViolation)
+                    violationLabel: violationLabel(for: selectedViolation),
+                    isWarning: isWarning
                 )
             } else {
                 ticketForm
@@ -102,6 +118,32 @@ struct TicketIssuanceView: View {
                     .font(.system(.title3, design: .monospaced))
                 TextField("Vehicle Description", text: $vehicleDescription)
                     .textInputAutocapitalization(.sentences)
+            }
+
+            Section {
+                Toggle(isOn: $isWarning.animation()) {
+                    Label(isWarning ? "Warning" : "Citation",
+                          systemImage: isWarning ? "exclamationmark.bubble.fill" : "doc.text.fill")
+                }
+                .tint(.orange)
+            } footer: {
+                Text(isWarning
+                     ? "No fine will be assessed. A warning record will be created."
+                     : "A citation with the applicable fine will be issued.")
+            }
+
+            if isWarning {
+                Section("Warning Reason") {
+                    Picker("Reason", selection: $selectedWarningReason) {
+                        Text("— Select —").tag("")
+                        ForEach(Self.commonWarningReasons, id: \.self) { reason in
+                            Text(reason).tag(reason)
+                        }
+                        Text("Other").tag("Other")
+                    }
+                    TextField("Additional detail (optional)", text: $warningDetail, axis: .vertical)
+                        .lineLimit(2...4)
+                }
             }
 
             Section("Violation") {
@@ -199,15 +241,15 @@ struct TicketIssuanceView: View {
                 }
             }
         }
-        .navigationTitle("Issue Ticket")
+        .navigationTitle(isWarning ? "Issue Warning" : "Issue Ticket")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Issue") { submitTicket() }
-                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolation.isEmpty || isSubmitting)
+                Button(isWarning ? "Issue Warning" : "Issue") { submitTicket() }
+                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolation.isEmpty || (isWarning && selectedWarningReason.isEmpty) || isSubmitting)
                     .bold()
             }
         }
@@ -302,6 +344,15 @@ struct TicketIssuanceView: View {
         let permit = prefilledEntry?.authStatus.permit
         let db = PlateDatabase.shared
 
+        var composedNotes = officerNotes
+        if isWarning {
+            var warningText = "[WARNING] \(selectedWarningReason)"
+            if !warningDetail.trimmingCharacters(in: .whitespaces).isEmpty {
+                warningText += " — \(warningDetail.trimmingCharacters(in: .whitespaces))"
+            }
+            composedNotes = composedNotes.isEmpty ? warningText : "\(warningText)\n\(composedNotes)"
+        }
+
         let ticket = PendingTicket(
             plate: normalizedPlate,
             lot: selectedLot,
@@ -312,9 +363,11 @@ struct TicketIssuanceView: View {
             locationLat: ticketLat,
             locationLng: ticketLng,
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
-            officerNotes: officerNotes.isEmpty ? nil : officerNotes,
+            officerNotes: composedNotes.isEmpty ? nil : composedNotes,
             officerName: officerName.isEmpty ? nil : officerName,
             officerEmail: officerEmail.isEmpty ? nil : officerEmail,
+            isWarning: isWarning,
+            warningReason: isWarning ? selectedWarningReason : nil,
             ownerName: permit?.ownerName,
             permitNumber: permit?.permitNumber
         )
@@ -395,6 +448,7 @@ struct TicketConfirmationView: View {
     let officerName: String
     let officerEmail: String
     let violationLabel: String
+    var isWarning: Bool = false
 
     @State private var isPrinting = false
     @State private var printError: String?
@@ -413,6 +467,13 @@ struct TicketConfirmationView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+            } else if isWarning {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(.orange)
+
+                Text("Warning Issued")
+                    .font(.title2.bold())
             } else {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 64))
@@ -425,8 +486,14 @@ struct TicketConfirmationView: View {
             VStack(spacing: 8) {
                 Text(plate)
                     .font(.system(.title, design: .monospaced).bold())
-                Text("Fine: $\(result.fineAmount)")
-                    .font(.headline)
+                if isWarning {
+                    Text("Warning — No Fine")
+                        .font(.headline)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Fine: $\(result.fineAmount)")
+                        .font(.headline)
+                }
                 if result.offenseNumber > 1 {
                     Text("Offense #\(result.offenseNumber)")
                         .font(.subheadline)
@@ -533,7 +600,7 @@ struct TicketConfirmationView: View {
                 .padding(.top)
         }
         .padding()
-        .navigationTitle("Ticket Issued")
+        .navigationTitle(isWarning ? "Warning Issued" : "Ticket Issued")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

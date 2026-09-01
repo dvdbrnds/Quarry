@@ -51,7 +51,7 @@ export default function PermitDetail() {
     { title: "Violation", dataIndex: "violation_type", key: "type", render: v => <span className="capitalize">{v?.replace(/_/g, " ")}</span> },
     { title: "Lot", dataIndex: "lot", key: "lot" },
     { title: "Fine", dataIndex: "fine_amount", key: "fine", render: v => `$${v}` },
-    { title: "Status", dataIndex: "status", key: "status", render: s => <Tag color={s === "paid" ? "green" : s === "voided" ? "default" : "red"}>{s}</Tag> },
+    { title: "Status", dataIndex: "status", key: "status", render: s => <Tag color={s === "paid" ? "green" : s === "voided" ? "default" : s === "warning" ? "orange" : "red"}>{s}</Tag> },
   ];
 
   const paymentCols: ColumnsType<any> = [

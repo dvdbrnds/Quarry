@@ -27,6 +27,10 @@ final class PendingTicket {
     var officerName: String?
     var officerEmail: String?
 
+    // Warning mode
+    var isWarning: Bool
+    var warningReason: String?
+
     // Permit holder info (when available from scan)
     var ownerName: String?
     var permitNumber: String?
@@ -53,6 +57,8 @@ final class PendingTicket {
         driverLicense: String? = nil,
         officerName: String? = nil,
         officerEmail: String? = nil,
+        isWarning: Bool = false,
+        warningReason: String? = nil,
         ownerName: String? = nil,
         permitNumber: String? = nil
     ) {
@@ -75,6 +81,8 @@ final class PendingTicket {
         self.driverLicense = driverLicense
         self.officerName = officerName
         self.officerEmail = officerEmail
+        self.isWarning = isWarning
+        self.warningReason = warningReason
         self.ownerName = ownerName
         self.permitNumber = permitNumber
     }

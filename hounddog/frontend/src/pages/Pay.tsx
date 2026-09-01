@@ -68,6 +68,7 @@ export default function Pay() {
       const ticket: TicketResult = await res.json();
       if (ticket.status === "paid") setError("This ticket has already been paid.");
       else if (ticket.status === "voided") setError("This ticket has been voided. No payment required.");
+      else if (ticket.status === "warning") setError("This is a warning — no fine is due.");
       else if (ticket.status === "resolved_permit") setError("Resolved through permit purchase.");
       else setTickets([ticket]);
     } catch (e) {

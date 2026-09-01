@@ -41,6 +41,7 @@ interface Ticket {
 
 const STATUS_COLORS: Record<string, string> = {
   issued: "red",
+  warning: "orange",
   overdue: "volcano",
   pending_payment: "orange",
   paid: "green",
@@ -124,6 +125,7 @@ function TicketsList() {
     .photo { max-width: 100%; max-height: 300px; border-radius: 6px; border: 1px solid #ddd; margin-top: 8px; }
     .status { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
     .status-issued { background: #fee2e2; color: #991b1b; }
+    .status-warning { background: #fff7ed; color: #9a3412; }
     .status-paid { background: #dcfce7; color: #166534; }
     .status-voided { background: #f3f4f6; color: #6b7280; }
     .status-appealed { background: #fef9c3; color: #854d0e; }
