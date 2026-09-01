@@ -969,9 +969,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     private func startExposureRefreshCycle(for camera: AVCaptureDevice) {
         exposureRefreshTimer?.invalidate()
-        let interval: TimeInterval = MotionSpeedService.shared.mode == .vehicle ? 25.0 : 45.0
-        exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.refreshExposure(camera)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let interval: TimeInterval = MotionSpeedService.shared.mode == .vehicle ? 25.0 : 45.0
+            self.exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                self?.refreshExposure(camera)
+            }
         }
     }
 
