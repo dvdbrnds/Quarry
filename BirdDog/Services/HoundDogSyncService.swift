@@ -113,10 +113,15 @@ final class HoundDogSyncService: ObservableObject {
 
         let dbEmpty = PlateDatabase.shared.totalCount() == 0
         let lotsEmpty = GeofenceService.shared.lots.isEmpty
-        if dbEmpty || lotsEmpty {
+        let hoursSinceFullSync = lastPermitSync.map { Date().timeIntervalSince($0) / 3600 } ?? .infinity
+        if dbEmpty || lotsEmpty || hoursSinceFullSync >= 1.0 {
             lastPermitSync = nil
             lastLotSync = nil
-            print("[HoundDog] Local data missing (permits=\(dbEmpty), lots=\(lotsEmpty)) — forcing full sync")
+            if dbEmpty || lotsEmpty {
+                print("[HoundDog] Local data missing (permits=\(dbEmpty), lots=\(lotsEmpty)) — forcing full sync")
+            } else {
+                print("[HoundDog] Hourly full refresh (\(String(format: "%.1f", hoursSinceFullSync))h since last)")
+            }
         }
 
         do {
@@ -197,13 +202,6 @@ final class HoundDogSyncService: ObservableObject {
                     for plate in validPlates {
                         try db.upsertRecord(makePermitEntry(permit, plateNormalized: plate))
                         upserted += 1
-                    }
-                    // Remove stale plates that were previously on this permit (e.g. plate swap)
-                    let stale = db.recordsForPermitNumber(permit.studentId)
-                        .filter { !validPlates.contains($0.plateNormalized) }
-                    for record in stale {
-                        db.deleteRecord(normalizedPlate: record.plateNormalized)
-                        deleted += 1
                     }
                 }
             }
