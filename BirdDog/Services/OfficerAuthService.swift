@@ -261,6 +261,9 @@ final class OfficerAuthService: NSObject, ObservableObject {
         self.officerGroups = groups
         self.isLoggedIn = true
 
+        HoundDogSyncService.shared.resetSyncDates()
+        HoundDogSyncService.shared.startIfConfigured()
+
         if groups.isEmpty, let accessToken {
             Task {
                 let fetched = await fetchUserInfoGroups(accessToken: accessToken)
@@ -495,6 +498,9 @@ final class OfficerAuthService: NSObject, ObservableObject {
         self.officerEmail = email
         self.officerGroups = groups
         self.isLoggedIn = true
+
+        HoundDogSyncService.shared.resetSyncDates()
+        HoundDogSyncService.shared.startIfConfigured()
     }
 
     private func clearKeychain() {
