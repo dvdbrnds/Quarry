@@ -34,7 +34,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
     private override init() {
         super.init()
-        restoreSession()
+        clearKeychain()
     }
 
     // MARK: - Login
@@ -270,12 +270,9 @@ final class OfficerAuthService: NSObject, ObservableObject {
                 let fetched = await fetchUserInfoGroups(accessToken: accessToken)
                 if !fetched.isEmpty {
                     self.officerGroups = fetched
-                    self.saveToKeychain(name: name, email: email, groups: fetched, expiry: expiry)
                 }
             }
         }
-
-        saveToKeychain(name: name, email: email, groups: groups, expiry: expiry)
     }
 
     // MARK: - JWT Signature Verification
