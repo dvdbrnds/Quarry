@@ -459,8 +459,8 @@ async def send_sponsor_approval_email(
         f'<table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f9f9f9;border-radius:8px;">'
         f'<tr><td style="padding:10px 16px;color:#666;">Visitor</td><td style="padding:10px 16px;font-weight:600;">{visitor_name}</td></tr>'
         f'<tr><td style="padding:10px 16px;color:#666;">Company</td><td style="padding:10px 16px;font-weight:600;">{company_name}</td></tr>'
-        f'{f\'<tr><td style="padding:10px 16px;color:#666;">Student</td><td style="padding:10px 16px;font-weight:600;">{student_name}</td></tr>\' if student_name else ""}'
-        f'<tr><td style="padding:10px 16px;color:#666;">Vehicle</td><td style="padding:10px 16px;font-weight:600;">{plate}</td></tr>'
+        + (f'<tr><td style="padding:10px 16px;color:#666;">Student</td><td style="padding:10px 16px;font-weight:600;">{student_name}</td></tr>' if student_name else "")
+        + f'<tr><td style="padding:10px 16px;color:#666;">Vehicle</td><td style="padding:10px 16px;font-weight:600;">{plate}</td></tr>'
         f'<tr><td style="padding:10px 16px;color:#666;">Work</td><td style="padding:10px 16px;">{work_description or "Not specified"}</td></tr>'
         f'<tr><td style="padding:10px 16px;color:#666;">Duration</td><td style="padding:10px 16px;font-weight:600;">{start_date} to {end_date}</td></tr>'
         f'</table>'
