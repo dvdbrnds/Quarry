@@ -17,7 +17,6 @@
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
 		2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */; };
 		2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */; };
-		C1D4A83F7B2E91D03F8B6A01 /* MotionSpeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D4A83F7B2E91D03F8B6A02 /* MotionSpeedService.swift */; };
 		28BAF0B4445935525197A945 /* PrinterSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */; };
 		2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */; };
 		37569C3C0139FED6C7584B07 /* PlatePatternMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */; };
@@ -36,6 +35,7 @@
 		64981CA33F907E9364BD1333 /* PlateRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */; };
 		69CAE303D623B0FF8901592F /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737FD3F7D372AFD77737EE09 /* CameraService.swift */; };
 		6C3D5AF592FB47DAB1529273 /* ScanLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60D6819CAAEDDD374807655 /* ScanLogView.swift */; };
+		7CEA87FF99EEC539AF714198 /* MotionSpeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10D99C45314AF9CE50C8BC2 /* MotionSpeedService.swift */; };
 		7D6CBDAF9A159BEB7438FE8E /* DeviceInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76E3FDD1C0E375FBCB56FE93 /* DeviceInfo.swift */; };
 		7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */; };
 		7E85E3E91268B5FFF14B4471 /* CalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19EEEB4BA36CBBFEA0F0E4EE /* CalendarStore.swift */; };
@@ -55,6 +55,7 @@
 		AD14C162989528A1823FFEBC /* PushTokenService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B5520F9040D8218B1B7166 /* PushTokenService.swift */; };
 		AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */; };
 		B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */; };
+		B9587FDFE74D67C9BECC911D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3CF67306D07C8E2EAE63F063 /* PrivacyInfo.xcprivacy */; };
 		B97725AA2B765B44F6A149CD /* ScannedPlate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2505471792A29EC48A7FD322 /* ScannedPlate.swift */; };
 		B9D4DE65A44793882C83972C /* SessionHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */; };
 		BA95F3EF0756910AD9149AB3 /* BirdDogApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */; };
@@ -90,6 +91,7 @@
 		2E381758AC904764909D151F /* GeofenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeofenceService.swift; sourceTree = "<group>"; };
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
+		3CF67306D07C8E2EAE63F063 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketIssuanceView.swift; sourceTree = "<group>"; };
 		433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterSettingsView.swift; sourceTree = "<group>"; };
 		4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -97,7 +99,6 @@
 		5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcher.swift; sourceTree = "<group>"; };
 		56771E1D5749AF106C7BF205 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoundDogSyncService.swift; sourceTree = "<group>"; };
-		C1D4A83F7B2E91D03F8B6A02 /* MotionSpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSpeedService.swift; sourceTree = "<group>"; };
 		64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDogApp.swift; sourceTree = "<group>"; };
 		6B998945CBE0A6AA9B29E85F /* OfficerAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficerAuthService.swift; sourceTree = "<group>"; };
 		6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryView.swift; sourceTree = "<group>"; };
@@ -129,6 +130,7 @@
 		C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
 		C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminPasscodeView.swift; sourceTree = "<group>"; };
 		CC4A9CB54550F11B2D4CFAE0 /* ParkingSpot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingSpot.swift; sourceTree = "<group>"; };
+		D10D99C45314AF9CE50C8BC2 /* MotionSpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSpeedService.swift; sourceTree = "<group>"; };
 		DA87F77A7F9736D61162539C /* ViolationTypeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViolationTypeStore.swift; sourceTree = "<group>"; };
 		DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcherTests.swift; sourceTree = "<group>"; };
 		E4F388DD2760B3DE754574DE /* TicketReceiptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketReceiptBuilder.swift; sourceTree = "<group>"; };
@@ -185,7 +187,7 @@
 				F3A6EF72A87EC98B04A49AE5 /* EnforcementSettingsStore.swift */,
 				2E381758AC904764909D151F /* GeofenceService.swift */,
 				61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */,
-				C1D4A83F7B2E91D03F8B6A02 /* MotionSpeedService.swift */,
+				D10D99C45314AF9CE50C8BC2 /* MotionSpeedService.swift */,
 				6B998945CBE0A6AA9B29E85F /* OfficerAuthService.swift */,
 				32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */,
 				07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */,
@@ -293,6 +295,7 @@
 				64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */,
 				B93D8CD7DEBD2418FF0C7F74 /* Info.plist */,
 				B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */,
+				3CF67306D07C8E2EAE63F063 /* PrivacyInfo.xcprivacy */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -396,6 +399,7 @@
 			files = (
 				3FDF8E5C86FD4709243A1D8B /* Assets.xcassets in Resources */,
 				0FF55B00E57C6DC9EAEF1E42 /* LaunchScreen.storyboard in Resources */,
+				B9587FDFE74D67C9BECC911D /* PrivacyInfo.xcprivacy in Resources */,
 				A8832B3A8B3AC6F09CBFAEDE /* lots.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -435,9 +439,9 @@
 				A8F9198C4F341CF90FAB9CE5 /* EnforcementSettingsStore.swift in Sources */,
 				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
 				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,
-				C1D4A83F7B2E91D03F8B6A01 /* MotionSpeedService.swift in Sources */,
 				5994879595E847E9856A1071 /* LogExporter.swift in Sources */,
 				035D618651D7F8E5452AC14F /* LotManagementView.swift in Sources */,
+				7CEA87FF99EEC539AF714198 /* MotionSpeedService.swift in Sources */,
 				9F6ED9D0556F74E906B630E1 /* MovingViolationView.swift in Sources */,
 				07A23FCA7E3844C4BEC2E9E9 /* OfficerAuthService.swift in Sources */,
 				3FD6221EF507FE56F79C1635 /* OfficerLoginView.swift in Sources */,
@@ -487,14 +491,14 @@
 				CODE_SIGN_ENTITLEMENTS = BirdDog/App/BirdDog.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
 				INFOPLIST_FILE = BirdDog/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = edu.moravian.birddog;
 				SDKROOT = iphoneos;
 				SUPPORTED_INTERFACE_ORIENTATIONS = UIInterfaceOrientationPortrait;
@@ -542,6 +546,7 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -652,16 +657,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = BirdDog/App/BirdDog.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P6D8DZ6BZ7;
 				INFOPLIST_FILE = BirdDog/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = edu.moravian.birddog;
 				SDKROOT = iphoneos;
 				SUPPORTED_INTERFACE_ORIENTATIONS = UIInterfaceOrientationPortrait;

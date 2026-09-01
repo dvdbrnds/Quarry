@@ -76,5 +76,7 @@
 		<string>location</string>
 		<string>external-accessory</string>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
