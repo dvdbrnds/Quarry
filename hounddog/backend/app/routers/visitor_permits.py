@@ -46,6 +46,7 @@ class VisitorPermitCreate(BaseModel):
     sponsor_email: str = ""
     sponsor_department: str = ""
     work_description: str = ""
+    student_name: str = ""
     preset_id: str | None = None
 
 
@@ -105,6 +106,8 @@ class PresetCreate(BaseModel):
     default_duration: str = "semester"
     permit_type_code: str | None = None
     allowed_lots: list[str] = []
+    require_student_name: bool = False
+    student_name_label: str = "Student name"
     sort_order: int = 0
 
 
@@ -117,6 +120,8 @@ class PresetUpdate(BaseModel):
     default_duration: str | None = None
     permit_type_code: str | None = None
     allowed_lots: list[str] | None = None
+    require_student_name: bool | None = None
+    student_name_label: str | None = None
     active: bool | None = None
     sort_order: int | None = None
 
@@ -148,6 +153,8 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "default_duration": p.default_duration,
             "permit_type_code": p.permit_type_code,
             "allowed_lots": p.allowed_lots or [],
+            "require_student_name": p.require_student_name,
+            "student_name_label": p.student_name_label,
         }
         for p in rows
     ]
@@ -178,6 +185,8 @@ async def list_all_presets(
             "default_duration": p.default_duration,
             "permit_type_code": p.permit_type_code,
             "allowed_lots": p.allowed_lots or [],
+            "require_student_name": p.require_student_name,
+            "student_name_label": p.student_name_label,
             "active": p.active,
             "sort_order": p.sort_order,
         }
@@ -201,6 +210,8 @@ async def create_preset(
         default_duration=data.default_duration,
         permit_type_code=data.permit_type_code or None,
         allowed_lots=data.allowed_lots or [],
+        require_student_name=data.require_student_name,
+        student_name_label=data.student_name_label.strip() if data.student_name_label else "Student name",
         sort_order=data.sort_order,
     )
     db.add(preset)
@@ -379,6 +390,7 @@ async def resend_sponsor_email(
         start_date=permit.start_date.isoformat() if permit.start_date else "",
         end_date=permit.end_date.isoformat() if permit.end_date else "",
         token=approval.token,
+        student_name=_extract_metadata(permit, "student_name"),
     )
     if sent:
         return {"status": "sent", "message": f"Approval email resent to {approval.sponsor_email}"}
@@ -499,7 +511,7 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         start_date=start,
         end_date=end,
         status="pending_approval",
-        student_id=data.company_name.strip()[:64] if data.company_name.strip() else "",
+        student_id=_build_metadata(data),
     )
     db.add(permit)
     await db.flush()
@@ -526,6 +538,7 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         start_date=start.isoformat(),
         end_date=end.isoformat(),
         token=token,
+        student_name=data.student_name.strip(),
     )
     if email_sent:
         msg = (
@@ -568,6 +581,19 @@ async def _get_valid_token(token: str, db: AsyncSession, check_used: bool) -> Vi
         raise HTTPException(400, "This approval link has expired")
 
     return approval
+
+
+def _build_metadata(data: VisitorPermitCreate) -> str:
+    parts = []
+    if data.company_name.strip():
+        parts.append(f"company_name:{data.company_name.strip()}")
+    if data.work_description.strip():
+        parts.append(f"work_description:{data.work_description.strip()}")
+    if data.sponsor_department.strip():
+        parts.append(f"sponsor_department:{data.sponsor_department.strip()}")
+    if data.student_name.strip():
+        parts.append(f"student_name:{data.student_name.strip()}")
+    return "|".join(parts) if parts else data.company_name.strip()[:64]
 
 
 def _extract_metadata(permit: Permit, key: str) -> str:

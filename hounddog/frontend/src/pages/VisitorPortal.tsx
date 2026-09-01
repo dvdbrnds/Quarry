@@ -26,6 +26,8 @@ interface VisitorPreset {
   sponsor_email: string;
   sponsor_department: string;
   default_duration: string;
+  require_student_name: boolean;
+  student_name_label: string;
 }
 
 interface PermitResult {
@@ -112,6 +114,7 @@ function VisitorFlow() {
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
   const usingPreset = selectedPreset !== null && selectedPreset !== "__other__";
+  const activePreset = usingPreset ? presets.find((p) => p.id === selectedPreset) : null;
 
   useEffect(() => {
     (async () => {
@@ -229,6 +232,7 @@ function VisitorFlow() {
         sponsor_email: String(values.sponsor_email || "").trim(),
         sponsor_department: (values.sponsor_department as string) || "",
         work_description: (values.work_description as string) || "",
+        student_name: (values.student_name as string) || "",
         ...(presetId ? { preset_id: presetId } : {}),
       };
 
@@ -375,13 +379,24 @@ function VisitorFlow() {
                     )}
 
                     {usingPreset && (
-                      <Alert
-                        type="info"
-                        showIcon
-                        className="mb-4"
-                        message="Your campus sponsor will be notified automatically"
-                        description="Once you submit, an approval email will be sent to your organization's campus contact. No additional sponsor information is needed."
-                      />
+                      <>
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-4"
+                          message="Your campus sponsor will be notified automatically"
+                          description="Once you submit, an approval email will be sent to your organization's campus contact. No additional sponsor information is needed."
+                        />
+                        {activePreset?.require_student_name && (
+                          <Form.Item
+                            name="student_name"
+                            label={activePreset.student_name_label || "Student name"}
+                            rules={[{ required: true, message: `${activePreset.student_name_label || "Student name"} is required` }]}
+                          >
+                            <Input placeholder="Enter the student's full name" />
+                          </Form.Item>
+                        )}
+                      </>
                     )}
 
                     {selectedPreset === "__other__" || (presets.length === 0 && !usingPreset) ? (

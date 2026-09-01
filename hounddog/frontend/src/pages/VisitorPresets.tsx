@@ -16,6 +16,8 @@ interface Preset {
   default_duration: string;
   permit_type_code: string | null;
   allowed_lots: string[];
+  require_student_name: boolean;
+  student_name_label: string;
   active: boolean;
   sort_order: number;
 }
@@ -91,7 +93,7 @@ export default function VisitorPresets() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [] });
+    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [], require_student_name: false, student_name_label: "Student name" });
     setModalOpen(true);
   };
 
@@ -379,6 +381,27 @@ export default function VisitorPresets() {
               placeholder="No specific lots (uses permit type)"
               options={lots}
             />
+          </Form.Item>
+          <div className="border-t pt-3 mt-1 mb-3">
+            <p className="text-xs text-gray-500 mb-3">
+              If visitors are parents or guardians dropping off a student (e.g., music lessons), enable this to collect the student's name on the form.
+            </p>
+          </div>
+          <Form.Item name="require_student_name" valuePropName="checked" label="Require student/attendee name">
+            <Switch />
+          </Form.Item>
+          <Form.Item noStyle dependencies={["require_student_name"]}>
+            {() =>
+              form.getFieldValue("require_student_name") ? (
+                <Form.Item
+                  name="student_name_label"
+                  label="Field label"
+                  extra='Customize the label visitors see, e.g. "Student name", "Child's name", "Attendee name"'
+                >
+                  <Input placeholder="Student name" />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>

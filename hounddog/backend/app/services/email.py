@@ -442,6 +442,7 @@ async def send_sponsor_approval_email(
     start_date: str,
     end_date: str,
     approval_url: str,
+    student_name: str = "",
 ) -> bool:
     """Send a vendor parking permit approval request to a department sponsor."""
     b = await _load_branding()
@@ -456,8 +457,9 @@ async def send_sponsor_approval_email(
         f'<p>A vendor has requested a long-term parking permit and listed you as their campus sponsor. '
         f'Please review the details below and approve or deny the request.</p>'
         f'<table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f9f9f9;border-radius:8px;">'
-        f'<tr><td style="padding:10px 16px;color:#666;">Vendor</td><td style="padding:10px 16px;font-weight:600;">{visitor_name}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;">Visitor</td><td style="padding:10px 16px;font-weight:600;">{visitor_name}</td></tr>'
         f'<tr><td style="padding:10px 16px;color:#666;">Company</td><td style="padding:10px 16px;font-weight:600;">{company_name}</td></tr>'
+        f'{f\'<tr><td style="padding:10px 16px;color:#666;">Student</td><td style="padding:10px 16px;font-weight:600;">{student_name}</td></tr>\' if student_name else ""}'
         f'<tr><td style="padding:10px 16px;color:#666;">Vehicle</td><td style="padding:10px 16px;font-weight:600;">{plate}</td></tr>'
         f'<tr><td style="padding:10px 16px;color:#666;">Work</td><td style="padding:10px 16px;">{work_description or "Not specified"}</td></tr>'
         f'<tr><td style="padding:10px 16px;color:#666;">Duration</td><td style="padding:10px 16px;font-weight:600;">{start_date} to {end_date}</td></tr>'
@@ -473,8 +475,9 @@ async def send_sponsor_approval_email(
         f"VENDOR PARKING PERMIT — APPROVAL REQUIRED\n\n"
         f"Hello {sponsor_name},\n\n"
         f"A vendor has requested a long-term parking permit and listed you as their campus sponsor.\n\n"
-        f"Vendor: {visitor_name}\n"
+        f"Visitor: {visitor_name}\n"
         f"Company: {company_name}\n"
+        f"{f'Student: {student_name}\n' if student_name else ''}"
         f"Vehicle: {plate}\n"
         f"Work: {work_description or 'Not specified'}\n"
         f"Duration: {start_date} to {end_date}\n\n"
