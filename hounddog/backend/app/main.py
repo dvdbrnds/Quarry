@@ -720,6 +720,26 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_vehicle_requests_status ON vehicle_requests(status)",
             "ALTER TABLE vehicle_requests ADD COLUMN IF NOT EXISTS approval_token VARCHAR(128) UNIQUE",
             "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS vehicle_request_notify_email VARCHAR(256) DEFAULT ''",
+            # Visitor presets: student name fields (migration 0012)
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS require_student_name BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS student_name_label VARCHAR(256) DEFAULT 'Student name'",
+            # Announcement banner (migration 0013)
+            "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS announcement_text VARCHAR(512) DEFAULT ''",
+            "ALTER TABLE branding_settings ADD COLUMN IF NOT EXISTS announcement_url VARCHAR(512) DEFAULT ''",
+            # Housing overrides (migration 0014)
+            """CREATE TABLE IF NOT EXISTS housing_overrides (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                moravian_id VARCHAR(32) NOT NULL UNIQUE,
+                student_name VARCHAR(256) NOT NULL DEFAULT '',
+                student_email VARCHAR(256) NOT NULL DEFAULT '',
+                override_status VARCHAR(8) NOT NULL,
+                reason VARCHAR(512) NOT NULL DEFAULT '',
+                created_by VARCHAR(256) NOT NULL DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_housing_overrides_moravian_id ON housing_overrides(moravian_id)",
+            # Ticket OCR correction (migration 0015)
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ocr_original_plate VARCHAR(32)",
             ]
             for migration in migrations:
                 try:
