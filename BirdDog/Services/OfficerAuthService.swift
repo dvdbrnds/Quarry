@@ -200,18 +200,16 @@ final class OfficerAuthService: NSObject, ObservableObject {
         let settings = AppSettings.shared
         Task {
             let verified = await verifyJWTSignature(token: token, issuer: settings.oktaIssuer)
-            await MainActor.run {
-                if !verified {
-                    self.loginError = "ID token signature verification failed"
-                    self.isLoggedIn = false
-                    return
-                }
-                self.extractAndApplyClaims(from: token, accessToken: accessToken)
+            if !verified {
+                self.loginError = "ID token signature verification failed"
+                self.isLoggedIn = false
+                return
             }
+            await self.extractAndApplyClaims(from: token, accessToken: accessToken)
         }
     }
 
-    private func extractAndApplyClaims(from token: String, accessToken: String?) {
+    private func extractAndApplyClaims(from token: String, accessToken: String?) async {
         let parts = token.split(separator: ".")
         var base64 = String(parts[1])
         while base64.count % 4 != 0 { base64.append("=") }
@@ -248,7 +246,23 @@ final class OfficerAuthService: NSObject, ObservableObject {
         let email = claims["email"] as? String
             ?? claims["sub"] as? String
             ?? ""
-        let groups = claims[settings.oktaGroupsClaim] as? [String] ?? []
+        var groups = claims[settings.oktaGroupsClaim] as? [String] ?? []
+
+        if groups.isEmpty, let accessToken {
+            let fetched = await fetchUserInfoGroups(accessToken: accessToken)
+            if !fetched.isEmpty {
+                groups = fetched
+            }
+        }
+
+        let adminGroup = settings.oktaAdminGroup
+        let staffGroup = settings.oktaStaffGroup
+        let isAuthorized = groups.contains(adminGroup) || groups.contains(staffGroup)
+
+        guard isAuthorized else {
+            loginError = "Access denied — your Okta account is not authorized for BirdDog. Contact your administrator to be added to \(adminGroup) or \(staffGroup)."
+            return
+        }
 
         self.officerName = name
         self.officerEmail = email
@@ -257,15 +271,6 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
         HoundDogSyncService.shared.resetSyncDates()
         HoundDogSyncService.shared.startIfConfigured()
-
-        if groups.isEmpty, let accessToken {
-            Task {
-                let fetched = await fetchUserInfoGroups(accessToken: accessToken)
-                if !fetched.isEmpty {
-                    self.officerGroups = fetched
-                }
-            }
-        }
     }
 
     // MARK: - JWT Signature Verification
