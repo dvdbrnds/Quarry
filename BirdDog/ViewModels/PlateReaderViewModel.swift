@@ -338,14 +338,20 @@ final class PlateReaderViewModel: ObservableObject {
 
             // Single-frame instant confirm for external camera:
             // high confidence + known NA format = reliable enough for 1-frame.
-            // Don't instant-confirm when the current read differs in length
-            // from the voter key — that means it merged with a longer/shorter
-            // variant and the voter needs multiple frames to resolve which
-            // length is correct (e.g. "RY6998" vs "LRY6998").
+            // Guard 1: don't instant-confirm when the read differs in length
+            // from the voter key (merged with longer/shorter variant).
+            // Guard 2: don't instant-confirm 6-char reads that could be a
+            // clipped 7-char local plate (leading char dropped by OCR).
+            let lengthMismatch = plate.text.count != voterKey.count
+            let couldBeClipped = plate.text.count == 6
+                && !PlatePatternMatcher.isLocalFormat(plate.text)
+                && PlatePatternMatcher.couldBeClippedLocalPlate(plate.text)
+
             if newCount == 1 && isExternal && plate.confidence >= 0.90
                 && PlatePatternMatcher.matchesAnyNAFormat(voterKey)
                 && !PlatePatternMatcher.isVanityPlate(voterKey)
-                && plate.text.count == voterKey.count {
+                && !lengthMismatch
+                && !couldBeClipped {
                 threshold = 1
             }
 
