@@ -250,13 +250,6 @@ final class OfficerAuthService: NSObject, ObservableObject {
             ?? ""
         let groups = claims[settings.oktaGroupsClaim] as? [String] ?? []
 
-        let expiry: Date
-        if let exp = claims["exp"] as? TimeInterval {
-            expiry = Date(timeIntervalSince1970: exp)
-        } else {
-            expiry = Date().addingTimeInterval(8 * 3600)
-        }
-
         self.officerName = name
         self.officerEmail = email
         self.officerGroups = groups
