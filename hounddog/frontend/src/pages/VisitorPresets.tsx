@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, DeleteOutlined, LinkOutlined, CopyOutlined } from "@ant-design/icons";
 import { authHeaders, getAccessToken } from "../auth";
 import { api, Lot } from "../api";
 
 interface Preset {
   id: string;
   label: string;
+  slug: string;
+  direct_link: string;
   company_name: string;
   sponsor_name: string;
   sponsor_email: string;
@@ -226,6 +228,28 @@ export default function VisitorPresets() {
               },
             },
             {
+              title: "Direct Link",
+              key: "direct_link",
+              width: 200,
+              render: (_: unknown, row: Preset) => (
+                <div className="flex items-center gap-1">
+                  <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[120px]" title={row.direct_link}>
+                    ?preset={row.slug}
+                  </code>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<CopyOutlined />}
+                    title="Copy direct link"
+                    onClick={() => {
+                      navigator.clipboard.writeText(row.direct_link);
+                      message.success("Link copied!");
+                    }}
+                  />
+                </div>
+              ),
+            },
+            {
               title: "Active",
               dataIndex: "active",
               key: "active",
@@ -265,6 +289,26 @@ export default function VisitorPresets() {
         width={520}
       >
         <Form form={form} layout="vertical" className="mt-4">
+          {editing?.direct_link && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-xs font-medium text-blue-700 block mb-1">Direct link for this program</span>
+                  <code className="text-xs text-blue-900 break-all">{editing.direct_link}</code>
+                </div>
+                <Button
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(editing.direct_link);
+                    message.success("Link copied!");
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
           <Form.Item
             name="label"
             label="Dropdown label"

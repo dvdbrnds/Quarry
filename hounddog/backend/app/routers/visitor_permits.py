@@ -1,5 +1,6 @@
 """Public visitor/vendor parking permit portal — no authentication required."""
 
+import re
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -18,6 +19,10 @@ from ..models.visitor_approval_token import VisitorApprovalToken
 from ..models.visitor_preset import VisitorPreset
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
+
+
+def _slugify(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
 
 
 router = APIRouter()
@@ -129,10 +134,13 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             .order_by(VisitorPreset.sort_order, VisitorPreset.label)
         )
     ).scalars().all()
+    base = settings.student_facing_url.rstrip("/")
     return [
         {
             "id": str(p.id),
             "label": p.label,
+            "slug": _slugify(p.label),
+            "direct_link": f"{base}/visitor?preset={_slugify(p.label)}",
             "company_name": p.company_name,
             "sponsor_name": p.sponsor_name,
             "sponsor_email": p.sponsor_email,
@@ -156,10 +164,13 @@ async def list_all_presets(
             select(VisitorPreset).order_by(VisitorPreset.sort_order, VisitorPreset.label)
         )
     ).scalars().all()
+    base = settings.student_facing_url.rstrip("/")
     return [
         {
             "id": str(p.id),
             "label": p.label,
+            "slug": _slugify(p.label),
+            "direct_link": f"{base}/visitor?preset={_slugify(p.label)}",
             "company_name": p.company_name,
             "sponsor_name": p.sponsor_name,
             "sponsor_email": p.sponsor_email,
