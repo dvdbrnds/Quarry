@@ -120,8 +120,11 @@ final class HoundDogSyncService: ObservableObject {
         }
 
         do {
+            print("[HoundDog] Starting sync… (permits=\(lastPermitSync?.description ?? "nil"), lots=\(lastLotSync?.description ?? "nil"))")
             try await syncPermits()
+            print("[HoundDog] Permits OK (\(permitCount) records)")
             try await syncLots()
+            print("[HoundDog] Lots OK (\(lotCount) lots)")
             try await syncViolationTypes()
             try await syncCalendar()
             try await syncEnforcementSettings()
@@ -129,8 +132,10 @@ final class HoundDogSyncService: ObservableObject {
             syncState = .synced
             lastSyncDate = Date()
         } catch {
+            let msg = error.localizedDescription
+            print("[HoundDog] SYNC FAILED: \(msg)")
             syncState = .error
-            lastError = error.localizedDescription
+            lastError = msg
         }
     }
 

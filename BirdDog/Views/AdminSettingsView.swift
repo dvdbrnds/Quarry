@@ -265,6 +265,14 @@ struct AdminSettingsView: View {
             .disabled(appSettings.houndDogURL.isEmpty || appSettings.houndDogAPIKey.isEmpty)
 
             Button {
+                syncService.resetSyncDates()
+                Task { await syncService.syncNow() }
+            } label: {
+                Label("Force Full Sync", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(appSettings.houndDogURL.isEmpty || appSettings.houndDogAPIKey.isEmpty)
+
+            Button {
                 showQRScanner = true
             } label: {
                 Label("Scan Pairing QR Code", systemImage: "qrcode.viewfinder")

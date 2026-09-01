@@ -310,6 +310,10 @@ struct ContentView: View {
     }
 
     private func lotStatusLabel(for geo: GeofenceService) -> String {
+        let sync = HoundDogSyncService.shared
+        if sync.syncState == .error, let err = sync.lastError {
+            return "Sync error: \(err)"
+        }
         switch geo.locationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             if geo.currentLocation == nil { return "GPS…" }
