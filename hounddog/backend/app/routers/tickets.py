@@ -37,7 +37,7 @@ from ..schemas.ticket import (
 router = APIRouter(dependencies=[Depends(get_current_user)])
 public_router = APIRouter()
 
-VALID_STATUSES = {"issued", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
+VALID_STATUSES = {"issued", "warning", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
 
 
 @router.get("", response_model=TicketList)

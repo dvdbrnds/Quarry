@@ -293,8 +293,8 @@ export default function Appeals() {
                   </div>
 
                   <div className="text-right shrink-0">
-                    <div className="text-lg font-bold" style={{ color: brand.primaryColor }}>
-                      ${Number(t.fine_amount).toFixed(2)}
+                    <div className="text-lg font-bold" style={{ color: t.status === "warning" ? "#ea580c" : brand.primaryColor }}>
+                      {t.status === "warning" ? "Warning" : `$${Number(t.fine_amount).toFixed(2)}`}
                     </div>
                     {t.can_appeal && (
                       <Button
@@ -306,7 +306,7 @@ export default function Appeals() {
                         Appeal
                       </Button>
                     )}
-                    {!t.can_appeal && !t.appeal_decision && t.status === "issued" && (
+                    {!t.can_appeal && !t.appeal_decision && (t.status === "issued" || t.status === "warning") && (
                       <div className="text-xs text-gray-400 mt-2">
                         Window closed
                       </div>
