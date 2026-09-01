@@ -7,6 +7,8 @@ const { Text, Paragraph } = Typography;
 interface FeatureFlags {
   vouchers_enabled: boolean;
   vehicle_request_notify_email: string;
+  announcement_text: string;
+  announcement_url: string;
 }
 
 export default function FeatureSettings() {
@@ -15,6 +17,8 @@ export default function FeatureSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
+  const [announcementText, setAnnouncementText] = useState("");
+  const [announcementUrl, setAnnouncementUrl] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -23,6 +27,8 @@ export default function FeatureSettings() {
         const data = await res.json();
         setFlags(data);
         setNotifyEmail(data.vehicle_request_notify_email || "");
+        setAnnouncementText(data.announcement_text || "");
+        setAnnouncementUrl(data.announcement_url || "");
       }
     } catch {
       message.error("Failed to load feature settings");
@@ -68,6 +74,12 @@ export default function FeatureSettings() {
     if (!flags) return;
     const next = { ...flags, vehicle_request_notify_email: notifyEmail.trim() };
     await saveFlags(next, "Notification email saved");
+  }
+
+  async function saveAnnouncement() {
+    if (!flags) return;
+    const next = { ...flags, announcement_text: announcementText.trim(), announcement_url: announcementUrl.trim() };
+    await saveFlags(next, announcementText.trim() ? "Announcement banner updated" : "Announcement banner removed");
   }
 
   if (loading || !flags) {
@@ -117,6 +129,41 @@ export default function FeatureSettings() {
               Save
             </Button>
           </div>
+        </div>
+      </Card>
+
+      <Card title="Public Announcement Banner">
+        <div className="space-y-4">
+          <div>
+            <Text strong>Banner text</Text>
+            <Paragraph type="secondary" className="mb-2 mt-1">
+              Shown at the top of all public-facing parking pages (students, visitors, employees, map).
+              Leave blank to hide the banner.
+            </Paragraph>
+            <Input
+              placeholder="View the 2026-2027 Parking Regulations"
+              value={announcementText}
+              onChange={e => setAnnouncementText(e.target.value)}
+            />
+          </div>
+          <div>
+            <Text strong>Link URL (optional)</Text>
+            <Paragraph type="secondary" className="mb-2 mt-1">
+              If provided, the banner text becomes a clickable link. Use for Google Docs, PDFs, or any external page.
+            </Paragraph>
+            <Input
+              placeholder="https://docs.google.com/document/d/..."
+              value={announcementUrl}
+              onChange={e => setAnnouncementUrl(e.target.value)}
+            />
+          </div>
+          <Button
+            type="primary"
+            loading={saving}
+            onClick={saveAnnouncement}
+          >
+            {announcementText.trim() ? "Save Banner" : "Remove Banner"}
+          </Button>
         </div>
       </Card>
     </div>

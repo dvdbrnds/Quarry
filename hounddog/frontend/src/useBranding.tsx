@@ -10,6 +10,8 @@ export interface Branding {
   schoolName: string;
   departmentName: string;
   vouchersEnabled: boolean;
+  announcementText: string;
+  announcementUrl: string;
 }
 
 const DEFAULTS: Branding = {
@@ -21,6 +23,8 @@ const DEFAULTS: Branding = {
   schoolName: "",
   departmentName: "Parking Authority",
   vouchersEnabled: true,
+  announcementText: "",
+  announcementUrl: "",
 };
 
 const BrandingContext = createContext<Branding>(DEFAULTS);
@@ -41,6 +45,8 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
           schoolName: data.school_name ?? DEFAULTS.schoolName,
           departmentName: data.department_name ?? DEFAULTS.departmentName,
           vouchersEnabled: data.vouchers_enabled ?? DEFAULTS.vouchersEnabled,
+          announcementText: data.announcement_text ?? "",
+          announcementUrl: data.announcement_url ?? "",
         });
       })
       .catch(() => {});

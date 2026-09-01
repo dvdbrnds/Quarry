@@ -49,6 +49,8 @@ async def get_branding(db: AsyncSession = Depends(get_db)):
         "school_name": settings.school_name,
         "department_name": bs.department_name or "Parking Authority",
         "vouchers_enabled": True if bs.vouchers_enabled is None else bool(bs.vouchers_enabled),
+        "announcement_text": bs.announcement_text or "",
+        "announcement_url": bs.announcement_url or "",
     }
 
 
@@ -101,6 +103,8 @@ async def update_brand_identity(body: BrandIdentityUpdate, db: AsyncSession = De
 class FeatureFlagsUpdate(BaseModel):
     vouchers_enabled: bool
     vehicle_request_notify_email: str = ""
+    announcement_text: str = ""
+    announcement_url: str = ""
 
 
 @admin_router.get("/features")
@@ -112,6 +116,8 @@ async def get_feature_flags(
     return {
         "vouchers_enabled": True if bs.vouchers_enabled is None else bool(bs.vouchers_enabled),
         "vehicle_request_notify_email": bs.vehicle_request_notify_email or "",
+        "announcement_text": bs.announcement_text or "",
+        "announcement_url": bs.announcement_url or "",
     }
 
 
@@ -124,12 +130,16 @@ async def update_feature_flags(
     bs = await _get_or_create(db)
     bs.vouchers_enabled = body.vouchers_enabled
     bs.vehicle_request_notify_email = body.vehicle_request_notify_email.strip()
+    bs.announcement_text = body.announcement_text.strip()
+    bs.announcement_url = body.announcement_url.strip()
     await db.flush()
     invalidate_branding_cache()
     return {
         "ok": True,
         "vouchers_enabled": bool(bs.vouchers_enabled),
         "vehicle_request_notify_email": bs.vehicle_request_notify_email or "",
+        "announcement_text": bs.announcement_text or "",
+        "announcement_url": bs.announcement_url or "",
     }
 
 
@@ -141,6 +151,8 @@ async def reset_branding(db: AsyncSession = Depends(get_db)):
     bs.accent_color = "#c9a84c"
     bs.department_name = "Parking Authority"
     bs.vouchers_enabled = True
+    bs.announcement_text = ""
+    bs.announcement_url = ""
     bs.logo_data = None
     bs.logo_mime = None
     bs.favicon_data = None
