@@ -130,6 +130,14 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
     if ticket.status in ("paid", "voided", "resolved_permit"):
         raise HTTPException(400, f"Ticket is already {ticket.status}")
 
+    fine_cents = int(ticket.fine_amount * 100)
+
+    if fine_cents <= 0:
+        ticket.status = "paid"
+        await db.flush()
+        base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+        return CheckoutResponse(checkout_url=f"{base_url}{data.success_url}?session_id=zero-fine-resolved", session_id="zero-fine-resolved")
+
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Stripe not configured")
 
@@ -149,7 +157,6 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
 
     ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
 
-    fine_cents = int(ticket.fine_amount * 100)
     processing_fee_cents = round(fine_cents * settings.citation_processing_fee_pct / 100) + settings.citation_processing_fee_fixed_cents
 
     session = stripe.checkout.Session.create(
@@ -533,6 +540,9 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
 
     Also triggers permit fulfillment if the session is paid but no permit exists yet.
     """
+    if session_id == "zero-fine-resolved":
+        return {"status": "complete", "payment_status": "paid", "message": "$0 citation — no payment required"}
+
     if not settings.stripe_secret_key:
         return {"status": "unknown", "payment_status": "unknown"}
 
