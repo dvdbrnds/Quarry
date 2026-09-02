@@ -611,30 +611,34 @@ function VanityVisitorPage({ slug }: { slug: string }) {
     })();
   }, [slug]);
 
-  const highlightedLotNames = useMemo(() => {
+  const displayLots = useMemo(() => {
     const allowedLotNames = preset?.allowed_lots ?? [];
-    if (allowedLotNames.length > 0) return allowedLotNames;
-    return allLots
-      .filter((l) => {
-        const code = (l.designation_code || "").toUpperCase();
-        const label = (l.designation_label || "").toLowerCase();
-        return code === "VPR" || label.includes("visitor");
-      })
-      .map((l) => l.name);
+    if (allowedLotNames.length > 0) {
+      const allowed = new Set(allowedLotNames.map((n) => n.toLowerCase().replace(/^lot\s+/i, "").trim()));
+      return allLots.filter((l) => {
+        const short = l.name.toLowerCase().replace(/^lot\s+/i, "").trim();
+        return allowed.has(short) || allowed.has(l.name.toLowerCase());
+      });
+    }
+    return allLots.filter((l) => {
+      const code = (l.designation_code || "").toUpperCase();
+      const label = (l.designation_label || "").toLowerCase();
+      return code === "VPR" || label.includes("visitor");
+    });
   }, [allLots, preset]);
 
-  const showMap = Boolean(mapsApiKey && allLots.length > 0 && highlightedLotNames.length > 0);
+  const showMap = Boolean(mapsApiKey && displayLots.length > 0);
   const lotColors = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const name of highlightedLotNames) {
-      map[name] = VISITOR_FILL;
-      map[name.replace(/^lot\s+/i, "").trim()] = VISITOR_FILL;
+    for (const lot of displayLots) {
+      map[lot.name] = VISITOR_FILL;
+      map[lot.name.replace(/^lot\s+/i, "").trim()] = VISITOR_FILL;
     }
     return map;
-  }, [highlightedLotNames]);
+  }, [displayLots]);
   const mapLegend = useMemo(
-    () => highlightedLotNames.length > 0 ? [{ label: preset?.label ? `${preset.label} parking` : "Visitor parking", color: VISITOR_FILL }] : [],
-    [highlightedLotNames, preset],
+    () => displayLots.length > 0 ? [{ label: preset?.label ? `${preset.label} parking` : "Visitor parking", color: VISITOR_FILL }] : [],
+    [displayLots, preset],
   );
 
   async function submitForm(values: Record<string, unknown>) {
@@ -699,9 +703,9 @@ function VanityVisitorPage({ slug }: { slug: string }) {
   const mapPanel = showMap && (
     <StudentLotMap
       apiKey={mapsApiKey}
-      lots={allLots}
-      highlightedLots={highlightedLotNames}
-      focusedLot={highlightedLotNames.length === 1 ? highlightedLotNames[0] : null}
+      lots={displayLots}
+      highlightedLots={displayLots.map((l) => l.name)}
+      focusedLot={displayLots.length === 1 ? displayLots[0].name : null}
       defaultCenter={campusCenter}
       lotColors={lotColors}
       legend={mapLegend}

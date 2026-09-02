@@ -173,6 +173,17 @@ async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
     match = next((p for p in rows if _slugify(p.label) == slug), None)
     if not match:
         raise HTTPException(404, "Visitor preset not found")
+
+    permit_type_lots: list[str] = []
+    if match.permit_type_code:
+        pt = (await db.execute(
+            select(PermitType).where(PermitType.code == match.permit_type_code)
+        )).scalar_one_or_none()
+        if pt and pt.lot_assignments:
+            permit_type_lots = list(pt.lot_assignments)
+
+    combined = list(dict.fromkeys(permit_type_lots + (match.allowed_lots or [])))
+
     return {
         "id": str(match.id),
         "label": match.label,
@@ -182,7 +193,7 @@ async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
         "sponsor_email": match.sponsor_email,
         "sponsor_department": match.sponsor_department,
         "default_duration": match.default_duration,
-        "allowed_lots": match.allowed_lots or [],
+        "allowed_lots": combined,
         "require_student_name": match.require_student_name,
         "student_name_label": match.student_name_label,
     }
