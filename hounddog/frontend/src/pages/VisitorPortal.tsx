@@ -30,6 +30,7 @@ interface VisitorPreset {
   allowed_lots?: string[];
   require_student_name: boolean;
   student_name_label: string;
+  logo_url?: string;
 }
 
 interface PermitResult {
@@ -748,6 +749,11 @@ function VanityVisitorPage({ slug }: { slug: string }) {
           )}
 
           <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
+            {preset.logo_url && (
+              <div className="flex justify-center">
+                <img src={preset.logo_url} alt={preset.label} className="h-20 w-auto object-contain" />
+              </div>
+            )}
             {result ? (
               <ConfirmationCard result={result} onStartOver={startOver} />
             ) : (

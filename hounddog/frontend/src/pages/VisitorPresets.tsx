@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined, LinkOutlined, CopyOutlined } from "@ant-design/icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm, Upload } from "antd";
+import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, UploadOutlined } from "@ant-design/icons";
 import { authHeaders, getAccessToken } from "../auth";
 import { api, Lot } from "../api";
 
@@ -18,6 +18,7 @@ interface Preset {
   allowed_lots: string[];
   require_student_name: boolean;
   student_name_label: string;
+  logo_url: string;
   active: boolean;
   sort_order: number;
 }
@@ -58,6 +59,8 @@ export default function VisitorPresets() {
   const [form] = Form.useForm();
   const [permitTypes, setPermitTypes] = useState<PermitTypeOption[]>([]);
   const [lots, setLots] = useState<{ value: string; label: string }[]>([]);
+  const [logoPreview, setLogoPreview] = useState<string>("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -92,6 +95,7 @@ export default function VisitorPresets() {
 
   const openCreate = () => {
     setEditing(null);
+    setLogoPreview("");
     form.resetFields();
     form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [], require_student_name: false, student_name_label: "Student name" });
     setModalOpen(true);
@@ -99,8 +103,52 @@ export default function VisitorPresets() {
 
   const openEdit = (preset: Preset) => {
     setEditing(preset);
+    setLogoPreview(preset.logo_url || "");
     form.setFieldsValue(preset);
     setModalOpen(true);
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    if (!editing) {
+      message.info("Save the preset first, then upload a logo.");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const token = await getAccessToken();
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/visitor/permits/presets/${editing.id}/logo`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setLogoPreview(data.logo_url);
+      message.success("Logo uploaded");
+      load();
+    } catch (e: any) {
+      message.error(e.message || "Upload failed");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    if (!editing) return;
+    try {
+      const token = await getAccessToken();
+      await fetch(`/api/visitor/permits/presets/${editing.id}/logo`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      setLogoPreview("");
+      message.success("Logo removed");
+      load();
+    } catch {
+      message.error("Failed to remove logo");
+    }
   };
 
   const handleSave = async () => {
@@ -309,6 +357,33 @@ export default function VisitorPresets() {
                   Copy
                 </Button>
               </div>
+            </div>
+          )}
+          {editing && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Program logo</label>
+              <div className="flex items-center gap-3">
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Preset logo" className="h-12 w-auto rounded border bg-white p-1" />
+                ) : (
+                  <div className="h-12 w-12 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">
+                    None
+                  </div>
+                )}
+                <Upload
+                  accept="image/*"
+                  showUploadList={false}
+                  beforeUpload={(file) => { handleLogoUpload(file); return false; }}
+                >
+                  <Button size="small" icon={<UploadOutlined />} loading={uploadingLogo}>
+                    {logoPreview ? "Replace" : "Upload"}
+                  </Button>
+                </Upload>
+                {logoPreview && (
+                  <Button size="small" danger onClick={handleLogoDelete}>Remove</Button>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Shown on the vanity landing page above the form.</p>
             </div>
           )}
           <Form.Item

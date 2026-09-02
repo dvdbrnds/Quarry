@@ -5,7 +5,7 @@ import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,10 @@ from ..services.timeutils import today_local
 
 def _slugify(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+
+
+def _preset_logo_url(preset: "VisitorPreset") -> str:
+    return f"/api/visitor/permits/presets/{preset.id}/logo" if preset.logo_data else ""
 
 
 router = APIRouter()
@@ -155,6 +159,7 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "allowed_lots": p.allowed_lots or [],
             "require_student_name": p.require_student_name,
             "student_name_label": p.student_name_label,
+            "logo_url": _preset_logo_url(p),
         }
         for p in rows
     ]
@@ -196,6 +201,7 @@ async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
         "allowed_lots": combined,
         "require_student_name": match.require_student_name,
         "student_name_label": match.student_name_label,
+        "logo_url": _preset_logo_url(match),
     }
 
 
@@ -226,6 +232,7 @@ async def list_all_presets(
             "allowed_lots": p.allowed_lots or [],
             "require_student_name": p.require_student_name,
             "student_name_label": p.student_name_label,
+            "logo_url": _preset_logo_url(p),
             "active": p.active,
             "sort_order": p.sort_order,
         }
@@ -273,6 +280,58 @@ async def update_preset(
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(preset, field, value.strip() if isinstance(value, str) else value)
     return {"id": str(preset.id), "label": preset.label}
+
+
+_LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
+_LOGO_MAX_SIZE = 5 * 1024 * 1024
+
+
+@router.post("/presets/{preset_id}/logo", tags=["admin"])
+async def upload_preset_logo(
+    preset_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_office()),
+):
+    if file.content_type not in _LOGO_ALLOWED_TYPES:
+        raise HTTPException(400, f"Invalid file type. Allowed: {', '.join(_LOGO_ALLOWED_TYPES)}")
+    contents = await file.read()
+    if len(contents) > _LOGO_MAX_SIZE:
+        raise HTTPException(413, "File too large. Maximum size is 5 MB.")
+    preset = await db.get(VisitorPreset, preset_id)
+    if not preset:
+        raise HTTPException(404, "Preset not found")
+    preset.logo_data = contents
+    preset.logo_mime = file.content_type
+    return {"logo_url": f"/api/visitor/permits/presets/{preset_id}/logo"}
+
+
+@router.delete("/presets/{preset_id}/logo", tags=["admin"])
+async def delete_preset_logo(
+    preset_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_office()),
+):
+    preset = await db.get(VisitorPreset, preset_id)
+    if not preset:
+        raise HTTPException(404, "Preset not found")
+    preset.logo_data = None
+    preset.logo_mime = None
+    return {"ok": True}
+
+
+@router.get("/presets/{preset_id}/logo")
+async def serve_preset_logo(preset_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    preset = await db.get(VisitorPreset, preset_id)
+    if not preset or not preset.logo_data:
+        raise HTTPException(404, "No logo uploaded")
+    import hashlib
+    etag = hashlib.md5(preset.logo_data).hexdigest()
+    return Response(
+        content=preset.logo_data,
+        media_type=preset.logo_mime or "image/png",
+        headers={"ETag": etag, "Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.post("/presets/{preset_id}/remove", tags=["admin"])

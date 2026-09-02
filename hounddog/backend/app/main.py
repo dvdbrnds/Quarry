@@ -751,6 +751,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ocr_original_plate VARCHAR(32)",
             # Widen permits.student_id for visitor metadata
             "ALTER TABLE permits ALTER COLUMN student_id TYPE VARCHAR(512)",
+            # Preset logo storage
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS logo_data BYTEA",
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS logo_mime VARCHAR(64)",
             ]
             for migration in migrations:
                 try:
