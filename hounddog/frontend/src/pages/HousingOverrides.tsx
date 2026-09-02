@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Table, App, Input, Select, Modal, Form, Popconfirm, Tag } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { Button, Card, Table, App, Input, Select, Modal, Form, Popconfirm, Tag, Space } from "antd";
+import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 
 interface Override {
@@ -40,6 +40,7 @@ export default function HousingOverrides() {
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Override | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
 
@@ -57,7 +58,19 @@ export default function HousingOverrides() {
   useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
+    setEditing(null);
     form.resetFields();
+    setModalOpen(true);
+  };
+
+  const openEdit = (row: Override) => {
+    setEditing(row);
+    form.setFieldsValue({
+      student_email: row.student_email,
+      student_name: row.student_name,
+      override_status: row.override_status,
+      reason: row.reason,
+    });
     setModalOpen(true);
   };
 
@@ -65,9 +78,22 @@ export default function HousingOverrides() {
     try {
       const values = await form.validateFields();
       setSaving(true);
-      await apiRequest("", { method: "POST", body: JSON.stringify(values) });
-      message.success("Override created");
+      if (editing) {
+        await apiRequest(`/${editing.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            student_name: values.student_name,
+            override_status: values.override_status,
+            reason: values.reason,
+          }),
+        });
+        message.success("Override updated");
+      } else {
+        await apiRequest("", { method: "POST", body: JSON.stringify(values) });
+        message.success("Override created");
+      }
       setModalOpen(false);
+      setEditing(null);
       load();
     } catch (e: any) {
       if (e.errorFields) return;
@@ -94,20 +120,21 @@ export default function HousingOverrides() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-sm text-gray-500 mt-1">
-            Override a student&apos;s housing classification when the SIS feed is wrong. Overrides take
-            priority — the student will see permit types matching the overridden status instead of
-            what Jenzabar reports.
-          </p>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Add Override
-        </Button>
-      </div>
+      <p className="text-sm text-gray-500 mb-4">
+        Override a student&apos;s housing classification when the SIS feed is wrong. Overrides take
+        priority — the student will see permit types matching the overridden status instead of
+        what Jenzabar reports.
+      </p>
 
-      <Card size="small">
+      <Card
+        size="small"
+        title="Active Overrides"
+        extra={
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreate}>
+            Add Override
+          </Button>
+        }
+      >
         <Table
           dataSource={overrides}
           loading={loading}
@@ -153,17 +180,20 @@ export default function HousingOverrides() {
             {
               title: "",
               key: "actions",
-              width: 50,
+              width: 80,
               render: (_: unknown, row: Override) => (
-                <Popconfirm
-                  title="Remove this override?"
-                  description="Student will revert to their SIS housing status."
-                  onConfirm={() => handleDelete(row)}
-                  okText="Remove"
-                  okType="danger"
-                >
-                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
+                <Space size={4}>
+                  <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(row)} />
+                  <Popconfirm
+                    title="Remove this override?"
+                    description="Student will revert to their SIS housing status."
+                    onConfirm={() => handleDelete(row)}
+                    okText="Remove"
+                    okType="danger"
+                  >
+                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </Space>
               ),
             },
           ]}
@@ -171,12 +201,12 @@ export default function HousingOverrides() {
       </Card>
 
       <Modal
-        title="Add Housing Override"
+        title={editing ? "Edit Housing Override" : "Add Housing Override"}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => { setModalOpen(false); setEditing(null); }}
         onOk={handleSave}
         confirmLoading={saving}
-        okText="Create Override"
+        okText={editing ? "Save Changes" : "Create Override"}
         width={480}
       >
         <Form form={form} layout="vertical" className="mt-4">
@@ -186,7 +216,7 @@ export default function HousingOverrides() {
             rules={[{ required: true, message: "Required" }, { type: "email", message: "Enter a valid email" }]}
             extra="The student's Moravian email address (used as the lookup key)"
           >
-            <Input placeholder="lauricob@moravian.edu" />
+            <Input placeholder="lauricob@moravian.edu" disabled={!!editing} />
           </Form.Item>
           <Form.Item name="student_name" label="Student name">
             <Input placeholder="Brandon Laurico" />
