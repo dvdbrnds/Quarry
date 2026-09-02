@@ -404,6 +404,7 @@ export default function App() {
       <Routes>
         <Route path="/visitor" element={<VisitorPortal />} />
         <Route path="/visitor/approve/:token" element={<VisitorApproval />} />
+        <Route path="/visitor/:slug" element={<VisitorPortal />} />
       </Routes>
     );
   }

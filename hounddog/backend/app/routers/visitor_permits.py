@@ -145,7 +145,7 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "id": str(p.id),
             "label": p.label,
             "slug": _slugify(p.label),
-            "direct_link": f"{base}/visitor?preset={_slugify(p.label)}",
+            "direct_link": f"{base}/visitor/{_slugify(p.label)}",
             "company_name": p.company_name,
             "sponsor_name": p.sponsor_name,
             "sponsor_email": p.sponsor_email,
@@ -158,6 +158,33 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
         }
         for p in rows
     ]
+
+
+@router.get("/presets/by-slug/{slug}")
+async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
+    """Public: fetch a single active preset by its URL slug."""
+    rows = (
+        await db.execute(
+            select(VisitorPreset)
+            .where(VisitorPreset.active.is_(True))
+            .order_by(VisitorPreset.sort_order, VisitorPreset.label)
+        )
+    ).scalars().all()
+    match = next((p for p in rows if _slugify(p.label) == slug), None)
+    if not match:
+        raise HTTPException(404, "Visitor preset not found")
+    return {
+        "id": str(match.id),
+        "label": match.label,
+        "slug": _slugify(match.label),
+        "company_name": match.company_name,
+        "sponsor_name": match.sponsor_name,
+        "sponsor_email": match.sponsor_email,
+        "sponsor_department": match.sponsor_department,
+        "default_duration": match.default_duration,
+        "require_student_name": match.require_student_name,
+        "student_name_label": match.student_name_label,
+    }
 
 
 @router.get("/presets/all", tags=["admin"])
@@ -177,7 +204,7 @@ async def list_all_presets(
             "id": str(p.id),
             "label": p.label,
             "slug": _slugify(p.label),
-            "direct_link": f"{base}/visitor?preset={_slugify(p.label)}",
+            "direct_link": f"{base}/visitor/{_slugify(p.label)}",
             "company_name": p.company_name,
             "sponsor_name": p.sponsor_name,
             "sponsor_email": p.sponsor_email,

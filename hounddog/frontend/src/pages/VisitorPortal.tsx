@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import {
   Button,
   Card,
@@ -91,9 +92,10 @@ function toMapLot(lot: PublicLot): Lot {
 }
 
 export default function VisitorPortal() {
+  const { slug } = useParams<{ slug?: string }>();
   return (
     <App>
-      <VisitorFlow />
+      {slug ? <VanityVisitorPage slug={slug} /> : <VisitorFlow />}
     </App>
   );
 }
@@ -560,5 +562,258 @@ function ConfirmationCard({
         ]}
       />
     </Card>
+  );
+}
+
+
+function VanityVisitorPage({ slug }: { slug: string }) {
+  const brand = useBranding();
+  const { message } = App.useApp();
+  const [form] = Form.useForm();
+  const [preset, setPreset] = useState<VisitorPreset | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<PermitResult | null>(null);
+  const [visitorLots, setVisitorLots] = useState<Lot[]>([]);
+  const [mapsApiKey, setMapsApiKey] = useState("");
+  const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [presetRes, cfg, lotsRes] = await Promise.all([
+          fetch(`/api/visitor/permits/presets/by-slug/${encodeURIComponent(slug)}`),
+          loadConfig(),
+          fetch("/api/parking-map"),
+        ]);
+        setMapsApiKey(cfg.google_maps_api_key || "");
+        if (cfg.campus_lat && cfg.campus_lng) {
+          setCampusCenter({ lat: cfg.campus_lat, lng: cfg.campus_lng });
+        }
+        if (lotsRes.ok) {
+          const lots: PublicLot[] = await lotsRes.json();
+          setVisitorLots(lots.filter(isVisitorLot).map(toMapLot));
+        }
+        if (!presetRes.ok) {
+          setNotFound(true);
+          return;
+        }
+        setPreset(await presetRes.json());
+      } catch {
+        setNotFound(true);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [slug]);
+
+  const showMap = Boolean(mapsApiKey && visitorLots.length > 0);
+  const lotColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const lot of visitorLots) {
+      map[lot.name] = VISITOR_FILL;
+      map[lot.name.replace(/^lot\s+/i, "").trim()] = VISITOR_FILL;
+    }
+    return map;
+  }, [visitorLots]);
+  const mapLegend = useMemo(
+    () => visitorLots.length > 0 ? [{ label: "Visitor parking", color: VISITOR_FILL }] : [],
+    [visitorLots],
+  );
+
+  async function submitForm(values: Record<string, unknown>) {
+    if (!preset) return;
+    const name = String(values.name || "").trim();
+    const plate = String(values.plate || "").trim().toUpperCase();
+    if (!name || !plate) {
+      message.warning("Name and license plate are required");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload = {
+        visitor_type: "visitor",
+        name,
+        plate,
+        plate_state: String(values.plate_state || "PA").trim().toUpperCase() || "PA",
+        email: (values.email as string) || "",
+        phone: (values.phone as string) || "",
+        company_name: preset.company_name || preset.label,
+        start_date: dayjs().format("YYYY-MM-DD"),
+        end_date: preset.default_duration
+          ? dayjs().add(parseInt(preset.default_duration) || 1, "day").format("YYYY-MM-DD")
+          : dayjs().format("YYYY-MM-DD"),
+        sponsor_name: preset.sponsor_name,
+        sponsor_email: preset.sponsor_email,
+        sponsor_department: preset.sponsor_department || "",
+        work_description: preset.label,
+        student_name: (values.student_name as string) || "",
+        preset_id: preset.id,
+      };
+      const res = await fetch("/api/visitor/permits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const detail = body.detail;
+        throw new Error(
+          typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(", ")
+              : "Failed to create permit",
+        );
+      }
+      setResult(await res.json());
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : "Failed to create permit");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function startOver() {
+    setResult(null);
+    form.resetFields();
+    form.setFieldsValue({ plate_state: "PA" });
+  }
+
+  const mapPanel = showMap && (
+    <StudentLotMap
+      apiKey={mapsApiKey}
+      lots={visitorLots}
+      highlightedLots={visitorLots.map((l) => l.name)}
+      focusedLot={null}
+      defaultCenter={campusCenter}
+      lotColors={lotColors}
+      legend={mapLegend}
+    />
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <PublicPageNav subtitle="Visitor Parking" />
+        <div className="flex justify-center py-20"><Spin size="large" /></div>
+      </div>
+    );
+  }
+
+  if (notFound || !preset) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <PublicPageNav subtitle="Visitor Parking" />
+        <main className="max-w-xl mx-auto px-4 py-16 text-center">
+          <Result
+            status="404"
+            title="Program not found"
+            subTitle="This visitor parking link may be outdated or incorrect."
+            extra={<Button type="primary" href="/visitor">Go to visitor parking</Button>}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <PublicPageNav subtitle={`${preset.label} — Visitor Parking`} />
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className={`grid grid-cols-1 gap-6 ${showMap ? "lg:grid-cols-3" : ""}`}>
+          {showMap && (
+            <div className="lg:hidden h-[280px] rounded-xl overflow-hidden shadow">{mapPanel}</div>
+          )}
+
+          <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
+            {result ? (
+              <ConfirmationCard result={result} onStartOver={startOver} />
+            ) : (
+              <Card title={`${preset.label} parking registration`}>
+                <Alert
+                  type="info"
+                  showIcon
+                  className="mb-4"
+                  message="Register your vehicle for visitor parking"
+                  description="Fill out the form below. Your campus sponsor will be notified automatically for approval."
+                />
+
+                <Form
+                  form={form}
+                  layout="vertical"
+                  onFinish={submitForm}
+                  initialValues={{ plate_state: "PA" }}
+                >
+                  <Form.Item
+                    name="name"
+                    label="Full name"
+                    rules={[{ required: true, message: "Name is required" }]}
+                  >
+                    <Input placeholder="Jane Smith" />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="plate"
+                    label="License plate"
+                    rules={[{ required: true, message: "License plate is required" }]}
+                    getValueFromEvent={(e) => e.target.value.toUpperCase()}
+                  >
+                    <Input className="font-mono" maxLength={12} placeholder="ABC1234" />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="plate_state"
+                    label="State"
+                    getValueFromEvent={(e) => e.target.value.toUpperCase()}
+                  >
+                    <Input className="font-mono" maxLength={2} placeholder="PA" />
+                  </Form.Item>
+
+                  <Form.Item name="email" label="Your email">
+                    <Input type="email" placeholder="you@example.com" />
+                  </Form.Item>
+
+                  <Form.Item name="phone" label="Phone">
+                    <Input placeholder="610-555-0123" />
+                  </Form.Item>
+
+                  {preset.require_student_name && (
+                    <Form.Item
+                      name="student_name"
+                      label={preset.student_name_label || "Student name"}
+                      rules={[{ required: true, message: `${preset.student_name_label || "Student name"} is required` }]}
+                    >
+                      <Input placeholder={`Enter the student's full name`} />
+                    </Form.Item>
+                  )}
+
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={submitting}
+                    block
+                    size="large"
+                    style={{ background: brand.primaryColor }}
+                  >
+                    Submit for approval
+                  </Button>
+                </Form>
+              </Card>
+            )}
+          </div>
+
+          {showMap && (
+            <div className="hidden lg:block lg:col-span-2 min-w-0">
+              <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
+                {mapPanel}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
