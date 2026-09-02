@@ -114,7 +114,7 @@ class PresetCreate(BaseModel):
     require_student_name: bool = False
     student_name_label: str = "Student name"
     require_instructor_name: bool = False
-    instructor_name_label: str = "Instructor name"
+    instructor_name_label: str = "Instructor/Ensemble"
     sort_order: int = 0
 
 
@@ -270,7 +270,7 @@ async def create_preset(
         require_student_name=data.require_student_name,
         student_name_label=data.student_name_label.strip() if data.student_name_label else "Student name",
         require_instructor_name=data.require_instructor_name,
-        instructor_name_label=data.instructor_name_label.strip() if data.instructor_name_label else "Instructor name",
+        instructor_name_label=data.instructor_name_label.strip() if data.instructor_name_label else "Instructor/Ensemble",
         sort_order=data.sort_order,
     )
     db.add(preset)

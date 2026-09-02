@@ -99,7 +99,7 @@ export default function VisitorPresets() {
     setEditing(null);
     setLogoPreview("");
     form.resetFields();
-    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [], require_student_name: false, student_name_label: "Student name", require_instructor_name: false, instructor_name_label: "Instructor name" });
+    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [], require_student_name: false, student_name_label: "Student name", require_instructor_name: false, instructor_name_label: "Instructor/Ensemble" });
     setModalOpen(true);
   };
 
