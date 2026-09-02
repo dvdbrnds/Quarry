@@ -10,7 +10,7 @@ const PUBLIC_LINKS = [
   { to: "/parking-map", label: "Map" },
 ] as const;
 
-export default function PublicPageNav({ subtitle }: { subtitle: string }) {
+export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: string; hideLinks?: boolean }) {
   const brand = useBranding();
   const location = useLocation();
 
@@ -53,7 +53,7 @@ export default function PublicPageNav({ subtitle }: { subtitle: string }) {
             )}
           </Link>
           <span className="text-sm text-white/60 ml-1">{subtitle}</span>
-          <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {!hideLinks && <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {PUBLIC_LINKS.map((link) => {
               const active =
                 link.to === "/visitor"
@@ -76,7 +76,7 @@ export default function PublicPageNav({ subtitle }: { subtitle: string }) {
                 </Link>
               );
             })}
-          </div>
+          </div>}
         </div>
       </nav>
     </>

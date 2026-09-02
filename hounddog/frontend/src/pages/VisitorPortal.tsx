@@ -713,7 +713,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <PublicPageNav subtitle="Visitor Parking" />
+        <PublicPageNav subtitle="Visitor Parking" hideLinks />
         <div className="flex justify-center py-20"><Spin size="large" /></div>
       </div>
     );
@@ -722,7 +722,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
   if (notFound || !preset) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <PublicPageNav subtitle="Visitor Parking" />
+        <PublicPageNav subtitle="Visitor Parking" hideLinks />
         <main className="max-w-xl mx-auto px-4 py-16 text-center">
           <Result
             status="404"
@@ -737,7 +737,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <PublicPageNav subtitle={`${preset.label} — Visitor Parking`} />
+      <PublicPageNav subtitle={`${preset.label} — Visitor Parking`} hideLinks />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className={`grid grid-cols-1 gap-6 ${showMap ? "lg:grid-cols-3" : ""}`}>
@@ -750,14 +750,6 @@ function VanityVisitorPage({ slug }: { slug: string }) {
               <ConfirmationCard result={result} onStartOver={startOver} />
             ) : (
               <Card title={`${preset.label} parking registration`}>
-                <Alert
-                  type="info"
-                  showIcon
-                  className="mb-4"
-                  message="Register your vehicle for visitor parking"
-                  description="Fill out the form below. Your campus sponsor will be notified automatically for approval."
-                />
-
                 <Form
                   form={form}
                   layout="vertical"
