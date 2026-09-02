@@ -30,6 +30,8 @@ interface VisitorPreset {
   allowed_lots?: string[];
   require_student_name: boolean;
   student_name_label: string;
+  require_instructor_name: boolean;
+  instructor_name_label: string;
   logo_url?: string;
 }
 
@@ -237,6 +239,7 @@ function VisitorFlow() {
         sponsor_department: (values.sponsor_department as string) || "",
         work_description: (values.work_description as string) || "",
         student_name: (values.student_name as string) || "",
+        instructor_name: (values.instructor_name as string) || "",
         ...(presetId ? { preset_id: presetId } : {}),
       };
 
@@ -669,6 +672,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
         sponsor_department: preset.sponsor_department || "",
         work_description: preset.label,
         student_name: (values.student_name as string) || "",
+        instructor_name: (values.instructor_name as string) || "",
         preset_id: preset.id,
       };
       const res = await fetch("/api/visitor/permits", {
@@ -806,6 +810,16 @@ function VanityVisitorPage({ slug }: { slug: string }) {
                       rules={[{ required: true, message: `${preset.student_name_label || "Student name"} is required` }]}
                     >
                       <Input placeholder={`Enter the student's full name`} />
+                    </Form.Item>
+                  )}
+
+                  {preset.require_instructor_name && (
+                    <Form.Item
+                      name="instructor_name"
+                      label={preset.instructor_name_label || "Instructor name"}
+                      rules={[{ required: true, message: `${preset.instructor_name_label || "Instructor name"} is required` }]}
+                    >
+                      <Input placeholder={`Enter the instructor's full name`} />
                     </Form.Item>
                   )}
 

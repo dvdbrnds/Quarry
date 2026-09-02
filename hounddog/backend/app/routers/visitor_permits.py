@@ -51,6 +51,7 @@ class VisitorPermitCreate(BaseModel):
     sponsor_department: str = ""
     work_description: str = ""
     student_name: str = ""
+    instructor_name: str = ""
     preset_id: str | None = None
 
 
@@ -112,6 +113,8 @@ class PresetCreate(BaseModel):
     allowed_lots: list[str] = []
     require_student_name: bool = False
     student_name_label: str = "Student name"
+    require_instructor_name: bool = False
+    instructor_name_label: str = "Instructor name"
     sort_order: int = 0
 
 
@@ -126,6 +129,8 @@ class PresetUpdate(BaseModel):
     allowed_lots: list[str] | None = None
     require_student_name: bool | None = None
     student_name_label: str | None = None
+    require_instructor_name: bool | None = None
+    instructor_name_label: str | None = None
     active: bool | None = None
     sort_order: int | None = None
 
@@ -159,6 +164,8 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "allowed_lots": p.allowed_lots or [],
             "require_student_name": p.require_student_name,
             "student_name_label": p.student_name_label,
+            "require_instructor_name": p.require_instructor_name,
+            "instructor_name_label": p.instructor_name_label,
             "logo_url": _preset_logo_url(p),
         }
         for p in rows
@@ -201,6 +208,8 @@ async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
         "allowed_lots": combined,
         "require_student_name": match.require_student_name,
         "student_name_label": match.student_name_label,
+        "require_instructor_name": match.require_instructor_name,
+        "instructor_name_label": match.instructor_name_label,
         "logo_url": _preset_logo_url(match),
     }
 
@@ -232,6 +241,8 @@ async def list_all_presets(
             "allowed_lots": p.allowed_lots or [],
             "require_student_name": p.require_student_name,
             "student_name_label": p.student_name_label,
+            "require_instructor_name": p.require_instructor_name,
+            "instructor_name_label": p.instructor_name_label,
             "logo_url": _preset_logo_url(p),
             "active": p.active,
             "sort_order": p.sort_order,
@@ -258,6 +269,8 @@ async def create_preset(
         allowed_lots=data.allowed_lots or [],
         require_student_name=data.require_student_name,
         student_name_label=data.student_name_label.strip() if data.student_name_label else "Student name",
+        require_instructor_name=data.require_instructor_name,
+        instructor_name_label=data.instructor_name_label.strip() if data.instructor_name_label else "Instructor name",
         sort_order=data.sort_order,
     )
     db.add(preset)
@@ -691,6 +704,8 @@ def _build_metadata(data: VisitorPermitCreate) -> str:
         parts.append(f"sponsor_department:{data.sponsor_department.strip()}")
     if data.student_name.strip():
         parts.append(f"student_name:{data.student_name.strip()}")
+    if data.instructor_name.strip():
+        parts.append(f"instructor_name:{data.instructor_name.strip()}")
     return "|".join(parts) if parts else data.company_name.strip()[:64]
 
 

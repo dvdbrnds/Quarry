@@ -18,6 +18,8 @@ interface Preset {
   allowed_lots: string[];
   require_student_name: boolean;
   student_name_label: string;
+  require_instructor_name: boolean;
+  instructor_name_label: string;
   logo_url: string;
   active: boolean;
   sort_order: number;
@@ -97,7 +99,7 @@ export default function VisitorPresets() {
     setEditing(null);
     setLogoPreview("");
     form.resetFields();
-    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [], require_student_name: false, student_name_label: "Student name" });
+    form.setFieldsValue({ default_duration: "semester", sort_order: 0, allowed_lots: [], require_student_name: false, student_name_label: "Student name", require_instructor_name: false, instructor_name_label: "Instructor name" });
     setModalOpen(true);
   };
 
@@ -474,6 +476,22 @@ export default function VisitorPresets() {
                   extra={'Customize the label visitors see, e.g. "Student name", "Child\'s name", "Attendee name"'}
                 >
                   <Input placeholder="Student name" />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+          <Form.Item name="require_instructor_name" valuePropName="checked" label="Require instructor name">
+            <Switch />
+          </Form.Item>
+          <Form.Item noStyle dependencies={["require_instructor_name"]}>
+            {() =>
+              form.getFieldValue("require_instructor_name") ? (
+                <Form.Item
+                  name="instructor_name_label"
+                  label="Instructor field label"
+                  extra={'Customize the label, e.g. "Instructor name", "Teacher name"'}
+                >
+                  <Input placeholder="Instructor name" />
                 </Form.Item>
               ) : null
             }

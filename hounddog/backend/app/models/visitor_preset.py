@@ -22,6 +22,8 @@ class VisitorPreset(Base):
     allowed_lots: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default=text("'{}'::varchar[]"))
     require_student_name: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     student_name_label: Mapped[str] = mapped_column(String(256), default="Student name", server_default=text("'Student name'"))
+    require_instructor_name: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    instructor_name_label: Mapped[str] = mapped_column(String(256), default="Instructor name", server_default=text("'Instructor name'"))
     logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     logo_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
