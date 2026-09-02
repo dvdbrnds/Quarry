@@ -351,7 +351,7 @@ function VisitorFlow() {
                       <Input type="email" placeholder="you@example.com" />
                     </Form.Item>
 
-                    <Form.Item name="phone" label="Phone">
+                    <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone number is required" }]}>
                       <Input placeholder="610-555-0123" />
                     </Form.Item>
 
@@ -785,7 +785,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
                     <Input type="email" placeholder="you@example.com" />
                   </Form.Item>
 
-                  <Form.Item name="phone" label="Phone">
+                  <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone number is required" }]}>
                     <Input placeholder="610-555-0123" />
                   </Form.Item>
 
