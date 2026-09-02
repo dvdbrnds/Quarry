@@ -40,7 +40,7 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
         style={{ background: brand.primaryColor }}
         className="px-6 py-4 shadow-md"
       >
-        <div className="max-w-4xl mx-auto flex items-center gap-3 flex-wrap">
+        <div className={`max-w-4xl mx-auto flex items-center gap-3 flex-wrap ${hideLinks ? "justify-center" : ""}`}>
           <Link to="/visitor" className="flex items-center gap-3 no-underline">
             <BrandMark />
             {(brand.brandName || brand.schoolName) && (
@@ -52,7 +52,7 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
               </h1>
             )}
           </Link>
-          <span className="text-sm text-white/60 ml-1">{subtitle}</span>
+          <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm">{subtitle}</span>
           {!hideLinks && <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {PUBLIC_LINKS.map((link) => {
               const active =
