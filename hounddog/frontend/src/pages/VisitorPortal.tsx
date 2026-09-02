@@ -27,6 +27,7 @@ interface VisitorPreset {
   sponsor_email: string;
   sponsor_department: string;
   default_duration: string;
+  allowed_lots?: string[];
   require_student_name: boolean;
   student_name_label: string;
 }
@@ -608,18 +609,28 @@ function VanityVisitorPage({ slug }: { slug: string }) {
     })();
   }, [slug]);
 
-  const showMap = Boolean(mapsApiKey && visitorLots.length > 0);
+  const allowedLotNames = preset?.allowed_lots ?? [];
+  const displayLots = useMemo(() => {
+    if (allowedLotNames.length === 0) return visitorLots;
+    const allowed = new Set(allowedLotNames.map((n) => n.toLowerCase().replace(/^lot\s+/i, "").trim()));
+    return visitorLots.filter((l) => {
+      const short = l.name.toLowerCase().replace(/^lot\s+/i, "").trim();
+      return allowed.has(short) || allowed.has(l.name.toLowerCase());
+    });
+  }, [visitorLots, allowedLotNames]);
+
+  const showMap = Boolean(mapsApiKey && displayLots.length > 0);
   const lotColors = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const lot of visitorLots) {
+    for (const lot of displayLots) {
       map[lot.name] = VISITOR_FILL;
       map[lot.name.replace(/^lot\s+/i, "").trim()] = VISITOR_FILL;
     }
     return map;
-  }, [visitorLots]);
+  }, [displayLots]);
   const mapLegend = useMemo(
-    () => visitorLots.length > 0 ? [{ label: "Visitor parking", color: VISITOR_FILL }] : [],
-    [visitorLots],
+    () => displayLots.length > 0 ? [{ label: "Visitor parking", color: VISITOR_FILL }] : [],
+    [displayLots],
   );
 
   async function submitForm(values: Record<string, unknown>) {
@@ -684,9 +695,9 @@ function VanityVisitorPage({ slug }: { slug: string }) {
   const mapPanel = showMap && (
     <StudentLotMap
       apiKey={mapsApiKey}
-      lots={visitorLots}
-      highlightedLots={visitorLots.map((l) => l.name)}
-      focusedLot={null}
+      lots={displayLots}
+      highlightedLots={displayLots.map((l) => l.name)}
+      focusedLot={displayLots.length === 1 ? displayLots[0].name : null}
       defaultCenter={campusCenter}
       lotColors={lotColors}
       legend={mapLegend}

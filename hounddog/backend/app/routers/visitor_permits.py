@@ -182,6 +182,7 @@ async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
         "sponsor_email": match.sponsor_email,
         "sponsor_department": match.sponsor_department,
         "default_duration": match.default_duration,
+        "allowed_lots": match.allowed_lots or [],
         "require_student_name": match.require_student_name,
         "student_name_label": match.student_name_label,
     }
