@@ -749,6 +749,8 @@ async def lifespan(app: FastAPI):
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_housing_overrides_email ON housing_overrides(student_email)",
             # Ticket OCR correction (migration 0015)
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ocr_original_plate VARCHAR(32)",
+            # Widen permits.student_id for visitor metadata
+            "ALTER TABLE permits ALTER COLUMN student_id TYPE VARCHAR(512)",
             ]
             for migration in migrations:
                 try:
