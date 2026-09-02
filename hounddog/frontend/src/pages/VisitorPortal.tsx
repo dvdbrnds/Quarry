@@ -637,8 +637,8 @@ function VanityVisitorPage({ slug }: { slug: string }) {
     return map;
   }, [displayLots]);
   const mapLegend = useMemo(
-    () => displayLots.length > 0 ? [{ label: "Visitor parking", color: VISITOR_FILL }] : [],
-    [displayLots],
+    () => displayLots.length > 0 ? [{ label: preset?.label ? `${preset.label} parking` : "Visitor parking", color: VISITOR_FILL }] : [],
+    [displayLots, preset],
   );
 
   async function submitForm(values: Record<string, unknown>) {
