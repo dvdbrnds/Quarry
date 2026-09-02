@@ -342,6 +342,8 @@ function VisitorFlow() {
                     <Form.Item
                       name="plate_state"
                       label="State"
+                      required
+                      rules={[{ required: true, message: "State is required" }]}
                       getValueFromEvent={(e) => e.target.value.toUpperCase()}
                     >
                       <Input className="font-mono" maxLength={2} placeholder="PA" />
@@ -351,7 +353,7 @@ function VisitorFlow() {
                       <Input type="email" placeholder="you@example.com" />
                     </Form.Item>
 
-                    <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone number is required" }]}>
+                    <Form.Item name="phone" label="Phone" required rules={[{ required: true, message: "Phone number is required" }]}>
                       <Input placeholder="610-555-0123" />
                     </Form.Item>
 
@@ -776,6 +778,8 @@ function VanityVisitorPage({ slug }: { slug: string }) {
                   <Form.Item
                     name="plate_state"
                     label="State"
+                    required
+                    rules={[{ required: true, message: "State is required" }]}
                     getValueFromEvent={(e) => e.target.value.toUpperCase()}
                   >
                     <Input className="font-mono" maxLength={2} placeholder="PA" />
@@ -785,7 +789,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
                     <Input type="email" placeholder="you@example.com" />
                   </Form.Item>
 
-                  <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone number is required" }]}>
+                  <Form.Item name="phone" label="Phone" required rules={[{ required: true, message: "Phone number is required" }]}>
                     <Input placeholder="610-555-0123" />
                   </Form.Item>
 
