@@ -2358,12 +2358,46 @@ export default function LotteryV2Manager() {
             )}
 
             {caseApp.status === "waitlisted" && (
-              <Space>
+              <Space wrap>
                 <Button disabled={busy} onClick={() => confirmBump(caseApp)}>
                   Top of waitlist
                 </Button>
                 <Button type="primary" disabled={busy} onClick={() => openManualSelect(caseApp)}>
                   Manual select
+                </Button>
+                <Button
+                  danger
+                  disabled={busy}
+                  onClick={() => {
+                    modal.confirm({
+                      title: `Withdraw ${caseApp.student_name} from the waitlist?`,
+                      content: "This removes their application. They can re-apply afterward (e.g. with a corrected housing status).",
+                      okText: "Withdraw",
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        setBusy(true);
+                        try {
+                          const res = await fetch(`/api/lottery-v2/applications/${caseApp.id}/remove`, {
+                            method: "POST",
+                            headers: await authHeaders(),
+                          });
+                          if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            throw new Error(err.detail || "Withdraw failed");
+                          }
+                          message.success(`${caseApp.student_name} withdrawn from waitlist`);
+                          setCaseApp(null);
+                          if (activeId) loadDetail(activeId);
+                        } catch (e: any) {
+                          message.error(e.message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      },
+                    });
+                  }}
+                >
+                  Withdraw
                 </Button>
               </Space>
             )}
