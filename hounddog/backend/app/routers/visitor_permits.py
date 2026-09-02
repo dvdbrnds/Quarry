@@ -644,6 +644,7 @@ async def _send_sponsor_approval_email(
     start_date: str,
     end_date: str,
     token: str,
+    student_name: str = "",
 ) -> bool:
     """Send an approval request email to the department sponsor. Never raises."""
     try:
@@ -659,6 +660,7 @@ async def _send_sponsor_approval_email(
             start_date=start_date,
             end_date=end_date,
             approval_url=approval_url,
+            student_name=student_name,
         )
     except Exception:
         import logging
