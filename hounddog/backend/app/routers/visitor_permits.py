@@ -753,9 +753,13 @@ def _extract_metadata(permit: Permit, key: str) -> str:
 
 
 async def _notify_permit_change(action: str, count: int):
-    """Send APNs push to devices on permit change."""
-    from ..services.apns import send_permit_push
-    await send_permit_push(action, count)
+    """Send APNs push to devices on permit change. Never raises."""
+    try:
+        from ..services.apns import send_permit_push
+        await send_permit_push(action, count)
+    except Exception:
+        import logging
+        logging.getLogger("quarry.visitor_permits").exception("APNs push notification failed")
 
 
 async def _send_visitor_confirmation(permit: Permit):
