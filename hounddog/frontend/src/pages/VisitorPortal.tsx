@@ -576,7 +576,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
   const [notFound, setNotFound] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<PermitResult | null>(null);
-  const [visitorLots, setVisitorLots] = useState<Lot[]>([]);
+  const [allLots, setAllLots] = useState<Lot[]>([]);
   const [mapsApiKey, setMapsApiKey] = useState("");
   const [campusCenter, setCampusCenter] = useState<{ lat: number; lng: number } | undefined>();
 
@@ -594,7 +594,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
         }
         if (lotsRes.ok) {
           const lots: PublicLot[] = await lotsRes.json();
-          setVisitorLots(lots.filter(isVisitorLot).map(toMapLot));
+          setAllLots(lots.map(toMapLot));
         }
         if (!presetRes.ok) {
           setNotFound(true);
@@ -609,15 +609,21 @@ function VanityVisitorPage({ slug }: { slug: string }) {
     })();
   }, [slug]);
 
-  const allowedLotNames = preset?.allowed_lots ?? [];
   const displayLots = useMemo(() => {
-    if (allowedLotNames.length === 0) return visitorLots;
-    const allowed = new Set(allowedLotNames.map((n) => n.toLowerCase().replace(/^lot\s+/i, "").trim()));
-    return visitorLots.filter((l) => {
-      const short = l.name.toLowerCase().replace(/^lot\s+/i, "").trim();
-      return allowed.has(short) || allowed.has(l.name.toLowerCase());
+    const allowedLotNames = preset?.allowed_lots ?? [];
+    if (allowedLotNames.length > 0) {
+      const allowed = new Set(allowedLotNames.map((n) => n.toLowerCase().replace(/^lot\s+/i, "").trim()));
+      return allLots.filter((l) => {
+        const short = l.name.toLowerCase().replace(/^lot\s+/i, "").trim();
+        return allowed.has(short) || allowed.has(l.name.toLowerCase());
+      });
+    }
+    return allLots.filter((l) => {
+      const code = (l.designation_code || "").toUpperCase();
+      const label = (l.designation_label || "").toLowerCase();
+      return code === "VPR" || label.includes("visitor");
     });
-  }, [visitorLots, allowedLotNames]);
+  }, [allLots, preset]);
 
   const showMap = Boolean(mapsApiKey && displayLots.length > 0);
   const lotColors = useMemo(() => {
