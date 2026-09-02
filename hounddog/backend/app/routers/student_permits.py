@@ -59,13 +59,22 @@ PERMIT_OPT_IN_CATEGORIES = ["emergency", "parking"]
 
 
 async def _get_housing_status(user, db: AsyncSession | None = None) -> str | None:
-    """Look up housing status. Checks manual overrides first, then Jenzabar SIS.
+    """Look up housing status. Checks manual overrides first (by email, then
+    moravian_id), then falls back to Jenzabar SIS.
     Returns 'R', 'C', 'O', or None."""
+    email = getattr(user, "email", None)
+
+    # Check email-based override first — works even without a moravian_id
+    if db and email:
+        from .housing_overrides import get_housing_override_by_email
+        override = await get_housing_override_by_email(email, db)
+        if override:
+            _logger.info("Housing override (email) active for %s → %s", email, override)
+            return override
+
     moravian_id = _extract_moravian_id(user)
 
-    # Fallback: look up moravian_id from the student's existing permits
     if not moravian_id and db:
-        email = getattr(user, "email", None)
         sub = getattr(user, "sub", None)
         if email or sub:
             from sqlalchemy import or_
@@ -89,15 +98,15 @@ async def _get_housing_status(user, db: AsyncSession | None = None) -> str | Non
                 _logger.debug("Fell back to permit-stored moravian_id=%s for %s", moravian_id, email)
 
     if not moravian_id:
-        _logger.debug("No moravian_id for user %s — housing filter skipped", getattr(user, "email", "?"))
+        _logger.debug("No moravian_id for user %s — housing filter skipped", email or "?")
         return None
 
-    # Manual override takes priority over the SIS feed
+    # Check moravian_id-based override
     if db:
         from .housing_overrides import get_housing_override
         override = await get_housing_override(moravian_id, db)
         if override:
-            _logger.info("Housing override active for %s → %s", moravian_id, override)
+            _logger.info("Housing override (moravian_id) active for %s → %s", moravian_id, override)
             return override
 
     from ..services.sis_student_data import lookup_student_parking_data

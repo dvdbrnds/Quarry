@@ -97,7 +97,7 @@ export default function HousingOverrides() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-sm text-gray-500 mt-1">
-            Override a student's housing classification when the SIS feed is wrong. Overrides take
+            Override a student&apos;s housing classification when the SIS feed is wrong. Overrides take
             priority — the student will see permit types matching the overridden status instead of
             what Jenzabar reports.
           </p>
@@ -117,21 +117,12 @@ export default function HousingOverrides() {
           locale={{ emptyText: "No active overrides — all students using SIS feed data" }}
           columns={[
             {
-              title: "Moravian ID",
-              dataIndex: "moravian_id",
-              key: "moravian_id",
-              width: 120,
-              render: (id: string) => <code className="font-mono">{id}</code>,
-            },
-            {
               title: "Student",
               key: "student",
               render: (_: unknown, row: Override) => (
                 <div>
                   <span className="font-medium">{row.student_name || "—"}</span>
-                  {row.student_email && (
-                    <span className="text-gray-400 text-xs ml-2">{row.student_email}</span>
-                  )}
+                  <span className="text-gray-400 text-xs ml-2">{row.student_email}</span>
                 </div>
               ),
             },
@@ -190,18 +181,15 @@ export default function HousingOverrides() {
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
-            name="moravian_id"
-            label="Moravian ID"
-            rules={[{ required: true, message: "Required" }]}
-            extra="The student's numeric Jenzabar ID"
+            name="student_email"
+            label="Student email"
+            rules={[{ required: true, message: "Required" }, { type: "email", message: "Enter a valid email" }]}
+            extra="The student's Moravian email address (used as the lookup key)"
           >
-            <Input placeholder="12345678" className="font-mono" />
+            <Input placeholder="lauricob@moravian.edu" />
           </Form.Item>
           <Form.Item name="student_name" label="Student name">
-            <Input placeholder="Jane Smith" />
-          </Form.Item>
-          <Form.Item name="student_email" label="Student email">
-            <Input placeholder="smithj@moravian.edu" />
+            <Input placeholder="Brandon Laurico" />
           </Form.Item>
           <Form.Item
             name="override_status"
@@ -213,9 +201,9 @@ export default function HousingOverrides() {
           <Form.Item
             name="reason"
             label="Reason"
-            extra="Brief note on why SIS data is being overridden (e.g., 'moved off campus mid-semester, SIS not updated')"
+            extra="Brief note on why SIS data is being overridden"
           >
-            <Input.TextArea rows={2} placeholder="SIS shows resident but student moved off campus" />
+            <Input.TextArea rows={2} placeholder="SIS shows resident but student is a commuter" />
           </Form.Item>
         </Form>
       </Modal>

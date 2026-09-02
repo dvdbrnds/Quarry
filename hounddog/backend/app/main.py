@@ -729,7 +729,7 @@ async def lifespan(app: FastAPI):
             # Housing overrides (migration 0014)
             """CREATE TABLE IF NOT EXISTS housing_overrides (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                moravian_id VARCHAR(32) NOT NULL UNIQUE,
+                moravian_id VARCHAR(32) NOT NULL DEFAULT '',
                 student_name VARCHAR(256) NOT NULL DEFAULT '',
                 student_email VARCHAR(256) NOT NULL DEFAULT '',
                 override_status VARCHAR(8) NOT NULL,
@@ -738,6 +738,15 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMPTZ DEFAULT now()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_housing_overrides_moravian_id ON housing_overrides(moravian_id)",
+            # Housing overrides: switch primary key from moravian_id to email (migration 0016)
+            "ALTER TABLE housing_overrides ALTER COLUMN moravian_id DROP NOT NULL",
+            "ALTER TABLE housing_overrides ALTER COLUMN moravian_id SET DEFAULT ''",
+            """DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'housing_overrides_moravian_id_key') THEN
+                    ALTER TABLE housing_overrides DROP CONSTRAINT housing_overrides_moravian_id_key;
+                END IF;
+            END $$""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_housing_overrides_email ON housing_overrides(student_email)",
             # Ticket OCR correction (migration 0015)
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ocr_original_plate VARCHAR(32)",
             ]
