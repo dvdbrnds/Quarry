@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import String, Boolean, Integer, DateTime, LargeBinary, func, text
+from sqlalchemy import String, Boolean, Integer, Date, DateTime, LargeBinary, func, text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,8 @@ class VisitorPreset(Base):
     sponsor_email: Mapped[str] = mapped_column(String(256), default="", server_default=text("''"))
     sponsor_department: Mapped[str] = mapped_column(String(256), default="", server_default=text("''"))
     default_duration: Mapped[str] = mapped_column(String(32), default="semester", server_default=text("'semester'"))
+    custom_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    custom_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     permit_type_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     allowed_lots: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default=text("'{}'::varchar[]"))
     require_student_name: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))

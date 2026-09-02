@@ -757,6 +757,9 @@ async def lifespan(app: FastAPI):
             # Instructor name field for presets
             "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS require_instructor_name BOOLEAN DEFAULT false",
             "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS instructor_name_label VARCHAR(256) DEFAULT 'Instructor name'",
+            # Custom date range for presets
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS custom_start_date DATE",
+            "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS custom_end_date DATE",
             ]
             for migration in migrations:
                 try:

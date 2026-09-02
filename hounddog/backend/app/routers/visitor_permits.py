@@ -109,6 +109,8 @@ class PresetCreate(BaseModel):
     sponsor_email: str = ""
     sponsor_department: str = ""
     default_duration: str = "semester"
+    custom_start_date: str | None = None
+    custom_end_date: str | None = None
     permit_type_code: str | None = None
     allowed_lots: list[str] = []
     require_student_name: bool = False
@@ -125,6 +127,8 @@ class PresetUpdate(BaseModel):
     sponsor_email: str | None = None
     sponsor_department: str | None = None
     default_duration: str | None = None
+    custom_start_date: str | None = None
+    custom_end_date: str | None = None
     permit_type_code: str | None = None
     allowed_lots: list[str] | None = None
     require_student_name: bool | None = None
@@ -160,6 +164,8 @@ async def list_presets(db: AsyncSession = Depends(get_db)):
             "sponsor_email": p.sponsor_email,
             "sponsor_department": p.sponsor_department,
             "default_duration": p.default_duration,
+            "custom_start_date": p.custom_start_date.isoformat() if p.custom_start_date else None,
+            "custom_end_date": p.custom_end_date.isoformat() if p.custom_end_date else None,
             "permit_type_code": p.permit_type_code,
             "allowed_lots": p.allowed_lots or [],
             "require_student_name": p.require_student_name,
@@ -205,6 +211,8 @@ async def get_preset_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
         "sponsor_email": match.sponsor_email,
         "sponsor_department": match.sponsor_department,
         "default_duration": match.default_duration,
+        "custom_start_date": match.custom_start_date.isoformat() if match.custom_start_date else None,
+        "custom_end_date": match.custom_end_date.isoformat() if match.custom_end_date else None,
         "allowed_lots": combined,
         "require_student_name": match.require_student_name,
         "student_name_label": match.student_name_label,
@@ -237,6 +245,8 @@ async def list_all_presets(
             "sponsor_email": p.sponsor_email,
             "sponsor_department": p.sponsor_department,
             "default_duration": p.default_duration,
+            "custom_start_date": p.custom_start_date.isoformat() if p.custom_start_date else None,
+            "custom_end_date": p.custom_end_date.isoformat() if p.custom_end_date else None,
             "permit_type_code": p.permit_type_code,
             "allowed_lots": p.allowed_lots or [],
             "require_student_name": p.require_student_name,
@@ -265,6 +275,8 @@ async def create_preset(
         sponsor_email=data.sponsor_email.strip(),
         sponsor_department=data.sponsor_department.strip(),
         default_duration=data.default_duration,
+        custom_start_date=date.fromisoformat(data.custom_start_date) if data.custom_start_date else None,
+        custom_end_date=date.fromisoformat(data.custom_end_date) if data.custom_end_date else None,
         permit_type_code=data.permit_type_code or None,
         allowed_lots=data.allowed_lots or [],
         require_student_name=data.require_student_name,
@@ -291,7 +303,10 @@ async def update_preset(
     if not preset:
         raise HTTPException(404, "Preset not found")
     for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(preset, field, value.strip() if isinstance(value, str) else value)
+        if field in ("custom_start_date", "custom_end_date"):
+            setattr(preset, field, date.fromisoformat(value) if value else None)
+        else:
+            setattr(preset, field, value.strip() if isinstance(value, str) else value)
     return {"id": str(preset.id), "label": preset.label}
 
 
@@ -552,6 +567,10 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         data.sponsor_department = preset.sponsor_department
         if preset.default_duration and data.duration == "single_day":
             data.duration = preset.default_duration
+        if preset.default_duration == "custom" and preset.custom_start_date and preset.custom_end_date:
+            data.start_date = preset.custom_start_date
+            data.end_date = preset.custom_end_date
+            data.duration = "custom"
 
     if not data.sponsor_name.strip():
         raise HTTPException(400, "A campus sponsor name is required")
@@ -563,8 +582,22 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
 
     lot_assignment = "Visitor"
 
+    # Custom date range — dates already set from preset, just determine type
+    if data.duration == "custom" and end > start:
+        permit_type = "visitor_contracted_staff"
+        if preset and preset.permit_type_code:
+            pt_result = await db.execute(
+                select(PermitType).where(PermitType.code == preset.permit_type_code)
+            )
+            pt_row = pt_result.scalars().first()
+            if pt_row:
+                permit_type = pt_row.code
+                if pt_row.lot_assignments:
+                    lot_assignment = ", ".join(pt_row.lot_assignments)
+        elif preset and preset.allowed_lots:
+            lot_assignment = ", ".join(preset.allowed_lots)
     # If the preset specifies a permit type, use it with its lot assignments
-    if preset and preset.permit_type_code:
+    elif preset and preset.permit_type_code:
         pt_result = await db.execute(
             select(PermitType).where(PermitType.code == preset.permit_type_code)
         )

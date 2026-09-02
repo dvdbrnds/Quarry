@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm, Upload } from "antd";
+import { Button, Card, Table, App, Input, Select, Switch, Modal, Form, InputNumber, Popconfirm, Upload, DatePicker } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, UploadOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { authHeaders, getAccessToken } from "../auth";
 import { api, Lot } from "../api";
 
@@ -14,6 +15,8 @@ interface Preset {
   sponsor_email: string;
   sponsor_department: string;
   default_duration: string;
+  custom_start_date: string | null;
+  custom_end_date: string | null;
   permit_type_code: string | null;
   allowed_lots: string[];
   require_student_name: boolean;
@@ -34,6 +37,7 @@ const DURATION_OPTIONS = [
   { value: "multi_day", label: "Multi-day" },
   { value: "semester", label: "Semester" },
   { value: "yearly", label: "Yearly" },
+  { value: "custom", label: "Custom range" },
 ];
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -106,7 +110,11 @@ export default function VisitorPresets() {
   const openEdit = (preset: Preset) => {
     setEditing(preset);
     setLogoPreview(preset.logo_url || "");
-    form.setFieldsValue(preset);
+    form.setFieldsValue({
+      ...preset,
+      custom_start_date: preset.custom_start_date ? dayjs(preset.custom_start_date) : null,
+      custom_end_date: preset.custom_end_date ? dayjs(preset.custom_end_date) : null,
+    });
     setModalOpen(true);
   };
 
@@ -156,17 +164,22 @@ export default function VisitorPresets() {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const payload = {
+        ...values,
+        custom_start_date: values.custom_start_date ? dayjs(values.custom_start_date).format("YYYY-MM-DD") : null,
+        custom_end_date: values.custom_end_date ? dayjs(values.custom_end_date).format("YYYY-MM-DD") : null,
+      };
       setSaving(true);
       if (editing) {
         await apiRequest(`/presets/${editing.id}`, {
           method: "PUT",
-          body: JSON.stringify(values),
+          body: JSON.stringify(payload),
         });
         message.success("Preset updated");
       } else {
         await apiRequest("/presets", {
           method: "POST",
-          body: JSON.stringify(values),
+          body: JSON.stringify(payload),
         });
         message.success("Preset created");
       }
@@ -256,7 +269,12 @@ export default function VisitorPresets() {
               dataIndex: "default_duration",
               key: "duration",
               width: 100,
-              render: (d: string) => d === "semester" ? "Semester" : d === "yearly" ? "Yearly" : "Multi-day",
+              render: (d: string, row: Preset) => {
+                if (d === "custom" && row.custom_start_date && row.custom_end_date) {
+                  return <span className="text-xs">{row.custom_start_date} → {row.custom_end_date}</span>;
+                }
+                return d === "semester" ? "Semester" : d === "yearly" ? "Yearly" : d === "custom" ? "Custom" : "Multi-day";
+              },
             },
             {
               title: "Permit Type",
@@ -436,6 +454,20 @@ export default function VisitorPresets() {
               <InputNumber min={0} className="w-full" />
             </Form.Item>
           </div>
+          <Form.Item noStyle dependencies={["default_duration"]}>
+            {() =>
+              form.getFieldValue("default_duration") === "custom" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Form.Item name="custom_start_date" label="Start date" rules={[{ required: true, message: "Required" }]}>
+                    <DatePicker className="w-full" format="YYYY-MM-DD" />
+                  </Form.Item>
+                  <Form.Item name="custom_end_date" label="End date" rules={[{ required: true, message: "Required" }]}>
+                    <DatePicker className="w-full" format="YYYY-MM-DD" />
+                  </Form.Item>
+                </div>
+              ) : null
+            }
+          </Form.Item>
           <Form.Item
             name="permit_type_code"
             label="Permit type"
