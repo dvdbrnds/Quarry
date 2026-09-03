@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bird Dog Privacy Policy</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+    color: #1d1d1f;
+    line-height: 1.6;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; color: #333; }
+  .subtitle { color: #666; font-size: 0.95rem; margin-bottom: 2rem; }
+  p { margin: 0.75rem 0; }
+  a { color: #0066cc; }
+  .updated { color: #888; font-size: 0.85rem; margin-top: 3rem; border-top: 1px solid #ddd; padding-top: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>Bird Dog Privacy Policy</h1>
+<p class="subtitle">Moravian University — Parking Enforcement Application</p>
+
+<h2>Overview</h2>
+<p>Bird Dog is an internal parking enforcement application developed and operated by Moravian University. It is distributed exclusively to authorized university parking enforcement officers through Apple School Manager and is not available to the general public. This policy describes what information the app collects, how it is used, and how it is protected.</p>
+
+<h2>Information We Collect</h2>
+
+<p><strong>Officer Identity.</strong> When you sign in, the app receives your name, email address, and group memberships from Moravian University's Okta identity provider. This information is used solely to verify that you are an authorized enforcement officer. It is stored in the device's secure Keychain and is cleared when you sign out.</p>
+
+<p><strong>Location Data.</strong> The app uses your device's precise location to determine which parking zones you are patrolling. Location data is used for geofencing and is associated with enforcement activity such as citations. Location is collected only while the app is actively in use for enforcement duties or monitoring geofenced zones.</p>
+
+<p><strong>Camera and Optical Character Recognition.</strong> The app accesses the device camera to perform live optical character recognition (OCR) of vehicle license plates. The camera feed is processed in real time to extract plate text, which is then compared against the university's permit database. No images, video, or recordings are captured or stored during the scanning process. The camera functions strictly as a text reader.</p>
+
+<p><strong>Citation Photographs.</strong> The only time a photograph is taken is when an officer deliberately chooses to issue a parking citation. These photos serve as evidence attached to a specific citation record and are uploaded to the Quarry parking management server operated by Moravian University.</p>
+
+<p><strong>Device Information.</strong> The app registers for Apple Push Notifications to receive permit database updates. Your device's push notification token is sent to the university's parking server for this purpose. No other device identifiers are collected.</p>
+
+<p><strong>Permit and Plate Data.</strong> The app downloads and caches a local copy of the university's parking permit database so that plate lookups can be performed quickly. This data originates from the university's systems and is pruned automatically when permits expire.</p>
+
+<h2>How We Use Your Information</h2>
+<p>All information collected by Bird Dog is used exclusively for university parking enforcement operations. Specifically, officer identity is used for authentication and citation attribution, location data is used for zone-based enforcement, OCR results are used for permit verification, and citation photos are used as evidentiary records. No data is used for advertising, marketing, analytics, tracking, or any purpose unrelated to parking enforcement.</p>
+
+<h2>Data Sharing</h2>
+<p>Bird Dog does not share any data with third parties. All data is transmitted exclusively between the app and Moravian University's parking management server at parking.moravian.edu. The app contains no third-party analytics, advertising, or tracking frameworks.</p>
+
+<p>Authentication is handled through Moravian University's Okta identity provider. The app communicates with Okta solely to verify officer credentials using industry-standard OAuth 2.0 with PKCE. No authentication tokens are persisted on the device.</p>
+
+<h2>Data Storage and Security</h2>
+<p>Officer credentials are stored in the iOS Keychain, Apple's hardware-backed secure storage. Authentication uses PKCE-protected OAuth 2.0 flows with full JWT signature verification. All communication between the app and university servers occurs over encrypted HTTPS connections. The app does not store passwords or authentication tokens beyond the active session.</p>
+
+<h2>Data Retention</h2>
+<p>Officer identity data is removed from the device upon sign-out. Cached permit data is pruned automatically as permits expire. Citation records, including any associated photographs, are retained on the university's parking management server in accordance with Moravian University's records retention policies.</p>
+
+<h2>Bluetooth</h2>
+<p>The app connects to Bluetooth-enabled thermal printers (Star Micronics) to print physical citation notices. Bluetooth is used solely for this purpose.</p>
+
+<h2>Children's Privacy</h2>
+<p>Bird Dog is an institutional enforcement tool distributed only to authorized university employees. It is not directed at children and does not knowingly collect information from anyone under the age of 13.</p>
+
+<h2>Changes to This Policy</h2>
+<p>Moravian University may update this privacy policy from time to time. Changes will be posted at this URL. Continued use of the app following any changes constitutes acceptance of the updated policy.</p>
+
+<h2>Contact</h2>
+<p>If you have questions about this privacy policy or Bird Dog's data practices, contact:</p>
+<p>
+Moravian University — Information Technology<br>
+1200 Main Street, Bethlehem, PA 18018<br>
+<a href="mailto:parking@moravian.edu">parking@moravian.edu</a>
+</p>
+
+<p class="updated">Last updated: September 3, 2026</p>
+
+</body>
+</html>

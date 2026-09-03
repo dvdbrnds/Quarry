@@ -94,6 +94,26 @@ final class OfficerAuthService: NSObject, ObservableObject {
         clearKeychain()
     }
 
+    // MARK: - Demo Login (App Review bypass)
+
+    func demoLogin(username: String, password: String) {
+        guard username == "demo" && password == "birddog2026" else {
+            loginError = "Invalid demo credentials."
+            return
+        }
+
+        loginError = nil
+        officerName = "App Reviewer"
+        officerEmail = "demo@birddog.test"
+        officerGroups = ["officers"]
+        isLoggedIn = true
+
+        saveToKeychain(name: officerName, email: officerEmail, groups: officerGroups, expiry: Date().addingTimeInterval(8 * 3600))
+
+        HoundDogSyncService.shared.resetSyncDates()
+        HoundDogSyncService.shared.startIfConfigured()
+    }
+
     // MARK: - OIDC Flow
 
     private func buildAuthURL(settings: AppSettings) -> URL? {

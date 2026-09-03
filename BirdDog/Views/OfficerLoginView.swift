@@ -3,6 +3,9 @@ import SwiftUI
 struct OfficerLoginView: View {
     @ObservedObject private var auth = OfficerAuthService.shared
     @ObservedObject private var appSettings = AppSettings.shared
+    @State private var showDemoLogin = false
+    @State private var demoUsername = ""
+    @State private var demoPassword = ""
 
     var body: some View {
         VStack(spacing: 32) {
@@ -66,8 +69,67 @@ struct OfficerLoginView: View {
                     .foregroundStyle(.orange)
             }
 
+            Button {
+                showDemoLogin.toggle()
+            } label: {
+                Text("Demo Login")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
                 .frame(height: 40)
+        }
+        .sheet(isPresented: $showDemoLogin) {
+            NavigationStack {
+                VStack(spacing: 20) {
+                    Text("Demo Access")
+                        .font(.headline)
+                        .padding(.top, 24)
+
+                    Text("For app review purposes only.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Username", text: $demoUsername)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    SecureField("Password", text: $demoPassword)
+                        .textContentType(.password)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    Button {
+                        auth.demoLogin(username: demoUsername, password: demoPassword)
+                        if auth.isLoggedIn {
+                            showDemoLogin = false
+                        }
+                    } label: {
+                        Text("Sign In")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.accentColor)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 32)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showDemoLogin = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
     }
 }
