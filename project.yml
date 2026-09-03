@@ -58,7 +58,7 @@ targets:
         Debug:
           CODE_SIGN_IDENTITY: "Apple Development"
         Release:
-          CODE_SIGN_IDENTITY: "Apple Distribution"
+          CODE_SIGN_IDENTITY: "Apple Development"
 
   BirdDogTests:
     type: bundle.unit-test
