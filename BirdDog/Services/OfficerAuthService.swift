@@ -34,7 +34,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
     private override init() {
         super.init()
-        clearKeychain()
+        restoreSession()
     }
 
     // MARK: - Login
@@ -268,6 +268,8 @@ final class OfficerAuthService: NSObject, ObservableObject {
         self.officerEmail = email
         self.officerGroups = groups
         self.isLoggedIn = true
+
+        saveToKeychain(name: name, email: email, groups: groups, expiry: Date().addingTimeInterval(8 * 3600))
 
         HoundDogSyncService.shared.resetSyncDates()
         HoundDogSyncService.shared.startIfConfigured()
