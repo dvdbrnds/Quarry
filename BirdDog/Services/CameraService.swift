@@ -874,6 +874,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }()
 
     private var logFileHandle: FileHandle?
+    private var logUpdateCounter: Int = 0
 
     private func log(_ message: String) {
         let ts = Self.logDateFormatter.string(from: Date())
@@ -890,6 +891,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             logFileHandle?.write(data)
         }
 
+        logUpdateCounter += 1
+        let shouldFlush = logUpdateCounter % 5 == 0
+        guard shouldFlush else { return }
         DispatchQueue.main.async { [weak self] in
             self?.debugLog.append(line)
             if (self?.debugLog.count ?? 0) > 100 {
@@ -1238,7 +1242,7 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
         if isUsingExternalCamera && frameCount % 4 == 0,
            let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let score = laplacianVariance(buf)
-            if focusMeterEnabled {
+            if focusMeterEnabled && frameCount % 12 == 0 {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.focusScore = score

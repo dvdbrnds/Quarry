@@ -146,6 +146,10 @@ final class PlateReaderViewModel: ObservableObject {
             let session = ScanSession(label: label)
             activeSession = session
         }
+        authService.clearCache()
+        if PlateDatabase.isReady {
+            PlateDatabase.shared.warmLengthCache()
+        }
         cameraService.start()
         motionService.start()
         isScanning = true
@@ -355,9 +359,10 @@ final class PlateReaderViewModel: ObservableObject {
                 threshold = 1
             }
 
-            // Single-frame instant confirm: high-confidence exact or fuzzy DB match
+            // Single-frame instant confirm: high-confidence exact or fuzzy DB match.
+            // Uses quickCheck (exact+fuzzy only) to avoid expensive smartLookup on main thread.
             if newCount == 1 && plate.confidence >= 0.85 && !PlatePatternMatcher.isVanityPlate(voterKey) {
-                let dbHit = authService.checkDetailed(plate: voterKey, currentLot: nil)
+                let dbHit = authService.quickCheck(plate: voterKey, currentLot: nil)
                 if dbHit.matchMethod == .exact || dbHit.matchMethod == .fuzzy {
                     threshold = 1
                 }
@@ -366,9 +371,10 @@ final class PlateReaderViewModel: ObservableObject {
             // Parallel alternate verification: while accumulating frames,
             // pre-check alternates against the DB and boost the voter if any
             // alternate is an exact hit. This accelerates convergence.
+            // Uses quickCheck to avoid blocking main thread with smartLookup.
             if newCount < threshold && isExternal {
                 for alt in plate.alternates {
-                    let altHit = authService.checkDetailed(plate: alt, currentLot: nil)
+                    let altHit = authService.quickCheck(plate: alt, currentLot: nil)
                     if altHit.matchMethod == .exact {
                         candidateVoter.record(
                             key: voterKey,
@@ -389,12 +395,13 @@ final class PlateReaderViewModel: ObservableObject {
 
             // For external cameras with potential focus issues, check if any
             // alternate reading is an exact DB hit when the consensus isn't.
+            // Uses quickCheck for the fast speculative pass to avoid main thread blocking.
             if isExternal {
-                let consensusHit = authService.checkDetailed(plate: consensusText, currentLot: nil)
+                let consensusHit = authService.quickCheck(plate: consensusText, currentLot: nil)
                 if consensusHit.matchMethod != .exact {
                     let allAlts = plate.alternates + [plate.text]
                     for alt in allAlts where alt != consensusText {
-                        let altHit = authService.checkDetailed(plate: alt, currentLot: nil)
+                        let altHit = authService.quickCheck(plate: alt, currentLot: nil)
                         if altHit.matchMethod == .exact {
                             consensusText = alt
                             break

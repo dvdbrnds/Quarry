@@ -28,7 +28,16 @@ final class PlateAuthService: PlateCheckable {
     /// HoundDog uses "active"; legacy BirdDog JSON used "Valid".
     private static let activeStatuses: Set<String> = ["active", "valid"]
 
+    private var lookupCache: [String: AuthResult] = [:]
+    private var cacheTimestamp: Date = .distantPast
+    private static let cacheTTL: TimeInterval = 30.0
+
     init() {}
+
+    func clearCache() {
+        lookupCache.removeAll()
+        cacheTimestamp = .distantPast
+    }
 
     func check(plate: String, currentLot: String? = nil) -> PlateStatus {
         checkDetailed(plate: plate, currentLot: currentLot).status
@@ -40,17 +49,59 @@ final class PlateAuthService: PlateCheckable {
         }
 
         let normalized = PlatePatternMatcher.normalize(plate)
+        let cacheKey = "\(normalized)|\(currentLot ?? "")"
+
+        if Date().timeIntervalSince(cacheTimestamp) > Self.cacheTTL {
+            lookupCache.removeAll()
+            cacheTimestamp = Date()
+        }
+        if let cached = lookupCache[cacheKey] {
+            return cached
+        }
+
+        let result: AuthResult
+        if let record = database.lookup(normalizedPlate: normalized) {
+            result = AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .exact, matchedPlate: record.plateNormalized)
+        } else if let record = database.fuzzyLookup(normalizedPlate: normalized) {
+            result = AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .fuzzy, matchedPlate: record.plateNormalized)
+        } else if let record = database.smartLookup(normalizedPlate: normalized) {
+            result = AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .smart, matchedPlate: record.plateNormalized)
+        } else {
+            result = AuthResult(status: .unknown, matchMethod: .none, matchedPlate: normalized)
+        }
+
+        lookupCache[cacheKey] = result
+        return result
+    }
+
+    /// Lightweight check — exact + fuzzy only, skips expensive smartLookup.
+    /// Used for speculative checks (instant-confirm, alternate pre-verification)
+    /// where a miss is acceptable and will be caught by the full check later.
+    func quickCheck(plate: String, currentLot: String? = nil) -> AuthResult {
+        guard PlateDatabase.isReady, !database.isEmpty else {
+            return AuthResult(status: .unchecked, matchMethod: .none, matchedPlate: plate)
+        }
+
+        let normalized = PlatePatternMatcher.normalize(plate)
+        let cacheKey = "\(normalized)|\(currentLot ?? "")"
+
+        if Date().timeIntervalSince(cacheTimestamp) > Self.cacheTTL {
+            lookupCache.removeAll()
+            cacheTimestamp = Date()
+        }
+        if let cached = lookupCache[cacheKey] {
+            return cached
+        }
 
         if let record = database.lookup(normalizedPlate: normalized) {
-            return AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .exact, matchedPlate: record.plateNormalized)
+            let result = AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .exact, matchedPlate: record.plateNormalized)
+            lookupCache[cacheKey] = result
+            return result
         }
-
         if let record = database.fuzzyLookup(normalizedPlate: normalized) {
-            return AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .fuzzy, matchedPlate: record.plateNormalized)
-        }
-
-        if let record = database.smartLookup(normalizedPlate: normalized) {
-            return AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .smart, matchedPlate: record.plateNormalized)
+            let result = AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .fuzzy, matchedPlate: record.plateNormalized)
+            lookupCache[cacheKey] = result
+            return result
         }
 
         return AuthResult(status: .unknown, matchMethod: .none, matchedPlate: normalized)

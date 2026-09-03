@@ -207,15 +207,19 @@ final class PlateDatabase {
                     if let record = lookup(normalizedPlate: sub) { return record }
                 }
             }
-            // Also try fuzzy on substrings (more expensive, limit to 7-char)
-            for start in 0...(chars.count - 7) {
-                let sub = String(chars[start..<(start + 7)])
-                if let record = fuzzyLookup(normalizedPlate: sub) { return record }
+            // Fuzzy on substrings — limit to first and last 7-char windows only
+            if chars.count >= 7 {
+                let first7 = String(chars[0..<7])
+                if let record = fuzzyLookup(normalizedPlate: first7) { return record }
+                let last7 = String(chars[(chars.count - 7)...])
+                if last7 != first7, let record = fuzzyLookup(normalizedPlate: last7) { return record }
             }
         }
 
         // 3. Truncation recovery: if 5-6 chars, try prepending/appending common leading chars.
         //    The 40-degree camera angle often clips the first or last character.
+        //    Only use exact lookup here — fuzzyLookup per variant is too expensive
+        //    (33 variants × ~200 queries each = 6,600 DB queries on main thread).
         if chars.count >= 5 && chars.count <= 6 {
             let prefixes: [Character] = ["L", "M", "K", "N", "H", "Z", "J", "A",
                                           "G", "V", "W", "R", "B", "C", "D", "E",
@@ -224,22 +228,27 @@ final class PlateDatabase {
             for prefix in prefixes {
                 let variant = String(prefix) + plate
                 if let record = lookup(normalizedPlate: variant) { return record }
-                if let record = fuzzyLookup(normalizedPlate: variant) { return record }
             }
             for suffix in suffixes {
                 let variant = plate + String(suffix)
                 if let record = lookup(normalizedPlate: variant) { return record }
+            }
+            // Only try fuzzy on the most likely truncation candidates (first 5 prefixes)
+            for prefix in prefixes.prefix(5) {
+                let variant = String(prefix) + plate
                 if let record = fuzzyLookup(normalizedPlate: variant) { return record }
             }
         }
 
-        // 4. Edit-distance scan: scan all DB plates of the same length (5-7 chars).
+        // 4. Edit-distance scan: scan cached DB plates of the same length (5-7 chars).
         //    Tight threshold: confusableDistance <= 0.7 means at most 2 confusable
         //    character swaps (2 × 0.3 = 0.6). Combined with max 1 digit difference,
         //    this catches genuine OCR errors without matching unrelated plates.
-        if chars.count >= 5 && chars.count <= 7 {
+        //    Only runs if the cache is already warm (avoids fetching all records
+        //    on the main thread during active scanning).
+        if chars.count >= 5 && chars.count <= 7, !recordsByLengthCache.isEmpty {
             let plateDigits = plate.filter(\.isNumber)
-            let allPlates = allRecordsOfLength(chars.count)
+            let allPlates = recordsByLengthCache[chars.count] ?? []
             var bestRecord: PermitRecord?
             var bestDist: Float = 0.71
             for record in allPlates {
@@ -276,6 +285,13 @@ final class PlateDatabase {
         let grouped = Dictionary(grouping: all, by: { $0.plateNormalized.count })
         recordsByLengthCache = grouped
         return grouped[length] ?? []
+    }
+
+    /// Pre-warm the length cache so smartLookup's edit-distance scan
+    /// doesn't trigger a full DB fetch during active scanning.
+    func warmLengthCache() {
+        guard recordsByLengthCache.isEmpty else { return }
+        _ = allRecordsOfLength(7)
     }
 
     /// Upsert a single `PermitRecord` keyed on `entry.plateNormalized`.
