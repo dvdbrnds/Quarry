@@ -3,6 +3,7 @@ import { Alert, Button, Card, Empty, Form, Input, Modal, Spin, Tag, App as AntAp
 import { initAuth, isAuthenticated, login, authHeaders } from "../auth";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface TicketSummary {
   id: string;
@@ -334,6 +335,7 @@ export default function Appeals() {
           else if (mode === "guest" && lookupId) lookupTicket();
         }}
       />
+      <PublicFooter />
     </div>
   );
 }

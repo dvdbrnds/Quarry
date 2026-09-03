@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, Modal, Form, Input, InputNumber, Alert, Spin, Empty, App } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface AvailablePermit {
   id: string; code: string; label: string; price: string;
@@ -68,6 +69,7 @@ export default function BuyPermit() {
 
         <PurchaseModal permit={selected} onClose={() => setSelected(null)} onError={msg => { setError(msg); setSelected(null); }} />
       </main>
+      <PublicFooter />
     </div>
   );
 }

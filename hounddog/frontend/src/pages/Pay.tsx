@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface TicketResult {
   id: string; plate: string; lot: string; violation_type: string;
@@ -187,6 +188,7 @@ export default function Pay() {
           <PermitModal permits={availablePermits} onClose={() => { setPermitTicket(null); setAvailablePermits(null); }} onSelect={handleBuyPermit} />
         )}
       </div>
+      <PublicFooter />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Result, Spin, Button } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 export default function BuyPermitSuccess() {
   const brand = useBranding();
@@ -43,6 +44,7 @@ export default function BuyPermitSuccess() {
             extra={<Button type="primary" href="/permits/buy">Try Again</Button>} />
         )}
       </main>
+      <PublicFooter />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Result, Spin, Button } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface VerifyResult { payment_status: string; payment_type?: string; ticket_id?: string; ticket_plate?: string; }
 
@@ -44,6 +45,7 @@ export default function PaySuccess() {
         )}
         <div className="text-center text-xs text-ink-mute mt-8">&copy; {brand.schoolName || "Campus"} {brand.departmentName}</div>
       </div>
+      <PublicFooter />
     </div>
   );
 }

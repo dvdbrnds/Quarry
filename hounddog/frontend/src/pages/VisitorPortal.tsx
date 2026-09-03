@@ -15,6 +15,7 @@ import {
 import dayjs from "dayjs";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 import StudentLotMap from "../components/StudentLotMap";
 import { loadConfig } from "../auth";
 import type { Lot } from "../api";
@@ -501,6 +502,7 @@ function VisitorFlow() {
           </div>
         )}
       </main>
+      <PublicFooter />
     </div>
   );
 }
@@ -847,6 +849,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
           )}
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

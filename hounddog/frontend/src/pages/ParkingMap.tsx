@@ -4,6 +4,7 @@ import { Modal, Spin } from "antd";
 import { loadConfig, initAuth, isAuthenticated, login } from "../auth";
 import type { AppConfig } from "../auth";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface PublicLot {
   id: string;
@@ -341,6 +342,7 @@ export default function ParkingMap() {
           </div>
         )}
       </Modal>
+      <PublicFooter />
     </div>
   );
 }

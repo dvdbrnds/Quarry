@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Button, Card, Checkbox, Input, Result, Spin, Descriptions, Alert, App } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface RenewalInfo {
   permit_holder_name: string; email: string; plates: string[];
@@ -76,6 +77,7 @@ export default function PermitRenew() {
           </Card>
         )}
       </main>
+      <PublicFooter />
     </div>
   );
 }

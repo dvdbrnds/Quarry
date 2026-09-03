@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Button, Card, Spin, Result, App } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface ApprovalInfo {
   permit_id: string;
@@ -186,6 +187,7 @@ function ApprovalPage() {
           </div>
         </Card>
       </main>
+      <PublicFooter />
     </div>
   );
 }
