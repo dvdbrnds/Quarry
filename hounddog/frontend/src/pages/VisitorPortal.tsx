@@ -819,7 +819,7 @@ function VanityVisitorPage({ slug }: { slug: string }) {
                       label={preset.instructor_name_label || "Instructor/Ensemble"}
                       rules={[{ required: true, message: `${preset.instructor_name_label || "Instructor/Ensemble"} is required` }]}
                     >
-                      <Input placeholder={`Enter the instructor's full name`} />
+                      <Input placeholder="Enter instructor or ensemble name" />
                     </Form.Item>
                   )}
 

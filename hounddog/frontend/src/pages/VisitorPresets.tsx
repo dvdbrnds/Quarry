@@ -512,7 +512,7 @@ export default function VisitorPresets() {
               ) : null
             }
           </Form.Item>
-          <Form.Item name="require_instructor_name" valuePropName="checked" label="Require instructor name">
+          <Form.Item name="require_instructor_name" valuePropName="checked" label="Require Instructor/Ensemble">
             <Switch />
           </Form.Item>
           <Form.Item noStyle dependencies={["require_instructor_name"]}>
@@ -521,9 +521,9 @@ export default function VisitorPresets() {
                 <Form.Item
                   name="instructor_name_label"
                   label="Instructor field label"
-                  extra={'Customize the label, e.g. "Instructor name", "Teacher name"'}
+                  extra={'Customize the label, e.g. "Instructor/Ensemble", "Teacher name"'}
                 >
-                  <Input placeholder="Instructor name" />
+                  <Input placeholder="Instructor/Ensemble" />
                 </Form.Item>
               ) : null
             }
