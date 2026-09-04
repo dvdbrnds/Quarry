@@ -289,6 +289,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       ),
     },
     {
+      title: "Name",
+      dataIndex: "owner_name",
+      key: "owner_name",
+      ellipsis: true,
+      render: (name: string | null) => name || <span className="text-gray-400">—</span>,
+    },
+    {
       title: "Location",
       key: "location",
       render: (_, t) => t.ticket_category === "moving" ? (t.location_text || "—") : t.lot,
