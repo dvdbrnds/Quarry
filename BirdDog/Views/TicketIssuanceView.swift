@@ -675,6 +675,7 @@ struct TicketConfirmationView: View {
     }
 
     private func printTicket() {
+        #if canImport(StarIO10)
         isPrinting = true
         printError = nil
 
@@ -710,6 +711,9 @@ struct TicketConfirmationView: View {
             }
             isPrinting = false
         }
+        #else
+        printError = "Printing is not available in this build."
+        #endif
     }
 
     private func generateQRCode(from string: String) -> UIImage? {

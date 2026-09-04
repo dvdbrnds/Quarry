@@ -1,11 +1,11 @@
 import Foundation
+
+#if canImport(StarIO10)
 import StarIO10
 
 struct TicketReceiptBuilder {
 
-    /// SM-S230i print width (mm). Wider settings clip or distort on this model.
     private static let paperWidthMm = 48.0
-    /// Approx. columns for Font A on 48mm paper.
     private static let charsPerLine = 32
 
     struct TicketData {
@@ -42,7 +42,6 @@ struct TicketReceiptBuilder {
 
         let printerBuilder = makeBasePrinterBuilder()
 
-        // High-contrast inverted header
         _ = printerBuilder
             .styleAlignment(.center)
             .add(
@@ -63,7 +62,6 @@ struct TicketReceiptBuilder {
 
         appendRuledLine(to: printerBuilder)
 
-        // Ticket meta
         _ = printerBuilder
             .styleAlignment(.left)
             .actionPrintText("Ticket #: \(String(ticket.ticketId.prefix(8)).uppercased())\n")
@@ -71,7 +69,6 @@ struct TicketReceiptBuilder {
 
         appendRuledLine(to: printerBuilder)
 
-        // Vehicle
         _ = printerBuilder
             .add(
                 StarXpandCommand.PrinterBuilder()
@@ -103,7 +100,6 @@ struct TicketReceiptBuilder {
 
         appendRuledLine(to: printerBuilder)
 
-        // Violation
         _ = printerBuilder
             .add(
                 StarXpandCommand.PrinterBuilder()
@@ -124,7 +120,6 @@ struct TicketReceiptBuilder {
 
         appendRuledLine(to: printerBuilder)
 
-        // Fine — high contrast
         _ = printerBuilder
             .styleAlignment(.center)
             .actionFeed(1)
@@ -137,7 +132,6 @@ struct TicketReceiptBuilder {
             )
             .actionFeed(2)
 
-        // Payment QR — larger cells + stronger ECC for outdoor scanning
         if !ticket.paymentUrl.isEmpty {
             _ = printerBuilder
                 .styleAlignment(.center)
@@ -157,7 +151,6 @@ struct TicketReceiptBuilder {
                 .actionPrintText("Pay online or at Campus Police\n")
         }
 
-        // Officer
         if let name = ticket.officerName, !name.isEmpty {
             appendRuledLine(to: printerBuilder)
             _ = printerBuilder
@@ -173,7 +166,6 @@ struct TicketReceiptBuilder {
             }
         }
 
-        // Footer
         _ = printerBuilder
             .styleAlignment(.center)
             .actionFeed(2)
@@ -205,8 +197,6 @@ struct TicketReceiptBuilder {
 
         return builder.getCommands()
     }
-
-    // MARK: - Test Print
 
     static func buildTestCommands(schoolName: String) -> String {
         let builder = StarXpandCommand.StarXpandCommandBuilder()
@@ -255,8 +245,6 @@ struct TicketReceiptBuilder {
 
         return builder.getCommands()
     }
-
-    // MARK: - Shared layout helpers
 
     private static func makeBasePrinterBuilder() -> StarXpandCommand.PrinterBuilder {
         StarXpandCommand.PrinterBuilder()
@@ -319,7 +307,6 @@ struct TicketReceiptBuilder {
                 lines.append(current)
             }
 
-            // Place word on a new line; hard-break if still too long.
             var remainder = word
             let usable = max(1, width - continuationPrefix.count)
             while remainder.count > usable {
@@ -336,3 +323,4 @@ struct TicketReceiptBuilder {
         return lines
     }
 }
+#endif

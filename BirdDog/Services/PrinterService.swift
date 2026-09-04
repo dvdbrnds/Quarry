@@ -1,13 +1,14 @@
 import Foundation
-import ExternalAccessory
 import CoreBluetooth
+
+#if canImport(StarIO10)
+import ExternalAccessory
 import StarIO10
+#endif
 
 @MainActor
 final class PrinterService: ObservableObject {
     static let shared = PrinterService()
-
-    private static let starEAProtocol = "jp.star-m.starpro"
 
     @Published private(set) var connectionState: ConnectionState = .disconnected
     @Published private(set) var printerName: String = ""
@@ -31,18 +32,10 @@ final class PrinterService: ObservableObject {
 
     struct DiscoveredPrinter: Identifiable {
         let identifier: String
-        let interfaceType: InterfaceType
         let model: String
-
+        #if canImport(StarIO10)
+        let interfaceType: InterfaceType
         var id: String { "\(interfaceType.rawValue)::\(identifier)" }
-
-        var displayName: String {
-            if !model.isEmpty, model != identifier {
-                return "\(model) (\(identifier))"
-            }
-            return identifier.isEmpty ? "First Available" : identifier
-        }
-
         var interfaceLabel: String {
             switch interfaceType {
             case .bluetooth: return "Bluetooth"
@@ -53,6 +46,17 @@ final class PrinterService: ObservableObject {
             @unknown default: return "Unknown"
             }
         }
+        #else
+        var id: String { identifier }
+        var interfaceLabel: String { "Unavailable" }
+        #endif
+
+        var displayName: String {
+            if !model.isEmpty, model != identifier {
+                return "\(model) (\(identifier))"
+            }
+            return identifier.isEmpty ? "First Available" : identifier
+        }
     }
 
     private static let savedIdentifierKey = "PrinterService.identifier"
@@ -60,13 +64,17 @@ final class PrinterService: ObservableObject {
     private static let savedNameKey = "PrinterService.displayName"
     private static let autoPrintKey = "PrinterService.autoPrint"
 
+    #if canImport(StarIO10)
+    private static let starEAProtocol = "jp.star-m.starpro"
     private var savedSettings: StarConnectionSettings?
     private var discoveryManager: StarDeviceDiscoveryManager?
     private var _discoveryDelegate: DiscoveryDelegate?
+    #endif
     private var radioScanner: BluetoothRadioScanner?
 
     private init() {
         self.autoPrintEnabled = UserDefaults.standard.bool(forKey: Self.autoPrintKey)
+        #if canImport(StarIO10)
         if let settings = loadSavedSettings() {
             self.savedSettings = settings
             self.printerName = UserDefaults.standard.string(forKey: Self.savedNameKey) ?? settings.identifier
@@ -84,6 +92,7 @@ final class PrinterService: ObservableObject {
             }
         }
         EAAccessoryManager.shared().registerForLocalNotifications()
+        #endif
     }
 
     private func log(_ message: String) {
@@ -93,7 +102,6 @@ final class PrinterService: ObservableObject {
 
     // MARK: - Discovery
 
-    /// Check CoreBluetooth authorization. On managed iPads this can be restricted.
     var bluetoothAuthStatus: String {
         let auth = CBCentralManager.authorization
         switch auth {
@@ -106,6 +114,7 @@ final class PrinterService: ObservableObject {
     }
 
     func startDiscovery() {
+        #if canImport(StarIO10)
         stopDiscovery()
         discoveredPrinters = []
         isSearching = true
@@ -173,9 +182,13 @@ final class PrinterService: ObservableObject {
                 self.radioScanner = nil
             }
         }
+        #else
+        lastError = "Printer support is not available in this build."
+        #endif
     }
 
     func presentSystemPairingPicker() async {
+        #if canImport(StarIO10)
         isPairing = true
         lastError = nil
         log("Opening system Bluetooth picker…")
@@ -227,18 +240,24 @@ final class PrinterService: ObservableObject {
         } catch {
             log("First-found also failed: \(detailedErrorMessage(error))")
         }
+        #endif
     }
 
     func connectFirstAvailable() async throws {
+        #if canImport(StarIO10)
         log("Attempting first-found — BT permission: \(bluetoothAuthStatus)")
         try await connectWithIdentifier(
             identifier: StarConnectionSettings.FIRST_FOUND_DEVICE,
             interfaceType: .bluetooth,
             label: "First Available"
         )
+        #else
+        throw PrintError.notConfigured
+        #endif
     }
 
     func connectByName(_ name: String) async throws {
+        #if canImport(StarIO10)
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PrintError.notConfigured }
         log("Manual connect: \"\(trimmed)\"")
@@ -247,8 +266,12 @@ final class PrinterService: ObservableObject {
             interfaceType: .bluetooth,
             label: trimmed
         )
+        #else
+        throw PrintError.notConfigured
+        #endif
     }
 
+    #if canImport(StarIO10)
     private func seedPairedBluetoothPrinters() {
         for accessory in EAAccessoryManager.shared().connectedAccessories {
             addAccessory(accessory)
@@ -281,11 +304,14 @@ final class PrinterService: ObservableObject {
             .replacingOccurrences(of: "StarPrinterModel.", with: "")
             .replacingOccurrences(of: "_", with: "-")
     }
+    #endif
 
     func stopDiscovery() {
+        #if canImport(StarIO10)
         discoveryManager?.stopDiscovery()
         discoveryManager = nil
         _discoveryDelegate = nil
+        #endif
         isSearching = false
     }
 
@@ -299,15 +325,18 @@ final class PrinterService: ObservableObject {
 
     @discardableResult
     func connectAndWait(to discovered: DiscoveredPrinter) async throws -> Bool {
+        #if canImport(StarIO10)
         return try await connectWithIdentifier(
             identifier: discovered.identifier,
             interfaceType: discovered.interfaceType,
             label: discovered.displayName
         )
+        #else
+        throw PrintError.notConfigured
+        #endif
     }
 
-    /// Core connection logic. Tries the given identifier, then falls back to
-    /// FIRST_FOUND_DEVICE on the same interface, then on the other BT radio.
+    #if canImport(StarIO10)
     @discardableResult
     private func connectWithIdentifier(
         identifier: String,
@@ -318,7 +347,6 @@ final class PrinterService: ObservableObject {
         connectionState = .connecting
         lastError = nil
 
-        // Build a short list of (interface, identifier) to try.
         var attempts: [(InterfaceType, String)] = []
 
         let isFirstFound = identifier == StarConnectionSettings.FIRST_FOUND_DEVICE
@@ -327,7 +355,6 @@ final class PrinterService: ObservableObject {
         if !isFirstFound {
             attempts.append((interfaceType, identifier))
         }
-        // Always try first-found as fallback on both radios.
         attempts.append((.bluetooth, StarConnectionSettings.FIRST_FOUND_DEVICE))
         attempts.append((.bluetoothLE, StarConnectionSettings.FIRST_FOUND_DEVICE))
 
@@ -384,16 +411,20 @@ final class PrinterService: ObservableObject {
         lastError = friendlyMessage(for: lastFailure)
         throw lastFailure ?? PrintError.notConnected
     }
+    #endif
 
     func disconnect() async {
         stopDiscovery()
+        #if canImport(StarIO10)
         savedSettings = nil
+        #endif
         connectionState = .disconnected
         printerName = ""
         lastError = nil
     }
 
     func reconnectSaved() {
+        #if canImport(StarIO10)
         Task {
             do {
                 try await reconnectSavedAndWait()
@@ -403,8 +434,10 @@ final class PrinterService: ObservableObject {
                 await clearSavedPrinter()
             }
         }
+        #endif
     }
 
+    #if canImport(StarIO10)
     @discardableResult
     func reconnectSavedAndWait() async throws -> Bool {
         guard let settings = loadSavedSettings() else {
@@ -418,19 +451,23 @@ final class PrinterService: ObservableObject {
             label: name
         )
     }
+    #endif
 
     func ensureConnected() async throws {
+        #if canImport(StarIO10)
         if savedSettings != nil, connectionState == .connected { return }
         if hasSavedPrinter {
             try await reconnectSavedAndWait()
             return
         }
+        #endif
         throw PrintError.notConfigured
     }
 
     // MARK: - Print
 
     func printCommands(_ commands: String) async throws {
+        #if canImport(StarIO10)
         stopDiscovery()
 
         if savedSettings == nil {
@@ -459,9 +496,12 @@ final class PrinterService: ObservableObject {
             connectionState = .error
             throw error
         }
+        #else
+        throw PrintError.notConfigured
+        #endif
     }
 
-    /// Open with one retry for busy/already-open errors.
+    #if canImport(StarIO10)
     private func openForPrint(_ printer: StarPrinter) async throws {
         do {
             try await printer.open()
@@ -533,6 +573,7 @@ final class PrinterService: ObservableObject {
         }
         return error.localizedDescription
     }
+    #endif
 
     // MARK: - Persistence
 
@@ -549,6 +590,7 @@ final class PrinterService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: Self.savedNameKey)
     }
 
+    #if canImport(StarIO10)
     private func loadSavedSettings() -> StarConnectionSettings? {
         guard let identifier = UserDefaults.standard.string(forKey: Self.savedIdentifierKey),
               let rawInterface = UserDefaults.standard.object(forKey: Self.savedInterfaceKey) as? Int,
@@ -557,6 +599,7 @@ final class PrinterService: ObservableObject {
         }
         return StarConnectionSettings(interfaceType: interfaceType, identifier: identifier)
     }
+    #endif
 
     // MARK: - Errors
 
@@ -575,6 +618,7 @@ final class PrinterService: ObservableObject {
 
 // MARK: - Discovery Delegate
 
+#if canImport(StarIO10)
 private class DiscoveryDelegate: NSObject, StarDeviceDiscoveryManagerDelegate {
     let onFound: (StarPrinter) -> Void
     let onFinished: () -> Void
@@ -592,12 +636,10 @@ private class DiscoveryDelegate: NSObject, StarDeviceDiscoveryManagerDelegate {
         onFinished()
     }
 }
+#endif
 
 // MARK: - CoreBluetooth Scanner (diagnostic only)
 
-/// Runs a quick BLE scan to see what the device's Bluetooth radio can actually detect.
-/// This helps diagnose when iOS Settings shows "Connected" but StarIO10 can't find it
-/// (usually means the printer's MFi channel is held by another device).
 class BluetoothRadioScanner: NSObject, CBCentralManagerDelegate {
     private var central: CBCentralManager?
     private var foundNames: [String] = []

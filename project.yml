@@ -21,10 +21,7 @@ settings:
     Release:
       SWIFT_OPTIMIZATION_LEVEL: "-O"
       GCC_OPTIMIZATION_LEVEL: s
-packages:
-  StarXpand-SDK-iOS:
-    url: https://github.com/star-micronics/StarXpand-SDK-iOS
-    from: "2.6.0"
+packages: {}
 targets:
   BirdDog:
     type: application
@@ -38,17 +35,14 @@ targets:
       - path: BirdDog/Resources/Assets.xcassets
       - path: BirdDog/Resources/lots.json
       - path: BirdDog/App/PrivacyInfo.xcprivacy
-    dependencies:
-      - package: StarXpand-SDK-iOS
-        product: StarIO10
-      - sdk: ExternalAccessory.framework
+    dependencies: []
     entitlements:
       path: BirdDog/App/BirdDog.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.birddog
         MARKETING_VERSION: "2.1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "3"
         DEVELOPMENT_TEAM: P6D8DZ6BZ7
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

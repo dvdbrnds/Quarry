@@ -314,6 +314,7 @@ struct PrinterSettingsView: View {
     }
 
     private func sendTestPrint() {
+        #if canImport(StarIO10)
         isPrintingTest = true
         testPrintError = nil
 
@@ -330,5 +331,9 @@ struct PrinterSettingsView: View {
             isPrintingTest = false
             showTestResult = true
         }
+        #else
+        testPrintError = "Printing is not available in this build."
+        showTestResult = true
+        #endif
     }
 }
