@@ -463,9 +463,42 @@ function PermitForm({
               : null;
 
           if (confirmContent) {
+            const doPlainUpdate = async () => {
+              try {
+                const data = {
+                  name: values.name,
+                  plates,
+                  student_id: values.student_id,
+                  email: values.email || null,
+                  phone: values.phone,
+                  permit_type: values.permit_type,
+                  lot_assignment: lotAssignment,
+                  beacon_id: values.beacon_id || null,
+                  status: values.status || "active",
+                  start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+                  end_date: values.end_date?.format("YYYY-MM-DD") || null,
+                };
+                await api.permits.update(initial.id, data);
+                message.success("Permit type corrected — no billing action taken");
+                onSave();
+              } catch (e: any) {
+                message.error(e.message || "Update failed");
+              }
+            };
+
             Modal.confirm({
               title: preview.action === "charge" ? "Upgrade — charge the difference?" : "Downgrade — issue a refund?",
-              content: confirmContent,
+              content: (
+                <div>
+                  <p>{confirmContent}</p>
+                  <p style={{ marginTop: 12, fontSize: 13, color: "#666" }}>
+                    If this is an <strong>administrative correction</strong> (e.g. fixing a wrong assignment), you can skip billing:
+                  </p>
+                  <Button size="small" onClick={() => { Modal.destroyAll(); doPlainUpdate(); }}>
+                    Correct type only — no billing
+                  </Button>
+                </div>
+              ),
               okText: preview.action === "charge" ? "Approve & send bill" : "Approve & issue refund",
               cancelText: "Cancel",
               onOk: async () => {
