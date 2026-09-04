@@ -4,6 +4,7 @@ import { CheckCircleOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
+import PublicFooter from "../components/PublicFooter";
 import StudentLotMap from "../components/StudentLotMap";
 import type { Lot } from "../api";
 
@@ -446,6 +447,7 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
         onError={msg => { message.error(msg); setEnrolling(false); }}
         impersonateEmail={impersonateEmail}
       />
+      <PublicFooter />
     </div>
   );
 }

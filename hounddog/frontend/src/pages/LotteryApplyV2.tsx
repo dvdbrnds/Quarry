@@ -7,6 +7,7 @@ import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
+import PublicFooter from "../components/PublicFooter";
 
 /** Stable colors per permit-type code — cards and map lots share these */
 const TIER_COLORS: Record<string, { fill: string; soft: string; border: string }> = {
@@ -2478,6 +2479,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           </div>
         )}
       </Modal>
+      <PublicFooter />
     </div>
   );
 }
