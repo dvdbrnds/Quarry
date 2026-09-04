@@ -288,12 +288,22 @@ struct TicketIssuanceView: View {
                 ticketLng = loc.coordinate.longitude
             }
 
+            // Always prefer the geofence-detected lot (where the officer is standing)
+            if let current = geo.currentLotName {
+                selectedLot = current
+            } else if lots.count == 1 {
+                selectedLot = lots[0].name
+            }
+
             if let entry = prefilledEntry {
                 plate = entry.text
                 if let permit = entry.authStatus.permit {
                     vehicleDescription = permit.vehicleDescription
-                    if !permit.lotZone.isEmpty {
-                        selectedLot = permit.lotZone
+                    // Only use permit lot as fallback when geofence didn't detect a lot
+                    if selectedLot.isEmpty, !permit.lotZone.isEmpty {
+                        // Use just the first lot from the assignment if it's a comma-separated list
+                        let firstLot = permit.lotZone.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? permit.lotZone
+                        selectedLot = firstLot
                     }
                 }
                 switch entry.authStatus {
@@ -317,13 +327,6 @@ struct TicketIssuanceView: View {
                 ensureValidViolationSelection()
             } else {
                 ensureValidViolationSelection()
-            }
-            if selectedLot.isEmpty {
-                if let current = geo.currentLotName {
-                    selectedLot = current
-                } else if lots.count == 1 {
-                    selectedLot = lots[0].name
-                }
             }
             capturePhoto()
         }
