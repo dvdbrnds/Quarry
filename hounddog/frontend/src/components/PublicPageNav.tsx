@@ -76,7 +76,9 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
                 </Link>
               );
             })}
+            <a href="/regulations" target="_blank" rel="noopener noreferrer" className="text-xs sm:text-sm px-2.5 py-1 rounded-md no-underline text-white/70 hover:text-white hover:bg-white/10 transition-colors">Regulations</a>
           </div>}
+          {hideLinks && <a href="/regulations" target="_blank" rel="noopener noreferrer" className="ml-auto text-xs font-medium px-3 py-1 rounded no-underline" style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor }}>📋 Parking Regulations</a>}
         </div>
       </nav>
     </>

@@ -1287,7 +1287,18 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               Parking Permits
             </h1>
           </div>
-          <span className="text-xs opacity-70">{user.email}</span>
+          <div className="flex items-center gap-4">
+            <a
+              href="/regulations"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium px-3 py-1 rounded"
+              style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}
+            >
+              📋 Parking Regulations
+            </a>
+            <span className="text-xs opacity-70">{user.email}</span>
+          </div>
         </div>
       </header>
 

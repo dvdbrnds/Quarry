@@ -208,6 +208,7 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <a href="/regulations" target="_blank" rel="noopener noreferrer" className="text-xs font-medium px-3 py-1 rounded" style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}>📋 Parking Regulations</a>
             <span className="text-sm text-white/70">{user.email}</span>
             <button onClick={() => logout()} className="text-xs text-white/40 hover:text-white transition-colors">Sign out</button>
           </div>
