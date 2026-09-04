@@ -486,52 +486,55 @@ function PermitForm({
               }
             };
 
+            const doBilledReassign = async () => {
+              try {
+                const reassignResult = await doReassign(initial.id, values.permit_type, lotAssignment);
+                const otherData = {
+                  name: values.name,
+                  plates,
+                  student_id: values.student_id,
+                  email: values.email || null,
+                  phone: values.phone,
+                  beacon_id: values.beacon_id || null,
+                  status: values.status || "active",
+                  start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
+                  end_date: values.end_date?.format("YYYY-MM-DD") || null,
+                };
+                await api.permits.update(initial.id, otherData);
+                if (reassignResult.action === "charge") {
+                  message.success(`Permit upgraded — $${reassignResult.charge_amount} payment link sent`);
+                } else if (reassignResult.action === "refund") {
+                  if (reassignResult.refund_id) {
+                    message.success(`Permit downgraded — $${reassignResult.refund_amount} refund issued`);
+                  } else {
+                    message.warning(`Permit downgraded — manual refund of $${reassignResult.refund_amount} needed (no Stripe payment found)`);
+                  }
+                }
+                onSave();
+              } catch (e: any) {
+                message.error(e.message || "Reassignment failed");
+              }
+            };
+
+            const billingLabel = preview.action === "charge" ? "Send payment link" : "Issue refund";
+
             Modal.confirm({
-              title: preview.action === "charge" ? "Upgrade — charge the difference?" : "Downgrade — issue a refund?",
+              title: "Permit type change",
+              icon: null,
               content: (
                 <div>
-                  <p>{confirmContent}</p>
-                  <p style={{ marginTop: 12, fontSize: 13, color: "#666" }}>
-                    If this is an <strong>administrative correction</strong> (e.g. fixing a wrong assignment), you can skip billing:
-                  </p>
-                  <Button size="small" onClick={() => { Modal.destroyAll(); doPlainUpdate(); }}>
-                    Correct type only — no billing
-                  </Button>
+                  <p style={{ margin: "4px 0 16px" }}>{confirmContent}</p>
+                  <Space>
+                    <Button type="primary" onClick={() => { Modal.destroyAll(); doBilledReassign(); }}>
+                      {billingLabel}
+                    </Button>
+                    <Button onClick={() => { Modal.destroyAll(); doPlainUpdate(); }}>
+                      Skip billing
+                    </Button>
+                  </Space>
                 </div>
               ),
-              okText: preview.action === "charge" ? "Approve & send bill" : "Approve & issue refund",
-              cancelText: "Cancel",
-              onOk: async () => {
-                try {
-                  const reassignResult = await doReassign(initial.id, values.permit_type, lotAssignment);
-                  // Also update other fields (name, plates, etc.)
-                  const otherData = {
-                    name: values.name,
-                    plates,
-                    student_id: values.student_id,
-                    email: values.email || null,
-                    phone: values.phone,
-                    beacon_id: values.beacon_id || null,
-                    status: values.status || "active",
-                    start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
-                    end_date: values.end_date?.format("YYYY-MM-DD") || null,
-                  };
-                  await api.permits.update(initial.id, otherData);
-
-                  if (reassignResult.action === "charge") {
-                    message.success(`Permit upgraded — $${reassignResult.charge_amount} payment link sent`);
-                  } else if (reassignResult.action === "refund") {
-                    if (reassignResult.refund_id) {
-                      message.success(`Permit downgraded — $${reassignResult.refund_amount} refund issued`);
-                    } else {
-                      message.warning(`Permit downgraded — manual refund of $${reassignResult.refund_amount} needed (no Stripe payment found)`);
-                    }
-                  }
-                  onSave();
-                } catch (e: any) {
-                  message.error(e.message || "Reassignment failed");
-                }
-              },
+              footer: null,
             });
             return;
           }
