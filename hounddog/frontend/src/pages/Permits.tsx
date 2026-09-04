@@ -862,6 +862,19 @@ export default function Permits() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadMeta(); }, [loadMeta]);
 
+  useEffect(() => {
+    const editId = new URLSearchParams(location.search).get("edit");
+    if (editId && !editing) {
+      (async () => {
+        try {
+          const h = await api.permits.history(editId);
+          setEditing(h.permit);
+          setCreating(false);
+        } catch { /* permit not found — ignore */ }
+      })();
+    }
+  }, [location.search]);
+
   function handleCancel(permit: Permit) {
     if (permit.status === "cancelled") {
       message.info("This permit is already cancelled");

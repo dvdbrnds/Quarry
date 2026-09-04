@@ -159,6 +159,7 @@ export default function PermitDetail() {
             <div className="mt-4 flex gap-4 text-sm"><span>Start: {p.start_date || "—"}</span><span>End: {p.end_date || "No expiry"}</span></div>
           </div>
           <Space>
+            <Button onClick={() => navigate(`/permits?edit=${id}`)}>Edit</Button>
             {(p.status === "revoked" || p.status === "suspended" || p.status === "expired") && (
               <Button onClick={handleReactivate}>Reactivate</Button>
             )}
