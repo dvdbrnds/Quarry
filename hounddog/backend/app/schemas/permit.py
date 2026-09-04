@@ -21,6 +21,8 @@ class PermitBase(BaseModel):
     start_date: date = Field(default_factory=today_local)
     end_date: date | None = None
     status: str = "active"
+    hc_status: str = "none"
+    hc_expiry: date | None = None
 
 
 class PermitCreate(PermitBase):
@@ -41,6 +43,8 @@ class PermitUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     status: str | None = None
+    hc_status: str | None = None
+    hc_expiry: date | None = None
 
 
 class PermitRead(PermitBase):

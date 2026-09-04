@@ -227,7 +227,9 @@ final class HoundDogSyncService: ObservableObject {
             vehicleDescription: "",
             issuedDate: permit.startDate,
             expirationDate: permit.endDate,
-            beaconId: permit.beaconId
+            beaconId: permit.beaconId,
+            hcStatus: permit.hcStatus,
+            hcExpiry: permit.hcExpiry
         )
     }
 
@@ -492,6 +494,8 @@ struct SyncPermit: Decodable {
     let status: String
     let beaconId: String?
     let deletedAt: String?
+    let hcStatus: String?
+    let hcExpiry: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -504,6 +508,8 @@ struct SyncPermit: Decodable {
         case status
         case beaconId = "beacon_id"
         case deletedAt = "deleted_at"
+        case hcStatus = "hc_status"
+        case hcExpiry = "hc_expiry"
     }
 }
 

@@ -46,6 +46,19 @@ struct PlateOverlayView: View {
                         .foregroundStyle(textColor)
                     }
 
+                    if let permit = authStatus.permit, permit.isHC {
+                        HStack(spacing: 4) {
+                            Image(systemName: "figure.roll")
+                                .font(.caption.bold())
+                            Text(permit.isHCExpired ? "HC EXPIRED" : (permit.hcStatus == "temporary" ? "HC TEMP" : "HC"))
+                                .font(.caption.bold())
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(permit.isHCExpired ? Color.red.opacity(0.9) : Color.blue.opacity(0.9), in: Capsule())
+                        .foregroundStyle(.white)
+                    }
+
                     if case .wrongLot(let permit, let expected, let actual) = authStatus {
                         Text("Permit: \(expected) — Here: \(actual)")
                             .font(.caption.bold())

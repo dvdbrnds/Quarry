@@ -761,6 +761,9 @@ async def lifespan(app: FastAPI):
             # Custom date range for presets
             "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS custom_start_date DATE",
             "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS custom_end_date DATE",
+            # Handicapped designation on permits
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_status VARCHAR(16) DEFAULT 'none'",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_expiry DATE",
             ]
             for migration in migrations:
                 try:

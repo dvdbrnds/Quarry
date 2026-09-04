@@ -17,6 +17,8 @@ final class PermitRecord {
     var importedAt: Date
     /// SheepDog beacon ID — pre-populated from HoundDog sync for future hangtag integration.
     var beaconId: String?
+    var hcStatus: String
+    var hcExpiry: Date?
 
     init(
         plateNormalized: String,
@@ -31,7 +33,9 @@ final class PermitRecord {
         issuedDate: Date,
         expirationDate: Date? = nil,
         importedAt: Date = Date(),
-        beaconId: String? = nil
+        beaconId: String? = nil,
+        hcStatus: String = "none",
+        hcExpiry: Date? = nil
     ) {
         self.plateNormalized = plateNormalized
         self.plateRaw = plateRaw
@@ -46,5 +50,7 @@ final class PermitRecord {
         self.expirationDate = expirationDate
         self.importedAt = importedAt
         self.beaconId = beaconId
+        self.hcStatus = hcStatus
+        self.hcExpiry = hcExpiry
     }
 }

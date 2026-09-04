@@ -10,11 +10,22 @@ struct PermitInfo: Sendable, Equatable, Codable {
     let vehicleDescription: String
     let plateState: String
     let issuedDate: Date
+    let hcStatus: String
+    let hcExpiry: Date?
 
     var displayType: String {
         let primary = permitType.components(separatedBy: ",").first?
             .trimmingCharacters(in: .whitespaces) ?? permitType
         return primary.capitalized
+    }
+
+    var isHC: Bool {
+        hcStatus == "temporary" || hcStatus == "permanent"
+    }
+
+    var isHCExpired: Bool {
+        guard hcStatus == "temporary", let expiry = hcExpiry else { return false }
+        return expiry < Date()
     }
 }
 

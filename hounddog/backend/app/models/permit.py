@@ -41,3 +41,5 @@ class Permit(Base):
     cancel_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    hc_status: Mapped[str] = mapped_column(String(16), default="none", server_default="none")
+    hc_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)

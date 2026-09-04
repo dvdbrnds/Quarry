@@ -116,7 +116,9 @@ final class PlateAuthService: PlateCheckable {
             lotZone: record.lotZone,
             vehicleDescription: record.vehicleDescription,
             plateState: record.plateState,
-            issuedDate: record.issuedDate
+            issuedDate: record.issuedDate,
+            hcStatus: record.hcStatus,
+            hcExpiry: record.hcExpiry
         )
 
         let statusKey = record.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()

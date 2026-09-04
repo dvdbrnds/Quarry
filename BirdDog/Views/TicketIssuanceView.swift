@@ -93,6 +93,11 @@ struct TicketIssuanceView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            if permit.isHC {
+                                Label(permit.isHCExpired ? "HC Expired" : (permit.hcStatus == "temporary" ? "HC Temporary" : "HC Permanent"), systemImage: "figure.roll")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(permit.isHCExpired ? .red : .blue)
+                            }
                             if !permit.lotZone.isEmpty {
                                 Label("Permit for \(permit.lotZone)", systemImage: "mappin.circle.fill")
                                     .font(.caption)

@@ -50,6 +50,7 @@ SORTABLE_FIELDS = {
     "start_date": Permit.start_date,
     "end_date": Permit.end_date,
     "created_at": Permit.created_at,
+    "hc_status": Permit.hc_status,
 }
 
 

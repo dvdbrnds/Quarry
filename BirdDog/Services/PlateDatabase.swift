@@ -118,7 +118,9 @@ final class PlateDatabase {
                 lotZone: permit.lotZone,
                 vehicleDescription: permit.vehicleDescription,
                 issuedDate: permit.parsedIssuedDate,
-                expirationDate: permit.parsedExpirationDate
+                expirationDate: permit.parsedExpirationDate,
+                hcStatus: permit.hcStatus ?? "none",
+                hcExpiry: permit.parsedHcExpiry
             )
             context.insert(record)
             inserted += 1
@@ -312,6 +314,8 @@ final class PlateDatabase {
             existing.issuedDate = entry.parsedIssuedDate
             existing.expirationDate = entry.parsedExpirationDate
             existing.beaconId = entry.beaconId
+            existing.hcStatus = entry.hcStatus ?? "none"
+            existing.hcExpiry = entry.parsedHcExpiry
             existing.importedAt = Date()
         } else {
             let record = PermitRecord(
@@ -326,7 +330,9 @@ final class PlateDatabase {
                 vehicleDescription: entry.vehicleDescription,
                 issuedDate: entry.parsedIssuedDate,
                 expirationDate: entry.parsedExpirationDate,
-                beaconId: entry.beaconId
+                beaconId: entry.beaconId,
+                hcStatus: entry.hcStatus ?? "none",
+                hcExpiry: entry.parsedHcExpiry
             )
             context.insert(record)
         }
@@ -454,6 +460,8 @@ struct PermitEntry: Decodable {
     let issuedDate: String
     let expirationDate: String?
     let beaconId: String?
+    let hcStatus: String?
+    let hcExpiry: String?
 
     private static let dateFormatters: [DateFormatter] = {
         let formats = [
@@ -492,5 +500,10 @@ struct PermitEntry: Decodable {
     var parsedExpirationDate: Date? {
         guard let exp = expirationDate else { return nil }
         return Self.parseDate(exp)
+    }
+
+    var parsedHcExpiry: Date? {
+        guard let hc = hcExpiry else { return nil }
+        return Self.parseDate(hc)
     }
 }

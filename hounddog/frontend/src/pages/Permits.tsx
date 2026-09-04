@@ -359,6 +359,8 @@ function PermitForm({
         status: initial.status,
         start_date: initial.start_date ? dayjs(initial.start_date) : null,
         end_date: initial.end_date ? dayjs(initial.end_date) : null,
+        hc_status: initial.hc_status || "none",
+        hc_expiry: initial.hc_expiry ? dayjs(initial.hc_expiry) : null,
       });
       setSelectedTypeCode(initial.permit_type || undefined);
     } else {
@@ -499,6 +501,8 @@ function PermitForm({
                   status: values.status || "active",
                   start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
                   end_date: values.end_date?.format("YYYY-MM-DD") || null,
+                  hc_status: values.hc_status || "none",
+                  hc_expiry: values.hc_status === "temporary" && values.hc_expiry ? values.hc_expiry.format("YYYY-MM-DD") : null,
                 };
                 await api.permits.update(initial.id, otherData);
                 if (reassignResult.action === "charge") {
@@ -553,6 +557,8 @@ function PermitForm({
           status: values.status || "active",
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
           end_date: values.end_date?.format("YYYY-MM-DD") || null,
+          hc_status: values.hc_status || "none",
+          hc_expiry: values.hc_status === "temporary" && values.hc_expiry ? values.hc_expiry.format("YYYY-MM-DD") : null,
         };
         await api.permits.update(initial.id, data);
         message.success("Permit updated");
@@ -567,6 +573,8 @@ function PermitForm({
           permit_type: values.permit_type,
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
           end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
+          hc_status: values.hc_status || "none",
+          hc_expiry: values.hc_status === "temporary" && values.hc_expiry ? values.hc_expiry.format("YYYY-MM-DD") : undefined,
           waive_fee: false,
           voucher_code: voucherValid ? voucherCode.trim() : undefined,
         });
@@ -586,6 +594,8 @@ function PermitForm({
           permit_type: values.permit_type,
           start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
           end_date: values.end_date?.format("YYYY-MM-DD") || undefined,
+          hc_status: values.hc_status || "none",
+          hc_expiry: values.hc_status === "temporary" && values.hc_expiry ? values.hc_expiry.format("YYYY-MM-DD") : undefined,
           waive_fee: true,
         };
         await api.permits.createWithCharge(chargeData);
@@ -674,6 +684,20 @@ function PermitForm({
           </Form.Item>
           <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone is required" }]}>
             <Input placeholder="+1 (555) 123-4567" />
+          </Form.Item>
+          <Form.Item name="hc_status" label="HC Designation">
+            <Select options={[
+              { label: "None", value: "none" },
+              { label: "♿ Temporary HC", value: "temporary" },
+              { label: "♿ Permanent HC", value: "permanent" },
+            ]} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.hc_status !== cur.hc_status}>
+            {({ getFieldValue }) => getFieldValue("hc_status") === "temporary" ? (
+              <Form.Item name="hc_expiry" label="HC Expiry Date">
+                <DatePicker className="w-full" />
+              </Form.Item>
+            ) : null}
           </Form.Item>
         </div>
 
@@ -887,6 +911,8 @@ export default function Permits() {
         <Space>
           <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "cancelled" ? "purple" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
           {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
+          {p.hc_status === "permanent" && <Tag color="blue">♿ HC</Tag>}
+          {p.hc_status === "temporary" && <Tag color={p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"}>{p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "♿ HC Expired" : "♿ HC Temp"}</Tag>}
         </Space>
       ),
     },

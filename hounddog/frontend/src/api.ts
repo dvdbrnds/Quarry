@@ -55,6 +55,8 @@ export interface Permit {
   cancel_notes: string | null;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  hc_status: string;
+  hc_expiry: string | null;
 }
 
 export interface MessageTemplate {
