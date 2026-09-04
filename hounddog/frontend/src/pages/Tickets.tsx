@@ -38,6 +38,10 @@ interface Ticket {
   dispute_email: string | null;
   dispute_phone: string | null;
   ocr_original_plate: string | null;
+  created_at: string;
+  updated_at: string;
+  mailed_at: string | null;
+  mailed_address: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -576,7 +580,10 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <Descriptions.Item label="Violation">{selected.violation_type.replace(/_/g, " ")}</Descriptions.Item>
               <Descriptions.Item label="Fine">${Number(selected.fine_amount).toFixed(2)}</Descriptions.Item>
               <Descriptions.Item label="Status"><Tag color={STATUS_COLORS[selected.status]}>{selected.status}</Tag></Descriptions.Item>
-              <Descriptions.Item label="Officer">{selected.officer_name || selected.officer_id}</Descriptions.Item>
+              <Descriptions.Item label="Officer">
+                <div>{selected.officer_name || selected.officer_id}</div>
+                {selected.officer_email && <div className="text-xs text-gray-400">{selected.officer_email}</div>}
+              </Descriptions.Item>
               {selected.owner_name && <Descriptions.Item label="Owner">{selected.owner_name}</Descriptions.Item>}
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
               <Descriptions.Item label="Issued" span={2}>{new Date(selected.issued_at).toLocaleString()}</Descriptions.Item>
@@ -593,6 +600,14 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 </Descriptions.Item>
               )}
             </Descriptions>
+
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-1">
+              <div className="font-medium text-gray-600 mb-1">Audit Trail</div>
+              <div>Created: {new Date(selected.created_at).toLocaleString()}</div>
+              <div>Last updated: {new Date(selected.updated_at).toLocaleString()}</div>
+              {selected.mailed_at && <div>Mailed: {new Date(selected.mailed_at).toLocaleString()}{selected.mailed_address ? ` — ${selected.mailed_address}` : ""}</div>}
+              <div className="font-mono text-[10px] text-gray-400 select-all">ID: {selected.id}</div>
+            </div>
 
             {selected.ticket_category === "moving" && (
               <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm">
