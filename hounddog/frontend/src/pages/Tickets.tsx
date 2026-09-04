@@ -215,10 +215,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
+          const res = await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
           message.success("Ticket voided");
           load();
-          setSelected(null);
+          if (res.ok && selected?.id === id) {
+            setSelected({ ...selected, status: "voided" });
+          }
         } catch {
           message.error("Failed to void ticket");
         }
@@ -465,7 +467,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
       <Space className="mb-4" wrap>
         <Input.Search
-          placeholder="Search by ticket #, plate, or officer..."
+          placeholder="Search by ticket #, plate, name, or location..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           onSearch={() => setPage(1)}
