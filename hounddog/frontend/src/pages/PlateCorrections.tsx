@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Table, Card, Tag, Statistic, Row, Col } from "antd";
-import api from "../api";
+import { getAccessToken } from "../auth";
 
 interface PlateCorrection {
   id: string;
@@ -22,8 +22,11 @@ export default function PlateCorrections() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get("/api/audit/plate-corrections?limit=500");
-        setData(res.data);
+        const token = await getAccessToken();
+        const res = await fetch("/api/audit/plate-corrections?limit=500", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) setData(await res.json());
       } catch {
         /* ignore */
       } finally {
