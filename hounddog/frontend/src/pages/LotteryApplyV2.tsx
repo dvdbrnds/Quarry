@@ -1186,6 +1186,34 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   // For the map, show only geographically-relevant lots per campus
   const GUEST_MAP_LOTS = GUEST_LOTS;
 
+  // Active permit lot data for the right-side map
+  const myPermitLotNames = useMemo(() => {
+    if (application || myPermits.length === 0) return [];
+    const names: string[] = [];
+    for (const p of myPermits) {
+      if (p.lot_assignment) {
+        for (const s of (p.lot_assignment as string).split(",")) {
+          const t = s.trim();
+          if (t && !names.includes(t)) names.push(t);
+        }
+      }
+    }
+    return names;
+  }, [myPermits, application]);
+
+  const myPermitLots = useMemo(() => {
+    if (myPermitLotNames.length === 0) return [];
+    return lots.filter(l => myPermitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name)));
+  }, [lots, myPermitLotNames]);
+
+  const myPermitLotColors = useMemo(() => {
+    const c: Record<string, string> = {};
+    for (const name of myPermitLotNames) c[name] = "#16a34a";
+    return c;
+  }, [myPermitLotNames]);
+
+  const showingPermitMap = !application && myPermitLots.length > 0;
+
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
@@ -1195,7 +1223,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           ? doneDefaultLots
           : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
             ? eligibleLotNames
-            : [];
+            : showingPermitMap
+              ? myPermitLotNames
+              : [];
 
   const lotsForMap =
     showGuestForm
@@ -1204,7 +1234,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         ? lots.filter((l) => doneDefaultLots.some((d) => normalizeLotKey(d) === normalizeLotKey(l.name)))
         : mapLots.length > 0
           ? mapLots
-          : [];
+          : showingPermitMap
+            ? myPermitLots
+            : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
   const lotteryActive = cycle?.status === "open" || cycle?.status === "drawn";
@@ -1236,7 +1268,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           ? lotColors
           : showTierColors
             ? lotColors
-            : undefined;
+            : showingPermitMap
+              ? myPermitLotColors
+              : undefined;
   // When actively hovering a card, drop lot colors so the map uses the high-contrast
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
@@ -1246,6 +1280,10 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         { label: "Lot X — Park anytime", color: "#22C55E" },
         { label: "Other lots — After 4 PM & weekends", color: "#EAB308" },
       ];
+
+  const permitMapLegend = showingPermitMap
+    ? [{ label: "Your permitted lots", color: "#16a34a" }]
+    : undefined;
 
   const activeLegend = showGuestForm
     ? guestLegend
@@ -1257,7 +1295,9 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           ? mapLegend
           : showTierColors
             ? mapLegend
-            : undefined;
+            : showingPermitMap
+              ? permitMapLegend
+              : undefined;
 
   const schoolName = brand.schoolName || "Moravian University";
 
@@ -1481,67 +1521,36 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               <Card>
                 <div className="space-y-4">
                   <h2 className="text-lg font-semibold m-0">Your Parking Permit{myPermits.length > 1 ? "s" : ""}</h2>
-                  {myPermits.map((permit) => {
-                    const permitLotNames = permit.lot_assignment
-                      ? (permit.lot_assignment as string).split(",").map((s: string) => s.trim()).filter(Boolean)
-                      : [];
-                    const permitLots = lots.filter(l =>
-                      permitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name))
-                    );
-                    const permitLotColors: Record<string, string> = {};
-                    for (const name of permitLotNames) permitLotColors[name] = "#16a34a";
-                    const showMap = mapsApiKey && permitLots.length > 0;
-
-                    return (
+                  {myPermits.map((permit) => (
                     <div key={permit.id} className="rounded-lg bg-green-50 border border-green-200 p-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-semibold text-green-900">{permit.permit_type_label || permit.permit_type}</span>
                         <Tag color="green">Active</Tag>
                       </div>
-
-                      <div className={showMap ? "flex flex-col md:flex-row gap-4" : ""}>
-                        {/* Permit details — left side */}
-                        <div className={showMap ? "flex-1 min-w-0" : ""}>
-                          <dl className="grid grid-cols-2 gap-2 text-sm m-0">
-                            {permit.permit_number && (
-                              <div>
-                                <dt className="text-gray-500">Permit #</dt>
-                                <dd className="font-mono font-medium m-0">{permit.permit_number}</dd>
-                              </div>
-                            )}
-                            <div>
-                              <dt className="text-gray-500">Vehicle</dt>
-                              <dd className="font-mono font-medium m-0">{permit.plates?.join(", ") || "—"}</dd>
-                            </div>
-                            {permit.lot_assignment && (
-                              <div>
-                                <dt className="text-gray-500">Lot(s)</dt>
-                                <dd className="font-medium m-0">{permit.lot_assignment}</dd>
-                              </div>
-                            )}
-                            <div>
-                              <dt className="text-gray-500">Valid through</dt>
-                              <dd className="font-medium m-0">
-                                {permit.end_date ? new Date(permit.end_date).toLocaleDateString() : "—"}
-                              </dd>
-                            </div>
-                          </dl>
-                        </div>
-
-                        {/* Map — right side */}
-                        {showMap && (
-                          <div className="md:w-[320px] shrink-0 rounded-lg overflow-hidden border border-green-200" style={{ height: 220 }}>
-                            <StudentLotMap
-                              apiKey={mapsApiKey}
-                              lots={permitLots}
-                              highlightedLots={permitLotNames}
-                              lotColors={permitLotColors}
-                              defaultCenter={campusCenter}
-                            />
+                      <dl className="grid grid-cols-2 gap-2 text-sm m-0">
+                        {permit.permit_number && (
+                          <div>
+                            <dt className="text-gray-500">Permit #</dt>
+                            <dd className="font-mono font-medium m-0">{permit.permit_number}</dd>
                           </div>
                         )}
-                      </div>
-
+                        <div>
+                          <dt className="text-gray-500">Vehicle</dt>
+                          <dd className="font-mono font-medium m-0">{permit.plates?.join(", ") || "—"}</dd>
+                        </div>
+                        {permit.lot_assignment && (
+                          <div>
+                            <dt className="text-gray-500">Lot(s)</dt>
+                            <dd className="font-medium m-0">{permit.lot_assignment}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt className="text-gray-500">Valid through</dt>
+                          <dd className="font-medium m-0">
+                            {permit.end_date ? new Date(permit.end_date).toLocaleDateString() : "—"}
+                          </dd>
+                        </div>
+                      </dl>
                       <PlateSwapForm
                         permitId={permit.id}
                         currentPlate={permit.plates?.[0] || ""}
@@ -1560,8 +1569,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                         onSubmitted={reloadVehicleRequests}
                       />
                     </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </Card>
             )}
