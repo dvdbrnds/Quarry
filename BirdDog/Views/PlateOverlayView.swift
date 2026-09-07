@@ -71,10 +71,17 @@ struct PlateOverlayView: View {
                         }
                     }
 
-                    if case .authorized(let permit) = authStatus, !permit.ownerName.isEmpty {
-                        Text(permit.ownerName)
-                            .font(.caption)
-                            .foregroundStyle(textColor.opacity(0.9))
+                    if case .authorized(let permit) = authStatus {
+                        if permit.permitType.lowercased() == "local_resident" {
+                            Text("Local Resident — No Jurisdiction")
+                                .font(.caption.bold())
+                                .foregroundStyle(textColor)
+                        }
+                        if !permit.ownerName.isEmpty {
+                            Text(permit.ownerName)
+                                .font(.caption)
+                                .foregroundStyle(textColor.opacity(0.9))
+                        }
                     }
                     if case .tagOnly(let permit) = authStatus {
                         if !permit.ownerName.isEmpty {

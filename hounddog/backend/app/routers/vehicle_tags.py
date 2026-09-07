@@ -235,6 +235,71 @@ async def update_vehicle_tag(
     )
 
 
+class ConvertTagRequest(BaseModel):
+    permit_type: str
+    lot_assignment: str | None = None
+    waive_fee: bool = True
+
+
+@router.post("/{tag_id}/convert")
+async def convert_tag_to_permit(
+    tag_id: uuid.UUID,
+    data: ConvertTagRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Convert a vehicle tag into a real permit.
+
+    Keeps the same record (same plate, owner info) and just changes
+    permit_type, assigns lots, clears the tag flag, and generates a
+    permit number.
+    """
+    from ..models.permit_type import PermitType
+    from ..services.lot_assignment import effective_lot_assignment
+
+    tag = await db.get(Permit, tag_id)
+    if not tag or tag.deleted_at or not tag.is_tag_only:
+        raise HTTPException(404, "Vehicle tag not found")
+
+    pt = (await db.execute(
+        select(PermitType).where(PermitType.code == data.permit_type)
+    )).scalar_one_or_none()
+    if not pt:
+        raise HTTPException(400, f"Unknown permit type: {data.permit_type}")
+
+    # Generate a permit number
+    seq = await db.execute(select(func.nextval("qps_permit_number_seq")))
+    seq_val = seq.scalar()
+    permit_number = f"QPS-{seq_val:05d}"
+
+    # Resolve lot assignment
+    type_lots = list(pt.lot_assignments or [])
+    lot_assignment = effective_lot_assignment(data.lot_assignment, type_lots)
+
+    from datetime import timedelta
+    from ..services.timeutils import today_local
+
+    tag.permit_type = pt.code
+    tag.lot_assignment = lot_assignment
+    tag.permit_number = permit_number
+    tag.is_tag_only = False
+    tag.start_date = today_local()
+    tag.end_date = today_local() + timedelta(days=pt.valid_days)
+    tag.status = "active"
+
+    await db.flush()
+    await db.refresh(tag)
+
+    return {
+        "id": str(tag.id),
+        "permit_number": tag.permit_number,
+        "permit_type": tag.permit_type,
+        "lot_assignment": tag.lot_assignment,
+        "name": tag.name,
+        "status": tag.status,
+    }
+
+
 @router.delete("/{tag_id}", status_code=204)
 async def delete_vehicle_tag(
     tag_id: uuid.UUID,

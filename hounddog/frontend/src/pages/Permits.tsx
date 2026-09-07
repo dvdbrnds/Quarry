@@ -824,6 +824,9 @@ export default function Permits() {
   const [tagModalOpen, setTagModalOpen] = useState(false);
   const [tagForm] = Form.useForm();
   const [tagSaving, setTagSaving] = useState(false);
+  const [convertTarget, setConvertTarget] = useState<Permit | null>(null);
+  const [convertForm] = Form.useForm();
+  const [convertSaving, setConvertSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -942,9 +945,15 @@ export default function Permits() {
       ),
     },
     ...(isAdmin ? [{
-      title: "Actions", key: "actions", width: 140, fixed: "right" as const,
+      title: "Actions", key: "actions", width: 180, fixed: "right" as const,
       render: (_: unknown, p: Permit) => (
         <Space onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          {p.is_tag_only && (
+            <Button type="link" size="small" style={{ color: "#0891b2" }} onClick={() => {
+              setConvertTarget(p);
+              convertForm.setFieldsValue({ convert_type: undefined });
+            }}>Convert</Button>
+          )}
           <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
           <Button type="link" size="small" danger disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
         </Space>
@@ -1281,6 +1290,60 @@ export default function Permits() {
           </Form.Item>
           <Form.Item name="tag_notes" label="Notes">
             <Input.TextArea rows={2} placeholder="JNET/CLEAN results, officer observations…" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Convert Tag → Permit modal */}
+      <Modal
+        title={`Convert Tag → Permit: ${convertTarget?.name ?? ""}`}
+        open={!!convertTarget}
+        onCancel={() => { setConvertTarget(null); convertForm.resetFields(); }}
+        confirmLoading={convertSaving}
+        onOk={async () => {
+          try {
+            const vals = await convertForm.validateFields();
+            setConvertSaving(true);
+            await api.vehicleTags.convert(convertTarget!.id, {
+              permit_type: vals.convert_type,
+              lot_assignment: vals.convert_lot?.length ? vals.convert_lot.join(", ") : null,
+            });
+            message.success(`Converted to ${permitTypes.find(p => p.code === vals.convert_type)?.label ?? vals.convert_type}`);
+            setConvertTarget(null);
+            convertForm.resetFields();
+            load();
+            loadMeta();
+          } catch (e: unknown) {
+            message.error(String(e));
+          } finally {
+            setConvertSaving(false);
+          }
+        }}
+        okText="Convert"
+      >
+        {convertTarget && (
+          <div style={{ marginBottom: 16 }}>
+            <p><strong>Plates:</strong> {convertTarget.plates?.join(", ")}</p>
+            {convertTarget.vehicle_make && (
+              <p><strong>Vehicle:</strong> {[convertTarget.vehicle_year, convertTarget.vehicle_color, convertTarget.vehicle_make, convertTarget.vehicle_model].filter(Boolean).join(" ")}</p>
+            )}
+            {convertTarget.tag_source && <p><strong>Source:</strong> {convertTarget.tag_source}</p>}
+          </div>
+        )}
+        <Form form={convertForm} layout="vertical">
+          <Form.Item name="convert_type" label="Convert to permit type" rules={[{ required: true, message: "Select a permit type" }]}>
+            <Select
+              placeholder="— Select permit type —"
+              options={permitTypes.map(pt => ({ label: `${pt.label}${pt.price > 0 ? ` ($${pt.price})` : " (free)"}`, value: pt.code }))}
+            />
+          </Form.Item>
+          <Form.Item name="convert_lot" label="Lot assignment (optional override)">
+            <Select
+              mode="multiple"
+              placeholder="Use type defaults"
+              allowClear
+              options={lots.map(l => ({ label: l.name, value: l.name }))}
+            />
           </Form.Item>
         </Form>
       </Modal>

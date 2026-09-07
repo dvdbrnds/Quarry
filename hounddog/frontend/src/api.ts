@@ -989,5 +989,9 @@ export const api = {
       request<VehicleTag>(`/vehicle-tags/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/vehicle-tags/${id}`, { method: "DELETE" }),
+    convert: (id: string, data: { permit_type: string; lot_assignment?: string | null; waive_fee?: boolean }) =>
+      request<{ id: string; permit_number: string; permit_type: string; lot_assignment: string; name: string; status: string }>(
+        `/vehicle-tags/${id}/convert`, { method: "POST", body: JSON.stringify(data) }
+      ),
   },
 };
