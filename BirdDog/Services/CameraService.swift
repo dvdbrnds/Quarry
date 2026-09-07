@@ -83,9 +83,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @Published var activeResolution: String = "—"
     @Published var activeFPS: String = "—"
     @Published var detectedDeviceCount: Int = 0
-    /// Negative bias protects plate highlights in bright sun. Default -0.5 EV
-    /// pulls exposure down slightly so white plates don't blow out.
-    @Published var exposureBias: Float = -0.5 {
+    /// Exposure compensation. 0 = neutral. Negative values darken (helps
+    /// prevent blown-out white plates in bright sun). Adjust via Admin Settings.
+    @Published var exposureBias: Float = 0.0 {
         didSet { applyExposureBias() }
     }
     @Published var focusScore: Double = 0
@@ -990,6 +990,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var lockedBrightnessBaseline: Double = 0.5
     @Published var lastFrameBrightness: Double = 0.5
 
+    /// Timestamp of the last exposure refresh, used as a cooldown to prevent
+    /// rapid unlock/relock cycles that cause visible flashing.
+    private var lastRefreshTime: Date = .distantPast
+
     private func scheduleExposureLock(for camera: AVCaptureDevice) {
         exposureLockTimer?.invalidate()
         exposureRefreshTimer?.invalidate()
@@ -997,14 +1001,20 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async { [weak self] in
             self?.exposureLocked = false
         }
-        // Always start brightness monitoring immediately
-        startBrightnessMonitoring(for: camera)
-        exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
+
+        // In vehicle mode, stay on continuous auto-exposure — no locking at all
+        if vehicleMode {
+            startBrightnessMonitoring(for: camera)
+            return
+        }
+
+        // Let auto-exposure settle for 4s before first lock
+        exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
             guard let self else { return }
-            // Don't lock if already in vehicle mode — brightness monitor handles that
             if !self.vehicleMode {
                 self.lockExposureAndRecordBaseline(camera)
             }
+            self.startBrightnessMonitoring(for: camera)
             self.startExposureRefreshCycle(for: camera)
         }
     }
@@ -1013,22 +1023,22 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         exposureRefreshTimer?.invalidate()
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let interval: TimeInterval = MotionSpeedService.shared.mode == .vehicle ? 25.0 : 45.0
+            let interval: TimeInterval = MotionSpeedService.shared.mode == .vehicle ? 30.0 : 60.0
             self.exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
                 self?.refreshExposure(camera)
             }
         }
     }
 
-    /// Checks frame brightness frequently and forces an exposure refresh
-    /// if brightness has drifted beyond threshold. Uses tighter thresholds
-    /// in vehicle mode where sun/shade transitions happen quickly.
+    /// Checks frame brightness periodically and forces an exposure refresh
+    /// only when brightness has drifted significantly. Runs every 2.5s with
+    /// a 30% drift threshold to avoid the unlock/relock flashing cycle.
     private func startBrightnessMonitoring(for camera: AVCaptureDevice) {
         brightnessCheckTimer?.invalidate()
-        brightnessCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
+        brightnessCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
             guard let self, self.isUsingExternalCamera else { return }
 
-            // In vehicle mode, don't lock exposure at all — keep continuous auto
+            // In vehicle mode, keep continuous auto-exposure — never lock
             if self.vehicleMode {
                 if self.exposureLocked {
                     self.log("exposure: vehicle mode detected — switching to continuous auto")
@@ -1038,9 +1048,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             }
 
             guard self.exposureLocked else { return }
+
+            // Cooldown: don't refresh more than once every 8 seconds
+            if Date().timeIntervalSince(self.lastRefreshTime) < 8.0 { return }
+
             let delta = abs(self.lastFrameBrightness - self.lockedBrightnessBaseline)
-            let threshold = 0.15
-            if delta > threshold {
+            if delta > 0.30 {
                 self.log("exposure: brightness drift \(String(format: "%.0f%%", delta * 100)) — forcing refresh")
                 self.refreshExposure(camera)
             }
@@ -1048,12 +1061,14 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     /// Briefly unlock auto-exposure to adapt to lighting changes
-    /// (sun/shade transitions, clouds), then re-lock after a short settle.
+    /// (sun/shade transitions, clouds), then re-lock after settling.
     private func refreshExposure(_ camera: AVCaptureDevice) {
         sessionQueue.async { [weak self] in
             guard let self, self.isUsingExternalCamera else { return }
             guard camera.isExposureModeSupported(.continuousAutoExposure),
                   camera.isExposureModeSupported(.locked) else { return }
+
+            self.lastRefreshTime = Date()
 
             try? camera.lockForConfiguration()
             camera.exposureMode = .continuousAutoExposure
@@ -1064,9 +1079,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 self?.exposureLocked = false
             }
 
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            // Give auto-exposure 4s to fully settle before re-locking
+            DispatchQueue.global().asyncAfter(deadline: .now() + 4.0) { [weak self] in
                 guard let self else { return }
-                // Don't re-lock if we've entered vehicle mode during the settle window
                 if self.vehicleMode { return }
                 self.lockExposureAndRecordBaseline(camera)
             }
@@ -1141,8 +1156,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             DispatchQueue.main.async { [weak self] in
                 self?.exposureLocked = false
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                self?.lockExposure(camera)
+            DispatchQueue.global().asyncAfter(deadline: .now() + 4.0) { [weak self] in
+                guard let self else { return }
+                if self.vehicleMode { return }
+                self.lockExposureAndRecordBaseline(camera)
             }
         }
     }
