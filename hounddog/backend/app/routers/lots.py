@@ -37,6 +37,19 @@ logger = logging.getLogger("quarry.lots")
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
+_AFTER_HOURS_TYPES = [
+    "faculty_staff",
+    "commuter_undergrad",
+    "commuter_grad",
+    "premium_commuter",
+    "north_premium_resident",
+    "north_guaranteed_resident",
+    "south_premium_resident",
+    "south_guaranteed_resident",
+    "steel_field_resident",
+    "south_standalone",
+]
+
 COMMUTER_EVENING_SCHEDULE = [
     {
         "season": "year_round",
@@ -53,25 +66,15 @@ COMMUTER_EVENING_SCHEDULE = [
                 "start": "16:00",
                 "end": "06:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": [
-                    "faculty_staff",
-                    "commuter_undergrad",
-                    "commuter_grad",
-                    "premium_commuter",
-                ],
-                "label": "Faculty/Staff + Commuter (Evenings & Overnight)",
+                "allowed_permit_types": _AFTER_HOURS_TYPES,
+                "label": "Faculty/Staff + Commuter + Resident (Evenings & Overnight)",
             },
             {
                 "start": "00:00",
                 "end": "23:59",
                 "days": ["sat", "sun"],
-                "allowed_permit_types": [
-                    "faculty_staff",
-                    "commuter_undergrad",
-                    "commuter_grad",
-                    "premium_commuter",
-                ],
-                "label": "Faculty/Staff + Commuter (Weekends)",
+                "allowed_permit_types": _AFTER_HOURS_TYPES,
+                "label": "Faculty/Staff + Commuter + Resident (Weekends)",
             },
         ],
     }

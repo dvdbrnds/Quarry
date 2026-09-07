@@ -544,6 +544,13 @@ async def lifespan(app: FastAPI):
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
                WHERE designation_code = 'FSC' AND access_schedule IS NOT NULL AND access_schedule::text LIKE '%07:00%'""",
+            # Add resident permit types to FSC lots after-hours schedule
+            # (allow all resident students to park in commuter lots after hours)
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"06:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["faculty_staff"],"label":"Faculty/Staff Only (Weekday Daytime)"},{"start":"16:00","end":"06:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["faculty_staff","commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","south_premium_resident","south_guaranteed_resident","steel_field_resident","south_standalone"],"label":"Faculty/Staff + Commuter + Resident (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":["faculty_staff","commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","south_premium_resident","south_guaranteed_resident","steel_field_resident","south_standalone"],"label":"Faculty/Staff + Commuter + Resident (Weekends)"}]}]'::jsonb
+               WHERE designation_code = 'FSC'
+               AND access_schedule IS NOT NULL
+               AND NOT (access_schedule::text LIKE '%steel_field_resident%')""",
             """CREATE TABLE IF NOT EXISTS app_config (
                 key VARCHAR(128) PRIMARY KEY,
                 value JSONB NOT NULL DEFAULT '{}',

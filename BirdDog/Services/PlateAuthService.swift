@@ -145,31 +145,40 @@ final class PlateAuthService: PlateCheckable {
             return .expired(permit: info)
         }
 
-        // In the system, but not allowed in this lot right now
-        if let currentLot, !record.lotZone.isEmpty,
-           !lotMatches(permitZone: record.lotZone, currentLot: currentLot) {
-            // Check if there's an active diversion: the permit holder's assigned lot
-            // is closed and diverted TO the lot the officer is currently in.
-            let diversions = HoundDogSyncService.shared.activeDiversions
-            let normalizedCurrent = Self.normalizeLotCode(currentLot)
-            let permitZones = record.lotZone
-                .split(separator: ",")
-                .map { Self.normalizeLotCode(String($0)) }
-                .filter { !$0.isEmpty }
-            let isDiverted = permitZones.contains { zone in
-                diversions[zone] == normalizedCurrent
-            }
-            if !isDiverted {
-                return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
-            }
-        }
+        // Lot access: check zone match, diversions, and time-of-day schedule
+        if let currentLot {
+            let zoneMatch = record.lotZone.isEmpty || lotMatches(permitZone: record.lotZone, currentLot: currentLot)
+            let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot })
 
-        // Time-of-day enforcement: check lot's access_schedule against permit type
-        if let currentLot,
-           let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot }),
-           !lot.accessSchedule.isEmpty,
-           !lot.isPermitTypeAllowed(record.permitType) {
-            return .wrongLot(permit: info, expectedLot: "\(currentLot) (time-restricted)", actualLot: currentLot)
+            if !zoneMatch {
+                // Check active diversion (closed lot → this lot)
+                let diversions = HoundDogSyncService.shared.activeDiversions
+                let normalizedCurrent = Self.normalizeLotCode(currentLot)
+                let permitZones = record.lotZone
+                    .split(separator: ",")
+                    .map { Self.normalizeLotCode(String($0)) }
+                    .filter { !$0.isEmpty }
+                let isDiverted = permitZones.contains { zone in
+                    diversions[zone] == normalizedCurrent
+                }
+
+                // Check if the lot's access schedule explicitly allows this permit type
+                // right now (e.g., resident students in commuter lots after hours)
+                let allowedBySchedule: Bool = {
+                    guard let lot, !lot.accessSchedule.isEmpty else { return false }
+                    return lot.isPermitTypeAllowed(record.permitType)
+                }()
+
+                if !isDiverted && !allowedBySchedule {
+                    return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
+                }
+            } else {
+                // Zone matches, but still check time-of-day restrictions
+                if let lot, !lot.accessSchedule.isEmpty,
+                   !lot.isPermitTypeAllowed(record.permitType) {
+                    return .wrongLot(permit: info, expectedLot: "\(currentLot) (time-restricted)", actualLot: currentLot)
+                }
+            }
         }
 
         // Allowed to park in this lot at this time
