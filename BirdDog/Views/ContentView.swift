@@ -424,10 +424,23 @@ struct ContentView: View {
                                 .foregroundStyle(m.skipRatio > 0.7 ? .red : .yellow)
                         }
                     }
-                    if !m.dropBreakdown.isEmpty {
-                        Text(m.dropBreakdown)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.7))
+                    HStack(spacing: 6) {
+                        if !m.dropBreakdown.isEmpty {
+                            Text(m.dropBreakdown)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                        let brightness = viewModel.cameraService.lastFrameBrightness
+                        if viewModel.cameraService.isUsingExternalCamera {
+                            let icon = brightness > 0.65 ? "sun.max.fill" : brightness < 0.3 ? "moon.fill" : "circle.lefthalf.filled"
+                            let color: Color = brightness > 0.65 ? .yellow : brightness < 0.3 ? .blue : .white.opacity(0.5)
+                            Image(systemName: icon)
+                                .font(.caption2)
+                                .foregroundStyle(color)
+                            Text(String(format: "%.0f%%", brightness * 100))
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(color)
+                        }
                     }
                 }
                 .padding(.horizontal, 10)

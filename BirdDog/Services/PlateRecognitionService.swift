@@ -365,21 +365,61 @@ final class PlateRecognitionService {
     private func autoLevelsNormalize(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let stats = frameBrightnessStats(pixelBuffer)
-        let brightnessAdj = (0.5 - stats.mean) * 0.3
-        let contrastAdj = stats.range < 0.4 ? 1.3 : (stats.range > 0.8 ? 0.9 : 1.1)
 
-        guard let adjusted = CIFilter(name: "CIColorControls", parameters: [
-            kCIInputImageKey: ciImage,
-            "inputSaturation": 1.0,
+        // Stronger correction for bright frames (sun glare on plates).
+        // Dark frames get a gentler lift to avoid amplifying noise.
+        let brightnessAdj: Double
+        if stats.mean > 0.65 {
+            // Bright/overexposed: pull down aggressively
+            brightnessAdj = (0.45 - stats.mean) * 0.6
+        } else if stats.mean < 0.3 {
+            // Dark/underexposed: lift gently
+            brightnessAdj = (0.45 - stats.mean) * 0.4
+        } else {
+            brightnessAdj = (0.5 - stats.mean) * 0.3
+        }
+
+        // Boost contrast more aggressively when the frame is washed out
+        let contrastAdj: Double
+        if stats.range < 0.25 {
+            contrastAdj = 1.5
+        } else if stats.range < 0.4 {
+            contrastAdj = 1.3
+        } else if stats.range > 0.8 {
+            contrastAdj = 0.9
+        } else {
+            contrastAdj = 1.1
+        }
+
+        var result = ciImage
+
+        // Apply brightness/contrast correction
+        if let adjusted = CIFilter(name: "CIColorControls", parameters: [
+            kCIInputImageKey: result,
+            "inputSaturation": NSNumber(value: 1.0),
             "inputContrast": NSNumber(value: contrastAdj),
             "inputBrightness": NSNumber(value: brightnessAdj),
-        ])?.outputImage else { return nil }
+        ])?.outputImage {
+            result = adjusted
+        }
+
+        // Highlight compression for overexposed frames: recovers blown-out
+        // plate text by pulling bright values down with a tone curve.
+        if stats.mean > 0.6 || stats.range < 0.3 {
+            if let highlights = CIFilter(name: "CIHighlightShadowAdjust", parameters: [
+                kCIInputImageKey: result,
+                "inputHighlightAmount": NSNumber(value: 0.6),
+                "inputShadowAmount": NSNumber(value: 0.0),
+            ])?.outputImage {
+                result = highlights
+            }
+        }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let output = ensureBuffer(&normalizedBuffer, width: width, height: height)
         guard let output else { return nil }
-        ciContext.render(adjusted, to: output)
+        ciContext.render(result, to: output)
         return output
     }
 

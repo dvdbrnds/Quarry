@@ -83,7 +83,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @Published var activeResolution: String = "—"
     @Published var activeFPS: String = "—"
     @Published var detectedDeviceCount: Int = 0
-    @Published var exposureBias: Float = 0 {
+    /// Negative bias protects plate highlights in bright sun. Default -0.5 EV
+    /// pulls exposure down slightly so white plates don't blow out.
+    @Published var exposureBias: Float = -0.5 {
         didSet { applyExposureBias() }
     }
     @Published var focusScore: Double = 0

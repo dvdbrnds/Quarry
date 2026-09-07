@@ -119,6 +119,24 @@ struct AdminSettingsView: View {
                 NotificationCenter.default.post(name: NSNotification.Name("BirdDogCameraDidChange"), object: nil)
             }
 
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Label("Exposure Compensation", systemImage: "sun.max")
+                    Spacer()
+                    Text(String(format: "%+.1f EV", cameraService.exposureBias))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(value: Binding(
+                    get: { cameraService.exposureBias },
+                    set: { cameraService.exposureBias = $0 }
+                ), in: -2.0...2.0, step: 0.5)
+                Text("Negative = darker (reduces sun glare on plates). Default: -0.5")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Button {
                 cameraService.forceReconnect()
             } label: {
