@@ -588,13 +588,28 @@ final class PlateReaderViewModel: ObservableObject {
 
     private func isFuzzyDuplicate(_ text: String) -> Bool {
         let now = Date()
-        for seen in seenPlates {
-            // Use stricter match for older reads, looser for very recent ones
+        for (idx, seen) in seenPlates.enumerated() {
             let age = now.timeIntervalSince(seen.time)
+            let isMatch: Bool
             if age < 5.0 {
-                if isFuzzyMatchRecent(text, seen.text) { return true }
+                isMatch = isFuzzyMatchRecent(text, seen.text)
             } else {
-                if isFuzzyMatch(text, seen.text) { return true }
+                isMatch = isFuzzyMatch(text, seen.text)
+            }
+            if isMatch {
+                // If the new reading is better (longer = more complete, or matches a
+                // known format while the old one didn't), upgrade the scan log entry
+                // instead of silently suppressing the correction.
+                let newMatchesFormat = PlatePatternMatcher.matchesAnyNAFormat(text)
+                let oldMatchesFormat = PlatePatternMatcher.matchesAnyNAFormat(seen.text)
+                let isBetterRead = (text.count > seen.text.count && newMatchesFormat)
+                    || (newMatchesFormat && !oldMatchesFormat)
+
+                if isBetterRead {
+                    upgradeScanLogEntry(from: seen.text, to: text)
+                    seenPlates[idx] = (text: text, time: now)
+                }
+                return true
             }
         }
         for key in candidateCounts.keys where key != text {
@@ -608,6 +623,46 @@ final class PlateReaderViewModel: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Upgrades an existing scan log entry when a better OCR reading arrives.
+    /// Re-checks the plate against the permit database with the corrected text.
+    private func upgradeScanLogEntry(from oldText: String, to newText: String) {
+        guard let idx = scanLog.firstIndex(where: { $0.text == oldText }) else { return }
+        let old = scanLog[idx]
+
+        let authResult = authService.checkDetailed(plate: newText, currentLot: geofenceService.currentLotName)
+        let normalizedPlate = newText.uppercased().trimmingCharacters(in: .whitespaces)
+        let currentLotName = geofenceService.currentLotName ?? ""
+        let isTicketedHere: Bool
+        if let ticketedLot = ticketedPlates[normalizedPlate] {
+            isTicketedHere = ticketedLot.isEmpty || currentLotName.isEmpty || ticketedLot == currentLotName
+        } else {
+            isTicketedHere = false
+        }
+        let effectiveStatus = isTicketedHere ? .ticketed : authResult.status
+
+        let upgraded = ScannedPlate(
+            text: newText,
+            timestamp: old.timestamp,
+            confidence: old.confidence,
+            framesConfirmed: old.framesConfirmed,
+            authStatus: effectiveStatus,
+            matchMethod: authResult.matchMethod,
+            matchedPlate: authResult.matchedPlate,
+            cameraName: old.cameraName,
+            detectionLatency: old.detectionLatency
+        )
+        scanLog[idx] = upgraded
+        latestAuthStatus = effectiveStatus
+
+        // Also update seen plates with the corrected text
+        if let seenIdx = seenPlates.firstIndex(where: { $0.text == oldText }) {
+            seenPlates[seenIdx] = (text: newText, time: Date())
+        }
+
+        triggerFeedback(for: effectiveStatus)
+        persistScanLog()
     }
 
     /// Dedup against already-logged plates.

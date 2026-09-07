@@ -315,16 +315,21 @@ enum PlatePatternMatcher {
         return localFormats.contains { $0.firstMatch(in: cleaned, range: range) != nil }
     }
 
-    /// Returns true if a 6-char read could be the result of OCR clipping
-    /// the first or last character off a 7-char local-format plate.
-    /// e.g. "YA3943" could be "LYA3943" (PA) with a dropped leading letter.
+    /// Returns true if a 6-char read could be the result of OCR dropping
+    /// a character from a 7-char local-format plate.
+    /// e.g. "YA3943" could be "LYA3943" (PA) with a dropped leading letter,
+    /// or "MXG526" could be "MXG3526" (PA) with a dropped middle digit.
     static func couldBeClippedLocalPlate(_ text: String) -> Bool {
         guard text.count == 6 else { return false }
-        for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
-            let prepended = String(ch) + text
-            if isLocalFormat(prepended) { return true }
-            let appended = text + String(ch)
-            if isLocalFormat(appended) { return true }
+        let chars = Array(text)
+        let allChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        for ch in allChars {
+            // Try inserting at every position (0 through 6) to make a 7-char plate
+            for pos in 0...chars.count {
+                var candidate = chars
+                candidate.insert(ch, at: pos)
+                if isLocalFormat(String(candidate)) { return true }
+            }
         }
         return false
     }
