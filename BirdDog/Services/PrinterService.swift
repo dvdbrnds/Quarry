@@ -32,9 +32,9 @@ final class PrinterService: ObservableObject {
 
     struct DiscoveredPrinter: Identifiable {
         let identifier: String
-        let model: String
         #if canImport(StarIO10)
         let interfaceType: InterfaceType
+        let model: String
         var id: String { "\(interfaceType.rawValue)::\(identifier)" }
         var interfaceLabel: String {
             switch interfaceType {
@@ -47,6 +47,7 @@ final class PrinterService: ObservableObject {
             }
         }
         #else
+        let model: String
         var id: String { identifier }
         var interfaceLabel: String { "Unavailable" }
         #endif

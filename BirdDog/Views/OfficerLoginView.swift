@@ -6,6 +6,7 @@ struct OfficerLoginView: View {
     @State private var showDemoLogin = false
     @State private var demoUsername = ""
     @State private var demoPassword = ""
+    @State private var hiddenTapCount = 0
 
     var body: some View {
         VStack(spacing: 32) {
@@ -69,13 +70,12 @@ struct OfficerLoginView: View {
                     .foregroundStyle(.orange)
             }
 
-            Button {
-                showDemoLogin.toggle()
-            } label: {
-                Text("Demo Login")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+                .onTapGesture(count: 5) {
+                    showDemoLogin = true
+                }
 
             Spacer()
                 .frame(height: 40)
