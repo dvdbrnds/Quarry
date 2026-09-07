@@ -409,7 +409,7 @@ function VisitorFlow() {
                       </>
                     )}
 
-                    {selectedPreset === "__other__" || (presets.length === 0 && !usingPreset) ? (
+                    {!usingPreset ? (
                       <>
                         <Alert
                           type="warning"
@@ -471,19 +471,12 @@ function VisitorFlow() {
 
                     {/* Partner selected but not "other": ready to submit */}
                     {/* No partner choice yet when presets exist: still allow submit only after choice? Keep submit always; backend requires sponsor unless preset */}
-                    {presets.length > 0 && selectedPreset === null && (
-                      <p className="text-xs text-gray-500 mb-4">
-                        Select a campus partner above, or choose Other / not listed, to continue.
-                      </p>
-                    )}
-
                     <Button
                       type="primary"
                       htmlType="submit"
                       loading={submitting}
                       block
                       style={{ background: brand.primaryColor }}
-                      disabled={presets.length > 0 && selectedPreset === null}
                     >
                       Submit for sponsor approval
                     </Button>
