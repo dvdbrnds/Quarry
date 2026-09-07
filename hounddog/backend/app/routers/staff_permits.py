@@ -135,6 +135,8 @@ async def enroll_vehicle(
     db.add(permit)
     await db.flush()
     await db.refresh(permit)
+    from ..services.tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, permit.plates)
 
     return VehicleRead(
         id=str(permit.id),

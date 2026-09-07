@@ -242,6 +242,9 @@ async def _fulfill_admin_charge(db: AsyncSession, session_data: dict) -> bool:
         description=f"Admin permit ({permit_type_code}) — {plate}" if plate else f"Admin permit ({permit_type_code})",
     )
     db.add(payment)
+    # Retire matching vehicle tags
+    from .tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, permit.plates or ([plate] if plate else []))
     await db.flush()
 
     if permit.email:

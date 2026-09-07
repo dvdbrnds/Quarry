@@ -808,6 +808,9 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
     es = es_result.scalar()
     ticket.fine_amount = es.permit_fine_reduction if es else Decimal("0.00")
     ticket.status = "resolved_permit"
+    # Retire matching vehicle tags
+    from ..services.tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, [plate] if plate else [])
     await db.flush()
     return True
 
@@ -872,6 +875,8 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
     db.add(payment)
 
     app.status = "accepted"
+    from ..services.tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, [plate] if plate else [])
     await db.flush()
     return True
 
@@ -999,6 +1004,8 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
     db.add(payment)
 
     app.status = "accepted"
+    from ..services.tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, [plate or app.plate] if (plate or app.plate) else [])
     await db.flush()
     return True
 
@@ -1075,6 +1082,9 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
         description=f"Standalone Permit ({permit_type_code}) — {plate}" if plate else f"Standalone Permit ({permit_type_code})",
     )
     db.add(payment)
+    # Retire matching vehicle tags
+    from ..services.tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, [plate] if plate else [])
     await db.flush()
     return True
 

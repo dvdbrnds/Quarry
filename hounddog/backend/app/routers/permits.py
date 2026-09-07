@@ -300,6 +300,9 @@ async def create_permit(data: PermitCreate, db: AsyncSession = Depends(get_db)):
     db.add(permit)
     await db.flush()
     await db.refresh(permit)
+    # Retire any vehicle tags matching these plates
+    from ..services.tag_upgrade import retire_tags_for_plates
+    await retire_tags_for_plates(db, permit.plates)
     await _notify_permit_change("created", 1)
     return permit
 
@@ -356,6 +359,8 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
         db.add(permit)
         await db.flush()
         await db.refresh(permit)
+        from ..services.tag_upgrade import retire_tags_for_plates
+        await retire_tags_for_plates(db, permit.plates)
         await _notify_permit_change("created", 1)
         return {"permit_id": str(permit.id), "status": "active", "waived": True}
 
