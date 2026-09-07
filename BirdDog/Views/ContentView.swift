@@ -81,6 +81,42 @@ struct ContentView: View {
                 now = t
             }
         }
+        .sheet(isPresented: $showExportSheet, onDismiss: { exportURLs = [] }) {
+            ShareSheet(activityItems: exportURLs)
+        }
+        .alert("Clear Scan Log?", isPresented: $showClearConfirm) {
+            Button("Clear", role: .destructive) { viewModel.clearLog() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove all \(viewModel.scanLog.count) scanned plates from this session.")
+        }
+        .onChange(of: pendingMenuAction) { _, action in
+            guard let action else { return }
+            pendingMenuAction = nil
+            switch action {
+            case .sessionHistory:
+                viewModel.pauseScanning()
+                showSessionHistory = true
+            case .clearLog:
+                showClearConfirm = true
+            case .exportCSV:
+                var urls: [URL] = []
+                if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
+                if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
+                if !urls.isEmpty {
+                    exportURLs = urls
+                    showExportSheet = true
+                }
+            case .performanceSummary:
+                var urls: [URL] = []
+                if let summary = LogExporter.exportSessionSummary(from: viewModel.scanLog) { urls.append(summary) }
+                if let csv = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(csv) }
+                if !urls.isEmpty {
+                    exportURLs = urls
+                    showExportSheet = true
+                }
+            }
+        }
     }
 
     private var scannerView: some View {
@@ -171,15 +207,6 @@ struct ContentView: View {
                 .background(Color(.systemBackground))
             }
         }
-        .sheet(isPresented: $showExportSheet, onDismiss: { exportURLs = [] }) {
-            ShareSheet(activityItems: exportURLs)
-        }
-        .alert("Clear Scan Log?", isPresented: $showClearConfirm) {
-            Button("Clear", role: .destructive) { viewModel.clearLog() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove all \(viewModel.scanLog.count) scanned plates from this session.")
-        }
         .sheet(isPresented: $showSessionHistory) {
             NavigationStack {
                 SessionHistoryView(viewModel: viewModel)
@@ -255,33 +282,6 @@ struct ContentView: View {
         }
         .onChange(of: showSessionHistory) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
-        }
-        .onChange(of: pendingMenuAction) { _, action in
-            guard let action else { return }
-            pendingMenuAction = nil
-            switch action {
-            case .sessionHistory:
-                viewModel.pauseScanning()
-                showSessionHistory = true
-            case .clearLog:
-                showClearConfirm = true
-            case .exportCSV:
-                var urls: [URL] = []
-                if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
-                if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
-                if !urls.isEmpty {
-                    exportURLs = urls
-                    showExportSheet = true
-                }
-            case .performanceSummary:
-                var urls: [URL] = []
-                if let summary = LogExporter.exportSessionSummary(from: viewModel.scanLog) { urls.append(summary) }
-                if let csv = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(csv) }
-                if !urls.isEmpty {
-                    exportURLs = urls
-                    showExportSheet = true
-                }
-            }
         }
     }
 
