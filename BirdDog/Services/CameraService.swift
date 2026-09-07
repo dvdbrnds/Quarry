@@ -985,15 +985,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var exposureLockTimer: Timer?
     private var exposureRefreshTimer: Timer?
     private var brightnessCheckTimer: Timer?
-    /// Mean brightness (0-1) at the time exposure was locked. Used to detect
-    /// lighting changes that warrant an immediate exposure refresh.
-    private var lockedBrightnessBaseline: Double = 0.5
     @Published var lastFrameBrightness: Double = 0.5
 
-    /// Timestamp of the last exposure refresh, used as a cooldown to prevent
-    /// rapid unlock/relock cycles that cause visible flashing.
-    private var lastRefreshTime: Date = .distantPast
-
+    /// External cameras now stay in continuous auto-exposure permanently.
+    /// No lock/unlock cycling — the camera's built-in AE adjusts smoothly.
+    /// The old lock→drift-detect→unlock→relock cycle caused visible strobing.
     private func scheduleExposureLock(for camera: AVCaptureDevice) {
         exposureLockTimer?.invalidate()
         exposureRefreshTimer?.invalidate()
@@ -1001,143 +997,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async { [weak self] in
             self?.exposureLocked = false
         }
-
-        // In vehicle mode, stay on continuous auto-exposure — no locking at all
-        if vehicleMode {
-            startBrightnessMonitoring(for: camera)
-            return
-        }
-
-        // Let auto-exposure settle for 4s before first lock
-        exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            if !self.vehicleMode {
-                self.lockExposureAndRecordBaseline(camera)
-            }
-            self.startBrightnessMonitoring(for: camera)
-            self.startExposureRefreshCycle(for: camera)
-        }
-    }
-
-    private func startExposureRefreshCycle(for camera: AVCaptureDevice) {
-        exposureRefreshTimer?.invalidate()
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            let interval: TimeInterval = MotionSpeedService.shared.mode == .vehicle ? 30.0 : 60.0
-            self.exposureRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                self?.refreshExposure(camera)
-            }
-        }
-    }
-
-    /// Checks frame brightness periodically and forces an exposure refresh
-    /// only when brightness has drifted significantly. Runs every 2.5s with
-    /// a 30% drift threshold to avoid the unlock/relock flashing cycle.
-    private func startBrightnessMonitoring(for camera: AVCaptureDevice) {
-        brightnessCheckTimer?.invalidate()
-        brightnessCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
-            guard let self, self.isUsingExternalCamera else { return }
-
-            // In vehicle mode, keep continuous auto-exposure — never lock
-            if self.vehicleMode {
-                if self.exposureLocked {
-                    self.log("exposure: vehicle mode detected — switching to continuous auto")
-                    self.unlockExposurePermanent(camera)
-                }
-                return
-            }
-
-            guard self.exposureLocked else { return }
-
-            // Cooldown: don't refresh more than once every 8 seconds
-            if Date().timeIntervalSince(self.lastRefreshTime) < 8.0 { return }
-
-            let delta = abs(self.lastFrameBrightness - self.lockedBrightnessBaseline)
-            if delta > 0.30 {
-                self.log("exposure: brightness drift \(String(format: "%.0f%%", delta * 100)) — forcing refresh")
-                self.refreshExposure(camera)
-            }
-        }
-    }
-
-    /// Briefly unlock auto-exposure to adapt to lighting changes
-    /// (sun/shade transitions, clouds), then re-lock after settling.
-    private func refreshExposure(_ camera: AVCaptureDevice) {
-        sessionQueue.async { [weak self] in
-            guard let self, self.isUsingExternalCamera else { return }
-            guard camera.isExposureModeSupported(.continuousAutoExposure),
-                  camera.isExposureModeSupported(.locked) else { return }
-
-            self.lastRefreshTime = Date()
-
-            try? camera.lockForConfiguration()
-            camera.exposureMode = .continuousAutoExposure
-            camera.unlockForConfiguration()
-            self.log("exposure: unlocked for refresh")
-
-            DispatchQueue.main.async { [weak self] in
-                self?.exposureLocked = false
-            }
-
-            // Give auto-exposure 4s to fully settle before re-locking
-            DispatchQueue.global().asyncAfter(deadline: .now() + 4.0) { [weak self] in
-                guard let self else { return }
-                if self.vehicleMode { return }
-                self.lockExposureAndRecordBaseline(camera)
-            }
-        }
-    }
-
-    /// Switch to permanent continuous auto-exposure (vehicle mode).
-    private func unlockExposurePermanent(_ camera: AVCaptureDevice) {
-        sessionQueue.async { [weak self] in
-            guard let self, self.isUsingExternalCamera else { return }
-            guard camera.isExposureModeSupported(.continuousAutoExposure) else { return }
-
-            try? camera.lockForConfiguration()
-            camera.exposureMode = .continuousAutoExposure
-            camera.unlockForConfiguration()
-            self.log("exposure: permanent auto (vehicle mode)")
-
-            DispatchQueue.main.async { [weak self] in
-                self?.exposureLocked = false
-            }
-        }
-    }
-
-    private func lockExposure(_ camera: AVCaptureDevice) {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            guard camera.isExposureModeSupported(.locked) else {
-                self.log("exposure: camera does not support locked mode")
-                return
-            }
-            try? camera.lockForConfiguration()
-            camera.exposureMode = .locked
-            camera.unlockForConfiguration()
-            self.log("exposure: LOCKED at current level (ISO=\(camera.iso), shutter=\(camera.exposureDuration.seconds)s)")
-            DispatchQueue.main.async {
-                self.exposureLocked = true
-            }
-        }
-    }
-
-    private func lockExposureAndRecordBaseline(_ camera: AVCaptureDevice) {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            guard camera.isExposureModeSupported(.locked) else {
-                self.log("exposure: camera does not support locked mode")
-                return
-            }
-            try? camera.lockForConfiguration()
-            camera.exposureMode = .locked
-            camera.unlockForConfiguration()
-            self.lockedBrightnessBaseline = self.lastFrameBrightness
-            self.log("exposure: LOCKED (ISO=\(camera.iso), shutter=\(camera.exposureDuration.seconds)s, brightness baseline=\(String(format: "%.2f", self.lockedBrightnessBaseline)))")
-            DispatchQueue.main.async {
-                self.exposureLocked = true
-            }
-        }
+        log("exposure: continuous auto-exposure (no locking)")
     }
 
     private func applyExposureBias() {
@@ -1146,21 +1006,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             try? camera.lockForConfiguration()
             let clamped = max(camera.minExposureTargetBias, min(self.exposureBias, camera.maxExposureTargetBias))
             camera.setExposureTargetBias(clamped, completionHandler: nil)
-
             if camera.isExposureModeSupported(.continuousAutoExposure) {
                 camera.exposureMode = .continuousAutoExposure
             }
             camera.unlockForConfiguration()
-            self.log("exposure bias → \(clamped), re-evaluating")
-
-            DispatchQueue.main.async { [weak self] in
-                self?.exposureLocked = false
-            }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 4.0) { [weak self] in
-                guard let self else { return }
-                if self.vehicleMode { return }
-                self.lockExposureAndRecordBaseline(camera)
-            }
+            self.log("exposure bias → \(clamped)")
         }
     }
 
