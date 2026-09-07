@@ -13,6 +13,7 @@ struct ScanLogView: View {
     var onTagTapped: ((ScannedPlate) -> Void)?
 
     @State private var filter: StatusFilter = .all
+    @State private var selectedDiagnosticEntry: ScannedPlate?
 
     enum StatusFilter: String, CaseIterable {
         case all = "All"
@@ -85,6 +86,9 @@ struct ScanLogView: View {
                     }
                 }
             }
+        }
+        .sheet(item: $selectedDiagnosticEntry) { entry in
+            DiagnosticCaptureView(entry: entry)
         }
     }
 
@@ -180,6 +184,17 @@ struct ScanLogView: View {
                         .padding(.vertical, 6)
                         .background(Color.blue, in: Capsule())
                         .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if entry.diagnosticImagePath != nil {
+                Button {
+                    selectedDiagnosticEntry = entry
+                } label: {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.caption)
+                        .foregroundStyle(.purple)
                 }
                 .buttonStyle(.plain)
             }

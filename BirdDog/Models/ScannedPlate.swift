@@ -24,6 +24,9 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
     var violationPhotoPath: String?
     /// The lot in which this plate was ticketed (nil if not ticketed)
     var ticketedInLot: String?
+    /// Path to JPEG snapshot captured at the moment of plate confirmation
+    /// (only populated when Diagnostic Captures is enabled in settings).
+    var diagnosticImagePath: String?
 
     init(
         text: String,
@@ -36,7 +39,8 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         cameraName: String = "",
         detectionLatency: TimeInterval = 0,
         violationPhotoPath: String? = nil,
-        ticketedInLot: String? = nil
+        ticketedInLot: String? = nil,
+        diagnosticImagePath: String? = nil
     ) {
         self.id = UUID()
         self.text = text
@@ -50,6 +54,7 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         self.detectionLatency = detectionLatency
         self.violationPhotoPath = violationPhotoPath
         self.ticketedInLot = ticketedInLot
+        self.diagnosticImagePath = diagnosticImagePath
     }
 }
 

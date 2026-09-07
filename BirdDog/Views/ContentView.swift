@@ -27,6 +27,7 @@ struct ContentView: View {
         case clearLog
         case exportCSV
         case performanceSummary
+        case exportDiagnosticCaptures
     }
     @State private var pendingMenuAction: MenuAction?
     @State private var isExporting = false
@@ -144,6 +145,31 @@ struct ContentView: View {
                     var urls: [URL] = []
                     if let summary = LogExporter.exportSessionSummary(from: log) { urls.append(summary) }
                     if let csv = LogExporter.exportCSV(from: log) { urls.append(csv) }
+                    DispatchQueue.main.async {
+                        isExporting = false
+                        if !urls.isEmpty {
+                            exportURLs = urls
+                            showExportSheet = true
+                        }
+                    }
+                }
+            case .exportDiagnosticCaptures:
+                guard !isExporting else { return }
+                isExporting = true
+                let log = viewModel.scanLog
+                DispatchQueue.global(qos: .userInitiated).async {
+                    var urls: [URL] = []
+                    // Include CSV with image_file column
+                    if let csv = LogExporter.exportCSVWithImages(from: log) { urls.append(csv) }
+                    // Include all diagnostic images
+                    for entry in log {
+                        if let path = entry.diagnosticImagePath {
+                            let url = URL(fileURLWithPath: path)
+                            if FileManager.default.fileExists(atPath: path) {
+                                urls.append(url)
+                            }
+                        }
+                    }
                     DispatchQueue.main.async {
                         isExporting = false
                         if !urls.isEmpty {
@@ -611,6 +637,13 @@ struct ContentView: View {
                     Label("Performance Summary", systemImage: "chart.bar")
                 }
                 .disabled(viewModel.scanLog.isEmpty || isExporting)
+                if viewModel.scanLog.contains(where: { $0.diagnosticImagePath != nil }) {
+                    Divider()
+                    Button { pendingMenuAction = .exportDiagnosticCaptures } label: {
+                        Label("Export Diagnostic Captures", systemImage: "camera.viewfinder")
+                    }
+                    .disabled(isExporting)
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.body)

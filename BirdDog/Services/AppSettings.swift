@@ -19,6 +19,7 @@ final class AppSettings: ObservableObject {
     private static let showLiveStatsKey = "AppSettings.showLiveStats"
     private static let studentFacingURLKey = "AppSettings.studentFacingURL"
     private static let externalCameraRotationKey = "AppSettings.externalCameraRotation"
+    private static let diagnosticCapturesKey = "AppSettings.diagnosticCaptures"
     private static let defaultPasscode = "1234"
     private static let defaultRedirectURI = "edu.moravian.birddog://callback"
     /// Default wildcard zone labels — permits with these lot-zone strings are valid in any lot.
@@ -89,6 +90,12 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(externalCameraRotation, forKey: Self.externalCameraRotationKey) }
     }
 
+    /// When enabled, saves a JPEG snapshot of every confirmed plate read
+    /// for visual verification of OCR accuracy.
+    @Published var diagnosticCaptures: Bool {
+        didSet { UserDefaults.standard.set(diagnosticCaptures, forKey: Self.diagnosticCapturesKey) }
+    }
+
     /// The base URL to use for payment QR codes and deep links.
     var paymentBaseURL: String {
         let url = studentFacingURL.isEmpty ? houndDogURL : studentFacingURL
@@ -123,6 +130,7 @@ final class AppSettings: ObservableObject {
         self.showLiveStats = UserDefaults.standard.bool(forKey: Self.showLiveStatsKey)
         self.studentFacingURL = UserDefaults.standard.string(forKey: Self.studentFacingURLKey) ?? ""
         self.externalCameraRotation = UserDefaults.standard.integer(forKey: Self.externalCameraRotationKey)
+        self.diagnosticCaptures = UserDefaults.standard.bool(forKey: Self.diagnosticCapturesKey)
     }
 
     func attemptUnlock(with code: String) -> Bool {

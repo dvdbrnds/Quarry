@@ -575,6 +575,12 @@ final class PlateReaderViewModel: ObservableObject {
 
             let camName = cameraService.activeCameraName
 
+            // Capture diagnostic snapshot if enabled
+            var diagPath: String?
+            if AppSettings.shared.diagnosticCaptures {
+                diagPath = cameraService.captureDiagnosticSnapshot(plateText: consensusText)
+            }
+
             scanLog.insert(
                 ScannedPlate(
                     text: consensusText,
@@ -585,7 +591,8 @@ final class PlateReaderViewModel: ObservableObject {
                     matchMethod: authResult.matchMethod,
                     matchedPlate: authResult.matchedPlate,
                     cameraName: camName,
-                    detectionLatency: latency
+                    detectionLatency: latency,
+                    diagnosticImagePath: diagPath
                 ),
                 at: 0
             )

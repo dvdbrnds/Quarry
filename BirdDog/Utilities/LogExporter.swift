@@ -39,6 +39,39 @@ enum LogExporter {
         return writeToTemp(content: csv, extension: "csv", prefix: "birddog_scan")
     }
 
+    /// CSV export that includes an image_file column referencing the diagnostic capture filename.
+    static func exportCSVWithImages(from log: [ScannedPlate]) -> URL? {
+        var csv = "timestamp,plate_text,confidence,frames_confirmed,detection_latency_s,camera,auth_status,match_method,matched_plate,permit_holder,permit_type,vehicle,image_file\n"
+        for entry in log {
+            let ts = isoFormatter.string(from: entry.timestamp)
+            let status = entry.authStatus.label
+            let holder: String
+            let permitType: String
+            let vehicle: String
+
+            switch entry.authStatus {
+            case .authorized(let permit), .wrongLot(let permit, _, _), .expired(let permit), .tagOnly(let permit):
+                holder = permit.ownerName.replacingOccurrences(of: ",", with: ";")
+                permitType = permit.displayType
+                vehicle = permit.vehicleDescription.replacingOccurrences(of: ",", with: ";")
+            default:
+                holder = ""
+                permitType = ""
+                vehicle = ""
+            }
+
+            let method = entry.matchMethod.rawValue
+            let matched = entry.matchedPlate != entry.text ? entry.matchedPlate : ""
+            let cam = entry.cameraName.replacingOccurrences(of: ",", with: ";")
+            let imageFile = entry.diagnosticImagePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+
+            csv += "\(ts),\(entry.text),\(String(format: "%.3f", entry.confidence)),\(entry.framesConfirmed),"
+            csv += "\(String(format: "%.3f", entry.detectionLatency)),\(cam),"
+            csv += "\(status),\(method),\(matched),\(holder),\(permitType),\(vehicle),\(imageFile)\n"
+        }
+        return writeToTemp(content: csv, extension: "csv", prefix: "birddog_diagnostic_scan")
+    }
+
     static func exportDiagnosticCSV(from log: [DiagnosticEntry]) -> URL? {
         var csv = "timestamp,raw_text,normalized,confidence,aspect_ratio,accepted,rejection_reason\n"
         for entry in log {

@@ -107,6 +107,10 @@ struct AdminSettingsView: View {
                 Label("Show Live Stats", systemImage: "speedometer")
             }
 
+            Toggle(isOn: $appSettings.diagnosticCaptures) {
+                Label("Diagnostic Captures", systemImage: "camera.viewfinder")
+            }
+
             Picker(selection: $appSettings.externalCameraRotation) {
                 Text("0°").tag(0)
                 Text("90°").tag(90)
@@ -132,7 +136,7 @@ struct AdminSettingsView: View {
                     get: { cameraService.exposureBias },
                     set: { cameraService.exposureBias = $0 }
                 ), in: -2.0...2.0, step: 0.5)
-                Text("Negative = darker (reduces sun glare on plates). Default: -0.5")
+                Text("Negative = darker (reduces sun glare on plates). Default: 0")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -274,6 +274,65 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         try? FileManager.default.removeItem(atPath: path)
     }
 
+    /// Capture the current frame as a full-resolution JPEG for diagnostic review.
+    /// Returns the file path, or nil if no frame is available.
+    func captureDiagnosticSnapshot(plateText: String) -> String? {
+        guard let buffer = latestSampleBuffer,
+              let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
+
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+
+        let imageOrientation: UIImage.Orientation
+        if isUsingExternalCamera {
+            switch externalCameraOrientation {
+            case .right: imageOrientation = .right
+            case .down:  imageOrientation = .down
+            case .left:  imageOrientation = .left
+            default:     imageOrientation = .up
+            }
+        } else {
+            imageOrientation = .right
+        }
+        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: imageOrientation)
+
+        // Keep higher resolution for diagnostic readability
+        let maxDim: CGFloat = 1280
+        let scale = min(maxDim / uiImage.size.width, maxDim / uiImage.size.height, 1.0)
+        let targetSize = CGSize(width: uiImage.size.width * scale, height: uiImage.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
+
+        guard let jpegData = resized.jpegData(compressionQuality: 0.8) else { return nil }
+
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("diagnostic_captures", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HHmmss"
+        let timeStr = formatter.string(from: Date())
+        let safePlate = plateText.replacingOccurrences(of: " ", with: "_")
+        let filename = "\(timeStr)_\(safePlate).jpg"
+        let fileURL = dir.appendingPathComponent(filename)
+        try? jpegData.write(to: fileURL)
+        return fileURL.path
+    }
+
+    /// Directory URL for diagnostic capture images.
+    static var diagnosticCapturesDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("diagnostic_captures", isDirectory: true)
+    }
+
+    /// Remove all diagnostic capture images.
+    static func clearDiagnosticCaptures() {
+        let dir = diagnosticCapturesDirectory
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
     /// Force a full session teardown and rebuild. Exposed for the admin
     /// "Reconnect Camera" button and internal hub retry logic.
     func forceReconnect() {
