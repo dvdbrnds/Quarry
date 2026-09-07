@@ -3,7 +3,7 @@ import CoreGraphics
 
 enum PlatePatternMatcher {
 
-    private static let broadPattern = try! NSRegularExpression(pattern: "^[A-Z0-9]{5,7}$")
+    private static let broadPattern = try! NSRegularExpression(pattern: "^[A-Z0-9]{5,8}$")
     private static let paPattern = try! NSRegularExpression(pattern: "^[A-Z]{3}[0-9]{4}$")
 
     /// Plates from PA and nearby states (NJ, NY, DE, MD, CT) -- instant confirm
@@ -15,6 +15,15 @@ enum PlatePatternMatcher {
         try! NSRegularExpression(pattern: "^[0-9][A-Z]{2}[0-9]{4}$"), // MD: 1AB2345
         try! NSRegularExpression(pattern: "^[A-Z]{2}[0-9]{5}$"),      // CT: AB12345
         try! NSRegularExpression(pattern: "^[A-Z]{3}[0-9]{3}$"),      // many states: ABC123
+    ]
+
+    /// Temporary/transitional plate formats for PA, NJ, NY
+    private static let tempFormats = [
+        try! NSRegularExpression(pattern: "^[0-9]{7,8}$"),            // PA temp: 7-8 digit numeric
+        try! NSRegularExpression(pattern: "^T[0-9]{6,7}$"),           // NJ/NY temp: T + 6-7 digits
+        try! NSRegularExpression(pattern: "^[A-Z]{2}[0-9]{6}$"),      // NY temp: AB123456
+        try! NSRegularExpression(pattern: "^[0-9]{3}[A-Z][0-9]{4}$"), // PA temp alt: 123A4567
+        try! NSRegularExpression(pattern: "^[A-Z][0-9]{7}$"),         // Generic temp: A1234567
     ]
 
     /// All known North American plate formats (local + distant)
@@ -192,10 +201,13 @@ enum PlatePatternMatcher {
         let cleaned = normalize(text)
 
         guard cleaned.count >= 5 else { return .tooShort }
-        guard cleaned.count <= 7 else { return .tooLong }
+        guard cleaned.count <= 8 else { return .tooLong }
 
         let range = NSRange(cleaned.startIndex..., in: cleaned)
         guard broadPattern.firstMatch(in: cleaned, range: range) != nil else { return .invalidChars }
+
+        // Check temp plate formats early — they have different letter/digit rules
+        if matchesTempFormat(cleaned) { return nil }
 
         let letterCount = cleaned.filter(\.isLetter).count
         let digitCount = cleaned.filter(\.isNumber).count
@@ -283,7 +295,16 @@ enum PlatePatternMatcher {
 
     static func matchesAnyNAFormat(_ text: String) -> Bool {
         let range = NSRange(text.startIndex..., in: text)
-        return naFormats.flatMap { $0 }.contains { $0.firstMatch(in: text, range: range) != nil }
+        if naFormats.flatMap({ $0 }).contains(where: { $0.firstMatch(in: text, range: range) != nil }) {
+            return true
+        }
+        return matchesTempFormat(text)
+    }
+
+    /// Returns true if the text matches a known temporary plate format.
+    static func matchesTempFormat(_ text: String) -> Bool {
+        let range = NSRange(text.startIndex..., in: text)
+        return tempFormats.contains { $0.firstMatch(in: text, range: range) != nil }
     }
 
     /// Returns true if the plate matches a PA/NJ/NY/DE/MD/CT format.
