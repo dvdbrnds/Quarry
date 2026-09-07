@@ -161,10 +161,8 @@ struct ContentView: View {
                 .background(Color(.systemBackground))
             }
         }
-        .sheet(isPresented: $showExportSheet) {
-            if !exportURLs.isEmpty {
-                ShareSheet(activityItems: exportURLs)
-            }
+        .sheet(isPresented: $showExportSheet, onDismiss: { exportURLs = [] }) {
+            ShareSheet(activityItems: exportURLs)
         }
         .alert("Clear Scan Log?", isPresented: $showClearConfirm) {
             Button("Clear", role: .destructive) { viewModel.clearLog() }
@@ -524,37 +522,48 @@ struct ContentView: View {
 
             Menu {
                 Button {
-                    viewModel.pauseScanning()
-                    showSessionHistory = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        viewModel.pauseScanning()
+                        showSessionHistory = true
+                    }
                 } label: {
                     Label("Session History", systemImage: "archivebox")
                 }
                 Button(role: .destructive) {
-                    showClearConfirm = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        showClearConfirm = true
+                    }
                 } label: {
                     Label("Clear Log", systemImage: "trash")
                 }
                 .disabled(viewModel.scanLog.isEmpty)
                 Divider()
                 Button {
-                    var urls: [URL] = []
-                    if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
-                    if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
-                    if !urls.isEmpty {
-                        exportURLs = urls
-                        showExportSheet = true
+                    let log = viewModel.scanLog
+                    let diagLog = viewModel.diagnosticLog
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        var urls: [URL] = []
+                        if let plates = LogExporter.exportCSV(from: log) { urls.append(plates) }
+                        if let diag = LogExporter.exportDiagnosticCSV(from: diagLog) { urls.append(diag) }
+                        if !urls.isEmpty {
+                            exportURLs = urls
+                            showExportSheet = true
+                        }
                     }
                 } label: {
                     Label("Export CSV", systemImage: "tablecells")
                 }
                 .disabled(viewModel.scanLog.isEmpty)
                 Button {
-                    var urls: [URL] = []
-                    if let summary = LogExporter.exportSessionSummary(from: viewModel.scanLog) { urls.append(summary) }
-                    if let csv = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(csv) }
-                    if !urls.isEmpty {
-                        exportURLs = urls
-                        showExportSheet = true
+                    let log = viewModel.scanLog
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        var urls: [URL] = []
+                        if let summary = LogExporter.exportSessionSummary(from: log) { urls.append(summary) }
+                        if let csv = LogExporter.exportCSV(from: log) { urls.append(csv) }
+                        if !urls.isEmpty {
+                            exportURLs = urls
+                            showExportSheet = true
+                        }
                     }
                 } label: {
                     Label("Performance Summary", systemImage: "chart.bar")
