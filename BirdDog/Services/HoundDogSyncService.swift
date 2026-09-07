@@ -136,6 +136,7 @@ final class HoundDogSyncService: ObservableObject {
             await retryPendingTickets()
             syncState = .synced
             lastSyncDate = Date()
+            NotificationCenter.default.post(name: .init("HoundDogSyncCompleted"), object: nil)
         } catch {
             let msg = error.localizedDescription
             print("[HoundDog] SYNC FAILED: \(msg)")

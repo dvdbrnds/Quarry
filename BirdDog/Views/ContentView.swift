@@ -26,7 +26,11 @@ struct ContentView: View {
 
                 switch viewModel.cameraPermission {
                 case .authorized:
-                    scannerView
+                    if viewModel.isDataReady {
+                        scannerView
+                    } else {
+                        permitDataLoadingView
+                    }
                 case .denied, .restricted:
                     permissionDeniedView
                 default:
@@ -49,7 +53,11 @@ struct ContentView: View {
             if viewModel.cameraPermission == .authorized
                 && !viewModel.isScanningPaused
                 && !anyScreenOpen {
-                viewModel.startScanning()
+                if viewModel.isDataReady {
+                    viewModel.startScanning()
+                } else {
+                    viewModel.waitForDataThenStart()
+                }
             }
         }
         .onReceive(tick) { t in
@@ -545,6 +553,48 @@ struct ContentView: View {
         .padding(.horizontal, 16)
     }
 
+
+    private var permitDataLoadingView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(systemName: "shield.checkered")
+                .font(.system(size: 64))
+                .foregroundStyle(.blue)
+                .symbolEffect(.pulse, isActive: true)
+
+            Text("Loading Permit Data")
+                .font(.title2.bold())
+                .foregroundStyle(.white)
+
+            VStack(spacing: 8) {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.2)
+
+                let sync = HoundDogSyncService.shared
+                Text(sync.syncState == .error ? "Sync error — retrying…" :
+                     sync.syncState == .offline ? "Waiting for network…" :
+                     "Syncing permits and lots…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if sync.permitCount > 0 {
+                    Text("\(sync.permitCount) permits loaded")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+
+            Text("The camera will activate automatically\nonce enforcement data is ready.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+    }
 
     private var permissionDeniedView: some View {
         VStack(spacing: 16) {

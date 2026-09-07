@@ -124,12 +124,12 @@ final class PlateReaderViewModel: ObservableObject {
 
         switch status {
         case .authorized:
-            startScanning()
+            waitForDataThenStart()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 Task { @MainActor in
                     self?.cameraPermission = granted ? .authorized : .denied
-                    if granted { self?.startScanning() }
+                    if granted { self?.waitForDataThenStart() }
                 }
             }
         default:
@@ -268,6 +268,34 @@ final class PlateReaderViewModel: ObservableObject {
         let cutoff = Date().addingTimeInterval(-activeDedupWindow)
         seenPlates.removeAll { $0.time < cutoff }
         regionLastSeen = regionLastSeen.filter { $0.value > cutoff }
+    }
+
+    @Published private(set) var isDataReady = false
+    private var syncObserver: Any?
+
+    /// Wait for permit data before enabling scanning.
+    func waitForDataThenStart() {
+        if PlateDatabase.isReady && !PlateDatabase.shared.isEmpty {
+            isDataReady = true
+            startScanning()
+            return
+        }
+
+        syncObserver = NotificationCenter.default.addObserver(
+            forName: .init("HoundDogSyncCompleted"), object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if PlateDatabase.isReady && !PlateDatabase.shared.isEmpty {
+                    self.isDataReady = true
+                    if let obs = self.syncObserver {
+                        NotificationCenter.default.removeObserver(obs)
+                        self.syncObserver = nil
+                    }
+                    self.startScanning()
+                }
+            }
+        }
     }
 
     private func handleResult(_ result: RecognitionResult) {
