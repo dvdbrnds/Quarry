@@ -238,19 +238,17 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     private func saveBufferAsJPEG(_ imageBuffer: CVPixelBuffer) -> String? {
-        let orientation = isUsingExternalCamera ? externalCameraOrientation : .right
-        var ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        if orientation != .up {
-            ciImage = ciImage.oriented(orientation)
-        }
-
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-        let uiImage = UIImage(cgImage: cgImage)
+        guard let rawCG = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+
+        let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
+            ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
+            : 90)
 
         let targetSize = CGSize(width: 640, height: 480)
         let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
+        let resized = renderer.image { _ in rotatedImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
 
         guard let jpegData = resized.jpegData(compressionQuality: 0.6) else { return nil }
 
@@ -275,24 +273,19 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         guard let buffer = latestSampleBuffer,
               let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
 
-        // Physically rotate the pixels using Core Image so the JPEG matches
-        // the preview orientation. UIImage orientation hints are unreliable.
-        let orientation = isUsingExternalCamera ? externalCameraOrientation : .right
-        var ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        if orientation != .up {
-            ciImage = ciImage.oriented(orientation)
-        }
-
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-        let uiImage = UIImage(cgImage: cgImage)
+        guard let rawCG = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
-        // Keep higher resolution for diagnostic readability
+        let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
+            ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
+            : 90)
+
         let maxDim: CGFloat = 1280
-        let scale = min(maxDim / uiImage.size.width, maxDim / uiImage.size.height, 1.0)
-        let targetSize = CGSize(width: uiImage.size.width * scale, height: uiImage.size.height * scale)
+        let scale = min(maxDim / rotatedImage.size.width, maxDim / rotatedImage.size.height, 1.0)
+        let targetSize = CGSize(width: rotatedImage.size.width * scale, height: rotatedImage.size.height * scale)
         let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
+        let resized = renderer.image { _ in rotatedImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
 
         guard let jpegData = resized.jpegData(compressionQuality: 0.8) else { return nil }
 
@@ -1184,6 +1177,46 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         case 270: return .left
         default:  return .up
         }
+    }
+
+    /// Physically rotate a CGImage by the given degrees (CW) using Core Graphics.
+    /// Returns a UIImage with the rotation baked into the pixel data.
+    static func rotateImage(_ cgImage: CGImage, degrees: Int) -> UIImage {
+        guard degrees != 0 else { return UIImage(cgImage: cgImage) }
+
+        let w = cgImage.width
+        let h = cgImage.height
+        let radians = CGFloat(degrees) * .pi / 180.0
+
+        // Compute the bounding size of the rotated image
+        let newW: Int
+        let newH: Int
+        switch degrees {
+        case 90, 270, -90, -270:
+            newW = h; newH = w
+        case 180, -180:
+            newW = w; newH = h
+        default:
+            let rect = CGRect(x: 0, y: 0, width: w, height: h)
+                .applying(CGAffineTransform(rotationAngle: radians))
+            newW = Int(abs(rect.width)); newH = Int(abs(rect.height))
+        }
+
+        let colorSpace = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: newW, height: newH,
+            bitsPerComponent: cgImage.bitsPerComponent,
+            bytesPerRow: 0, space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return UIImage(cgImage: cgImage) }
+
+        ctx.translateBy(x: CGFloat(newW) / 2, y: CGFloat(newH) / 2)
+        ctx.rotate(by: -radians)   // CG uses math convention (CCW positive); negate for CW
+        ctx.translateBy(x: -CGFloat(w) / 2, y: -CGFloat(h) / 2)
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        guard let rotated = ctx.makeImage() else { return UIImage(cgImage: cgImage) }
+        return UIImage(cgImage: rotated)
     }
 }
 
