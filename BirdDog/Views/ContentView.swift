@@ -64,13 +64,16 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
                 || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag
-            if viewModel.cameraPermission == .authorized
-                && !viewModel.isScanningPaused
-                && !anyScreenOpen {
-                if viewModel.isDataReady {
-                    viewModel.startScanning()
-                } else {
-                    viewModel.waitForDataThenStart()
+            if viewModel.cameraPermission == .authorized && !anyScreenOpen {
+                // Resume if paused by willResignActive (share sheet, app switcher)
+                if viewModel.isScanningPaused {
+                    viewModel.resumeScanning()
+                } else if !viewModel.isScanning {
+                    if viewModel.isDataReady {
+                        viewModel.startScanning()
+                    } else {
+                        viewModel.waitForDataThenStart()
+                    }
                 }
             }
         }
@@ -81,7 +84,10 @@ struct ContentView: View {
                 now = t
             }
         }
-        .sheet(isPresented: $showExportSheet, onDismiss: { exportURLs = [] }) {
+        .sheet(isPresented: $showExportSheet, onDismiss: {
+            exportURLs = []
+            viewModel.resumeScanning()
+        }) {
             ShareSheet(activityItems: exportURLs)
         }
         .overlay {
