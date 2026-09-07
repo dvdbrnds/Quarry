@@ -52,10 +52,12 @@ struct VehicleTagFormView: View {
                 }
             }
 
-            Section("License Plate(s)") {
+            Section {
                 TextField("Plate number(s)", text: $plates)
                     .textInputAutocapitalization(.characters)
                     .font(.system(.body, design: .monospaced))
+            } header: {
+                Text("License Plate(s)")
             } footer: {
                 Text("Separate multiple plates with commas.")
             }
@@ -85,9 +87,11 @@ struct VehicleTagFormView: View {
                 .pickerStyle(.menu)
             }
 
-            Section("Notes") {
+            Section {
                 TextEditor(text: $notes)
                     .frame(minHeight: 60)
+            } header: {
+                Text("Notes")
             } footer: {
                 Text("JNET/CLEAN results, officer observations, or reason for tagging.")
             }
