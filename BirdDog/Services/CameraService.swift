@@ -275,27 +275,23 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     /// Capture the current frame as a full-resolution JPEG for diagnostic review.
-    /// Returns the file path, or nil if no frame is available.
+    /// Physically rotates pixels to match the preview orientation so the saved
+    /// image looks exactly like what the officer sees on screen.
     func captureDiagnosticSnapshot(plateText: String) -> String? {
         guard let buffer = latestSampleBuffer,
               let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
 
-        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-
-        let imageOrientation: UIImage.Orientation
-        if isUsingExternalCamera {
-            switch externalCameraOrientation {
-            case .right: imageOrientation = .right
-            case .down:  imageOrientation = .down
-            case .left:  imageOrientation = .left
-            default:     imageOrientation = .up
-            }
-        } else {
-            imageOrientation = .right
+        // Physically rotate the pixels using Core Image so the JPEG matches
+        // the preview orientation. UIImage orientation hints are unreliable.
+        let orientation = isUsingExternalCamera ? externalCameraOrientation : .right
+        var ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        if orientation != .up {
+            ciImage = ciImage.oriented(orientation)
         }
-        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: imageOrientation)
+
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        let uiImage = UIImage(cgImage: cgImage)
 
         // Keep higher resolution for diagnostic readability
         let maxDim: CGFloat = 1280
