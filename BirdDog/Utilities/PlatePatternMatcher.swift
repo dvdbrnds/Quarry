@@ -15,6 +15,10 @@ enum PlatePatternMatcher {
         try! NSRegularExpression(pattern: "^[0-9][A-Z]{2}[0-9]{4}$"), // MD: 1AB2345
         try! NSRegularExpression(pattern: "^[A-Z]{2}[0-9]{5}$"),      // CT: AB12345
         try! NSRegularExpression(pattern: "^[A-Z]{3}[0-9]{3}$"),      // many states: ABC123
+        // PA specialty/military/veteran plates: digits + 1-2 letter suffix
+        // Army (AR), Navy (NV/NA), Marines (MC), Air Force (AF), Coast Guard (CG), etc.
+        try! NSRegularExpression(pattern: "^[0-9]{5}[A-Z]{1,2}$"),    // PA specialty: 15791AR
+        try! NSRegularExpression(pattern: "^[0-9]{4}[A-Z]{1,2}$"),    // PA specialty short: 1579AR
     ]
 
     /// Temporary/transitional plate formats for PA, NJ, NY
@@ -40,6 +44,10 @@ enum PlatePatternMatcher {
         try! NSRegularExpression(pattern: "^[0-9][A-Z]{2}[0-9]{3}$"), // MA: 1AB234
         try! NSRegularExpression(pattern: "^[0-9]{3}[A-Z]{2}[0-9]$"), // MA: 123AB4
         try! NSRegularExpression(pattern: "^[0-9]{4}[A-Z]{2}$"),      // MA: 1234AB
+        // Specialty/military plates used across states (letter prefix or suffix variants)
+        try! NSRegularExpression(pattern: "^[A-Z]{2}[0-9]{5}[A-Z]?$"), // Specialty: AF12345, MC12345N
+        try! NSRegularExpression(pattern: "^[0-9]{3}[A-Z]{1,2}[0-9]{1,2}$"), // Specialty: 123AR1, 123MC12
+        try! NSRegularExpression(pattern: "^[A-Z][0-9]{5,6}$"),       // Specialty: V123456 (veteran)
     ]]
 
     private static let rejectList: Set<String> = [
@@ -142,6 +150,9 @@ enum PlatePatternMatcher {
         "PARTS", "GLASS", "FLOOR", "POWER", "LIGHT",
         "HOURS", "HOURSOF", "BETWEEN", "PROHIBITED",
         "PRIVATE", "PRIVAT", "PRIVA", "PROPERTY", "TOWING",
+        // Military plate frame/sticker text
+        "VETERAN", "USARMY", "USNAVY", "USMC01",
+        "MARINES", "MARINE",
         "MORAVIA", "MORAVAN", "MORAVIAN", "MOHAK", "MORAI",
         "UNIVERSITY", "INFORMATION",
         "DONOT", "IDONO", "RESUME",
