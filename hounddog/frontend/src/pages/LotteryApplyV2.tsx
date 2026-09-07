@@ -55,9 +55,6 @@ const EXTERNAL_LOT_STYLE = {
 };
 
 const UNIVERSITY_LOT_FILL = "#FFD700";
-const EMPTY_STRING_ARRAY: string[] = [];
-const EMPTY_LOT_ARRAY: Lot[] = [];
-const EMPTY_COLOR_MAP: Record<string, string> = {};
 
 function normalizeLotKey(name: string) {
   return name
@@ -1189,39 +1186,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   // For the map, show only geographically-relevant lots per campus
   const GUEST_MAP_LOTS = GUEST_LOTS;
 
-  // Active permit lot data for the right-side map
-  const hasApplication = Boolean(application);
-  const permitLotKey = myPermits.map(p => p.lot_assignment || "").join("|");
-
-  const myPermitLotNames = useMemo(() => {
-    if (hasApplication || myPermits.length === 0) return EMPTY_STRING_ARRAY;
-    const names: string[] = [];
-    for (const p of myPermits) {
-      if (p.lot_assignment) {
-        for (const s of (p.lot_assignment as string).split(",")) {
-          const t = s.trim();
-          if (t && !names.includes(t)) names.push(t);
-        }
-      }
-    }
-    return names.length > 0 ? names : EMPTY_STRING_ARRAY;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasApplication, permitLotKey]);
-
-  const myPermitLots = useMemo(() => {
-    if (myPermitLotNames.length === 0) return EMPTY_LOT_ARRAY;
-    return lots.filter(l => myPermitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name)));
-  }, [lots, myPermitLotNames]);
-
-  const myPermitLotColors = useMemo(() => {
-    if (myPermitLotNames.length === 0) return EMPTY_COLOR_MAP;
-    const c: Record<string, string> = {};
-    for (const name of myPermitLotNames) c[name] = "#16a34a";
-    return c;
-  }, [myPermitLotNames]);
-
-  const showingPermitMap = !hasApplication && myPermitLots.length > 0;
-
   const mapHighlight =
     highlightedLots.length > 0
       ? highlightedLots
@@ -1231,9 +1195,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           ? doneDefaultLots
           : step === "intake" && !isCommuterPath && !isSouthPath && eligibleLotNames.length > 0
             ? eligibleLotNames
-            : showingPermitMap
-              ? myPermitLotNames
-              : [];
+            : [];
 
   const lotsForMap =
     showGuestForm
@@ -1242,9 +1204,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         ? lots.filter((l) => doneDefaultLots.some((d) => normalizeLotKey(d) === normalizeLotKey(l.name)))
         : mapLots.length > 0
           ? mapLots
-          : showingPermitMap
-            ? myPermitLots
-            : [];
+          : [];
 
   const showMap = Boolean(mapsApiKey && lotsForMap.length > 0);
   const lotteryActive = cycle?.status === "open" || cycle?.status === "drawn";
@@ -1276,9 +1236,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           ? lotColors
           : showTierColors
             ? lotColors
-            : showingPermitMap
-              ? myPermitLotColors
-              : undefined;
+            : undefined;
   // When actively hovering a card, drop lot colors so the map uses the high-contrast
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
@@ -1288,10 +1246,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         { label: "Lot X — Park anytime", color: "#22C55E" },
         { label: "Other lots — After 4 PM & weekends", color: "#EAB308" },
       ];
-
-  const permitMapLegend = showingPermitMap
-    ? [{ label: "Your permitted lots", color: "#16a34a" }]
-    : undefined;
 
   const activeLegend = showGuestForm
     ? guestLegend
@@ -1303,9 +1257,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           ? mapLegend
           : showTierColors
             ? mapLegend
-            : showingPermitMap
-              ? permitMapLegend
-              : undefined;
+            : undefined;
 
   const schoolName = brand.schoolName || "Moravian University";
 
@@ -1369,7 +1321,29 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className={`grid grid-cols-1 gap-6 ${showMap ? "lg:grid-cols-3" : ""}`}>
+        {(() => {
+          // Compute permit map data outside the grid to avoid hook issues
+          const _permitLotNames: string[] = [];
+          if (!application && myPermits.length > 0) {
+            for (const p of myPermits) {
+              if (p.lot_assignment) {
+                for (const s of (p.lot_assignment as string).split(",")) {
+                  const t = s.trim();
+                  if (t && !_permitLotNames.includes(t)) _permitLotNames.push(t);
+                }
+              }
+            }
+          }
+          const _permitLots = _permitLotNames.length > 0
+            ? lots.filter(l => _permitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name)))
+            : [];
+          const _permitColors: Record<string, string> = {};
+          for (const n of _permitLotNames) _permitColors[n] = "#16a34a";
+          const _showPermitMap = !showMap && mapsApiKey && _permitLots.length > 0;
+          const _anyRightMap = showMap || _showPermitMap;
+
+          return (
+        <div className={`grid grid-cols-1 gap-6 ${_anyRightMap ? "lg:grid-cols-3" : ""}`}>
           {showMap && lotsForMap.length > 0 && (
             <div className="lg:hidden h-[280px] rounded-xl overflow-hidden shadow">
               <StudentLotMap
@@ -1385,7 +1359,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             </div>
           )}
 
-          <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
+          <div className={`space-y-6 ${_anyRightMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
             {showOffSeasonCard && (
               <Card size="small">
                 <div className="flex items-center justify-between gap-4">
@@ -2506,7 +2480,24 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </div>
             </div>
           )}
+
+          {_showPermitMap && (
+            <div className="hidden lg:block lg:col-span-2 min-w-0">
+              <div className="sticky top-6 h-[calc(100vh-8rem)] rounded-xl overflow-hidden shadow-lg">
+                <StudentLotMap
+                  apiKey={mapsApiKey}
+                  lots={_permitLots}
+                  highlightedLots={_permitLotNames}
+                  lotColors={_permitColors}
+                  defaultCenter={campusCenter}
+                  legend={[{ label: "Your permitted lots", color: "#16a34a" }]}
+                />
+              </div>
+            </div>
+          )}
         </div>
+          );
+        })()}
       </main>
 
       <Modal
