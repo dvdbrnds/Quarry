@@ -14,8 +14,8 @@ final class MotionSpeedService: ObservableObject {
     @Published private(set) var mode: MovementMode = .stationary {
         didSet {
             switch mode {
-            case .stationary: _frameSkipFloor.value = 4
-            case .walking: _frameSkipFloor.value = 3
+            case .stationary: _frameSkipFloor.value = 2
+            case .walking: _frameSkipFloor.value = 2
             case .vehicle: _frameSkipFloor.value = 1
             }
             _isVehicleMode.value = mode == .vehicle ? 1 : 0

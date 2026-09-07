@@ -225,13 +225,19 @@ final class PlateRecognitionService {
             // 4. If .fast found text but no plate match → .accurate on full-res normalized
             // 5. If no text and rectangles present → .accurate on full-res normalized
             // 6. When no rectangles and many empty frames, skip expensive fallbacks
-            // Skip .accurate fallback only when scene is truly static and
-            // empty for a while. Force a periodic .accurate pass every 10
-            // frames to prevent permanent degraded mode after glare clears.
+            // Cap empty-frame counter to prevent unbounded growth from long
+            // glare/obstruction periods. Beyond 8 empty frames the scene is
+            // either truly empty or the pipeline is stuck — either way further
+            // counting just makes recovery slower.
+            self.consecutiveEmptyFrames = min(self.consecutiveEmptyFrames, 8)
             self.framesSinceLastPlate += 1
-            let forceAccurate = self.framesSinceLastPlate % 10 == 0
+
+            // Force a periodic .accurate pass every 15 processed frames when
+            // plates haven't been found. Uses the normalized+downscaled buffer
+            // to keep cost reasonable (~150ms vs ~400ms on full-res).
+            let forceAccurate = self.framesSinceLastPlate % 15 == 0
             let skipAccurateFallback = useExternal && !rectHint
-                && self.consecutiveEmptyFrames > 2
+                && self.consecutiveEmptyFrames > 3
                 && !forceAccurate
 
             let observations: [VNRecognizedTextObservation]
@@ -254,9 +260,10 @@ final class PlateRecognitionService {
                     let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
                     observations = mergeObservations(primary: fastObs, secondary: accurateObs)
                     pathUsed = .fastAccurateMerge
-                } else if fastObs.isEmpty && (rectHint || forceAccurate) && !skipAccurateFallback {
-                    // Rectangle hint or periodic force — .accurate on full-res
-                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
+                } else if fastObs.isEmpty && (rectHint || forceAccurate) {
+                    // Rectangle hint or periodic force — .accurate on downscaled
+                    // normalized buffer (fast enough to not starve the pipeline)
+                    let accurateObs = runOCR(on: detectBuffer, level: .accurate)
                     observations = accurateObs
                     pathUsed = .accurateOnly
                 } else {
