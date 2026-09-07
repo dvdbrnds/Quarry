@@ -218,41 +218,52 @@ final class PlateRecognitionService {
                 return req.results ?? []
             }
 
-            // OCR pipeline for external cameras:
-            // 1. Always auto-levels normalize (cheap, compensates sun/shade)
-            // 2. .fast on downscaled buffer as quick scan
-            // 3. If .fast finds a plate-format match → done (fast path)
-            // 4. If .fast found text but no plate match → .accurate on full-res normalized
-            // 5. If no text and rectangles present → .accurate on full-res normalized
-            // 6. When no rectangles and many empty frames, skip expensive fallbacks
-            // Cap empty-frame counter to prevent unbounded growth from long
-            // glare/obstruction periods. Beyond 8 empty frames the scene is
-            // either truly empty or the pipeline is stuck — either way further
-            // counting just makes recovery slower.
+            // Cap empty-frame counter to prevent unbounded growth.
             self.consecutiveEmptyFrames = min(self.consecutiveEmptyFrames, 8)
             self.framesSinceLastPlate += 1
 
-            // Force a periodic .accurate pass every 15 processed frames when
-            // plates haven't been found. Uses the normalized+downscaled buffer
-            // to keep cost reasonable (~150ms vs ~400ms on full-res).
+            // Force a periodic .accurate pass every 15 frames when plates
+            // haven't been found, to break out of degraded mode.
             let forceAccurate = self.framesSinceLastPlate % 15 == 0
             let skipAccurateFallback = useExternal && !rectHint
                 && self.consecutiveEmptyFrames > 3
                 && !forceAccurate
 
+            // OCR pipeline for external cameras:
+            // 1. Auto-levels normalize (cheap, compensates sun/shade)
+            // 2. .fast on downscaled buffer for quick detection
+            // 3. .fast plate match with HIGH confidence (>=0.95) → done
+            // 4. .fast plate match with lower confidence → verify with .accurate
+            //    on full-res (catches H↔W, P↔H, 5↔S confusions)
+            // 5. .fast found text but no plate match → .accurate on full-res
+            // 6. No text but rectangle hint → .accurate on full-res
             let observations: [VNRecognizedTextObservation]
             if useExternal {
                 let normalizedBuf = self.autoLevelsNormalize(pixelBuffer) ?? pixelBuffer
                 let detectBuffer = self.downscaleForDetection(normalizedBuf) ?? normalizedBuf
                 let fastObs = runOCR(on: detectBuffer, level: .fast)
 
-                let fastHasPlate = fastObs.contains { obs in
-                    guard let text = obs.topCandidates(1).first?.string else { return false }
-                    let norm = PlatePatternMatcher.normalize(text)
-                    return PlatePatternMatcher.evaluatePlate(norm) == nil
-                }
+                // Check if .fast found a high-confidence plate-format match
+                let fastPlateConf: Float = fastObs.compactMap { obs -> Float? in
+                    guard let cand = obs.topCandidates(1).first else { return nil }
+                    let norm = PlatePatternMatcher.normalize(cand.string)
+                    return PlatePatternMatcher.evaluatePlate(norm) == nil ? cand.confidence : nil
+                }.max() ?? 0
 
-                if fastHasPlate {
+                let fastHasPlate = fastPlateConf > 0
+
+                if fastHasPlate && fastPlateConf >= 0.95 {
+                    // Very high confidence — .fast is reliable enough
+                    observations = fastObs
+                    pathUsed = .fastOnly
+                } else if fastHasPlate && !skipAccurateFallback {
+                    // Plate found but not high confidence — verify with .accurate
+                    // on full-res to catch character-level confusions (H↔W, P↔H)
+                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
+                    observations = mergeObservations(primary: accurateObs, secondary: fastObs)
+                    pathUsed = .fastAccurateMerge
+                } else if fastHasPlate {
+                    // Plate found but skipping accurate (static empty scene) — use fast
                     observations = fastObs
                     pathUsed = .fastOnly
                 } else if !fastObs.isEmpty && !skipAccurateFallback {
@@ -261,9 +272,8 @@ final class PlateRecognitionService {
                     observations = mergeObservations(primary: fastObs, secondary: accurateObs)
                     pathUsed = .fastAccurateMerge
                 } else if fastObs.isEmpty && (rectHint || forceAccurate) {
-                    // Rectangle hint or periodic force — .accurate on downscaled
-                    // normalized buffer (fast enough to not starve the pipeline)
-                    let accurateObs = runOCR(on: detectBuffer, level: .accurate)
+                    // Rectangle hint or periodic force — .accurate on full-res
+                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
                     observations = accurateObs
                     pathUsed = .accurateOnly
                 } else {
