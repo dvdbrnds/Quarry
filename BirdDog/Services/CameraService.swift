@@ -1274,8 +1274,13 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             lastFrameBrightness = sampleMeanBrightness(buf)
         }
 
-        // Gate on sharpness before frameSkip to avoid wasting OCR slots on blur
-        if isUsingExternalCamera && lastFrameSharpness < adaptiveSharpnessThreshold {
+        // Gate on sharpness to avoid wasting OCR slots on motion blur.
+        // SKIP this gate when stationary/walking — there's no motion blur,
+        // any "blurriness" is from scene conditions (glare, haze, focus)
+        // and OCR should still attempt to read. The gate only matters while
+        // driving where actual motion blur corrupts the frame.
+        let inVehicleMode = vehicleMode
+        if isUsingExternalCamera && inVehicleMode && lastFrameSharpness < adaptiveSharpnessThreshold {
             metricsAccumulator.framesSkipped += 1
             metricsAccumulator.droppedBySharpness += 1
             return
@@ -1302,7 +1307,6 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         // Scene-change detection: skip unchanged frames unless in burst,
         // rectangle-detected, or vehicle mode (everything changes while driving).
-        let inVehicleMode = vehicleMode
         if isUsingExternalCamera && Date() >= burstUntil && !rectangleDetectedHint && !inVehicleMode,
            let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let fp = sceneFingerprint(buf)
