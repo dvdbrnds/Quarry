@@ -55,6 +55,9 @@ const EXTERNAL_LOT_STYLE = {
 };
 
 const UNIVERSITY_LOT_FILL = "#FFD700";
+const EMPTY_STRING_ARRAY: string[] = [];
+const EMPTY_LOT_ARRAY: Lot[] = [];
+const EMPTY_COLOR_MAP: Record<string, string> = {};
 
 function normalizeLotKey(name: string) {
   return name
@@ -1187,8 +1190,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const GUEST_MAP_LOTS = GUEST_LOTS;
 
   // Active permit lot data for the right-side map
+  const hasApplication = Boolean(application);
+  const permitLotKey = myPermits.map(p => p.lot_assignment || "").join("|");
+
   const myPermitLotNames = useMemo(() => {
-    if (application || myPermits.length === 0) return [];
+    if (hasApplication || myPermits.length === 0) return EMPTY_STRING_ARRAY;
     const names: string[] = [];
     for (const p of myPermits) {
       if (p.lot_assignment) {
@@ -1198,21 +1204,23 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
         }
       }
     }
-    return names;
-  }, [myPermits, application]);
+    return names.length > 0 ? names : EMPTY_STRING_ARRAY;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasApplication, permitLotKey]);
 
   const myPermitLots = useMemo(() => {
-    if (myPermitLotNames.length === 0) return [];
+    if (myPermitLotNames.length === 0) return EMPTY_LOT_ARRAY;
     return lots.filter(l => myPermitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name)));
   }, [lots, myPermitLotNames]);
 
   const myPermitLotColors = useMemo(() => {
+    if (myPermitLotNames.length === 0) return EMPTY_COLOR_MAP;
     const c: Record<string, string> = {};
     for (const name of myPermitLotNames) c[name] = "#16a34a";
     return c;
   }, [myPermitLotNames]);
 
-  const showingPermitMap = !application && myPermitLots.length > 0;
+  const showingPermitMap = !hasApplication && myPermitLots.length > 0;
 
   const mapHighlight =
     highlightedLots.length > 0
