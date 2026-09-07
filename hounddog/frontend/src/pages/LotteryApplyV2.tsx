@@ -1323,7 +1323,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {(() => {
           // Compute permit map data outside the grid to avoid hook issues
-          const _permitLotNames: string[] = [];
+          const _assignedLotNames: string[] = [];
           const _permitTypes: string[] = [];
           if (!application && myPermits.length > 0) {
             for (const p of myPermits) {
@@ -1333,73 +1333,92 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               if (p.lot_assignment) {
                 for (const s of (p.lot_assignment as string).split(",")) {
                   const t = s.trim();
-                  if (t && !_permitLotNames.includes(t)) _permitLotNames.push(t);
+                  if (t && !_assignedLotNames.includes(t)) _assignedLotNames.push(t);
                 }
               }
             }
           }
-          const _permitLots = _permitLotNames.length > 0
-            ? lots.filter(l => _permitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name)))
-            : [];
 
-          // Classify lots: "anytime" (green) vs "after-hours only" (amber)
+          // Two sources of lots:
+          // 1. Lots directly in the permit's lot_assignment → primary (anytime)
+          // 2. Any OTHER lots whose access_schedule allows the student's permit type → after-hours
           const _permitColors: Record<string, string> = {};
+          const _allPermitLotNames: string[] = [];
           const _anytimeLots: string[] = [];
           const _afterHoursLots: string[] = [];
-          let _afterHoursLabel = "After-hours only";
+          let _afterHoursLabel = "After-hours / weekends only";
 
-          for (const lot of _permitLots) {
+          // Helper: check if a lot's access_schedule includes any of the student's permit types
+          function lotAllowsType(lot: typeof lots[0]): { allowed: boolean; daytimeAccess: boolean; ruleLabel: string } {
             const schedule = lot.access_schedule;
-            if (!schedule || schedule.length === 0) {
-              // No schedule = always accessible
-              _permitColors[lot.name] = "#16a34a";
-              _anytimeLots.push(lot.name);
-              continue;
-            }
-            // Check if the student's permit type is in ALL rules or only some (after-hours) rules
-            let inAllDaytimeRules = false;
-            let inAnyRule = false;
-            let afterHoursRuleLabel = "";
+            if (!schedule || schedule.length === 0) return { allowed: false, daytimeAccess: false, ruleLabel: "" };
+            let inDaytime = false;
+            let inAny = false;
+            let label = "";
             for (const season of schedule) {
               for (const rule of season.rules) {
                 const hasType = _permitTypes.some(pt => rule.allowed_permit_types.includes(pt));
                 if (hasType) {
-                  inAnyRule = true;
-                  // Check if this is a "daytime" rule (starts early, ends in afternoon)
-                  const startH = parseInt(rule.start.split(":")[0], 10);
-                  const endH = parseInt(rule.end.split(":")[0], 10);
-                  if (startH <= 7 && endH >= 15) {
-                    inAllDaytimeRules = true;
-                  }
-                } else {
-                  // Student NOT in this rule - check if it's the daytime weekday one
-                  const weekdays = ["mon", "tue", "wed", "thu", "fri"];
-                  if (rule.days.some(d => weekdays.includes(d))) {
-                    const startH = parseInt(rule.start.split(":")[0], 10);
-                    const endH = parseInt(rule.end.split(":")[0], 10);
-                    if (startH <= 7 && endH >= 15) {
-                      // This is a daytime-only rule the student is excluded from
-                    }
-                  }
-                }
-                // Capture the label from the rule where the student IS allowed
-                if (hasType && !afterHoursRuleLabel) {
-                  afterHoursRuleLabel = rule.label || "";
+                  inAny = true;
+                  if (!label) label = rule.label || "";
+                  const sH = parseInt(rule.start.split(":")[0], 10);
+                  const eH = parseInt(rule.end.split(":")[0], 10);
+                  if (sH <= 7 && eH >= 15) inDaytime = true;
                 }
               }
             }
-            if (inAnyRule && !inAllDaytimeRules) {
-              _permitColors[lot.name] = "#eab308"; // amber for after-hours
-              _afterHoursLots.push(lot.name);
-              if (afterHoursRuleLabel) _afterHoursLabel = afterHoursRuleLabel;
-            } else {
-              _permitColors[lot.name] = "#16a34a"; // green for anytime
-              _anytimeLots.push(lot.name);
+            return { allowed: inAny, daytimeAccess: inDaytime, ruleLabel: label };
+          }
+
+          if (_permitTypes.length > 0) {
+            // Pass 1: lots directly assigned to the permit
+            for (const lot of lots) {
+              const isAssigned = _assignedLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(lot.name));
+              if (isAssigned) {
+                const schedule = lot.access_schedule;
+                if (!schedule || schedule.length === 0) {
+                  // No schedule = always accessible (primary lot)
+                  _permitColors[lot.name] = "#16a34a";
+                  _anytimeLots.push(lot.name);
+                } else {
+                  const { daytimeAccess } = lotAllowsType(lot);
+                  if (daytimeAccess) {
+                    _permitColors[lot.name] = "#16a34a";
+                    _anytimeLots.push(lot.name);
+                  } else {
+                    _permitColors[lot.name] = "#eab308";
+                    _afterHoursLots.push(lot.name);
+                  }
+                }
+                _allPermitLotNames.push(lot.name);
+              }
+            }
+
+            // Pass 2: lots NOT in assignment but whose access_schedule allows the permit type
+            for (const lot of lots) {
+              if (_allPermitLotNames.some(n => normalizeLotKey(n) === normalizeLotKey(lot.name))) continue;
+              if (lot.lot_type === "external") continue;
+              const { allowed, daytimeAccess, ruleLabel } = lotAllowsType(lot);
+              if (allowed) {
+                if (daytimeAccess) {
+                  _permitColors[lot.name] = "#16a34a";
+                  _anytimeLots.push(lot.name);
+                } else {
+                  _permitColors[lot.name] = "#eab308";
+                  _afterHoursLots.push(lot.name);
+                  if (ruleLabel) _afterHoursLabel = ruleLabel;
+                }
+                _allPermitLotNames.push(lot.name);
+              }
             }
           }
 
+          const _permitLots = _allPermitLotNames.length > 0
+            ? lots.filter(l => _allPermitLotNames.some(n => normalizeLotKey(n) === normalizeLotKey(l.name)))
+            : [];
+
           const _permitLegend: { label: string; color: string }[] = [];
-          if (_anytimeLots.length > 0) _permitLegend.push({ label: "Your permitted lots", color: "#16a34a" });
+          if (_anytimeLots.length > 0) _permitLegend.push({ label: "Your permitted lots (anytime)", color: "#16a34a" });
           if (_afterHoursLots.length > 0) _permitLegend.push({ label: _afterHoursLabel, color: "#eab308" });
 
           const _showPermitMap = !showMap && mapsApiKey && _permitLots.length > 0;
@@ -1583,56 +1602,43 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           <dt className="text-gray-500">Vehicle</dt>
                           <dd className="font-mono font-medium m-0">{permit.plates?.join(", ") || "—"}</dd>
                         </div>
-                        {permit.lot_assignment && (() => {
-                          const lotNames = (permit.lot_assignment as string).split(",").map((s: string) => s.trim()).filter(Boolean);
-                          const pType = permit.permit_type || "";
+                        {(() => {
+                          // Combine assigned lots + discovered after-hours lots
+                          const assignedNames = permit.lot_assignment
+                            ? (permit.lot_assignment as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+                            : [];
+                          // Add after-hours lots not already in assignment
+                          const allLotNames = [...assignedNames];
+                          for (const n of _afterHoursLots) {
+                            if (!allLotNames.some(a => normalizeLotKey(a) === normalizeLotKey(n))) {
+                              allLotNames.push(n);
+                            }
+                          }
+                          if (allLotNames.length === 0) return null;
                           return (
                             <div className="col-span-2">
                               <dt className="text-gray-500">Lot(s)</dt>
                               <dd className="font-medium m-0 flex flex-wrap gap-1 mt-1">
-                                {lotNames.map((lotName: string) => {
-                                  const lot = lots.find(l => normalizeLotKey(l.name) === normalizeLotKey(lotName));
-                                  let isAfterHoursOnly = false;
-                                  let afterHoursHint = "";
-                                  if (lot?.access_schedule?.length) {
-                                    let inDaytime = false;
-                                    for (const season of lot.access_schedule) {
-                                      for (const rule of season.rules) {
-                                        if (rule.allowed_permit_types.includes(pType)) {
-                                          const sH = parseInt(rule.start.split(":")[0], 10);
-                                          const eH = parseInt(rule.end.split(":")[0], 10);
-                                          if (sH <= 7 && eH >= 15) inDaytime = true;
-                                        }
-                                      }
-                                    }
-                                    if (!inDaytime) {
-                                      isAfterHoursOnly = true;
-                                      for (const season of lot.access_schedule) {
-                                        for (const rule of season.rules) {
-                                          if (rule.allowed_permit_types.includes(pType) && rule.label) {
-                                            afterHoursHint = rule.start && rule.end ? `${rule.start}–${rule.end}` : "";
-                                            break;
-                                          }
-                                        }
-                                        if (afterHoursHint) break;
-                                      }
-                                    }
-                                  }
+                                {allLotNames.map((lotName: string) => {
+                                  const isAfterHours = _afterHoursLots.some(n => normalizeLotKey(n) === normalizeLotKey(lotName));
+                                  const timeHint = isAfterHours ? "Evenings (after 4 PM) & weekends" : "Park anytime";
                                   return (
                                     <Tag
                                       key={lotName}
-                                      color={isAfterHoursOnly ? "gold" : "green"}
-                                      title={isAfterHoursOnly ? `After-hours: ${afterHoursHint}` : "Park anytime"}
+                                      color={isAfterHours ? "gold" : "green"}
+                                      title={timeHint}
                                     >
-                                      {lotName}{isAfterHoursOnly ? " ⏰" : ""}
+                                      {lotName}{isAfterHours ? " ⏰" : ""}
                                     </Tag>
                                   );
                                 })}
                               </dd>
-                              <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-500">
-                                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Anytime</span>
-                                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> After-hours / weekends only</span>
-                              </div>
+                              {_afterHoursLots.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Anytime</span>
+                                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> After-hours / weekends only</span>
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2597,7 +2603,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                 <StudentLotMap
                   apiKey={mapsApiKey}
                   lots={_permitLots}
-                  highlightedLots={_permitLotNames}
+                  highlightedLots={_allPermitLotNames}
                   lotColors={_permitColors}
                   defaultCenter={campusCenter}
                   legend={_permitLegend}
