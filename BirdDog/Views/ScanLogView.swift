@@ -9,6 +9,7 @@ struct ScanLogView: View {
     let expiredCount: Int
     let unknownCount: Int
     var onIssueTapped: ((ScannedPlate) -> Void)?
+    var onCorrectPlateTapped: ((ScannedPlate) -> Void)?
 
     @State private var filter: StatusFilter = .all
 
@@ -67,14 +68,30 @@ struct ScanLogView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredLog, id: \ScannedPlate.id) { (entry: ScannedPlate) in
-                            if let action = onIssueTapped {
+                            if onIssueTapped != nil || onCorrectPlateTapped != nil {
                                 Button {
-                                    action(entry)
+                                    onIssueTapped?(entry)
                                 } label: {
                                     plateRow(entry)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(RowPressStyle())
+                                .contextMenu {
+                                    if let issue = onIssueTapped {
+                                        Button {
+                                            issue(entry)
+                                        } label: {
+                                            Label("Issue Ticket", systemImage: "doc.text")
+                                        }
+                                    }
+                                    if let correct = onCorrectPlateTapped {
+                                        Button {
+                                            correct(entry)
+                                        } label: {
+                                            Label("Correct Plate", systemImage: "pencil.and.list.clipboard")
+                                        }
+                                    }
+                                }
                             } else {
                                 plateRow(entry)
                             }

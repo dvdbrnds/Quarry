@@ -20,6 +20,7 @@ from ..database import get_db
 from ..models.academic_season import AcademicSeason
 from ..models.device import Device
 from ..models.enforcement_settings import EnforcementSettings
+from ..models.plate_correction import PlateCorrection
 from ..models.lot import ParkingLot
 from ..models.lot_zone import LotZone
 from ..models.parking_spot import ParkingSpot
@@ -657,3 +658,92 @@ async def _upload_ticket_impl(
         notification_sent=notification_sent,
         notification_email=notification_email,
     )
+
+
+# ── Plate Corrections (officer-reported OCR misreads, no citation) ──────────
+
+
+class PlateCorrectionUpload(BaseModel):
+    ocr_plate: str
+    correct_plate: str
+    plate_state: str = ""
+    lot: str = ""
+    officer_name: str = ""
+    officer_email: str = ""
+    device_name: str = ""
+    notes: str = ""
+
+
+class PlateCorrectionResponse(BaseModel):
+    status: str
+    id: str
+
+
+@router.post("/plate-correction", response_model=PlateCorrectionResponse)
+async def submit_plate_correction(
+    data: PlateCorrectionUpload,
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    correction = PlateCorrection(
+        ocr_plate=data.ocr_plate.upper().strip(),
+        correct_plate=data.correct_plate.upper().strip(),
+        plate_state=data.plate_state.upper().strip(),
+        lot=data.lot,
+        officer_name=data.officer_name,
+        officer_email=data.officer_email,
+        device_name=data.device_name or device.name,
+        notes=data.notes,
+    )
+    db.add(correction)
+    await db.flush()
+    await db.refresh(correction)
+    logger.info(
+        "[PlateCorrection] %s -> %s by %s in %s",
+        correction.ocr_plate, correction.correct_plate,
+        correction.officer_email or "unknown", correction.lot,
+    )
+    return PlateCorrectionResponse(status="saved", id=str(correction.id))
+
+
+class PlateCorrectionRead(BaseModel):
+    id: str
+    ocr_plate: str
+    correct_plate: str
+    plate_state: str
+    lot: str
+    officer_name: str
+    officer_email: str
+    device_name: str
+    notes: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@diagnostic_router.get("/plate-corrections", response_model=list[PlateCorrectionRead])
+async def list_plate_corrections(
+    limit: int = Query(200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    result = await db.execute(
+        select(PlateCorrection).order_by(PlateCorrection.created_at.desc()).limit(limit)
+    )
+    rows = result.scalars().all()
+    return [
+        PlateCorrectionRead(
+            id=str(r.id),
+            ocr_plate=r.ocr_plate,
+            correct_plate=r.correct_plate,
+            plate_state=r.plate_state or "",
+            lot=r.lot or "",
+            officer_name=r.officer_name or "",
+            officer_email=r.officer_email or "",
+            device_name=r.device_name or "",
+            notes=r.notes or "",
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]

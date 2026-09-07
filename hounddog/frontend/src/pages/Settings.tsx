@@ -5,6 +5,7 @@ import Messaging from "./Messaging";
 import DataManagement from "./DataManagement";
 import BrandingSettings from "./BrandingSettings";
 import FeatureSettings from "./FeatureSettings";
+import PlateCorrections from "./PlateCorrections";
 import { useCurrentUser } from "../UserContext";
 import { isAdminRole } from "../auth";
 
@@ -14,6 +15,7 @@ const ALL_TABS = [
   { key: "features", label: "Features", children: <FeatureSettings /> },
   { key: "activity", label: "Activity Log", children: <ActivityLog /> },
   { key: "data", label: "Data Management", children: <DataManagement /> },
+  { key: "plate-corrections", label: "Plate Corrections", children: <PlateCorrections /> },
 ];
 
 const OPERATOR_TAB_KEYS = new Set(["activity"]);

@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Network
+import UIKit
 
 @MainActor
 final class HoundDogSyncService: ObservableObject {
@@ -452,6 +453,62 @@ final class HoundDogSyncService: ObservableObject {
     func uploadTicket(plate: String, lot: String, violationType: String, confidence: Double) async throws {
         let ticket = PendingTicket(plate: plate, lot: lot, violationType: violationType, confidence: confidence)
         _ = try await uploadTicket(ticket)
+    }
+
+    // MARK: - Plate Corrections
+
+    struct PlateCorrectionPayload: Encodable {
+        let ocr_plate: String
+        let correct_plate: String
+        let plate_state: String
+        let lot: String
+        let officer_name: String
+        let officer_email: String
+        let device_name: String
+        let notes: String
+    }
+
+    func uploadPlateCorrection(
+        ocrPlate: String,
+        correctPlate: String,
+        plateState: String = "",
+        lot: String = "",
+        officerName: String = "",
+        officerEmail: String = "",
+        notes: String = ""
+    ) async throws {
+        let settings = AppSettings.shared
+        guard !settings.houndDogURL.isEmpty else {
+            throw SyncError.serverError(0)
+        }
+
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/plate-correction") else {
+            throw SyncError.serverError(0)
+        }
+
+        let payload = PlateCorrectionPayload(
+            ocr_plate: ocrPlate,
+            correct_plate: correctPlate,
+            plate_state: plateState,
+            lot: lot,
+            officer_name: officerName,
+            officer_email: officerEmail,
+            device_name: UIDevice.current.name,
+            notes: notes
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw SyncError.serverError(code)
+        }
+        print("[HoundDog] Plate correction submitted: \(ocrPlate) -> \(correctPlate)")
     }
 
     // MARK: - Types

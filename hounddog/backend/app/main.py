@@ -764,6 +764,21 @@ async def lifespan(app: FastAPI):
             # Handicapped designation on permits
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_status VARCHAR(16) DEFAULT 'none'",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_expiry DATE",
+            # Plate corrections: officer-reported OCR misreads (no citation)
+            """CREATE TABLE IF NOT EXISTS plate_corrections (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                ocr_plate VARCHAR(20) NOT NULL,
+                correct_plate VARCHAR(20) NOT NULL,
+                plate_state VARCHAR(4) DEFAULT '',
+                lot VARCHAR(128) DEFAULT '',
+                officer_name VARCHAR(256) DEFAULT '',
+                officer_email VARCHAR(256) DEFAULT '',
+                device_name VARCHAR(256) DEFAULT '',
+                notes TEXT DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_plate_corrections_ocr ON plate_corrections(ocr_plate)",
+            "CREATE INDEX IF NOT EXISTS idx_plate_corrections_correct ON plate_corrections(correct_plate)",
             ]
             for migration in migrations:
                 try:

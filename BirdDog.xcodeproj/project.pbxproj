@@ -42,6 +42,7 @@
 		804F3E3D558F634FC371174B /* PlateDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */; };
 		83D4DA427F57D63F16E9F644 /* PlateRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */; };
 		83F9428A410F478E8C061F6C /* ViolationTypeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA87F77A7F9736D61162539C /* ViolationTypeStore.swift */; };
+		89573E25424443EE0021E077 /* PlateCorrectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E514434C1956474267713106 /* PlateCorrectionView.swift */; };
 		8DA96E557C789121A357FEA0 /* BenchmarkCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116387B05A06763086E263C1 /* BenchmarkCompareView.swift */; };
 		8DC5242CF0EADCE06BA53918 /* CandidateVoterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78E19F300499EF824B1615C /* CandidateVoterTests.swift */; };
 		8F5F5EE340D5F20CF18E7E40 /* SessionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */; };
@@ -134,6 +135,7 @@
 		DA87F77A7F9736D61162539C /* ViolationTypeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViolationTypeStore.swift; sourceTree = "<group>"; };
 		DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcherTests.swift; sourceTree = "<group>"; };
 		E4F388DD2760B3DE754574DE /* TicketReceiptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketReceiptBuilder.swift; sourceTree = "<group>"; };
+		E514434C1956474267713106 /* PlateCorrectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateCorrectionView.swift; sourceTree = "<group>"; };
 		EDAF99197F0B8306C7230405 /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
 		EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotMatchingTests.swift; sourceTree = "<group>"; };
 		F3193DCF5C38933C9A27783B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -270,6 +272,7 @@
 				A6A4B5A485C2EE7AAE00AFF3 /* MovingViolationView.swift */,
 				C0CB826BBBAC8EB503670D64 /* OfficerLoginView.swift */,
 				9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */,
+				E514434C1956474267713106 /* PlateCorrectionView.swift */,
 				A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */,
 				433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */,
 				56771E1D5749AF106C7BF205 /* QRScannerView.swift */,
@@ -451,6 +454,7 @@
 				F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */,
 				58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */,
 				7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */,
+				89573E25424443EE0021E077 /* PlateCorrectionView.swift in Sources */,
 				804F3E3D558F634FC371174B /* PlateDatabase.swift in Sources */,
 				CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */,
 				CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */,
