@@ -316,6 +316,9 @@ function LotClosureCalendar() {
             <Descriptions.Item label="Reason">{selectedClosure.reason || "—"}</Descriptions.Item>
             <Descriptions.Item label="Closes">{new Date(selectedClosure.closes_at).toLocaleString()}</Descriptions.Item>
             <Descriptions.Item label="Reopens">{selectedClosure.reopens_at ? new Date(selectedClosure.reopens_at).toLocaleString() : "Manual reopen"}</Descriptions.Item>
+            {selectedClosure.divert_to_lot_name && (
+              <Descriptions.Item label="Diverted To"><Tag color="blue">{selectedClosure.divert_to_lot_name}</Tag> — permit holders allowed without citation</Descriptions.Item>
+            )}
             <Descriptions.Item label="Created by">{selectedClosure.created_by}</Descriptions.Item>
             <Descriptions.Item label="Notification">{selectedClosure.notification_sent ? "Yes" : "No"}</Descriptions.Item>
           </Descriptions>

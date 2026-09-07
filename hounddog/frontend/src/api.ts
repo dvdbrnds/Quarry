@@ -187,6 +187,8 @@ export interface LotClosure {
   closes_at: string;
   reopens_at: string | null;
   is_immediate: boolean;
+  divert_to_lot_id: string | null;
+  divert_to_lot_name?: string | null;
   notification_sent: boolean;
   reopen_notification_sent: boolean;
   created_by: string;
@@ -628,7 +630,7 @@ export const api = {
       request<Lot>(`/lots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/lots/${id}`, { method: "DELETE" }),
-    close: (lotId: string, data: { reason?: string; reopens_at?: string; recipients?: string[] }) =>
+    close: (lotId: string, data: { reason?: string; reopens_at?: string; divert_to_lot_id?: string; recipients?: string[] }) =>
       request<LotClosure>(`/lots/${lotId}/close`, { method: "POST", body: JSON.stringify(data) }),
     reopen: (lotId: string) =>
       request<Lot>(`/lots/${lotId}/reopen`, { method: "POST" }),
@@ -638,7 +640,7 @@ export const api = {
         return request<LotClosure[]>(`/lots/closures/all${qs}`);
       },
       listForLot: (lotId: string) => request<LotClosure[]>(`/lots/${lotId}/closures`),
-      schedule: (data: { lot_id: string; reason?: string; closes_at: string; reopens_at?: string; is_immediate?: boolean; recipients?: string[] }) =>
+      schedule: (data: { lot_id: string; reason?: string; closes_at: string; reopens_at?: string; is_immediate?: boolean; divert_to_lot_id?: string; recipients?: string[] }) =>
         request<LotClosure>("/lots/closures", { method: "POST", body: JSON.stringify(data) }),
       update: (closureId: string, data: Partial<LotClosure>) =>
         request<LotClosure>(`/lots/closures/${closureId}`, { method: "PUT", body: JSON.stringify(data) }),

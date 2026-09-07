@@ -218,6 +218,7 @@ async def send_lot_closure_notification(
     recipients: list[str],
     closes_at: str,
     reopens_at: str | None = None,
+    divert_to_lot_name: str | None = None,
     school_name: str | None = None,
 ) -> bool:
     b = await _load_branding()
@@ -227,7 +228,8 @@ async def send_lot_closure_notification(
     from .email_templates import render_lot_closure_email
     body_html, body_text = render_lot_closure_email(
         lot_name, reason, closes_at,
-        reopens_at=reopens_at, school_name=school,
+        reopens_at=reopens_at, divert_to_lot_name=divert_to_lot_name,
+        school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],
         department_name=b.get("department_name", "Parking Authority"),

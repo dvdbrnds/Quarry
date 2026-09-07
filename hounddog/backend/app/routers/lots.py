@@ -145,18 +145,24 @@ async def list_all_closures(
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    q = select(LotClosure, ParkingLot.name).join(
-        ParkingLot, LotClosure.lot_id == ParkingLot.id
-    ).where(ParkingLot.deleted_at.is_(None))
+    from sqlalchemy.orm import aliased
+    DivertLot = aliased(ParkingLot)
+    q = (
+        select(LotClosure, ParkingLot.name, DivertLot.name)
+        .join(ParkingLot, LotClosure.lot_id == ParkingLot.id)
+        .outerjoin(DivertLot, LotClosure.divert_to_lot_id == DivertLot.id)
+        .where(ParkingLot.deleted_at.is_(None))
+    )
     if status:
         q = q.where(LotClosure.status == status)
     q = q.order_by(LotClosure.closes_at.desc())
 
     rows = (await db.execute(q)).all()
     result = []
-    for closure, lot_name in rows:
+    for closure, lot_name, divert_lot_name in rows:
         data = LotClosureWithLotName.model_validate(closure)
         data.lot_name = lot_name
+        data.divert_to_lot_name = divert_lot_name
         result.append(data)
     return result
 
@@ -177,6 +183,7 @@ async def schedule_closure(
         closes_at=data.closes_at,
         reopens_at=data.reopens_at,
         is_immediate=data.is_immediate,
+        divert_to_lot_id=data.divert_to_lot_id,
         extra_recipients=data.recipients if data.recipients else None,
         status="scheduled",
         created_by=user.email,
@@ -596,6 +603,7 @@ async def close_lot_now(
         closes_at=now,
         reopens_at=body.reopens_at,
         is_immediate=True,
+        divert_to_lot_id=body.divert_to_lot_id,
         status="active",
         notification_sent=True,
         created_by=user.email,
@@ -605,6 +613,11 @@ async def close_lot_now(
     await db.flush()
     await db.refresh(closure)
 
+    divert_lot_name = None
+    if body.divert_to_lot_id:
+        divert_lot = await db.get(ParkingLot, body.divert_to_lot_id)
+        divert_lot_name = divert_lot.name if divert_lot else None
+
     recipients = await _get_closure_recipients(lot_id, body.recipients, db)
     reopens_str = body.reopens_at.strftime("%b %d, %Y %I:%M %p") if body.reopens_at else None
     await send_lot_closure_notification(
@@ -613,6 +626,7 @@ async def close_lot_now(
         recipients=recipients,
         closes_at=now.strftime("%b %d, %Y %I:%M %p %Z"),
         reopens_at=reopens_str,
+        divert_to_lot_name=divert_lot_name,
     )
 
     return closure

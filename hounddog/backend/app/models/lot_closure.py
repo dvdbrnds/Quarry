@@ -17,6 +17,7 @@ class LotClosure(Base):
     closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reopens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_immediate: Mapped[bool] = mapped_column(Boolean, default=False)
+    divert_to_lot_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("parking_lots.id"), nullable=True)
     notification_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     reopen_notification_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     extra_recipients: Mapped[list | None] = mapped_column(JSON, nullable=True)

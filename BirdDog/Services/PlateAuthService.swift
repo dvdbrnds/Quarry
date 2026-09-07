@@ -148,7 +148,20 @@ final class PlateAuthService: PlateCheckable {
         // In the system, but not allowed in this lot right now
         if let currentLot, !record.lotZone.isEmpty,
            !lotMatches(permitZone: record.lotZone, currentLot: currentLot) {
-            return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
+            // Check if there's an active diversion: the permit holder's assigned lot
+            // is closed and diverted TO the lot the officer is currently in.
+            let diversions = HoundDogSyncService.shared.activeDiversions
+            let normalizedCurrent = Self.normalizeLotCode(currentLot)
+            let permitZones = record.lotZone
+                .split(separator: ",")
+                .map { Self.normalizeLotCode(String($0)) }
+                .filter { !$0.isEmpty }
+            let isDiverted = permitZones.contains { zone in
+                diversions[zone] == normalizedCurrent
+            }
+            if !isDiverted {
+                return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
+            }
         }
 
         // Time-of-day enforcement: check lot's access_schedule against permit type

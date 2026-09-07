@@ -506,6 +506,7 @@ export default function Lots() {
   const [closeReopensAt, setCloseReopensAt] = useState<dayjs.Dayjs | null>(null);
   const [closeRecipients, setCloseRecipients] = useState("");
   const [closeImmediate, setCloseImmediate] = useState(false);
+  const [closeDivertToLotId, setCloseDivertToLotId] = useState<string | null>(null);
   const [closeSubmitting, setCloseSubmitting] = useState(false);
 
   const filteredLots = useMemo(() => {
@@ -598,6 +599,7 @@ export default function Lots() {
         await api.lots.close(closingLot.id, {
           reason: closeReason,
           reopens_at: closeReopensAt ? closeReopensAt.toISOString() : undefined,
+          divert_to_lot_id: closeDivertToLotId || undefined,
           recipients,
         });
         message.success(`${closingLot.name} closed immediately`);
@@ -607,11 +609,12 @@ export default function Lots() {
           reason: closeReason,
           closes_at: closeClosesAt!.toISOString(),
           reopens_at: closeReopensAt ? closeReopensAt.toISOString() : undefined,
+          divert_to_lot_id: closeDivertToLotId || undefined,
           recipients,
         });
         message.success(`Closure scheduled for ${closingLot.name}`);
       }
-      setClosingLot(null); setCloseReason(""); setCloseClosesAt(null); setCloseReopensAt(null); setCloseRecipients(""); setCloseImmediate(false);
+      setClosingLot(null); setCloseReason(""); setCloseClosesAt(null); setCloseReopensAt(null); setCloseRecipients(""); setCloseImmediate(false); setCloseDivertToLotId(null);
       load();
     } catch { message.error("Failed to close lot"); } finally { setCloseSubmitting(false); }
   }
@@ -753,7 +756,7 @@ export default function Lots() {
         okText={closeImmediate ? "Close Lot Now" : "Schedule Closure"}
         okButtonProps={closeImmediate ? { danger: true } : {}}
         confirmLoading={closeSubmitting}
-        onOk={handleCloseLot} onCancel={() => { setClosingLot(null); setCloseImmediate(false); setCloseClosesAt(null); setCloseReopensAt(null); setCloseReason(""); setCloseRecipients(""); }}>
+        onOk={handleCloseLot} onCancel={() => { setClosingLot(null); setCloseImmediate(false); setCloseClosesAt(null); setCloseReopensAt(null); setCloseReason(""); setCloseRecipients(""); setCloseDivertToLotId(null); }}>
         <div className="space-y-3">
           <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
             <Switch size="small" checked={closeImmediate} onChange={setCloseImmediate} />
@@ -777,6 +780,18 @@ export default function Lots() {
           <div>
             <label className="block text-xs font-medium text-ink-mute mb-1">Reopens At (optional)</label>
             <DatePicker showTime value={closeReopensAt} onChange={setCloseReopensAt} className="w-full" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-mute mb-1">Divert Parkers To (optional)</label>
+            <Select
+              allowClear
+              placeholder="Select an alternate lot..."
+              value={closeDivertToLotId}
+              onChange={(v) => setCloseDivertToLotId(v || null)}
+              className="w-full"
+              options={lots.filter(l => l.id !== closingLot?.id && !l.is_closed).map(l => ({ label: l.name, value: l.id }))}
+            />
+            <p className="text-xs text-ink-mute mt-1">Permit holders from this lot will be allowed in the diversion lot without citation while the closure is active.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ink-mute mb-1">Additional Recipients</label>

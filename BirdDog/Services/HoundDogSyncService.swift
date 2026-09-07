@@ -131,6 +131,7 @@ final class HoundDogSyncService: ObservableObject {
             print("[HoundDog] Permits OK (\(permitCount) records)")
             try await syncLots()
             print("[HoundDog] Lots OK (\(lotCount) lots)")
+            try await syncDiversions()
             try await syncViolationTypes()
             try await syncCalendar()
             try await syncEnforcementSettings()
@@ -233,6 +234,31 @@ final class HoundDogSyncService: ObservableObject {
             hcStatus: permit.hcStatus,
             hcExpiry: permit.hcExpiry
         )
+    }
+
+    // MARK: - Diversions
+
+    /// Active lot diversions: maps closed lot name → divert-to lot name.
+    /// When a lot is closed and diverted, permit holders from the closed lot
+    /// are allowed in the diversion target without citation.
+    @Published private(set) var activeDiversions: [String: String] = [:]
+
+    private func syncDiversions() async throws {
+        let settings = AppSettings.shared
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/diversions") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        let syncResponse = try Self.jsonDecoder.decode(DiversionsSyncResponse.self, from: data)
+        var map: [String: String] = [:]
+        for d in syncResponse.diversions {
+            map[d.closedLotName.uppercased()] = d.divertToLotName.uppercased()
+        }
+        activeDiversions = map
+        print("[HoundDog] Diversions: \(map.count) active")
     }
 
     // MARK: - Violation Types
@@ -660,6 +686,30 @@ struct ViolationTypesSyncResponse: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case violationTypes = "violation_types"
+        case serverTimestamp = "server_timestamp"
+    }
+}
+
+// MARK: - Diversion sync models
+
+struct SyncDiversion: Decodable {
+    let closedLotName: String
+    let divertToLotName: String
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case closedLotName = "closed_lot_name"
+        case divertToLotName = "divert_to_lot_name"
+        case reason
+    }
+}
+
+struct DiversionsSyncResponse: Decodable {
+    let diversions: [SyncDiversion]
+    let serverTimestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case diversions
         case serverTimestamp = "server_timestamp"
     }
 }

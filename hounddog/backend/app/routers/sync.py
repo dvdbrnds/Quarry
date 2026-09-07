@@ -22,6 +22,7 @@ from ..models.device import Device
 from ..models.enforcement_settings import EnforcementSettings
 from ..models.plate_correction import PlateCorrection
 from ..models.lot import ParkingLot
+from ..models.lot_closure import LotClosure
 from ..models.lot_zone import LotZone
 from ..models.parking_spot import ParkingSpot
 from ..models.permit import Permit
@@ -246,6 +247,44 @@ async def sync_lots(
         lots=result_lots,
         server_timestamp=datetime.now(timezone.utc),
         full_sync=full_sync,
+    )
+
+
+class SyncDiversion(BaseModel):
+    closed_lot_name: str
+    divert_to_lot_name: str
+    reason: str = ""
+
+
+class SyncDiversionsResponse(BaseModel):
+    diversions: list[SyncDiversion]
+    server_timestamp: datetime
+
+
+@router.get("/diversions", response_model=SyncDiversionsResponse)
+async def sync_diversions(
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy.orm import aliased
+    DivertLot = aliased(ParkingLot)
+
+    result = await db.execute(
+        select(ParkingLot.name, DivertLot.name, LotClosure.reason)
+        .join(ParkingLot, LotClosure.lot_id == ParkingLot.id)
+        .join(DivertLot, LotClosure.divert_to_lot_id == DivertLot.id)
+        .where(
+            LotClosure.status == "active",
+            LotClosure.divert_to_lot_id.isnot(None),
+        )
+    )
+    rows = result.all()
+    return SyncDiversionsResponse(
+        diversions=[
+            SyncDiversion(closed_lot_name=closed, divert_to_lot_name=target, reason=reason or "")
+            for closed, target, reason in rows
+        ],
+        server_timestamp=datetime.now(timezone.utc),
     )
 
 

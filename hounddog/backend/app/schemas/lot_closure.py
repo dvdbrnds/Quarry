@@ -10,6 +10,7 @@ class LotClosureCreate(BaseModel):
     closes_at: datetime
     reopens_at: datetime | None = None
     is_immediate: bool = False
+    divert_to_lot_id: uuid.UUID | None = None
     recipients: list[str] = []
 
 
@@ -17,6 +18,7 @@ class LotClosureUpdate(BaseModel):
     reason: str | None = None
     closes_at: datetime | None = None
     reopens_at: datetime | None = None
+    divert_to_lot_id: uuid.UUID | None = None
     status: str | None = None
 
 
@@ -29,6 +31,7 @@ class LotClosureRead(BaseModel):
     closes_at: datetime
     reopens_at: datetime | None
     is_immediate: bool
+    divert_to_lot_id: uuid.UUID | None = None
     notification_sent: bool
     reopen_notification_sent: bool
     extra_recipients: list[str] | None = None
@@ -40,9 +43,11 @@ class LotClosureRead(BaseModel):
 
 class LotClosureWithLotName(LotClosureRead):
     lot_name: str = ""
+    divert_to_lot_name: str | None = None
 
 
 class CloseLotNow(BaseModel):
     reason: str = ""
     reopens_at: datetime | None = None
+    divert_to_lot_id: uuid.UUID | None = None
     recipients: list[str] = []

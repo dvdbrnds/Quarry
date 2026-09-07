@@ -764,6 +764,8 @@ async def lifespan(app: FastAPI):
             # Handicapped designation on permits
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_status VARCHAR(16) DEFAULT 'none'",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_expiry DATE",
+            # Lot closure diversion
+            "ALTER TABLE lot_closures ADD COLUMN IF NOT EXISTS divert_to_lot_id UUID REFERENCES parking_lots(id)",
             # Plate corrections: officer-reported OCR misreads (no citation)
             """CREATE TABLE IF NOT EXISTS plate_corrections (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

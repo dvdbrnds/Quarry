@@ -157,6 +157,7 @@ def render_lot_closure_email(
     closes_at: str,
     *,
     reopens_at: str | None = None,
+    divert_to_lot_name: str | None = None,
     school_name: str = "",
     primary: str = "",
     accent: str = "",
@@ -173,6 +174,16 @@ def render_lot_closure_email(
     ]
     if reopens_at:
         rows.append(("Expected Reopening", reopens_at, "font-weight:600;"))
+    if divert_to_lot_name:
+        rows.append(("Alternate Parking", divert_to_lot_name, "font-weight:600;color:#1a7f37;"))
+
+    divert_msg = ""
+    if divert_to_lot_name:
+        divert_msg = (
+            f'<p style="color:#1a7f37;font-size:14px;line-height:1.6;font-weight:600;">'
+            f'You have been temporarily redirected to <strong>{divert_to_lot_name}</strong>. '
+            f'You may park there without citation while this closure is in effect.</p>'
+        )
 
     inner = (
         _heading("Parking Lot Closure", primary)
@@ -181,8 +192,12 @@ def render_lot_closure_email(
             f'has been closed effective <strong>{closes_at}</strong>.'
         )
         + _detail_table("Closure Details", rows)
-        + '<p style="color:#333;font-size:14px;line-height:1.6;">Please make alternative '
-        'parking arrangements. Vehicles remaining in the closed lot may be subject to towing.</p>'
+        + divert_msg
+        + (
+            '<p style="color:#333;font-size:14px;line-height:1.6;">Please make alternative '
+            'parking arrangements. Vehicles remaining in the closed lot may be subject to towing.</p>'
+            if not divert_to_lot_name else ''
+        )
     )
     html = render_email(
         "Parking Lot Closure", inner,
