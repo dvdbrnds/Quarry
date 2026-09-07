@@ -6,7 +6,6 @@ struct ContentView: View {
     @ObservedObject private var appSettings = AppSettings.shared
     @ObservedObject private var officerAuth = OfficerAuthService.shared
     @State private var showExportSheet = false
-    @State private var showClearConfirm = false
     @State private var showAdminSettings = false
     @State private var showSessionHistory = false
     @State private var showCameraLog = false
@@ -24,7 +23,6 @@ struct ContentView: View {
     /// after the Menu finishes dismissing (avoids SwiftUI sheet-swallowing bug).
     private enum MenuAction: Equatable {
         case sessionHistory
-        case clearLog
         case exportCSV
         case performanceSummary
         case exportDiagnosticCaptures
@@ -105,12 +103,6 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.15), value: isExporting)
             }
         }
-        .alert("Clear Scan Log?", isPresented: $showClearConfirm) {
-            Button("Clear", role: .destructive) { viewModel.clearLog() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove all \(viewModel.scanLog.count) scanned plates from this session.")
-        }
         .onChange(of: pendingMenuAction) { _, action in
             guard let action else { return }
             pendingMenuAction = nil
@@ -118,8 +110,6 @@ struct ContentView: View {
             case .sessionHistory:
                 viewModel.pauseScanning()
                 showSessionHistory = true
-            case .clearLog:
-                showClearConfirm = true
             case .exportCSV:
                 guard !isExporting else { return }
                 isExporting = true
@@ -624,7 +614,7 @@ struct ContentView: View {
                 Button { pendingMenuAction = .sessionHistory } label: {
                     Label("Session History", systemImage: "archivebox")
                 }
-                Button(role: .destructive) { pendingMenuAction = .clearLog } label: {
+                Button(role: .destructive) { viewModel.clearLog() } label: {
                     Label("Clear Log", systemImage: "trash")
                 }
                 .disabled(viewModel.scanLog.isEmpty)
