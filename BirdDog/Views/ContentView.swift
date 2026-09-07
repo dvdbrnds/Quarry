@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var ticketPrefilledPlate: String?
     @State private var ticketPrefilledEntry: ScannedPlate?
     @State private var correctionEntry: ScannedPlate?
+    @State private var showVehicleTag = false
+    @State private var tagPlate: String?
     @State private var exportURLs: [URL] = []
     @State private var now = Date()
 
@@ -51,7 +53,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
-                || showAdminSettings || showSessionHistory || showPlateCorrection
+                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag
             if viewModel.cameraPermission == .authorized
                 && !viewModel.isScanningPaused
                 && !anyScreenOpen {
@@ -64,7 +66,7 @@ struct ContentView: View {
         }
         .onReceive(tick) { t in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
-                || showAdminSettings || showSessionHistory || showPlateCorrection
+                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag
             if !anyScreenOpen {
                 now = t
             }
@@ -142,6 +144,11 @@ struct ContentView: View {
                             viewModel.pauseScanning()
                             correctionEntry = entry
                             showPlateCorrection = true
+                        } : nil,
+                        onTagTapped: officerAuth.isStaff ? { entry in
+                            viewModel.pauseScanning()
+                            tagPlate = entry.text
+                            showVehicleTag = true
                         } : nil
                     )
 
@@ -214,11 +221,20 @@ struct ContentView: View {
                 )
             }
         }
+        .sheet(isPresented: $showVehicleTag) {
+            VehicleTagFormView(prefilledPlate: tagPlate ?? "")
+                .onDisappear {
+                    tagPlate = nil
+                }
+        }
         .onChange(of: showPlateCorrection) { _, isOpen in
             if !isOpen {
                 correctionEntry = nil
                 viewModel.resumeScanning()
             }
+        }
+        .onChange(of: showVehicleTag) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
         }
         .onChange(of: showTicketIssuance) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }

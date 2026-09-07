@@ -539,6 +539,77 @@ final class HoundDogSyncService: ObservableObject {
         print("[HoundDog] Plate correction submitted: \(ocrPlate) -> \(correctPlate)")
     }
 
+    // MARK: - Vehicle Tags
+
+    struct VehicleTagPayload: Encodable {
+        let plates: [String]
+        let owner_name: String
+        let vehicle_make: String
+        let vehicle_model: String
+        let vehicle_color: String
+        let vehicle_year: String
+        let source: String
+        let notes: String
+        let officer_name: String
+        let officer_email: String
+    }
+
+    struct VehicleTagResponse: Decodable {
+        let status: String
+        let tag_id: String
+        let plates: [String]
+    }
+
+    func createVehicleTag(
+        plates: [String],
+        ownerName: String = "",
+        vehicleMake: String = "",
+        vehicleModel: String = "",
+        vehicleColor: String = "",
+        vehicleYear: String = "",
+        source: String = "officer",
+        notes: String = ""
+    ) async throws -> VehicleTagResponse {
+        let settings = AppSettings.shared
+        guard !settings.houndDogURL.isEmpty else {
+            throw SyncError.serverError(0)
+        }
+
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/vehicle-tags") else {
+            throw SyncError.serverError(0)
+        }
+
+        let payload = VehicleTagPayload(
+            plates: plates,
+            owner_name: ownerName,
+            vehicle_make: vehicleMake,
+            vehicle_model: vehicleModel,
+            vehicle_color: vehicleColor,
+            vehicle_year: vehicleYear,
+            source: source,
+            notes: notes,
+            officer_name: OfficerAuthService.shared.officerName,
+            officer_email: OfficerAuthService.shared.officerEmail
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let serverMessage = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw SyncError.serverError(code, detail: serverMessage)
+        }
+
+        let result = try JSONDecoder().decode(VehicleTagResponse.self, from: data)
+        print("[HoundDog] Vehicle tag created: \(result.plates.joined(separator: ", "))")
+        return result
+    }
+
     // MARK: - Types
 
     enum SyncError: LocalizedError {

@@ -753,6 +753,83 @@ async def submit_plate_correction(
     return PlateCorrectionResponse(status="saved", id=str(correction.id))
 
 
+# ── Vehicle Tag creation (from BirdDog) ────────────────────────────
+
+class VehicleTagUpload(BaseModel):
+    plates: list[str]
+    owner_name: str = ""
+    vehicle_make: str = ""
+    vehicle_model: str = ""
+    vehicle_color: str = ""
+    vehicle_year: str = ""
+    source: str = "officer"
+    notes: str = ""
+    officer_name: str = ""
+    officer_email: str = ""
+
+
+class VehicleTagUploadResponse(BaseModel):
+    status: str
+    tag_id: str
+    plates: list[str]
+
+
+@router.post("/vehicle-tags", status_code=201, response_model=VehicleTagUploadResponse)
+async def create_vehicle_tag_from_device(
+    data: VehicleTagUpload,
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a vehicle tag from BirdDog (officer in the field)."""
+    if not data.plates:
+        raise HTTPException(400, "At least one plate is required")
+
+    normalized = [p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates]
+    vehicle_parts = [p for p in [data.vehicle_year, data.vehicle_color, data.vehicle_make, data.vehicle_model] if p]
+    vehicle_desc = " ".join(vehicle_parts) if vehicle_parts else ""
+
+    officer_info = ""
+    if data.officer_name:
+        officer_info = f"Tagged by {data.officer_name}"
+        if data.officer_email:
+            officer_info += f" ({data.officer_email})"
+    notes = "\n".join(filter(None, [data.notes, officer_info])).strip()
+
+    tag = Permit(
+        name=data.owner_name or f"Unknown — {', '.join(normalized)}",
+        plates=normalized,
+        email="",
+        phone="",
+        permit_type="vehicle_tag",
+        status="active",
+        lot_assignment="",
+        is_tag_only=True,
+        vehicle_make=data.vehicle_make or None,
+        vehicle_model=data.vehicle_model or None,
+        vehicle_color=data.vehicle_color or None,
+        vehicle_year=data.vehicle_year or None,
+        vehicle_description=vehicle_desc,
+        tag_notes=notes or None,
+        tag_source=data.source or "officer",
+        start_date=today_local(),
+        end_date=today_local(),
+    )
+    db.add(tag)
+    await db.flush()
+    await db.refresh(tag)
+
+    logger.info(
+        "[VehicleTag] Created from device %s: plates=%s officer=%s",
+        device.name, normalized, data.officer_name,
+    )
+
+    return VehicleTagUploadResponse(
+        status="created",
+        tag_id=str(tag.id),
+        plates=normalized,
+    )
+
+
 class PlateCorrectionRead(BaseModel):
     id: str
     ocr_plate: str

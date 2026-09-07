@@ -10,6 +10,7 @@ struct ScanLogView: View {
     let unknownCount: Int
     var onIssueTapped: ((ScannedPlate) -> Void)?
     var onCorrectPlateTapped: ((ScannedPlate) -> Void)?
+    var onTagTapped: ((ScannedPlate) -> Void)?
 
     @State private var filter: StatusFilter = .all
 
@@ -154,6 +155,20 @@ struct ScanLogView: View {
             }
 
             Spacer()
+
+            if case .unknown = entry.authStatus, let tag = onTagTapped {
+                Button {
+                    tag(entry)
+                } label: {
+                    Label("Tag", systemImage: "tag.fill")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.cyan, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
 
             if let correct = onCorrectPlateTapped {
                 Button {
