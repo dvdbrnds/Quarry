@@ -560,8 +560,14 @@ async def detect_spots_endpoint(
 async def _get_closure_recipients(
     lot_id: uuid.UUID, extra: list[str], db: AsyncSession
 ) -> list[str]:
-    """Build the email list: permits assigned to the lot + any extras."""
+    """Build the email list: permits assigned to the lot + any extras.
+
+    Two-pass lookup:
+      1. Direct match on Permit.lot_assignment (CSV string contains lot name)
+      2. Indirect match via PermitType.lot_assignments array (authoritative source)
+    """
     from ..config import settings
+    from ..models.permit_type import PermitType
 
     recipients = set(extra)
     if settings.lot_closure_mailing_list:
@@ -573,18 +579,47 @@ async def _get_closure_recipients(
 
     lot = await db.get(ParkingLot, lot_id)
     if lot:
+        # Pass 1: direct lot_assignment string match
         result = await db.execute(
             select(Permit.email).where(
                 permit_lot_matches(lot.name),
                 Permit.email.isnot(None),
+                Permit.email != "",
                 Permit.status == "active",
                 Permit.deleted_at.is_(None),
             )
         )
         for (email,) in result.all():
             if email:
-                recipients.add(email)
+                recipients.add(email.strip().lower())
 
+        # Pass 2: find permit types that include this lot in their lot_assignments array,
+        # then find active permits of those types
+        pt_result = await db.execute(
+            select(PermitType.code).where(
+                PermitType.lot_assignments.any(lot.name),
+                PermitType.is_active.is_(True),
+            )
+        )
+        pt_codes = [code for (code,) in pt_result.all()]
+        if pt_codes:
+            result2 = await db.execute(
+                select(Permit.email).where(
+                    Permit.permit_type.in_(pt_codes),
+                    Permit.email.isnot(None),
+                    Permit.email != "",
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                )
+            )
+            for (email,) in result2.all():
+                if email:
+                    recipients.add(email.strip().lower())
+
+    logger.info(
+        "Closure recipients for lot %s (%s): %d permit holders, %d extras, %d total",
+        lot.name if lot else "?", lot_id, len(recipients) - len(extra), len(extra), len(recipients),
+    )
     return list(recipients)
 
 

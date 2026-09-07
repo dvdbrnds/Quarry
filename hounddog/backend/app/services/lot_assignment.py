@@ -55,16 +55,21 @@ def resolve_lot_code(assigned_lot: str | None, type_lots: list[str]) -> str:
 
 
 def permit_lot_matches(lot: str) -> ColumnElement[bool]:
-    """Match permits assigned to exactly this lot or including it in a CSV list."""
+    """Match permits assigned to exactly this lot or including it in a CSV list.
+
+    Case-insensitive to handle name mismatches between lots and permit assignments.
+    """
     lot = (lot or "").strip()
     if not lot:
         return Permit.lot_assignment == ""
+    lot_lower = lot.lower()
     # Escape LIKE wildcards in lot names
-    escaped = lot.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    normalized = func.replace(Permit.lot_assignment, ", ", ",")
+    escaped = lot_lower.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    normalized = func.lower(func.replace(Permit.lot_assignment, ", ", ","))
+    lower_assignment = func.lower(Permit.lot_assignment)
     return or_(
-        Permit.lot_assignment == lot,
-        normalized == lot,
+        lower_assignment == lot_lower,
+        normalized == lot_lower,
         normalized.like(f"{escaped},%", escape="\\"),
         normalized.like(f"%,{escaped}", escape="\\"),
         normalized.like(f"%,{escaped},%", escape="\\"),
