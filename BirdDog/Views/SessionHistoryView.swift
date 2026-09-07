@@ -244,6 +244,54 @@ struct SessionDetailView: View {
                 }
             }
 
+            if (session.droppedBySharpness ?? 0) + (session.droppedByFrameSkip ?? 0) +
+                (session.droppedByProcessingLock ?? 0) + (session.droppedBySceneChange ?? 0) +
+                (session.droppedByRectangleFilter ?? 0) > 0 {
+                Section("Frame Drop Breakdown") {
+                    if let v = session.droppedBySharpness, v > 0 {
+                        LabeledContent("Blurry (sharpness)", value: "\(v)")
+                    }
+                    if let v = session.droppedByFrameSkip, v > 0 {
+                        LabeledContent("Frame Skip", value: "\(v)")
+                    }
+                    if let v = session.droppedByProcessingLock, v > 0 {
+                        LabeledContent("Processing Busy", value: "\(v)")
+                    }
+                    if let v = session.droppedBySceneChange, v > 0 {
+                        LabeledContent("Scene Unchanged", value: "\(v)")
+                    }
+                    if let v = session.droppedByRectangleFilter, v > 0 {
+                        LabeledContent("No Rectangle", value: "\(v)")
+                    }
+                }
+            }
+
+            let pathTotal = (session.pathCountFastOnly ?? 0) + (session.pathCountFastAccurate ?? 0) +
+                (session.pathCountAccurateOnly ?? 0) + (session.pathCountGrayscaleFast ?? 0) +
+                (session.pathCountGrayscaleAccurate ?? 0) + (session.pathCountBuiltIn ?? 0)
+            if pathTotal > 0 {
+                Section("OCR Path Usage") {
+                    if let v = session.pathCountFastOnly, v > 0 {
+                        LabeledContent("Fast only", value: "\(v)")
+                    }
+                    if let v = session.pathCountFastAccurate, v > 0 {
+                        LabeledContent("Fast → Accurate", value: "\(v)")
+                    }
+                    if let v = session.pathCountAccurateOnly, v > 0 {
+                        LabeledContent("Accurate only", value: "\(v)")
+                    }
+                    if let v = session.pathCountGrayscaleFast, v > 0 {
+                        LabeledContent("Grayscale fast", value: "\(v)")
+                    }
+                    if let v = session.pathCountGrayscaleAccurate, v > 0 {
+                        LabeledContent("Grayscale accurate", value: "\(v)")
+                    }
+                    if let v = session.pathCountBuiltIn, v > 0 {
+                        LabeledContent("Built-in camera", value: "\(v)")
+                    }
+                }
+            }
+
             Section("Auth Breakdown") {
                 let auth = session.plates.filter { if case .authorized = $0.authStatus { return true }; return false }.count
                 let unknown = session.plates.filter { if case .unknown = $0.authStatus { return true }; return false }.count

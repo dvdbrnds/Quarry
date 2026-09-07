@@ -118,13 +118,13 @@ final class PlateRecognitionService {
                 return req.results ?? []
             }
 
-            // Simplified OCR pipeline for external cameras:
-            // 1. Always auto-levels normalize (cheap, helps with sun/shade)
-            // 2. Run .fast on downscaled auto-leveled buffer
-            // 3. If .fast finds a plate-format match → done
-            // 4. If .fast found text but no plate match → .fast on full-res normalized
-            // 5. If no text at all and rectangles present → .fast on full-res normalized
-            // No separate grayscale path — auto-levels handles contrast normalization.
+            // OCR pipeline for external cameras:
+            // 1. Always auto-levels normalize (cheap, compensates sun/shade)
+            // 2. .fast on downscaled buffer as quick scan
+            // 3. If .fast finds a plate-format match → done (fast path)
+            // 4. If .fast found text but no plate match → .accurate on full-res normalized
+            // 5. If no text and rectangles present → .accurate on full-res normalized
+            // 6. When no rectangles and many empty frames, skip expensive fallbacks
             let skipAccurateFallback = useExternal && !rectHint && self.consecutiveEmptyFrames > 2
 
             let observations: [VNRecognizedTextObservation]
@@ -143,14 +143,14 @@ final class PlateRecognitionService {
                     observations = fastObs
                     pathUsed = .fastOnly
                 } else if !fastObs.isEmpty && !skipAccurateFallback {
-                    // Text found but no plate match — re-run .fast on full-res for detail
-                    let fullResObs = runOCR(on: normalizedBuf, level: .fast)
-                    observations = mergeObservations(primary: fastObs, secondary: fullResObs)
+                    // Text found but no plate match — .accurate on full-res for detail
+                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
+                    observations = mergeObservations(primary: fastObs, secondary: accurateObs)
                     pathUsed = .fastAccurateMerge
                 } else if fastObs.isEmpty && rectHint && !skipAccurateFallback {
-                    // Rectangle hint says something is there — try full-res
-                    let fullResObs = runOCR(on: normalizedBuf, level: .fast)
-                    observations = fullResObs
+                    // Rectangle hint says something is there — .accurate on full-res
+                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
+                    observations = accurateObs
                     pathUsed = .accurateOnly
                 } else {
                     observations = fastObs
