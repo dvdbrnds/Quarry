@@ -29,6 +29,7 @@ struct ContentView: View {
         case performanceSummary
     }
     @State private var pendingMenuAction: MenuAction?
+    @State private var isExporting = false
     @State private var now = Date()
 
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -84,6 +85,25 @@ struct ContentView: View {
         .sheet(isPresented: $showExportSheet, onDismiss: { exportURLs = [] }) {
             ShareSheet(activityItems: exportURLs)
         }
+        .overlay {
+            if isExporting {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(1.3)
+                        Text("Generating report…")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.white)
+                    }
+                    .padding(24)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.15), value: isExporting)
+            }
+        }
         .alert("Clear Scan Log?", isPresented: $showClearConfirm) {
             Button("Clear", role: .destructive) { viewModel.clearLog() }
             Button("Cancel", role: .cancel) {}
@@ -100,20 +120,37 @@ struct ContentView: View {
             case .clearLog:
                 showClearConfirm = true
             case .exportCSV:
-                var urls: [URL] = []
-                if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
-                if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
-                if !urls.isEmpty {
-                    exportURLs = urls
-                    showExportSheet = true
+                guard !isExporting else { return }
+                isExporting = true
+                let log = viewModel.scanLog
+                let diagLog = viewModel.diagnosticLog
+                DispatchQueue.global(qos: .userInitiated).async {
+                    var urls: [URL] = []
+                    if let plates = LogExporter.exportCSV(from: log) { urls.append(plates) }
+                    if let diag = LogExporter.exportDiagnosticCSV(from: diagLog) { urls.append(diag) }
+                    DispatchQueue.main.async {
+                        isExporting = false
+                        if !urls.isEmpty {
+                            exportURLs = urls
+                            showExportSheet = true
+                        }
+                    }
                 }
             case .performanceSummary:
-                var urls: [URL] = []
-                if let summary = LogExporter.exportSessionSummary(from: viewModel.scanLog) { urls.append(summary) }
-                if let csv = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(csv) }
-                if !urls.isEmpty {
-                    exportURLs = urls
-                    showExportSheet = true
+                guard !isExporting else { return }
+                isExporting = true
+                let log = viewModel.scanLog
+                DispatchQueue.global(qos: .userInitiated).async {
+                    var urls: [URL] = []
+                    if let summary = LogExporter.exportSessionSummary(from: log) { urls.append(summary) }
+                    if let csv = LogExporter.exportCSV(from: log) { urls.append(csv) }
+                    DispatchQueue.main.async {
+                        isExporting = false
+                        if !urls.isEmpty {
+                            exportURLs = urls
+                            showExportSheet = true
+                        }
+                    }
                 }
             }
         }
@@ -569,11 +606,11 @@ struct ContentView: View {
                 Button { pendingMenuAction = .exportCSV } label: {
                     Label("Export CSV", systemImage: "tablecells")
                 }
-                .disabled(viewModel.scanLog.isEmpty)
+                .disabled(viewModel.scanLog.isEmpty || isExporting)
                 Button { pendingMenuAction = .performanceSummary } label: {
                     Label("Performance Summary", systemImage: "chart.bar")
                 }
-                .disabled(viewModel.scanLog.isEmpty)
+                .disabled(viewModel.scanLog.isEmpty || isExporting)
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.body)

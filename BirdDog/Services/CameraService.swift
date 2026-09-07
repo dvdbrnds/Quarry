@@ -967,11 +967,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             camera.setExposureTargetBias(bias, completionHandler: nil)
             log("exposure bias: \(bias)")
 
-            // Start with auto-exposure, then lock after it settles to prevent
-            // the bright/dim flicker cycle that hurts OCR accuracy.
             if camera.isExposureModeSupported(.continuousAutoExposure) {
                 camera.exposureMode = .continuousAutoExposure
-                log("exposure: auto (will lock after settling)")
+                log("exposure: continuous auto-exposure")
             }
         }
 
