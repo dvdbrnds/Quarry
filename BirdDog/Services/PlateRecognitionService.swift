@@ -84,31 +84,34 @@ final class PlateRecognitionService {
         return output
     }
 
-    /// Physically rotate a pixel buffer using Core Image so Vision always
-    /// sees correctly oriented text. This is necessary because the raw
-    /// sample buffer from external cameras isn't rotated — only the preview
-    /// layer applies rotation for display.
-    private func rotatePixelBuffer(_ pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) -> CVPixelBuffer? {
-        guard orientation != .up else { return nil }
-        var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        ciImage = ciImage.oriented(orientation)
+    /// Physically rotate a pixel buffer so Vision sees correctly oriented text.
+    /// Uses Core Graphics for explicit rotation control — CIImage.oriented()
+    /// was unreliable across different rendering paths.
+    private func rotatePixelBuffer(_ pixelBuffer: CVPixelBuffer, degrees: Int) -> CVPixelBuffer? {
+        guard degrees != 0 else { return nil }
 
-        let width = Int(ciImage.extent.width)
-        let height = Int(ciImage.extent.height)
+        let ciCtx = rotationContext ?? CIContext(options: [.useSoftwareRenderer: false])
+        if rotationContext == nil { rotationContext = ciCtx }
 
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = ciCtx.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+
+        let rotatedUIImage = CameraService.rotateImage(cgImage, degrees: degrees)
+        guard let rotatedCG = rotatedUIImage.cgImage else { return nil }
+
+        let w = rotatedCG.width
+        let h = rotatedCG.height
         var rotatedBuffer: CVPixelBuffer?
         let attrs: [String: Any] = [
             kCVPixelBufferCGImageCompatibilityKey as String: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
         ]
-        CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+        CVPixelBufferCreate(kCFAllocatorDefault, w, h,
                             CVPixelBufferGetPixelFormatType(pixelBuffer),
                             attrs as CFDictionary, &rotatedBuffer)
         guard let output = rotatedBuffer else { return nil }
 
-        let ctx = rotationContext ?? CIContext(options: [.useSoftwareRenderer: false])
-        if rotationContext == nil { rotationContext = ctx }
-        ctx.render(ciImage, to: output)
+        ciCtx.render(CIImage(cgImage: rotatedCG), to: output)
         return output
     }
     private var rotationContext: CIContext?
@@ -144,12 +147,18 @@ final class PlateRecognitionService {
         let useExternal = isExternalCamera
 
         // For external cameras, physically rotate the buffer so OCR always
-        // sees right-side-up text. Pass .up to Vision since pixels are now correct.
+        // sees right-side-up text. Uses the same CG rotation as diagnostic captures.
         let pixelBuffer: CVPixelBuffer
         let ocrOrientation: CGImagePropertyOrientation
-        if useExternal && orientation != .up, let rotated = rotatePixelBuffer(rawBuffer, orientation: orientation) {
-            pixelBuffer = rotated
-            ocrOrientation = .up
+        if useExternal {
+            let degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
+            if degrees != 0, let rotated = rotatePixelBuffer(rawBuffer, degrees: degrees) {
+                pixelBuffer = rotated
+                ocrOrientation = .up
+            } else {
+                pixelBuffer = rawBuffer
+                ocrOrientation = orientation
+            }
         } else {
             pixelBuffer = rawBuffer
             ocrOrientation = orientation

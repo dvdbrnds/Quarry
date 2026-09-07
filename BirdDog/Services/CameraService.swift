@@ -1211,7 +1211,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         ) else { return UIImage(cgImage: cgImage) }
 
         ctx.translateBy(x: CGFloat(newW) / 2, y: CGFloat(newH) / 2)
-        ctx.rotate(by: -radians)   // CG uses math convention (CCW positive); negate for CW
+        ctx.rotate(by: radians)    // CGContext Y-up: positive radians = visual CW on screen
         ctx.translateBy(x: -CGFloat(w) / 2, y: -CGFloat(h) / 2)
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
 
