@@ -572,13 +572,16 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
             data.end_date = preset.custom_end_date
             data.duration = "custom"
 
-    if not data.sponsor_name.strip():
-        raise HTTPException(400, "A campus sponsor name is required")
-    if not data.sponsor_email.strip():
-        raise HTTPException(400, "A campus sponsor email is required")
-
     start = data.start_date or today_local()
     end = data.end_date or start
+
+    is_single_day = (start == end) and not preset
+
+    if not is_single_day:
+        if not data.sponsor_name.strip():
+            raise HTTPException(400, "A campus sponsor name is required for multi-day visits")
+        if not data.sponsor_email.strip():
+            raise HTTPException(400, "A campus sponsor email is required for multi-day visits")
 
     lot_assignment = "Visitor"
 
@@ -644,6 +647,43 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         else:
             permit_type = "visitor_day"
 
+    # Single-day visits: auto-approve immediately, no sponsor needed
+    if is_single_day:
+        permit = Permit(
+            permit_number=await next_permit_number(db),
+            name=data.name.strip(),
+            email=data.email or None,
+            phone=data.phone or "",
+            plates=[plate],
+            lot_assignment=lot_assignment,
+            permit_type="visitor_day",
+            start_date=start,
+            end_date=end,
+            status="active",
+            student_id=_build_metadata(data),
+        )
+        db.add(permit)
+        await db.flush()
+        await db.refresh(permit)
+        await _notify_permit_change("created", 1)
+
+        if permit.email:
+            await _send_visitor_confirmation(permit)
+
+        return VisitorPermitResponse(
+            id=str(permit.id),
+            permit_number=permit.permit_number,
+            visitor_type="visitor_day",
+            name=permit.name,
+            plate=plate,
+            status="active",
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            requires_approval=False,
+            message="Your visitor day pass is active. No physical permit is needed — your plate has been registered.",
+        )
+
+    # Multi-day / preset visits: require sponsor approval
     permit = Permit(
         permit_number=await next_permit_number(db),
         name=data.name.strip(),

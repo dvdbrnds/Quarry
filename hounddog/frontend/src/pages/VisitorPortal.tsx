@@ -323,8 +323,8 @@ function VisitorFlow() {
                       type="info"
                       showIcon
                       className="mb-4"
-                      message="Visitor parking requires a campus sponsor"
-                      description="All visitors (guests, vendors, and contractors) need a Moravian staff or faculty sponsor to approve their parking request."
+                      message="Visitor parking"
+                      description="Day visitors can register instantly. Multi-day visits require a campus sponsor for approval."
                     />
 
                     <Form.Item
@@ -410,67 +410,8 @@ function VisitorFlow() {
                     )}
 
                     {!usingPreset ? (
-                      <>
-                        <Alert
-                          type="warning"
-                          showIcon
-                          className="mb-4"
-                          message="Campus sponsor required"
-                          description="A Moravian staff or faculty member must approve your parking request. They will receive an email to confirm."
-                        />
-
-                        <Form.Item name="company_name" label="Company or organization (optional)">
-                          <Input placeholder="ABC Plumbing, Sodexo, or leave blank if visiting as a guest" />
-                        </Form.Item>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <Form.Item name="start_date" label="Start date">
-                            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-                          </Form.Item>
-                          <Form.Item name="end_date" label="End date">
-                            <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
-                          </Form.Item>
-                        </div>
-
-                        <div className="border-t pt-4 mt-2">
-                          <h4 className="text-sm font-semibold text-gray-700 mb-2">Campus sponsor</h4>
-                          <p className="text-xs text-gray-500 mb-4">
-                            Enter the Moravian staff or faculty member who can approve your parking. They will
-                            receive an email to confirm.
-                          </p>
-                          <Form.Item
-                            name="sponsor_name"
-                            label="Sponsor name"
-                            rules={[{ required: true, message: "Sponsor name required" }]}
-                          >
-                            <Input placeholder="Mary Johnson" />
-                          </Form.Item>
-                          <Form.Item
-                            name="sponsor_email"
-                            label="Sponsor email"
-                            rules={[
-                              { required: true, message: "Sponsor email required" },
-                              { type: "email", message: "Enter a valid email" },
-                            ]}
-                          >
-                            <Input placeholder="sponsor@example.edu" />
-                          </Form.Item>
-                          <Form.Item name="sponsor_department" label="Department">
-                            <Input placeholder="Facilities, IT, Athletics, etc." />
-                          </Form.Item>
-                        </div>
-
-                        <Form.Item name="work_description" label="Reason for visit">
-                          <Input.TextArea
-                            rows={3}
-                            placeholder="Guest visit, delivery, vendor work, conference, etc."
-                          />
-                        </Form.Item>
-                      </>
+                      <VisitorDetailFields form={form} />
                     ) : null}
-
-                    {/* Partner selected but not "other": ready to submit */}
-                    {/* No partner choice yet when presets exist: still allow submit only after choice? Keep submit always; backend requires sponsor unless preset */}
                     <Button
                       type="primary"
                       htmlType="submit"
@@ -564,6 +505,91 @@ function ConfirmationCard({
         ]}
       />
     </Card>
+  );
+}
+
+
+function VisitorDetailFields({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
+  const startDate = Form.useWatch("start_date", form);
+  const endDate = Form.useWatch("end_date", form);
+
+  const isMultiDay =
+    startDate && endDate && dayjs.isDayjs(startDate) && dayjs.isDayjs(endDate)
+      ? !startDate.isSame(endDate, "day")
+      : false;
+
+  return (
+    <>
+      <Form.Item name="company_name" label="Company or organization (optional)">
+        <Input placeholder="ABC Plumbing, Sodexo, or leave blank if visiting as a guest" />
+      </Form.Item>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Form.Item name="start_date" label="Start date">
+          <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+        </Form.Item>
+        <Form.Item name="end_date" label="End date">
+          <DatePicker className="w-full" disabledDate={(d) => d.isBefore(dayjs().startOf("day"))} />
+        </Form.Item>
+      </div>
+
+      {!isMultiDay && (
+        <Alert
+          type="success"
+          showIcon
+          className="mb-4"
+          message="Day pass — no sponsor needed"
+          description="Same-day visitor passes are issued instantly. Just hit submit."
+        />
+      )}
+
+      {isMultiDay && (
+        <>
+          <Alert
+            type="warning"
+            showIcon
+            className="mb-4"
+            message="Multi-day visit requires a campus sponsor"
+            description="A Moravian staff or faculty member must approve your parking request. They will receive an email to confirm."
+          />
+
+          <div className="border-t pt-4 mt-2">
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Campus sponsor</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              Enter the Moravian staff or faculty member who can approve your parking. They will
+              receive an email to confirm.
+            </p>
+            <Form.Item
+              name="sponsor_name"
+              label="Sponsor name"
+              rules={[{ required: isMultiDay, message: "Sponsor name required" }]}
+            >
+              <Input placeholder="Mary Johnson" />
+            </Form.Item>
+            <Form.Item
+              name="sponsor_email"
+              label="Sponsor email"
+              rules={[
+                { required: isMultiDay, message: "Sponsor email required" },
+                { type: "email", message: "Enter a valid email" },
+              ]}
+            >
+              <Input placeholder="sponsor@example.edu" />
+            </Form.Item>
+            <Form.Item name="sponsor_department" label="Department">
+              <Input placeholder="Facilities, IT, Athletics, etc." />
+            </Form.Item>
+          </div>
+        </>
+      )}
+
+      <Form.Item name="work_description" label="Reason for visit">
+        <Input.TextArea
+          rows={2}
+          placeholder="Guest visit, delivery, vendor work, conference, etc."
+        />
+      </Form.Item>
+    </>
   );
 }
 
