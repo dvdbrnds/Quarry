@@ -949,6 +949,12 @@ extension PlateReaderViewModel: CameraServiceDelegate {
         } else {
             recognitionService.isExternalCamera = service.isUsingExternalCamera
 
+            // Forward scene-change flag so recognition resets its empty-frame counter
+            if service.sceneDidChange {
+                recognitionService.sceneDidChange = true
+                service.sceneDidChange = false
+            }
+
             recognitionService.recognizePlates(in: sampleBuffer, orientation: orientation) { [weak self] result in
                 let elapsed = CACurrentMediaTime() - start
                 service.markProcessingComplete(elapsed: elapsed)

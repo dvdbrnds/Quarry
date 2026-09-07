@@ -130,6 +130,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private let maxConsecutiveSceneDrops: Int = 5
     /// Set when rectangle detector hints a plate-shaped object is visible
     var rectangleDetectedHint = false
+    /// Set to true when the scene-change detector detects a new scene.
+    /// PlateRecognitionService checks this to reset its empty-frame counter.
+    var sceneDidChange = false
 
     func start() {
         if !isRunning {
@@ -1314,6 +1317,7 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
             consecutiveSceneDrops = 0
             lastProcessedFingerprint = fp
+            sceneDidChange = true
         } else if isUsingExternalCamera {
             consecutiveSceneDrops = 0
         }

@@ -29,8 +29,20 @@ final class PlateRecognitionService {
 
     var isExternalCamera = false
 
+    /// Called by CameraService when a scene change is detected.
+    /// Resets the empty-frame counter so the system doesn't stay stuck
+    /// in fast-only mode after glare/obstructions clear.
+    func resetEmptyFrameCounter() {
+        consecutiveEmptyFrames = 0
+    }
+
     private var consecutiveEmptyFrames: Int = 0
     private var lastRectangleDetected = false
+    /// Tracks total frames processed since last successful plate read.
+    /// Unlike consecutiveEmptyFrames (which suppresses .accurate fallback),
+    /// this counter forces a periodic .accurate pass to prevent the system
+    /// from permanently degrading after glare/obstructions clear.
+    private var framesSinceLastPlate: Int = 0
 
     private var recentPlateYPositions: [CGFloat] = []
     private var lastPlateDetectionTime: Date = .distantPast
@@ -136,6 +148,10 @@ final class PlateRecognitionService {
         print("[PlateRecognition] DEBUG: saved OCR input frame to \(url.lastPathComponent) — orientation hint=\(orientation.rawValue) buffer=\(CVPixelBufferGetWidth(buffer))x\(CVPixelBufferGetHeight(buffer))")
     }
 
+    /// Set by CameraService when scene-change is detected. Consumed here
+    /// to reset the empty-frame counter so the system doesn't stay stuck.
+    var sceneDidChange = false
+
     func recognizePlates(in sampleBuffer: CMSampleBuffer,
                          orientation: CGImagePropertyOrientation,
                          completion: @escaping (RecognitionResult) -> Void) {
@@ -145,6 +161,13 @@ final class PlateRecognitionService {
         }
 
         let useExternal = isExternalCamera
+
+        // If the scene changed, reset the empty-frame counter so .accurate
+        // fallback is available again (prevents "hung" after glare clears).
+        if sceneDidChange {
+            sceneDidChange = false
+            consecutiveEmptyFrames = 0
+        }
 
         // For external cameras, physically rotate the buffer so OCR always
         // sees right-side-up text. Uses the same CG rotation as diagnostic captures.
@@ -202,7 +225,14 @@ final class PlateRecognitionService {
             // 4. If .fast found text but no plate match → .accurate on full-res normalized
             // 5. If no text and rectangles present → .accurate on full-res normalized
             // 6. When no rectangles and many empty frames, skip expensive fallbacks
-            let skipAccurateFallback = useExternal && !rectHint && self.consecutiveEmptyFrames > 2
+            // Skip .accurate fallback only when scene is truly static and
+            // empty for a while. Force a periodic .accurate pass every 10
+            // frames to prevent permanent degraded mode after glare clears.
+            self.framesSinceLastPlate += 1
+            let forceAccurate = self.framesSinceLastPlate % 10 == 0
+            let skipAccurateFallback = useExternal && !rectHint
+                && self.consecutiveEmptyFrames > 2
+                && !forceAccurate
 
             let observations: [VNRecognizedTextObservation]
             if useExternal {
@@ -224,8 +254,8 @@ final class PlateRecognitionService {
                     let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
                     observations = mergeObservations(primary: fastObs, secondary: accurateObs)
                     pathUsed = .fastAccurateMerge
-                } else if fastObs.isEmpty && rectHint && !skipAccurateFallback {
-                    // Rectangle hint says something is there — .accurate on full-res
+                } else if fastObs.isEmpty && (rectHint || forceAccurate) && !skipAccurateFallback {
+                    // Rectangle hint or periodic force — .accurate on full-res
                     let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
                     observations = accurateObs
                     pathUsed = .accurateOnly
@@ -394,6 +424,7 @@ final class PlateRecognitionService {
                 self.consecutiveEmptyFrames += 1
             } else {
                 self.consecutiveEmptyFrames = 0
+                self.framesSinceLastPlate = 0
                 for plate in plates {
                     self.updateAdaptiveROI(plateBox: plate.boundingBox)
                 }
@@ -443,12 +474,16 @@ final class PlateRecognitionService {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let stats = frameBrightnessStats(pixelBuffer)
 
+        // Use the brighter of frame mean and center mean to detect localized
+        // glare (chrome reflections blow out the center where plates are).
+        let effectiveBrightness = max(stats.mean, stats.centerMean)
+
         // Stronger correction for bright frames (sun glare on plates).
         // Dark frames get a gentler lift to avoid amplifying noise.
         let brightnessAdj: Double
-        if stats.mean > 0.65 {
+        if effectiveBrightness > 0.65 {
             // Bright/overexposed: pull down aggressively
-            brightnessAdj = (0.45 - stats.mean) * 0.6
+            brightnessAdj = (0.45 - effectiveBrightness) * 0.6
         } else if stats.mean < 0.3 {
             // Dark/underexposed: lift gently
             brightnessAdj = (0.45 - stats.mean) * 0.4
@@ -482,13 +517,35 @@ final class PlateRecognitionService {
 
         // Highlight compression for overexposed frames: recovers blown-out
         // plate text by pulling bright values down with a tone curve.
-        if stats.mean > 0.6 || stats.range < 0.3 {
+        // Also triggers for localized glare: even when the overall frame mean
+        // is normal, specular chrome reflections blow out the plate region.
+        // Use the brightness range to catch both global and local overexposure.
+        let needsHighlightRecovery = effectiveBrightness > 0.55 || stats.range < 0.35
+        if needsHighlightRecovery {
+            // More aggressive highlight pull for severe overexposure
+            let highlightAmount = effectiveBrightness > 0.7 ? 0.3 : 0.5
             if let highlights = CIFilter(name: "CIHighlightShadowAdjust", parameters: [
                 kCIInputImageKey: result,
-                "inputHighlightAmount": NSNumber(value: 0.6),
+                "inputHighlightAmount": NSNumber(value: highlightAmount),
                 "inputShadowAmount": NSNumber(value: 0.0),
             ])?.outputImage {
                 result = highlights
+            }
+        }
+
+        // For frames with very low dynamic range (washed out from glare),
+        // apply a tone curve that stretches the mid-to-high range to recover
+        // detail in bright areas where plate text might be hiding.
+        if stats.range < 0.25 && effectiveBrightness > 0.5 {
+            if let toneCurve = CIFilter(name: "CIToneCurve", parameters: [
+                kCIInputImageKey: result,
+                "inputPoint0": CIVector(x: 0.0, y: 0.0),
+                "inputPoint1": CIVector(x: 0.25, y: 0.15),
+                "inputPoint2": CIVector(x: 0.50, y: 0.45),
+                "inputPoint3": CIVector(x: 0.75, y: 0.80),
+                "inputPoint4": CIVector(x: 1.0, y: 1.0),
+            ])?.outputImage {
+                result = toneCurve
             }
         }
 
@@ -501,14 +558,16 @@ final class PlateRecognitionService {
     }
 
     /// Samples a sparse grid to estimate frame brightness statistics.
-    private func frameBrightnessStats(_ pixelBuffer: CVPixelBuffer) -> (mean: Double, range: Double) {
+    /// Also computes center-weighted brightness to detect localized glare
+    /// on plates even when the overall frame mean is moderate.
+    private func frameBrightnessStats(_ pixelBuffer: CVPixelBuffer) -> (mean: Double, range: Double, centerMean: Double) {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return (0.5, 0.5) }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return (0.5, 0.5, 0.5) }
         let ptr = base.assumingMemoryBound(to: UInt8.self)
 
         let gridSize = 8
@@ -516,6 +575,8 @@ final class PlateRecognitionService {
         let stepY = height / gridSize
         var minVal: Double = 255, maxVal: Double = 0, total: Double = 0
         var count: Double = 0
+        // Center 4x4 grid (middle half of frame where plates typically are)
+        var centerTotal: Double = 0, centerCount: Double = 0
         for row in 0..<gridSize {
             for col in 0..<gridSize {
                 let x = col * stepX + stepX / 2
@@ -525,11 +586,17 @@ final class PlateRecognitionService {
                 minVal = min(minVal, g)
                 maxVal = max(maxVal, g)
                 count += 1
+                // Center region: rows 2-5, cols 2-5 (middle 50%)
+                if row >= 2 && row <= 5 && col >= 2 && col <= 5 {
+                    centerTotal += g
+                    centerCount += 1
+                }
             }
         }
         let mean = total / count / 255.0
         let range = (maxVal - minVal) / 255.0
-        return (mean, range)
+        let centerMean = centerCount > 0 ? centerTotal / centerCount / 255.0 : mean
+        return (mean, range, centerMean)
     }
 
     /// High-contrast grayscale pipeline tuned for colored plates (yellow NJ,
