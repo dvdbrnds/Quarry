@@ -221,7 +221,7 @@ async def list_permits(
     sort: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Permit).where(Permit.deleted_at.is_(None), Permit.is_tag_only.is_(False))
+    query = select(Permit).where(Permit.deleted_at.is_(None))
 
     if max_age_years:
         cutoff = today_local() - timedelta(days=max_age_years * 365)

@@ -821,6 +821,9 @@ export default function Permits() {
   }>>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Permit | null>(null);
+  const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [tagForm] = Form.useForm();
+  const [tagSaving, setTagSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -907,8 +910,17 @@ export default function Permits() {
     { title: "Permit #", dataIndex: "permit_number", key: "permit_number", sorter: true, width: 120, render: (v) => v ? <span className="font-mono text-xs font-medium">{v}</span> : <span className="text-ink-mute">—</span> },
     { title: "Name", dataIndex: "name", key: "name", sorter: true, render: (name) => <span className="font-medium">{name}</span> },
     { title: "Plates", dataIndex: "plates", key: "plates", render: (plates: string[]) => <span className="font-mono text-xs">{plates.join(", ")}</span> },
-    { title: "Lot", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true, ellipsis: true, width: 150 },
-    { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v) => {
+    { title: "Lot / Vehicle", dataIndex: "lot_assignment", key: "lot_assignment", sorter: true, ellipsis: true, width: 150,
+      render: (v, record) => {
+        if (record.permit_type === "vehicle_tag") {
+          const parts = [record.vehicle_year, record.vehicle_color, record.vehicle_make, record.vehicle_model].filter(Boolean);
+          return parts.length > 0 ? <span className="text-xs">{parts.join(" ")}</span> : <span className="text-ink-mute">—</span>;
+        }
+        return v || <span className="text-ink-mute">—</span>;
+      },
+    },
+    { title: "Type", dataIndex: "permit_type", key: "permit_type", sorter: true, render: (v, record) => {
+      if (v === "vehicle_tag") return <Tag color="cyan" icon={<span>🏷️</span>}>Vehicle Tag</Tag>;
       const pt = permitTypes.find(p => p.code === v);
       if (v === "student_guest") return <Tag color="pink">Student Guest</Tag>;
       return <span className="capitalize">{pt?.label || v?.replace(/_/g, " ") || "—"}</span>;
@@ -968,6 +980,7 @@ export default function Permits() {
                       const qs = params.toString();
                       downloadWithAuth(`/api/permits/export/csv${qs ? `?${qs}` : ""}`, "permits.csv");
                     }}>Export CSV</Button>
+                    {isAdmin && <Button onClick={() => setTagModalOpen(true)}>🏷️ Add Vehicle Tag</Button>}
                     {isAdmin && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>}
                   </Space>
                 </div>
@@ -1033,8 +1046,11 @@ export default function Permits() {
                     ]}
                   />
                   <Select value={filterType || undefined} onChange={v => { setFilterType(v || ""); setPage(1); }}
-                    placeholder="All Types" allowClear style={{ width: 140 }}
-                    options={permitTypes.map(pt => ({ label: pt.label, value: pt.code }))}
+                    placeholder="All Types" allowClear style={{ width: 160 }}
+                    options={[
+                      ...permitTypes.map(pt => ({ label: pt.label, value: pt.code })),
+                      { label: "🏷️ Vehicle Tag", value: "vehicle_tag" },
+                    ]}
                   />
                   <Select value={filterLot || undefined} onChange={v => { setFilterLot(v || ""); setPage(1); }}
                     placeholder="All Lots" allowClear style={{ width: 140 }}
@@ -1185,6 +1201,89 @@ export default function Permits() {
         onClose={() => setCancelTarget(null)}
         onCancelled={() => { setCancelTarget(null); load(); loadMeta(); }}
       />
+
+      <Modal
+        title="🏷️ Add Vehicle Tag"
+        open={tagModalOpen}
+        onCancel={() => { setTagModalOpen(false); tagForm.resetFields(); }}
+        confirmLoading={tagSaving}
+        onOk={async () => {
+          try {
+            const values = await tagForm.validateFields();
+            setTagSaving(true);
+            await api.vehicleTags.create({
+              name: values.tag_name,
+              plates: values.tag_plates.split(/[,\n]/).map((p: string) => p.trim()).filter(Boolean),
+              email: values.tag_email || null,
+              phone: values.tag_phone || "",
+              vehicle_year: values.tag_vehicle_year || null,
+              vehicle_make: values.tag_vehicle_make || null,
+              vehicle_model: values.tag_vehicle_model || null,
+              vehicle_color: values.tag_vehicle_color || null,
+              tag_source: values.tag_source || null,
+              tag_notes: values.tag_notes || null,
+            });
+            message.success("Vehicle tag created");
+            setTagModalOpen(false);
+            tagForm.resetFields();
+            load();
+            loadMeta();
+          } catch (err: any) {
+            if (err?.errorFields) return;
+            message.error(err?.message || "Failed to create tag");
+          } finally {
+            setTagSaving(false);
+          }
+        }}
+        okText="Create Tag"
+        width={520}
+      >
+        <Form form={tagForm} layout="vertical" className="mt-4">
+          <p className="text-xs text-gray-500 mb-4">
+            Register a known vehicle without a permit. Use JNET/CLEAN data to identify the owner.
+          </p>
+          <Form.Item name="tag_name" label="Owner Name" rules={[{ required: true, message: "Required" }]}>
+            <Input placeholder="John Doe" />
+          </Form.Item>
+          <Form.Item name="tag_plates" label="License Plate(s)" rules={[{ required: true, message: "Required" }]}
+            help="Separate multiple plates with commas">
+            <Input placeholder="ABC1234" className="font-mono" />
+          </Form.Item>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="tag_email" label="Email">
+              <Input placeholder="owner@example.com" />
+            </Form.Item>
+            <Form.Item name="tag_phone" label="Phone">
+              <Input placeholder="(555) 123-4567" />
+            </Form.Item>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            <Form.Item name="tag_vehicle_year" label="Year">
+              <Input placeholder="2024" maxLength={4} />
+            </Form.Item>
+            <Form.Item name="tag_vehicle_make" label="Make">
+              <Input placeholder="Toyota" />
+            </Form.Item>
+            <Form.Item name="tag_vehicle_model" label="Model">
+              <Input placeholder="Camry" />
+            </Form.Item>
+            <Form.Item name="tag_vehicle_color" label="Color">
+              <Input placeholder="White" />
+            </Form.Item>
+          </div>
+          <Form.Item name="tag_source" label="Source">
+            <Select placeholder="How was this vehicle identified?" options={[
+              { value: "JNET", label: "JNET" },
+              { value: "CLEAN", label: "CLEAN" },
+              { value: "manual", label: "Manual Entry" },
+              { value: "other", label: "Other" },
+            ]} />
+          </Form.Item>
+          <Form.Item name="tag_notes" label="Notes">
+            <Input.TextArea rows={2} placeholder="JNET/CLEAN results, officer observations…" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

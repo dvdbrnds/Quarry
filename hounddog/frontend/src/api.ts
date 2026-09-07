@@ -57,6 +57,13 @@ export interface Permit {
   cancelled_by: string | null;
   hc_status: string;
   hc_expiry: string | null;
+  is_tag_only: boolean;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_color: string | null;
+  vehicle_year: string | null;
+  tag_notes: string | null;
+  tag_source: string | null;
 }
 
 export interface MessageTemplate {
