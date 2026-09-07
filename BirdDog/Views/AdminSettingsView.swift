@@ -107,8 +107,10 @@ struct AdminSettingsView: View {
                 Label("Show Live Stats", systemImage: "speedometer")
             }
 
-            Toggle(isOn: $appSettings.diagnosticCaptures) {
-                Label("Diagnostic Captures", systemImage: "camera.viewfinder")
+            if officerAuth.officerEmail.lowercased() == "brandesd@moravian.edu" {
+                Toggle(isOn: $appSettings.diagnosticCaptures) {
+                    Label("Diagnostic Captures", systemImage: "camera.viewfinder")
+                }
             }
 
             Picker(selection: $appSettings.externalCameraRotation) {

@@ -637,7 +637,8 @@ struct ContentView: View {
                     Label("Performance Summary", systemImage: "chart.bar")
                 }
                 .disabled(viewModel.scanLog.isEmpty || isExporting)
-                if viewModel.scanLog.contains(where: { $0.diagnosticImagePath != nil }) {
+                if officerAuth.officerEmail.lowercased() == "brandesd@moravian.edu",
+                   viewModel.scanLog.contains(where: { $0.diagnosticImagePath != nil }) {
                     Divider()
                     Button { pendingMenuAction = .exportDiagnosticCaptures } label: {
                         Label("Export Diagnostic Captures", systemImage: "camera.viewfinder")
