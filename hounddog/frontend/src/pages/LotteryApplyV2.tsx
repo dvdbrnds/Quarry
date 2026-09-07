@@ -1511,6 +1511,32 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           </dd>
                         </div>
                       </dl>
+
+                      {/* Map of permitted lots */}
+                      {mapsApiKey && permit.lot_assignment && (() => {
+                        const permitLotNames = (permit.lot_assignment as string)
+                          .split(",").map((s: string) => s.trim()).filter(Boolean);
+                        const permitLots = lots.filter(l =>
+                          permitLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(l.name))
+                        );
+                        if (permitLots.length === 0) return null;
+                        const permitLotColors: Record<string, string> = {};
+                        for (const name of permitLotNames) {
+                          permitLotColors[name] = "#16a34a";
+                        }
+                        return (
+                          <div className="mt-3 rounded-lg overflow-hidden border border-green-200" style={{ height: 220 }}>
+                            <StudentLotMap
+                              apiKey={mapsApiKey}
+                              lots={permitLots}
+                              highlightedLots={permitLotNames}
+                              lotColors={permitLotColors}
+                              defaultCenter={campusCenter}
+                            />
+                          </div>
+                        );
+                      })()}
+
                       <PlateSwapForm
                         permitId={permit.id}
                         currentPlate={permit.plates?.[0] || ""}
