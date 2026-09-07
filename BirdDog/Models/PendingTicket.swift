@@ -37,6 +37,8 @@ final class PendingTicket {
     // Permit holder info (when available from scan)
     var ownerName: String?
     var permitNumber: String?
+    var permitTypeLabel: String?
+    var permitLotZone: String?
 
     // Response from server
     var paymentUrl: String?
@@ -64,7 +66,9 @@ final class PendingTicket {
         warningReason: String? = nil,
         ocrOriginalPlate: String? = nil,
         ownerName: String? = nil,
-        permitNumber: String? = nil
+        permitNumber: String? = nil,
+        permitTypeLabel: String? = nil,
+        permitLotZone: String? = nil
     ) {
         self.ticketId = UUID().uuidString
         self.plate = plate
@@ -90,5 +94,7 @@ final class PendingTicket {
         self.ocrOriginalPlate = ocrOriginalPlate
         self.ownerName = ownerName
         self.permitNumber = permitNumber
+        self.permitTypeLabel = permitTypeLabel
+        self.permitLotZone = permitLotZone
     }
 }

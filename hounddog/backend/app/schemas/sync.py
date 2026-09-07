@@ -83,6 +83,8 @@ class TicketUpload(BaseModel):
     officer_email: str | None = None
     owner_name: str | None = None
     permit_number: str | None = None
+    permit_type_label: str | None = None
+    permit_lot_zone: str | None = None
     is_warning: bool = False
     warning_reason: str | None = None
     ocr_original_plate: str | None = None

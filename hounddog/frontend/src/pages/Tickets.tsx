@@ -21,6 +21,8 @@ interface Ticket {
   officer_email: string | null;
   owner_name: string | null;
   permit_number: string | null;
+  permit_type_label: string | null;
+  permit_lot_zone: string | null;
   issued_at: string;
   status: string;
   ticket_category: string;
@@ -160,6 +162,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       <tr><td class="label">Violation</td><td>${ticket.violation_type.replace(/_/g, " ")}</td><td class="label">${ticket.ticket_category === "moving" ? "Location" : "Lot"}</td><td>${ticket.ticket_category === "moving" ? (ticket.location_text || "—") : ticket.lot}</td></tr>
       <tr><td class="label">Issued</td><td>${new Date(ticket.issued_at).toLocaleString()}</td><td class="label">Officer</td><td>${ticket.officer_name || ticket.officer_id}</td></tr>
       ${ticket.owner_name ? `<tr><td class="label">Owner</td><td>${ticket.owner_name}</td><td class="label">Permit #</td><td>${ticket.permit_number || "—"}</td></tr>` : ""}
+      ${ticket.permit_type_label ? `<tr><td class="label">Permit Type</td><td>${ticket.permit_type_label}</td><td class="label">Permit Lot</td><td>${ticket.permit_lot_zone || "—"}</td></tr>` : ""}
       ${gpsLink ? `<tr><td class="label">GPS</td><td colspan="3"><a href="${gpsLink}" style="font-family:monospace;font-size:12px;">${ticket.location_lat!.toFixed(6)}, ${ticket.location_lng!.toFixed(6)}</a></td></tr>` : ""}
     </table>
   </div>
@@ -593,6 +596,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               </Descriptions.Item>
               {selected.owner_name && <Descriptions.Item label="Owner">{selected.owner_name}</Descriptions.Item>}
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
+              {selected.permit_type_label && <Descriptions.Item label="Permit Type">{selected.permit_type_label}</Descriptions.Item>}
+              {selected.permit_lot_zone && <Descriptions.Item label="Permit Lot">{selected.permit_lot_zone}</Descriptions.Item>}
               <Descriptions.Item label="Issued" span={2}>{new Date(selected.issued_at).toLocaleString()}</Descriptions.Item>
               {selected.location_lat && selected.location_lng && (
                 <Descriptions.Item label="GPS" span={2}>

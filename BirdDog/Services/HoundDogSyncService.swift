@@ -453,6 +453,8 @@ final class HoundDogSyncService: ObservableObject {
         if let ocrOriginal = ticket.ocrOriginalPlate { body["ocr_original_plate"] = ocrOriginal }
         if let ownerName = ticket.ownerName { body["owner_name"] = ownerName }
         if let permitNumber = ticket.permitNumber { body["permit_number"] = permitNumber }
+        if let permitType = ticket.permitTypeLabel { body["permit_type_label"] = permitType }
+        if let permitLot = ticket.permitLotZone { body["permit_lot_zone"] = permitLot }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

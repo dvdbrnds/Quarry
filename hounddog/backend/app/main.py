@@ -788,6 +788,9 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_plate_corrections_ocr ON plate_corrections(ocr_plate)",
             "CREATE INDEX IF NOT EXISTS idx_plate_corrections_correct ON plate_corrections(correct_plate)",
+            # Permit info on tickets for enforcement context
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS permit_type_label VARCHAR(256)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS permit_lot_zone VARCHAR(256)",
             ]
             for migration in migrations:
                 try:

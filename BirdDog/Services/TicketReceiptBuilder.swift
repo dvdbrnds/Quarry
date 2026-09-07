@@ -26,6 +26,9 @@ struct TicketReceiptBuilder {
         let ticketCategory: String
         let officerName: String?
         let officerEmail: String?
+        var ownerName: String? = nil
+        var permitTypeLabel: String? = nil
+        var permitLotZone: String? = nil
     }
 
     static func buildCommands(
@@ -96,6 +99,28 @@ struct TicketReceiptBuilder {
             }
             if let lic = ticket.driverLicense, !lic.isEmpty {
                 _ = printerBuilder.actionPrintText("License:  \(lic)\n")
+            }
+        }
+
+        let hasPermitInfo = (ticket.ownerName != nil && !ticket.ownerName!.isEmpty)
+            || (ticket.permitTypeLabel != nil && !ticket.permitTypeLabel!.isEmpty)
+            || (ticket.permitLotZone != nil && !ticket.permitLotZone!.isEmpty)
+        if hasPermitInfo {
+            appendRuledLine(to: printerBuilder)
+            _ = printerBuilder
+                .add(
+                    StarXpandCommand.PrinterBuilder()
+                        .styleBold(true)
+                        .actionPrintText("PERMIT ON FILE\n")
+                )
+            if let name = ticket.ownerName, !name.isEmpty {
+                appendWrapped(to: printerBuilder, label: "Owner:    ", text: name)
+            }
+            if let type = ticket.permitTypeLabel, !type.isEmpty {
+                appendWrapped(to: printerBuilder, label: "Type:     ", text: type)
+            }
+            if let zone = ticket.permitLotZone, !zone.isEmpty {
+                appendWrapped(to: printerBuilder, label: "Assigned: ", text: zone)
             }
         }
 

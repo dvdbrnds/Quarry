@@ -63,7 +63,10 @@ struct TicketIssuanceView: View {
                     officerName: officerName,
                     officerEmail: officerEmail,
                     violationLabel: violationLabel(for: selectedViolation),
-                    isWarning: isWarning
+                    isWarning: isWarning,
+                    permitTypeLabel: prefilledEntry?.authStatus.permit?.displayType,
+                    permitLotZone: prefilledEntry?.authStatus.permit?.lotZone,
+                    ownerName: prefilledEntry?.authStatus.permit?.ownerName
                 )
             } else {
                 ticketForm
@@ -407,7 +410,9 @@ struct TicketIssuanceView: View {
             warningReason: isWarning ? selectedWarningReason : nil,
             ocrOriginalPlate: ocrOriginal,
             ownerName: permit?.ownerName,
-            permitNumber: permit?.permitNumber
+            permitNumber: permit?.permitNumber,
+            permitTypeLabel: permit?.displayType,
+            permitLotZone: permit?.lotZone
         )
 
         // Persist locally FIRST so the retry queue works even if the server is unreachable
@@ -487,6 +492,9 @@ struct TicketConfirmationView: View {
     let officerEmail: String
     let violationLabel: String
     var isWarning: Bool = false
+    var permitTypeLabel: String? = nil
+    var permitLotZone: String? = nil
+    var ownerName: String? = nil
 
     @State private var isPrinting = false
     @State private var printError: String?
@@ -537,6 +545,40 @@ struct TicketConfirmationView: View {
                         .font(.subheadline)
                         .foregroundStyle(.orange)
                 }
+            }
+
+            if ownerName != nil || permitTypeLabel != nil || permitLotZone != nil {
+                VStack(spacing: 4) {
+                    if let name = ownerName, !name.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.fill")
+                                .foregroundStyle(.secondary)
+                            Text(name)
+                                .font(.subheadline)
+                        }
+                    }
+                    if let type = permitTypeLabel, !type.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "doc.text.fill")
+                                .foregroundStyle(.blue)
+                            Text(type)
+                                .font(.subheadline)
+                        }
+                    }
+                    if let zone = permitLotZone, !zone.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "mappin.circle.fill")
+                                .foregroundStyle(.blue)
+                            Text("Permit for \(zone)")
+                                .font(.subheadline)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
+                .background(Color.blue.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             if !officerName.isEmpty {
@@ -697,7 +739,10 @@ struct TicketConfirmationView: View {
             locationText: nil,
             ticketCategory: "parking",
             officerName: officerName.isEmpty ? nil : officerName,
-            officerEmail: officerEmail.isEmpty ? nil : officerEmail
+            officerEmail: officerEmail.isEmpty ? nil : officerEmail,
+            ownerName: ownerName,
+            permitTypeLabel: permitTypeLabel,
+            permitLotZone: permitLotZone
         )
 
         Task {

@@ -553,6 +553,8 @@ async def _upload_ticket_impl(
     permit_id = None
     owner_name = ticket.owner_name
     permit_number = ticket.permit_number
+    permit_type_label = ticket.permit_type_label
+    permit_lot_zone = ticket.permit_lot_zone
     permit_result = await db.execute(
         select(Permit).where(
             Permit.plates.contains([ticket.plate.upper()])
@@ -565,6 +567,10 @@ async def _upload_ticket_impl(
             owner_name = permit.name
         if not permit_number:
             permit_number = permit.permit_number or permit.student_id
+        if not permit_type_label:
+            permit_type_label = permit.permit_type
+        if not permit_lot_zone:
+            permit_lot_zone = permit.lot_assignment
 
     from ..services.ticket_numbering import next_ticket_number
     ticket_kwargs: dict = dict(
@@ -584,6 +590,8 @@ async def _upload_ticket_impl(
         officer_email=ticket.officer_email,
         owner_name=owner_name,
         permit_number=permit_number,
+        permit_type_label=permit_type_label,
+        permit_lot_zone=permit_lot_zone,
         issued_at=ticket.timestamp,
         ticket_category=ticket.ticket_category,
         offense_number=offense_number,
