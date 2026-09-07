@@ -19,6 +19,16 @@ struct ContentView: View {
     @State private var showVehicleTag = false
     @State private var tagPlate: String?
     @State private var exportURLs: [URL] = []
+
+    /// Deferred menu action — set by Menu buttons, executed by .onChange
+    /// after the Menu finishes dismissing (avoids SwiftUI sheet-swallowing bug).
+    private enum MenuAction: Equatable {
+        case sessionHistory
+        case clearLog
+        case exportCSV
+        case performanceSummary
+    }
+    @State private var pendingMenuAction: MenuAction?
     @State private var now = Date()
 
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -245,6 +255,33 @@ struct ContentView: View {
         }
         .onChange(of: showSessionHistory) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: pendingMenuAction) { _, action in
+            guard let action else { return }
+            pendingMenuAction = nil
+            switch action {
+            case .sessionHistory:
+                viewModel.pauseScanning()
+                showSessionHistory = true
+            case .clearLog:
+                showClearConfirm = true
+            case .exportCSV:
+                var urls: [URL] = []
+                if let plates = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(plates) }
+                if let diag = LogExporter.exportDiagnosticCSV(from: viewModel.diagnosticLog) { urls.append(diag) }
+                if !urls.isEmpty {
+                    exportURLs = urls
+                    showExportSheet = true
+                }
+            case .performanceSummary:
+                var urls: [URL] = []
+                if let summary = LogExporter.exportSessionSummary(from: viewModel.scanLog) { urls.append(summary) }
+                if let csv = LogExporter.exportCSV(from: viewModel.scanLog) { urls.append(csv) }
+                if !urls.isEmpty {
+                    exportURLs = urls
+                    showExportSheet = true
+                }
+            }
         }
     }
 
@@ -521,51 +558,19 @@ struct ContentView: View {
             }
 
             Menu {
-                Button {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        viewModel.pauseScanning()
-                        showSessionHistory = true
-                    }
-                } label: {
+                Button { pendingMenuAction = .sessionHistory } label: {
                     Label("Session History", systemImage: "archivebox")
                 }
-                Button(role: .destructive) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        showClearConfirm = true
-                    }
-                } label: {
+                Button(role: .destructive) { pendingMenuAction = .clearLog } label: {
                     Label("Clear Log", systemImage: "trash")
                 }
                 .disabled(viewModel.scanLog.isEmpty)
                 Divider()
-                Button {
-                    let log = viewModel.scanLog
-                    let diagLog = viewModel.diagnosticLog
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        var urls: [URL] = []
-                        if let plates = LogExporter.exportCSV(from: log) { urls.append(plates) }
-                        if let diag = LogExporter.exportDiagnosticCSV(from: diagLog) { urls.append(diag) }
-                        if !urls.isEmpty {
-                            exportURLs = urls
-                            showExportSheet = true
-                        }
-                    }
-                } label: {
+                Button { pendingMenuAction = .exportCSV } label: {
                     Label("Export CSV", systemImage: "tablecells")
                 }
                 .disabled(viewModel.scanLog.isEmpty)
-                Button {
-                    let log = viewModel.scanLog
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        var urls: [URL] = []
-                        if let summary = LogExporter.exportSessionSummary(from: log) { urls.append(summary) }
-                        if let csv = LogExporter.exportCSV(from: log) { urls.append(csv) }
-                        if !urls.isEmpty {
-                            exportURLs = urls
-                            showExportSheet = true
-                        }
-                    }
-                } label: {
+                Button { pendingMenuAction = .performanceSummary } label: {
                     Label("Performance Summary", systemImage: "chart.bar")
                 }
                 .disabled(viewModel.scanLog.isEmpty)
