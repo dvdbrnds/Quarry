@@ -816,6 +816,17 @@ async def lifespan(app: FastAPI):
                     {"code": "unauthorized_permit", "label": "Unauthorized Permit Parking", "category": "parking", "fine_first": 35, "sort_order": 9},
                     {"code": "posted_signs", "label": "Failure to Obey Posted Signs", "category": "parking", "fine_first": 35, "sort_order": 10},
                     {"code": "no_permit_displayed", "label": "Registered Vehicle, No Permit Displayed", "category": "parking", "fine_first": 35, "sort_order": 11},
+                    {"code": "no_permit", "label": "No Valid Permit", "category": "parking", "fine_first": 35, "sort_order": 12},
+                    {"code": "wrong_lot", "label": "Wrong Lot", "category": "parking", "fine_first": 35, "sort_order": 13},
+                    {"code": "expired_permit", "label": "Expired Permit", "category": "parking", "fine_first": 35, "sort_order": 14},
+                    {"code": "nose_in_parking", "label": "Nose-in Parking Violation", "category": "parking", "fine_first": 35, "sort_order": 15},
+                    {"code": "overtime", "label": "Overtime Parking", "category": "parking", "fine_first": 35, "sort_order": 16},
+                    {"code": "snow_emergency", "label": "Snow Emergency Violation", "category": "parking", "fine_first": 35, "sort_order": 17},
+                    {"code": "loading_zone", "label": "Loading Zone", "category": "parking", "fine_first": 35, "sort_order": 18},
+                    {"code": "reserved", "label": "Reserved Space", "category": "parking", "fine_first": 35, "sort_order": 19},
+                    {"code": "double_parked", "label": "Double Parked", "category": "parking", "fine_first": 35, "sort_order": 20},
+                    {"code": "fire_lane", "label": "Fire Lane", "category": "parking", "fine_first": 200, "sort_order": 21},
+                    {"code": "other", "label": "Other", "category": "parking", "fine_first": 35, "sort_order": 99},
                     # Moving violations
                     {"code": "speeding", "label": "Speeding", "category": "moving", "fine_first": 50, "fine_second": 100, "fine_third_plus": 200, "sort_order": 100},
                     {"code": "stop_sign", "label": "Failure to Stop at Stop Sign", "category": "moving", "fine_first": 50, "fine_second": 100, "fine_third_plus": 200, "sort_order": 101},
@@ -871,6 +882,38 @@ async def lifespan(app: FastAPI):
             if backfilled:
                 await session.commit()
                 logger.info("Backfilled %d moving violation types", backfilled)
+
+            # Backfill missing parking violation types (wrong_lot, no_permit, nose_in_parking, etc.)
+            parking_backfill = [
+                {"code": "no_permit", "label": "No Valid Permit", "category": "parking", "fine_first": 35, "sort_order": 12},
+                {"code": "wrong_lot", "label": "Wrong Lot", "category": "parking", "fine_first": 35, "sort_order": 13},
+                {"code": "expired_permit", "label": "Expired Permit", "category": "parking", "fine_first": 35, "sort_order": 14},
+                {"code": "nose_in_parking", "label": "Nose-in Parking Violation", "category": "parking", "fine_first": 35, "sort_order": 15},
+                {"code": "overtime", "label": "Overtime Parking", "category": "parking", "fine_first": 35, "sort_order": 16},
+                {"code": "snow_emergency", "label": "Snow Emergency Violation", "category": "parking", "fine_first": 35, "sort_order": 17},
+                {"code": "loading_zone", "label": "Loading Zone", "category": "parking", "fine_first": 35, "sort_order": 18},
+                {"code": "reserved", "label": "Reserved Space", "category": "parking", "fine_first": 35, "sort_order": 19},
+                {"code": "double_parked", "label": "Double Parked", "category": "parking", "fine_first": 35, "sort_order": 20},
+                {"code": "fire_lane", "label": "Fire Lane", "category": "parking", "fine_first": 200, "sort_order": 21},
+                {"code": "other", "label": "Other", "category": "parking", "fine_first": 35, "sort_order": 99},
+            ]
+            existing_parking_codes = {
+                row[0] for row in (await session.execute(
+                    select(ViolationType.code).where(ViolationType.code.in_([p["code"] for p in parking_backfill]))
+                )).all()
+            }
+            parking_backfilled = 0
+            for row in parking_backfill:
+                if row["code"] not in existing_parking_codes:
+                    session.add(ViolationType(
+                        code=row["code"], label=row["label"], category=row["category"],
+                        fine_first=Decimal(str(row["fine_first"])),
+                        sort_order=row["sort_order"],
+                    ))
+                    parking_backfilled += 1
+            if parking_backfilled:
+                await session.commit()
+                logger.info("Backfilled %d parking violation types", parking_backfilled)
 
             pt_count = await session.scalar(select(func.count()).select_from(PermitType))
             if pt_count == 0:

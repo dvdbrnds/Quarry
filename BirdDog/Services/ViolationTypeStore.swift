@@ -28,6 +28,7 @@ final class ViolationTypeStore: ObservableObject {
         ViolationType(id: "snow_emergency",         code: "snow_emergency",         label: "Snow Emergency Violation",                         category: "parking", fineFirst: "35.00"),
         ViolationType(id: "loading_zone",           code: "loading_zone",           label: "Loading Zone",                                     category: "parking", fineFirst: "35.00"),
         ViolationType(id: "reserved",               code: "reserved",              label: "Reserved Space",                                    category: "parking", fineFirst: "35.00"),
+        ViolationType(id: "nose_in_parking",        code: "nose_in_parking",        label: "Nose-in Parking Violation",                        category: "parking", fineFirst: "35.00"),
         ViolationType(id: "double_parked",          code: "double_parked",          label: "Double Parked",                                    category: "parking", fineFirst: "35.00"),
         ViolationType(id: "other",                  code: "other",                  label: "Other",                                            category: "parking", fineFirst: "35.00"),
         // Moving violations (MUPD 2026 Traffic Citation)
