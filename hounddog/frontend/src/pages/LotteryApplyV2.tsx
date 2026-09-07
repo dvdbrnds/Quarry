@@ -1361,9 +1361,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                 if (hasType) {
                   inAny = true;
                   if (!label) label = rule.label || "";
-                  const sH = parseInt(rule.start.split(":")[0], 10);
-                  const eH = parseInt(rule.end.split(":")[0], 10);
-                  if (sH <= 7 && eH >= 15) inDaytime = true;
+                  // Only counts as daytime access if it covers weekday daytime hours
+                  const weekdays = ["mon", "tue", "wed", "thu", "fri"];
+                  const coversWeekdays = rule.days?.some((d: string) => weekdays.includes(d));
+                  if (coversWeekdays) {
+                    const sH = parseInt(rule.start.split(":")[0], 10);
+                    const eH = parseInt(rule.end.split(":")[0], 10);
+                    if (sH <= 7 && eH >= 15) inDaytime = true;
+                  }
                 }
               }
             }
