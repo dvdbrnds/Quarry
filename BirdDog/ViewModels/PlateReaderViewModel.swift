@@ -621,6 +621,12 @@ final class PlateReaderViewModel: ObservableObject {
             if audioAlertsEnabled {
                 playTone(frequency: 880, duration: 0.15)
             }
+        case .tagOnly:
+            hapticMedium.impactOccurred()
+            hapticMedium.prepare()
+            if audioAlertsEnabled {
+                playTone(frequency: 660, duration: 0.2)
+            }
         case .unknown:
             hapticHeavy.impactOccurred(intensity: 1.0)
             hapticHeavy.prepare()

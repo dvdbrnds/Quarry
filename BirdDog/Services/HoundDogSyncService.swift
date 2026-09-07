@@ -227,7 +227,7 @@ final class HoundDogSyncService: ObservableObject {
             permitType: permit.permitType,
             permitStatus: permit.status,
             lotZone: permit.lotAssignment,
-            vehicleDescription: "",
+            vehicleDescription: permit.vehicleDescription,
             issuedDate: permit.startDate,
             expirationDate: permit.endDate,
             beaconId: permit.beaconId,
@@ -582,6 +582,17 @@ struct SyncPermit: Decodable {
     let deletedAt: String?
     let hcStatus: String?
     let hcExpiry: String?
+    let vehicleMake: String?
+    let vehicleModel: String?
+    let vehicleColor: String?
+    let vehicleYear: String?
+
+    var vehicleDescription: String {
+        [vehicleYear, vehicleColor, vehicleMake, vehicleModel]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -596,6 +607,10 @@ struct SyncPermit: Decodable {
         case deletedAt = "deleted_at"
         case hcStatus = "hc_status"
         case hcExpiry = "hc_expiry"
+        case vehicleMake = "vehicle_make"
+        case vehicleModel = "vehicle_model"
+        case vehicleColor = "vehicle_color"
+        case vehicleYear = "vehicle_year"
     }
 }
 

@@ -62,6 +62,7 @@ from .routers import (
     sync,
     tickets,
     vehicle_requests,
+    vehicle_tags,
     violation_types,
     visitor_permits,
 )
@@ -771,6 +772,14 @@ async def lifespan(app: FastAPI):
             # Handicapped designation on permits
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_status VARCHAR(16) DEFAULT 'none'",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS hc_expiry DATE",
+            # Vehicle tags (known vehicles without permits)
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS is_tag_only BOOLEAN DEFAULT false",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_make VARCHAR(64)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_model VARCHAR(64)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_color VARCHAR(32)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_year VARCHAR(4)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS tag_notes TEXT",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS tag_source VARCHAR(32)",
             # Lot closure diversion
             "ALTER TABLE lot_closures ADD COLUMN IF NOT EXISTS divert_to_lot_id UUID REFERENCES parking_lots(id)",
             # Plate corrections: officer-reported OCR misreads (no citation)
@@ -1315,6 +1324,7 @@ app.include_router(vouchers.router, prefix="/api/vouchers", tags=["vouchers"])
 app.include_router(vehicle_requests.student_router, tags=["vehicle-requests"])
 app.include_router(vehicle_requests.admin_router, tags=["vehicle-requests"])
 app.include_router(vehicle_requests.public_router, tags=["vehicle-requests-public"])
+app.include_router(vehicle_tags.router, prefix="/api/vehicle-tags", tags=["vehicle-tags"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

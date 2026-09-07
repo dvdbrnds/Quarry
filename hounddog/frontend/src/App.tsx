@@ -25,6 +25,7 @@ import LotteryApplyV2 from "./pages/LotteryApplyV2";
 import ParkingMap from "./pages/ParkingMap";
 import Appeals from "./pages/Appeals";
 import VehicleApproval from "./pages/VehicleApproval";
+import VehicleTags from "./pages/VehicleTags";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth, isOfficeRole, isAdminRole } from "./auth";
@@ -130,6 +131,7 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/permits">Permits</NavItem>
         <NavItem to="/tickets">Tickets</NavItem>
         <NavItem to="/lots">Lots</NavItem>
+        <NavItem to="/vehicle-tags">Tags</NavItem>
         <NavItem to="/calendar">Calendar</NavItem>
         {isAdminRole(user.role) && <NavItem to="/finance">Finance</NavItem>}
         {isAdminRole(user.role) && <NavItem to="/alerts">Alerts</NavItem>}
@@ -250,6 +252,7 @@ function AdminShell({ user }: { user: AuthUser }) {
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/finance" element={isAdminRole(user.role) ? <Finance /> : <Navigate to="/dashboard" replace />} />
           <Route path="/alerts" element={isAdminRole(user.role) ? <Alerts /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/vehicle-tags" element={<VehicleTags />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
           <Route path="/student/permits" element={<StudentPermits />} />

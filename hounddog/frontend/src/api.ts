@@ -562,6 +562,42 @@ export interface BackupHistoryEntry {
   source?: string;
 }
 
+export interface VehicleTag {
+  id: string;
+  name: string;
+  plates: string[];
+  email: string | null;
+  phone: string;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_color: string | null;
+  vehicle_year: string | null;
+  tag_notes: string | null;
+  tag_source: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehicleTagList {
+  items: VehicleTag[];
+  total: number;
+}
+
+export interface VehicleTagCreate {
+  name: string;
+  plates: string[];
+  plate_state?: string;
+  email?: string | null;
+  phone?: string;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_color?: string | null;
+  vehicle_year?: string | null;
+  tag_notes?: string | null;
+  tag_source?: string | null;
+}
+
 export const api = {
   academicCalendar: {
     list: () => request<AcademicSeason[]>("/academic-calendar"),
@@ -931,5 +967,20 @@ export const api = {
       delete: (filename: string) =>
         request<{ deleted: string }>(`/backup/history/${filename}`, { method: "DELETE" }),
     },
+  },
+  vehicleTags: {
+    list: (params?: { search?: string; page?: number; page_size?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.search) q.set("search", params.search);
+      if (params?.page) q.set("page", String(params.page));
+      if (params?.page_size) q.set("page_size", String(params.page_size));
+      return request<VehicleTagList>(`/vehicle-tags?${q}`);
+    },
+    create: (data: VehicleTagCreate) =>
+      request<VehicleTag>("/vehicle-tags", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<VehicleTagCreate> & { status?: string }) =>
+      request<VehicleTag>(`/vehicle-tags/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/vehicle-tags/${id}`, { method: "DELETE" }),
   },
 };

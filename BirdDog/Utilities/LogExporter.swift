@@ -18,7 +18,7 @@ enum LogExporter {
             let vehicle: String
 
             switch entry.authStatus {
-            case .authorized(let permit), .wrongLot(let permit, _, _), .expired(let permit):
+            case .authorized(let permit), .wrongLot(let permit, _, _), .expired(let permit), .tagOnly(let permit):
                 holder = permit.ownerName.replacingOccurrences(of: ",", with: ";")
                 permitType = permit.displayType
                 vehicle = permit.vehicleDescription.replacingOccurrences(of: ",", with: ";")
@@ -66,7 +66,7 @@ enum LogExporter {
                 "matched_plate": entry.matchedPlate,
             ]
             switch entry.authStatus {
-            case .authorized(let permit), .wrongLot(let permit, _, _), .expired(let permit):
+            case .authorized(let permit), .wrongLot(let permit, _, _), .expired(let permit), .tagOnly(let permit):
                 dict["permit_holder"] = permit.ownerName
                 dict["permit_type"] = permit.displayType
                 dict["vehicle"] = permit.vehicleDescription

@@ -23,6 +23,13 @@ class PermitBase(BaseModel):
     status: str = "active"
     hc_status: str = "none"
     hc_expiry: date | None = None
+    is_tag_only: bool = False
+    vehicle_make: str | None = None
+    vehicle_model: str | None = None
+    vehicle_color: str | None = None
+    vehicle_year: str | None = None
+    tag_notes: str | None = None
+    tag_source: str | None = None
 
 
 class PermitCreate(PermitBase):
@@ -45,6 +52,13 @@ class PermitUpdate(BaseModel):
     status: str | None = None
     hc_status: str | None = None
     hc_expiry: date | None = None
+    is_tag_only: bool | None = None
+    vehicle_make: str | None = None
+    vehicle_model: str | None = None
+    vehicle_color: str | None = None
+    vehicle_year: str | None = None
+    tag_notes: str | None = None
+    tag_source: str | None = None
 
 
 class PermitRead(PermitBase):

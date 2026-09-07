@@ -127,6 +127,11 @@ final class PlateAuthService: PlateCheckable {
             hcExpiry: record.hcExpiry
         )
 
+        // Vehicle tag (known vehicle, no permit) — always show as "tag only"
+        if record.permitType.lowercased() == "vehicle_tag" {
+            return .tagOnly(permit: info)
+        }
+
         let statusKey = record.permitStatus.trimmingCharacters(in: .whitespaces).lowercased()
         let now = Date()
 

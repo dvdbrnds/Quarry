@@ -322,6 +322,10 @@ struct TicketIssuanceView: View {
                     ensureValidViolationSelection(preferred: [
                         "expired_permit", "unauthorized_permit", "no_permit_displayed"
                     ])
+                case .tagOnly:
+                    ensureValidViolationSelection(preferred: [
+                        "no_permit", "no_permit_displayed", "unauthorized_permit"
+                    ])
                 default:
                     ensureValidViolationSelection()
                 }

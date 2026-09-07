@@ -33,6 +33,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
     case authorized(permit: PermitInfo)
     case wrongLot(permit: PermitInfo, expectedLot: String, actualLot: String)
     case expired(permit: PermitInfo)
+    case tagOnly(permit: PermitInfo)
     case unknown
     case unchecked
     case ticketed
@@ -45,6 +46,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         case .authorized: return "Allowed"
         case .wrongLot: return "Wrong Lot"
         case .expired: return "Expired"
+        case .tagOnly: return "No Permit"
         case .unknown: return "Unknown"
         case .unchecked: return ""
         case .ticketed: return "Ticketed"
@@ -56,6 +58,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         case .authorized: return Self.allowedGreen
         case .wrongLot: return .orange
         case .expired: return .yellow
+        case .tagOnly: return .cyan
         case .unknown: return .red
         case .unchecked: return .white
         case .ticketed: return .purple
@@ -67,6 +70,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
         case .authorized: return "checkmark.shield.fill"
         case .wrongLot: return "location.slash.fill"
         case .expired: return "exclamationmark.triangle.fill"
+        case .tagOnly: return "person.badge.shield.checkmark.fill"
         case .unknown: return "xmark.shield.fill"
         case .unchecked: return "shield.slash"
         case .ticketed: return "doc.text.fill"
@@ -75,7 +79,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
 
     var permit: PermitInfo? {
         switch self {
-        case .authorized(let p), .wrongLot(let p, _, _), .expired(let p):
+        case .authorized(let p), .wrongLot(let p, _, _), .expired(let p), .tagOnly(let p):
             return p
         case .unknown, .unchecked, .ticketed:
             return nil
