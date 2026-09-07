@@ -1,6 +1,7 @@
 import Vision
 import CoreMedia
 import CoreImage
+import UIKit
 
 enum RecognitionPath: String, Sendable {
     case fastOnly = "fast_only"
@@ -111,6 +112,26 @@ final class PlateRecognitionService {
         return output
     }
     private var rotationContext: CIContext?
+    private static var hasWrittenOCRDebugFrame = false
+
+    /// Save the exact pixel buffer that Vision will process as a JPEG for orientation verification.
+    private func saveOCRDebugFrame(_ buffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
+        let ciImage = CIImage(cvPixelBuffer: buffer)
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cgImage = ctx.createCGImage(ciImage, from: ciImage.extent) else { return }
+
+        let uiImage = UIImage(cgImage: cgImage)
+        guard let data = uiImage.jpegData(compressionQuality: 0.7) else { return }
+
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("diagnostic_captures", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let filename = "OCR_DEBUG_orientation_\(orientation.rawValue).jpg"
+        let url = dir.appendingPathComponent(filename)
+        try? data.write(to: url)
+        print("[PlateRecognition] DEBUG: saved OCR input frame to \(url.lastPathComponent) — orientation hint=\(orientation.rawValue) buffer=\(CVPixelBufferGetWidth(buffer))x\(CVPixelBufferGetHeight(buffer))")
+    }
 
     func recognizePlates(in sampleBuffer: CMSampleBuffer,
                          orientation: CGImagePropertyOrientation,
@@ -132,6 +153,12 @@ final class PlateRecognitionService {
         } else {
             pixelBuffer = rawBuffer
             ocrOrientation = orientation
+        }
+
+        // DEBUG: Save the exact buffer Vision will see (once per launch)
+        if useExternal && !Self.hasWrittenOCRDebugFrame {
+            Self.hasWrittenOCRDebugFrame = true
+            saveOCRDebugFrame(pixelBuffer, orientation: ocrOrientation)
         }
 
         requestQueue.async { [self] in
