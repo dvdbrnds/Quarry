@@ -28,6 +28,7 @@
 		4E33D7FF314AC4C428B10EC3 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */; };
 		50D3CFDA5BB31F7ADF11E3ED /* AdminPasscodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */; };
 		5135431D6E3C1699932EB217 /* ParkingSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4A9CB54550F11B2D4CFAE0 /* ParkingSpot.swift */; };
+		54734886A4A778FD39AFBF5A /* StarIO10 in Frameworks */ = {isa = PBXBuildFile; productRef = 15E4ED9D9BBFC376D8D8C23B /* StarIO10 */; };
 		58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B823FB184EA9720E86DF1E /* PermitRecord.swift */; };
 		5994879595E847E9856A1071 /* LogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDAF99197F0B8306C7230405 /* LogExporter.swift */; };
 		5B1EB054A758DA6ECE742D69 /* TicketIssuanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */; };
@@ -62,6 +63,7 @@
 		C9EBF0B61774CA98FC48D0A8 /* PrinterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202AE0BF116E09C116BC4500 /* PrinterService.swift */; };
 		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
 		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
+		E6763C74F1B8C205F45C7B0A /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */; };
 		F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */; };
 /* End PBXBuildFile section */
 
@@ -125,6 +127,7 @@
 		C0A279EDA3063DB1FAC8C85A /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		C0CB826BBBAC8EB503670D64 /* OfficerLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficerLoginView.swift; sourceTree = "<group>"; };
 		C42BDC169688489AFC03AF14 /* lots.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = lots.json; sourceTree = "<group>"; };
+		C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
 		C52616910F0CCFCA6FE40F4B /* AdminPasscodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminPasscodeView.swift; sourceTree = "<group>"; };
 		CC4A9CB54550F11B2D4CFAE0 /* ParkingSpot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingSpot.swift; sourceTree = "<group>"; };
 		D10D99C45314AF9CE50C8BC2 /* MotionSpeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSpeedService.swift; sourceTree = "<group>"; };
@@ -137,6 +140,18 @@
 		F3A6EF72A87EC98B04A49AE5 /* EnforcementSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnforcementSettingsStore.swift; sourceTree = "<group>"; };
 		F7FC3683C6F1F385BE6495CA /* CandidateVoter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateVoter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		850ECCD0AD457D8E059B1628 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				54734886A4A778FD39AFBF5A /* StarIO10 in Frameworks */,
+				E6763C74F1B8C205F45C7B0A /* ExternalAccessory.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		23F7BA4979B2D798151C9E32 /* Models */ = {
@@ -206,6 +221,7 @@
 			children = (
 				7633F04F8A234B0E341D30EC /* BirdDog */,
 				B6DBF615ED9822B25DD56DE8 /* BirdDogTests */,
+				CD202F92DA75A2D2126FDA6D /* Frameworks */,
 				F1033ECF524F33B2C14CD28B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -230,6 +246,14 @@
 				DFDA9A251C248ADD1EA6954E /* PlatePatternMatcherTests.swift */,
 			);
 			path = BirdDogTests;
+			sourceTree = "<group>";
+		};
+		CD202F92DA75A2D2126FDA6D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		D019AE2E8316940406CA420C /* Views */ = {
@@ -294,6 +318,7 @@
 			buildPhases = (
 				EC04D1E381B050FC3791F679 /* Sources */,
 				BC54BF09735C0AA3764C51EB /* Resources */,
+				850ECCD0AD457D8E059B1628 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -301,6 +326,7 @@
 			);
 			name = BirdDog;
 			packageProductDependencies = (
+				15E4ED9D9BBFC376D8D8C23B /* StarIO10 */,
 			);
 			productName = BirdDog;
 			productReference = 9C892FB471FBA100CC681F7F /* BirdDog.app */;
@@ -352,6 +378,9 @@
 			);
 			mainGroup = 9AA81D669EBA9A7845728796;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D495A05CE3E47522B6B88684 /* XCRemoteSwiftPackageReference "StarXpand-SDK-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F1033ECF524F33B2C14CD28B /* Products */;
 			projectDirPath = "";
@@ -696,6 +725,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D495A05CE3E47522B6B88684 /* XCRemoteSwiftPackageReference "StarXpand-SDK-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/star-micronics/StarXpand-SDK-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		15E4ED9D9BBFC376D8D8C23B /* StarIO10 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D495A05CE3E47522B6B88684 /* XCRemoteSwiftPackageReference "StarXpand-SDK-iOS" */;
+			productName = StarIO10;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A73322F57390BBE16A310EF1 /* Project object */;
 }
