@@ -27,6 +27,21 @@ struct ScanSession: Identifiable, Codable, Hashable {
     var cameraHardware: String?
     var testConditions: String?
 
+    // Per-gate frame drop diagnostics
+    var droppedBySharpness: Int?
+    var droppedByFrameSkip: Int?
+    var droppedByProcessingLock: Int?
+    var droppedBySceneChange: Int?
+    var droppedByRectangleFilter: Int?
+
+    // OCR path hit counts
+    var pathCountFastOnly: Int?
+    var pathCountFastAccurate: Int?
+    var pathCountAccurateOnly: Int?
+    var pathCountGrayscaleFast: Int?
+    var pathCountGrayscaleAccurate: Int?
+    var pathCountBuiltIn: Int?
+
     var isActive: Bool { endTime == nil }
 
     var duration: TimeInterval {

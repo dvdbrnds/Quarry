@@ -18,6 +18,7 @@ final class MotionSpeedService: ObservableObject {
             case .walking: _frameSkipFloor.value = 3
             case .vehicle: _frameSkipFloor.value = 1
             }
+            _isVehicleMode.value = mode == .vehicle ? 1 : 0
         }
     }
     @Published private(set) var speedMPS: Double = 0
@@ -44,6 +45,11 @@ final class MotionSpeedService: ObservableObject {
         _frameSkipFloor.value
     }
 
+    /// Thread-safe vehicle mode check for use on camera output queues
+    nonisolated var isVehicleMode: Bool {
+        _isVehicleMode.value != 0
+    }
+
     /// Minimum seconds between processing the same bounding-box region
     var regionCooldown: TimeInterval {
         switch mode {
@@ -54,6 +60,7 @@ final class MotionSpeedService: ObservableObject {
     }
 
     private let _frameSkipFloor = AtomicInt(2)
+    private let _isVehicleMode = AtomicInt(0)
 
     private let motionManager = CMMotionActivityManager()
     private let pedometer = CMPedometer()

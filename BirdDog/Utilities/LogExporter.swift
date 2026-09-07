@@ -202,6 +202,36 @@ enum LogExporter {
                 lines.append(String(format: "  Frame Skip Ratio: %.0f%%", session.frameSkipRatio * 100))
             }
 
+            if let sharp = session.droppedBySharpness, sharp > 0 {
+                lines.append("  Dropped (sharpness): \(sharp)")
+            }
+            if let fskip = session.droppedByFrameSkip, fskip > 0 {
+                lines.append("  Dropped (frame skip): \(fskip)")
+            }
+            if let busy = session.droppedByProcessingLock, busy > 0 {
+                lines.append("  Dropped (processing lock): \(busy)")
+            }
+            if let scene = session.droppedBySceneChange, scene > 0 {
+                lines.append("  Dropped (scene unchanged): \(scene)")
+            }
+            if let rect = session.droppedByRectangleFilter, rect > 0 {
+                lines.append("  Dropped (no rectangle): \(rect)")
+            }
+
+            let pathTotal = (session.pathCountFastOnly ?? 0) + (session.pathCountFastAccurate ?? 0) +
+                (session.pathCountAccurateOnly ?? 0) + (session.pathCountGrayscaleFast ?? 0) +
+                (session.pathCountGrayscaleAccurate ?? 0) + (session.pathCountBuiltIn ?? 0)
+            if pathTotal > 0 {
+                lines.append("")
+                lines.append("  -- OCR Path Usage --")
+                if let v = session.pathCountFastOnly, v > 0 { lines.append("  Fast only: \(v)") }
+                if let v = session.pathCountFastAccurate, v > 0 { lines.append("  Fast+Accurate merge: \(v)") }
+                if let v = session.pathCountAccurateOnly, v > 0 { lines.append("  Accurate only: \(v)") }
+                if let v = session.pathCountGrayscaleFast, v > 0 { lines.append("  Grayscale fast: \(v)") }
+                if let v = session.pathCountGrayscaleAccurate, v > 0 { lines.append("  Grayscale accurate: \(v)") }
+                if let v = session.pathCountBuiltIn, v > 0 { lines.append("  Built-in: \(v)") }
+            }
+
             lines.append("")
             lines.append("  -- Plate Detection --")
             lines.append("  Plates detected: \(session.plates.count)")
@@ -244,6 +274,8 @@ enum LogExporter {
         var csv = "session_label,start_time,device_model,device_chip,connection_type,"
         csv += "camera,resolution,configured_fps,actual_fps,pixel_throughput_mpxs,"
         csv += "avg_ocr_ms,peak_ocr_ms,frames_processed,frames_skipped,skip_ratio,"
+        csv += "dropped_sharpness,dropped_frameskip,dropped_proclock,dropped_scene,dropped_rect,"
+        csv += "path_fast,path_fast_accurate,path_accurate,path_gray_fast,path_gray_accurate,path_builtin,"
         csv += "plates_detected,plates_per_min,avg_latency_s,median_latency_s,avg_confidence\n"
 
         for s in sessions {
@@ -262,6 +294,11 @@ enum LogExporter {
             csv += String(format: "%.1f,%.1f,", s.avgOCRTimeMs ?? 0, s.peakOCRTimeMs ?? 0)
             csv += "\(s.framesProcessed ?? 0),\(s.framesSkipped ?? 0),"
             csv += String(format: "%.3f,", s.frameSkipRatio)
+            csv += "\(s.droppedBySharpness ?? 0),\(s.droppedByFrameSkip ?? 0),"
+            csv += "\(s.droppedByProcessingLock ?? 0),\(s.droppedBySceneChange ?? 0),\(s.droppedByRectangleFilter ?? 0),"
+            csv += "\(s.pathCountFastOnly ?? 0),\(s.pathCountFastAccurate ?? 0),"
+            csv += "\(s.pathCountAccurateOnly ?? 0),\(s.pathCountGrayscaleFast ?? 0),"
+            csv += "\(s.pathCountGrayscaleAccurate ?? 0),\(s.pathCountBuiltIn ?? 0),"
             csv += "\(s.plates.count),"
             csv += String(format: "%.1f,%.3f,%.3f,%.3f\n",
                           s.platesPerMinute, s.avgLatency, s.medianLatency, s.avgConfidence)

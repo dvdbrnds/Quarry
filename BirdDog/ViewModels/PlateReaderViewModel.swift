@@ -76,6 +76,8 @@ final class PlateReaderViewModel: ObservableObject {
     private var candidateFirstSeen: [String: Date] = [:]
     private let candidateVoter = CandidateVoter()
     private var regionLastSeen: [String: Date] = [:]
+    private var pathCounts: [RecognitionPath: Int] = [:]
+    private var rectangleFilterDropCount: Int = 0
 
     private var alertPlayer: AVAudioPlayer?
     private var currentDayStart: Date = Calendar.current.startOfDay(for: Date())
@@ -198,6 +200,21 @@ final class PlateReaderViewModel: ObservableObject {
         session.pixelThroughput = metrics.pixelThroughput
         session.cameraHardware = cameraService.activeCameraName
 
+        // Per-gate frame drop diagnostics
+        session.droppedBySharpness = metrics.droppedBySharpness
+        session.droppedByFrameSkip = metrics.droppedByFrameSkip
+        session.droppedByProcessingLock = metrics.droppedByProcessingLock
+        session.droppedBySceneChange = metrics.droppedBySceneChange
+        session.droppedByRectangleFilter = rectangleFilterDropCount
+
+        // OCR path hit counts
+        session.pathCountFastOnly = pathCounts[.fastOnly] ?? 0
+        session.pathCountFastAccurate = pathCounts[.fastAccurateMerge] ?? 0
+        session.pathCountAccurateOnly = pathCounts[.accurateOnly] ?? 0
+        session.pathCountGrayscaleFast = pathCounts[.grayscaleFast] ?? 0
+        session.pathCountGrayscaleAccurate = pathCounts[.grayscaleAccurate] ?? 0
+        session.pathCountBuiltIn = pathCounts[.builtIn] ?? 0
+
         sessionManager.save(session)
         activeSession = nil
         reloadHistory()
@@ -210,6 +227,8 @@ final class PlateReaderViewModel: ObservableObject {
         candidateVoter.removeAll()
         diagnosticLog.removeAll()
         ticketedPlates.removeAll()
+        pathCounts.removeAll()
+        rectangleFilterDropCount = 0
         currentPlates = []
         latestAuthStatus = .unchecked
         deletePersistedScanLog()
@@ -381,6 +400,13 @@ final class PlateReaderViewModel: ObservableObject {
         currentPlates = result.plates
         diagnosticLog.append(contentsOf: result.diagnostics)
 
+        // Track OCR path usage and rectangle filter drops
+        pathCounts[result.pathUsed, default: 0] += 1
+        if result.rectangleFilterDropped {
+            rectangleFilterDropCount += 1
+            cameraService.liveMetrics.droppedByRectangleFilter = rectangleFilterDropCount
+        }
+
         // Feed rectangle-detection hint back to camera for scene-change bypass
         cameraService.rectangleDetectedHint = result.rectangleDetected
 
@@ -390,8 +416,9 @@ final class PlateReaderViewModel: ObservableObject {
             cameraService.triggerBurst(duration: 0.8)
         }
 
-        // Update camera frame skip floor based on current motion state
+        // Update camera frame skip floor and vehicle mode based on current motion state
         cameraService.motionMinFrameSkip = motionService.frameSkipFloor
+        cameraService.vehicleMode = motionService.mode == .vehicle
 
         let now = Date()
         let todayStart = Calendar.current.startOfDay(for: now)

@@ -2,10 +2,21 @@ import Vision
 import CoreMedia
 import CoreImage
 
+enum RecognitionPath: String, Sendable {
+    case fastOnly = "fast_only"
+    case fastAccurateMerge = "fast_accurate_merge"
+    case accurateOnly = "accurate_only"
+    case grayscaleFast = "grayscale_fast"
+    case grayscaleAccurate = "grayscale_accurate"
+    case builtIn = "built_in"
+}
+
 struct RecognitionResult: Sendable {
     let plates: [RecognizedPlate]
     let diagnostics: [DiagnosticEntry]
     let rectangleDetected: Bool
+    var pathUsed: RecognitionPath = .builtIn
+    var rectangleFilterDropped: Bool = false
 }
 
 final class PlateRecognitionService {
@@ -85,18 +96,16 @@ final class PlateRecognitionService {
         requestQueue.async { [self] in
             let roi = useExternal ? externalScanRegion : builtInScanRegion
 
-            // Rectangle pre-filter: skip expensive OCR if no plate-shaped objects visible.
+            // Rectangle pre-filter: hint for OCR strategy, not a hard gate.
             // Uses the downscaled buffer for speed (~3-5ms).
+            var rectHint = false
             if useExternal {
                 let detectBuffer = self.downscaleForDetection(pixelBuffer) ?? pixelBuffer
-                let hasRects = self.detectPlateRectangles(in: detectBuffer, orientation: orientation, roi: roi)
-                self.lastRectangleDetected = hasRects
-                if !hasRects && self.consecutiveEmptyFrames > 2 {
-                    self.consecutiveEmptyFrames += 1
-                    completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: false))
-                    return
-                }
+                rectHint = self.detectPlateRectangles(in: detectBuffer, orientation: orientation, roi: roi)
+                self.lastRectangleDetected = rectHint
             }
+
+            var pathUsed: RecognitionPath = useExternal ? .fastOnly : .builtIn
 
             func runOCR(on buffer: CVPixelBuffer, level: VNRequestTextRecognitionLevel = .accurate, region: CGRect? = nil) -> [VNRecognizedTextObservation] {
                 let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation)
@@ -109,61 +118,52 @@ final class PlateRecognitionService {
                 return req.results ?? []
             }
 
-            // Two-stage OCR for external cameras: .fast on a downscaled buffer first,
-            // .accurate on auto-levels-normalized full-res only when needed.
-            let rawObs: [VNRecognizedTextObservation]
+            // Simplified OCR pipeline for external cameras:
+            // 1. Always auto-levels normalize (cheap, helps with sun/shade)
+            // 2. Run .fast on downscaled auto-leveled buffer
+            // 3. If .fast finds a plate-format match → done
+            // 4. If .fast found text but no plate match → .fast on full-res normalized
+            // 5. If no text at all and rectangles present → .fast on full-res normalized
+            // No separate grayscale path — auto-levels handles contrast normalization.
+            let skipAccurateFallback = useExternal && !rectHint && self.consecutiveEmptyFrames > 2
+
+            let observations: [VNRecognizedTextObservation]
             if useExternal {
-                let detectBuffer = self.downscaleForDetection(pixelBuffer) ?? pixelBuffer
+                let normalizedBuf = self.autoLevelsNormalize(pixelBuffer) ?? pixelBuffer
+                let detectBuffer = self.downscaleForDetection(normalizedBuf) ?? normalizedBuf
                 let fastObs = runOCR(on: detectBuffer, level: .fast)
+
                 let fastHasPlate = fastObs.contains { obs in
                     guard let text = obs.topCandidates(1).first?.string else { return false }
                     let norm = PlatePatternMatcher.normalize(text)
                     return PlatePatternMatcher.evaluatePlate(norm) == nil
                 }
-                if fastHasPlate {
-                    rawObs = fastObs
-                } else if !fastObs.isEmpty {
-                    let normalizedBuf = self.autoLevelsNormalize(pixelBuffer) ?? pixelBuffer
-                    let accurateObs = runOCR(on: normalizedBuf, level: .accurate)
-                    rawObs = mergeObservations(primary: fastObs, secondary: accurateObs)
-                } else {
-                    let normalizedBuf = self.autoLevelsNormalize(pixelBuffer) ?? pixelBuffer
-                    rawObs = runOCR(on: normalizedBuf, level: .accurate)
-                }
-            } else {
-                rawObs = runOCR(on: pixelBuffer)
-            }
 
-            let observations: [VNRecognizedTextObservation]
-            if useExternal && rawObs.isEmpty, let enhanced = enhanceFrameReusing(pixelBuffer) {
-                let grayObs = runOCR(on: enhanced, level: .fast)
-                let grayHasPlate = grayObs.contains { obs in
-                    guard let text = obs.topCandidates(1).first?.string else { return false }
-                    let norm = PlatePatternMatcher.normalize(text)
-                    return PlatePatternMatcher.evaluatePlate(norm) == nil
-                }
-                observations = grayHasPlate ? grayObs : (grayObs.isEmpty ? [] : runOCR(on: enhanced, level: .accurate))
-            } else if useExternal && !rawObs.isEmpty {
-                let hasPlateCandidate = rawObs.contains { obs in
-                    guard let text = obs.topCandidates(1).first?.string else { return false }
-                    let norm = PlatePatternMatcher.normalize(text)
-                    return PlatePatternMatcher.evaluatePlate(norm) == nil
-                }
-                if hasPlateCandidate {
-                    observations = rawObs
-                } else if let enhanced = enhanceFrameReusing(pixelBuffer) {
-                    let grayObs = runOCR(on: enhanced, level: .fast)
-                    observations = mergeObservations(primary: rawObs, secondary: grayObs)
+                if fastHasPlate {
+                    observations = fastObs
+                    pathUsed = .fastOnly
+                } else if !fastObs.isEmpty && !skipAccurateFallback {
+                    // Text found but no plate match — re-run .fast on full-res for detail
+                    let fullResObs = runOCR(on: normalizedBuf, level: .fast)
+                    observations = mergeObservations(primary: fastObs, secondary: fullResObs)
+                    pathUsed = .fastAccurateMerge
+                } else if fastObs.isEmpty && rectHint && !skipAccurateFallback {
+                    // Rectangle hint says something is there — try full-res
+                    let fullResObs = runOCR(on: normalizedBuf, level: .fast)
+                    observations = fullResObs
+                    pathUsed = .accurateOnly
                 } else {
-                    observations = rawObs
+                    observations = fastObs
+                    pathUsed = .fastOnly
                 }
             } else {
-                observations = rawObs
+                observations = runOCR(on: pixelBuffer)
+                pathUsed = .builtIn
             }
 
             guard !observations.isEmpty else {
                 self.consecutiveEmptyFrames += 1
-                completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: self.lastRectangleDetected))
+                completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: self.lastRectangleDetected, pathUsed: pathUsed))
                 return
             }
 
@@ -322,7 +322,7 @@ final class PlateRecognitionService {
                 }
             }
 
-            completion(RecognitionResult(plates: plates, diagnostics: diagnostics, rectangleDetected: self.lastRectangleDetected))
+            completion(RecognitionResult(plates: plates, diagnostics: diagnostics, rectangleDetected: self.lastRectangleDetected, pathUsed: pathUsed))
         }
     }
 
@@ -723,7 +723,7 @@ final class PlateRecognitionService {
 
         let handler = VNImageRequestHandler(ciImage: ciImage, orientation: orientation)
         let req = VNRecognizeTextRequest()
-        req.recognitionLevel = .fast
+        req.recognitionLevel = .accurate
         req.usesLanguageCorrection = false
         req.revision = VNRecognizeTextRequestRevision3
         try? handler.perform([req])

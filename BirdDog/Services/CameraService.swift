@@ -22,6 +22,13 @@ struct FrameMetrics: Sendable {
     var resolution: String = "—"
     var configuredFPS: Int = 0
 
+    // Per-gate drop counters
+    var droppedBySharpness: Int = 0
+    var droppedByFrameSkip: Int = 0
+    var droppedByProcessingLock: Int = 0
+    var droppedBySceneChange: Int = 0
+    var droppedByRectangleFilter: Int = 0
+
     var skipRatio: Double {
         guard framesReceived > 0 else { return 0 }
         return Double(framesSkipped) / Double(framesReceived)
@@ -38,6 +45,19 @@ struct FrameMetrics: Sendable {
               let w = Double(parts[0]),
               let h = Double(parts[1]) else { return 0 }
         return w * h * actualFPS
+    }
+
+    /// Breakdown string for live stats overlay
+    var dropBreakdown: String {
+        let total = droppedBySharpness + droppedByFrameSkip + droppedByProcessingLock + droppedBySceneChange + droppedByRectangleFilter
+        guard total > 0 else { return "" }
+        var parts: [String] = []
+        if droppedBySharpness > 0 { parts.append("blur:\(droppedBySharpness)") }
+        if droppedByFrameSkip > 0 { parts.append("skip:\(droppedByFrameSkip)") }
+        if droppedByProcessingLock > 0 { parts.append("busy:\(droppedByProcessingLock)") }
+        if droppedBySceneChange > 0 { parts.append("same:\(droppedBySceneChange)") }
+        if droppedByRectangleFilter > 0 { parts.append("noRect:\(droppedByRectangleFilter)") }
+        return parts.joined(separator: " ")
     }
 }
 
@@ -89,18 +109,23 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var recentSharpnessValues: [Double] = []
     private let sharpnessHistorySize = 30
 
-    /// Adaptive sharpness threshold: rejects the bottom 20% of recent frames.
+    /// Adaptive sharpness threshold: rejects the bottom 10% of recent frames.
     /// Falls back to the base threshold until enough history is collected.
+    /// Capped so it never rejects more than ~60% of frames (median * 0.6).
     private var adaptiveSharpnessThreshold: Double {
         guard recentSharpnessValues.count >= 10 else { return baseSharpnessThreshold }
         let sorted = recentSharpnessValues.sorted()
-        let idx = sorted.count / 5
-        return max(baseSharpnessThreshold, sorted[idx])
+        let idx = sorted.count / 10
+        let medianIdx = sorted.count / 2
+        let ceiling = sorted[medianIdx] * 0.6
+        return min(max(baseSharpnessThreshold, sorted[idx]), ceiling)
     }
 
     // Scene-change detection: skip OCR on frames where the scene hasn't changed
     private var lastProcessedFingerprint: [UInt8] = []
-    private let sceneChangeThreshold: Double = 0.08
+    private let sceneChangeThreshold: Double = 0.04
+    private var consecutiveSceneDrops: Int = 0
+    private let maxConsecutiveSceneDrops: Int = 5
     /// Set when rectangle detector hints a plate-shaped object is visible
     var rectangleDetectedHint = false
 
@@ -393,6 +418,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     /// Minimum frame skip set by motion/speed service to prevent over-scanning when stationary
     var motionMinFrameSkip: Int = 2
+    /// Set by the view model when motion service detects vehicle mode. Thread-safe via atomic.
+    private let _vehicleMode = AtomicInt(0)
+    var vehicleMode: Bool {
+        get { _vehicleMode.value != 0 }
+        set { _vehicleMode.value = newValue ? 1 : 0 }
+    }
 
     func markProcessingComplete(elapsed: TimeInterval) {
         isProcessing = false
@@ -964,10 +995,15 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async { [weak self] in
             self?.exposureLocked = false
         }
+        // Always start brightness monitoring immediately
+        startBrightnessMonitoring(for: camera)
         exposureLockTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
-            self?.lockExposureAndRecordBaseline(camera)
-            self?.startExposureRefreshCycle(for: camera)
-            self?.startBrightnessMonitoring(for: camera)
+            guard let self else { return }
+            // Don't lock if already in vehicle mode — brightness monitor handles that
+            if !self.vehicleMode {
+                self.lockExposureAndRecordBaseline(camera)
+            }
+            self.startExposureRefreshCycle(for: camera)
         }
     }
 
@@ -982,14 +1018,27 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Checks frame brightness every 2 seconds and forces an exposure refresh
-    /// if brightness has drifted more than 30% from when exposure was locked.
+    /// Checks frame brightness frequently and forces an exposure refresh
+    /// if brightness has drifted beyond threshold. Uses tighter thresholds
+    /// in vehicle mode where sun/shade transitions happen quickly.
     private func startBrightnessMonitoring(for camera: AVCaptureDevice) {
         brightnessCheckTimer?.invalidate()
-        brightnessCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard let self, self.exposureLocked, self.isUsingExternalCamera else { return }
+        brightnessCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
+            guard let self, self.isUsingExternalCamera else { return }
+
+            // In vehicle mode, don't lock exposure at all — keep continuous auto
+            if self.vehicleMode {
+                if self.exposureLocked {
+                    self.log("exposure: vehicle mode detected — switching to continuous auto")
+                    self.unlockExposurePermanent(camera)
+                }
+                return
+            }
+
+            guard self.exposureLocked else { return }
             let delta = abs(self.lastFrameBrightness - self.lockedBrightnessBaseline)
-            if delta > 0.30 {
+            let threshold = 0.15
+            if delta > threshold {
                 self.log("exposure: brightness drift \(String(format: "%.0f%%", delta * 100)) — forcing refresh")
                 self.refreshExposure(camera)
             }
@@ -997,7 +1046,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     /// Briefly unlock auto-exposure to adapt to lighting changes
-    /// (sun/shade transitions, clouds), then re-lock.
+    /// (sun/shade transitions, clouds), then re-lock after a short settle.
     private func refreshExposure(_ camera: AVCaptureDevice) {
         sessionQueue.async { [weak self] in
             guard let self, self.isUsingExternalCamera else { return }
@@ -1013,8 +1062,28 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 self?.exposureLocked = false
             }
 
-            DispatchQueue.global().asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                self?.lockExposureAndRecordBaseline(camera)
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self else { return }
+                // Don't re-lock if we've entered vehicle mode during the settle window
+                if self.vehicleMode { return }
+                self.lockExposureAndRecordBaseline(camera)
+            }
+        }
+    }
+
+    /// Switch to permanent continuous auto-exposure (vehicle mode).
+    private func unlockExposurePermanent(_ camera: AVCaptureDevice) {
+        sessionQueue.async { [weak self] in
+            guard let self, self.isUsingExternalCamera else { return }
+            guard camera.isExposureModeSupported(.continuousAutoExposure) else { return }
+
+            try? camera.lockForConfiguration()
+            camera.exposureMode = .continuousAutoExposure
+            camera.unlockForConfiguration()
+            self.log("exposure: permanent auto (vehicle mode)")
+
+            DispatchQueue.main.async { [weak self] in
+                self?.exposureLocked = false
             }
         }
     }
@@ -1256,15 +1325,18 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Gate on sharpness before frameSkip to avoid wasting OCR slots on blur
         if isUsingExternalCamera && lastFrameSharpness < adaptiveSharpnessThreshold {
             metricsAccumulator.framesSkipped += 1
+            metricsAccumulator.droppedBySharpness += 1
             return
         }
 
         guard frameCount % UInt64(frameSkip) == 0 else {
             metricsAccumulator.framesSkipped += 1
+            metricsAccumulator.droppedByFrameSkip += 1
             return
         }
         guard !isProcessing else {
             metricsAccumulator.framesSkipped += 1
+            metricsAccumulator.droppedByProcessingLock += 1
             return
         }
 
@@ -1276,19 +1348,25 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
         }
 
-        // Scene-change detection: skip unchanged frames unless in burst or
-        // rectangle-detected mode (something new entering the view).
-        if isUsingExternalCamera && Date() >= burstUntil && !rectangleDetectedHint,
+        // Scene-change detection: skip unchanged frames unless in burst,
+        // rectangle-detected, or vehicle mode (everything changes while driving).
+        let inVehicleMode = vehicleMode
+        if isUsingExternalCamera && Date() >= burstUntil && !rectangleDetectedHint && !inVehicleMode,
            let buf = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let fp = sceneFingerprint(buf)
             if !lastProcessedFingerprint.isEmpty {
                 let delta = fingerprintDelta(fp, lastProcessedFingerprint)
-                if delta < sceneChangeThreshold {
+                if delta < sceneChangeThreshold && consecutiveSceneDrops < maxConsecutiveSceneDrops {
+                    consecutiveSceneDrops += 1
                     metricsAccumulator.framesSkipped += 1
+                    metricsAccumulator.droppedBySceneChange += 1
                     return
                 }
             }
+            consecutiveSceneDrops = 0
             lastProcessedFingerprint = fp
+        } else if isUsingExternalCamera {
+            consecutiveSceneDrops = 0
         }
 
         isProcessing = true
