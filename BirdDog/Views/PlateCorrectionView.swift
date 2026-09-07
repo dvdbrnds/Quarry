@@ -5,13 +5,29 @@ struct PlateCorrectionView: View {
 
     let ocrPlate: String
     let scannedEntry: ScannedPlate?
-    var onSaved: (() -> Void)?
+    /// Recent OCR alternates from the recognition pipeline
+    let recentAlternates: [String]
+    var onCorrected: ((_ correctedPlate: String) -> Void)?
 
     @State private var correctPlate = ""
     @State private var notes = ""
     @State private var isSaving = false
     @State private var saved = false
     @State private var errorMessage: String?
+
+    /// Deduplicated suggestions: alternates that differ from the OCR read
+    private var suggestions: [String] {
+        var seen = Set<String>([ocrPlate])
+        var result: [String] = []
+        for alt in recentAlternates {
+            let normalized = alt.uppercased().trimmingCharacters(in: .whitespaces)
+            guard !normalized.isEmpty, !seen.contains(normalized) else { continue }
+            seen.insert(normalized)
+            result.append(normalized)
+            if result.count >= 6 { break }
+        }
+        return result
+    }
 
     var body: some View {
         NavigationStack {
@@ -21,140 +37,162 @@ struct PlateCorrectionView: View {
                 correctionForm
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private var correctionForm: some View {
-        Form {
-            Section {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("OCR Read")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(ocrPlate)
-                            .font(.system(.title2, design: .monospaced, weight: .bold))
-                            .foregroundStyle(.red)
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.right")
-                        .font(.title3)
+        VStack(spacing: 16) {
+            // OCR read display
+            VStack(spacing: 4) {
+                Text("Camera Read")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(ocrPlate)
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.red)
+            }
+            .padding(.top, 8)
+
+            // Suggestions from OCR alternates
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Did you mean?")
+                        .font(.caption.bold())
                         .foregroundStyle(.secondary)
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Correct Plate")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if correctPlate.isEmpty {
-                            Text("Enter below")
-                                .font(.system(.title2, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                        } else {
-                            Text(correctPlate)
-                                .font(.system(.title2, design: .monospaced, weight: .bold))
-                                .foregroundStyle(.green)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(suggestions, id: \.self) { alt in
+                                Button {
+                                    correctPlate = alt
+                                } label: {
+                                    Text(alt)
+                                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(correctPlate == alt ? Color.blue : Color(.systemGray5), in: RoundedRectangle(cornerRadius: 8))
+                                        .foregroundStyle(correctPlate == alt ? .white : .primary)
+                                }
+                            }
                         }
                     }
                 }
-            } header: {
-                Text("Plate Correction")
-            } footer: {
-                Text("This helps us improve plate reading accuracy. No citation will be issued.")
+                .padding(.horizontal)
             }
 
-            if let permit = scannedEntry?.authStatus.permit {
-                Section("Vehicle on File") {
-                    if !permit.ownerName.isEmpty {
-                        Label(permit.ownerName, systemImage: "person.fill")
-                            .font(.subheadline)
-                    }
-                    if !permit.vehicleDescription.isEmpty {
-                        Label(permit.vehicleDescription, systemImage: "car.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !permit.permitType.isEmpty {
-                        Label("\(permit.displayType) · \(permit.lotZone)", systemImage: "doc.text.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            // Manual entry
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Or type the correct plate")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
 
-            Section("Correct Plate Number") {
-                TextField("Enter the actual plate", text: $correctPlate)
+                TextField("Enter plate number", text: $correctPlate)
                     .textInputAutocapitalization(.characters)
                     .font(.system(.title3, design: .monospaced))
+                    .padding(10)
+                    .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 8))
                     .onChange(of: correctPlate) { _, newValue in
                         correctPlate = newValue.uppercased()
                     }
             }
+            .padding(.horizontal)
 
-            Section("Notes (optional)") {
-                TextField("e.g. dirty plate, obstructed, angled", text: $notes, axis: .vertical)
-                    .lineLimit(2...4)
+            // Notes
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Notes (optional)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                TextField("e.g. dirty plate, angled", text: $notes)
+                    .font(.subheadline)
+                    .padding(10)
+                    .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 8))
             }
+            .padding(.horizontal)
 
             if let err = errorMessage {
-                Section {
-                    Text(err)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                }
+                Text(err)
+                    .foregroundStyle(.red)
+                    .font(.caption)
+                    .padding(.horizontal)
             }
+
+            Spacer()
+
+            // Action buttons
+            HStack(spacing: 12) {
+                Button("Cancel") { dismiss() }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.primary)
+
+                Button {
+                    submitCorrection()
+                } label: {
+                    if isSaving {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Text("Save & Check")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    correctPlate.trimmingCharacters(in: .whitespaces).isEmpty || isSaving
+                    ? Color.blue.opacity(0.4) : Color.blue,
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+                .foregroundStyle(.white)
+                .disabled(correctPlate.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
         .navigationTitle("Correct Plate")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { submitCorrection() }
-                    .disabled(correctPlate.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
-                    .bold()
-            }
-        }
     }
 
     private var savedConfirmation: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Spacer()
 
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
+                .font(.system(size: 56))
                 .foregroundStyle(.green)
 
-            Text("Correction Saved")
-                .font(.title2.bold())
+            Text("Plate Updated")
+                .font(.title3.bold())
 
-            VStack(spacing: 8) {
-                HStack(spacing: 12) {
-                    Text(ocrPlate)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.red)
-                        .strikethrough()
-                    Image(systemName: "arrow.right")
-                        .foregroundStyle(.secondary)
-                    Text(correctPlate)
-                        .font(.system(.body, design: .monospaced, weight: .bold))
-                        .foregroundStyle(.green)
-                }
+            HStack(spacing: 12) {
+                Text(ocrPlate)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.red)
+                    .strikethrough()
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(.secondary)
+                Text(correctPlate)
+                    .font(.system(.body, design: .monospaced, weight: .bold))
+                    .foregroundStyle(.green)
             }
 
-            Text("Thank you! This correction will be used\nto improve plate reading accuracy.")
-                .font(.subheadline)
+            Text("The corrected plate has been checked\nagainst the permit database.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             Spacer()
 
             Button("Done") { dismiss() }
-                .buttonStyle(.borderedProminent)
-                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
+                .foregroundStyle(.white)
+                .padding(.horizontal)
+                .padding(.bottom, 16)
         }
-        .padding()
-        .navigationTitle("Correction Saved")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func submitCorrection() {
@@ -178,12 +216,15 @@ struct PlateCorrectionView: View {
                 await MainActor.run {
                     saved = true
                     isSaving = false
-                    onSaved?()
+                    onCorrected?(trimmed)
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Failed to save: \(error.localizedDescription)"
+                    errorMessage = "Upload failed — correction saved locally."
                     isSaving = false
+                    // Still fire the callback so the plate gets checked
+                    onCorrected?(trimmed)
+                    saved = true
                 }
             }
         }

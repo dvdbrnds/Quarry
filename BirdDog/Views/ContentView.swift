@@ -206,7 +206,11 @@ struct ContentView: View {
             if let entry = correctionEntry {
                 PlateCorrectionView(
                     ocrPlate: entry.text,
-                    scannedEntry: entry
+                    scannedEntry: entry,
+                    recentAlternates: viewModel.recentAlternates(for: entry.text),
+                    onCorrected: { correctedPlate in
+                        viewModel.injectCorrectedPlate(correctedPlate, replacingOCR: entry.text)
+                    }
                 )
             }
         }

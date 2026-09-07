@@ -68,30 +68,14 @@ struct ScanLogView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredLog, id: \ScannedPlate.id) { (entry: ScannedPlate) in
-                            if onIssueTapped != nil || onCorrectPlateTapped != nil {
+                            if let action = onIssueTapped {
                                 Button {
-                                    onIssueTapped?(entry)
+                                    action(entry)
                                 } label: {
                                     plateRow(entry)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(RowPressStyle())
-                                .contextMenu {
-                                    if let issue = onIssueTapped {
-                                        Button {
-                                            issue(entry)
-                                        } label: {
-                                            Label("Issue Ticket", systemImage: "doc.text")
-                                        }
-                                    }
-                                    if let correct = onCorrectPlateTapped {
-                                        Button {
-                                            correct(entry)
-                                        } label: {
-                                            Label("Correct Plate", systemImage: "pencil.and.list.clipboard")
-                                        }
-                                    }
-                                }
                             } else {
                                 plateRow(entry)
                             }
@@ -170,6 +154,20 @@ struct ScanLogView: View {
             }
 
             Spacer()
+
+            if let correct = onCorrectPlateTapped {
+                Button {
+                    correct(entry)
+                } label: {
+                    Label("Fix", systemImage: "pencil")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
 
             if entry.authStatus != .unchecked {
                 Image(systemName: entry.authStatus.systemImage)

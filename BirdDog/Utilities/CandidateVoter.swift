@@ -88,6 +88,11 @@ final class CandidateVoter {
         activeBallots[key]?.count ?? 0
     }
 
+    /// Returns all recorded ballots for a given key (for extracting alternates).
+    func allBallots(for key: String) -> [Ballot]? {
+        activeBallots[key]
+    }
+
     func removeAll() {
         activeBallots.removeAll()
         ballotTimestamps.removeAll()

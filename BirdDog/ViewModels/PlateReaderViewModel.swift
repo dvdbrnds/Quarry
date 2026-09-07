@@ -240,6 +240,85 @@ final class PlateReaderViewModel: ObservableObject {
         persistScanLog()
     }
 
+    /// Inject a manually corrected plate into the scan log with a fresh DB lookup.
+    /// Called when an officer corrects a misread — the corrected plate appears as
+    /// a new actionable entry (green/red/orange) they can then issue a ticket on.
+    func injectCorrectedPlate(_ plate: String, replacingOCR ocrPlate: String? = nil) {
+        let normalized = PlatePatternMatcher.normalize(plate)
+        let now = Date()
+        let currentLot = geofenceService.currentLotName
+
+        let authResult = authService.checkDetailed(plate: normalized, currentLot: currentLot)
+        let effectiveStatus: PlateStatus
+        if let ticketedLot = ticketedPlates[normalized] {
+            let lotName = currentLot ?? ""
+            let isTicketedHere = ticketedLot.isEmpty || lotName.isEmpty || ticketedLot == lotName
+            effectiveStatus = isTicketedHere ? .ticketed : authResult.status
+        } else {
+            effectiveStatus = authResult.status
+        }
+
+        let entry = ScannedPlate(
+            text: normalized,
+            timestamp: now,
+            confidence: 1.0,
+            framesConfirmed: 1,
+            authStatus: effectiveStatus,
+            matchMethod: authResult.matchMethod,
+            matchedPlate: authResult.matchedPlate,
+            cameraName: "Manual Correction"
+        )
+
+        // Remove the old misread entry if present
+        if let ocrPlate {
+            scanLog.removeAll { $0.text == ocrPlate }
+            seenPlates.removeAll { $0.text == ocrPlate }
+        }
+
+        scanLog.insert(entry, at: 0)
+        seenPlates.append((text: normalized, time: now))
+        latestAuthStatus = effectiveStatus
+
+        triggerFeedback(for: effectiveStatus)
+        persistScanLog()
+    }
+
+    /// Returns recent OCR alternates from the diagnostic log for a given plate,
+    /// useful for suggesting corrections to the officer.
+    func recentAlternates(for plate: String) -> [String] {
+        let normalized = PlatePatternMatcher.normalize(plate)
+        var alternates: [String] = []
+        var seen = Set<String>([normalized])
+
+        // Check the candidate voter for any alternates from the recent session
+        if let consensus = candidateVoter.allBallots(for: normalized) {
+            for ballot in consensus {
+                for alt in [ballot.primary] + ballot.alternates {
+                    let n = PlatePatternMatcher.normalize(alt)
+                    if !seen.contains(n) && PlatePatternMatcher.looksLikePlate(n) {
+                        seen.insert(n)
+                        alternates.append(n)
+                    }
+                }
+            }
+        }
+
+        // Also pull from recent diagnostic log entries that are similar
+        let recentDiags = diagnosticLog.suffix(200)
+        for diag in recentDiags where diag.accepted {
+            let n = PlatePatternMatcher.normalize(diag.normalizedText)
+            if !seen.contains(n) && PlatePatternMatcher.looksLikePlate(n) {
+                let dist = PlatePatternMatcher.confusableDistance(normalized, n)
+                if dist <= 2.0 {
+                    seen.insert(n)
+                    alternates.append(n)
+                }
+            }
+        }
+
+        return alternates
+    }
+
     func startNewSession() {
         finalizeSession()
         clearLog()
