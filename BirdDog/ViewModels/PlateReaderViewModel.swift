@@ -716,13 +716,19 @@ final class PlateReaderViewModel: ObservableObject {
                 isMatch = isFuzzyMatch(text, seen.text)
             }
             if isMatch {
-                // If the new reading is better (longer = more complete, or matches a
-                // known format while the old one didn't), upgrade the scan log entry
+                // If the new reading is better, upgrade the scan log entry
                 // instead of silently suppressing the correction.
                 let newMatchesFormat = PlatePatternMatcher.matchesAnyNAFormat(text)
                 let oldMatchesFormat = PlatePatternMatcher.matchesAnyNAFormat(seen.text)
+
+                // Check if the old entry was "Unknown" (not in DB) — a DB-matched
+                // re-read should always upgrade an unknown entry.
+                let oldWasUnknown = scanLog.first(where: { $0.text == seen.text })?.authStatus == .unknown
+                let newHitsDB = authService.quickCheck(plate: text, currentLot: nil).matchMethod != .none
+
                 let isBetterRead = (text.count > seen.text.count && newMatchesFormat)
                     || (newMatchesFormat && !oldMatchesFormat)
+                    || (oldWasUnknown && newHitsDB)
 
                 if isBetterRead {
                     upgradeScanLogEntry(from: seen.text, to: text)

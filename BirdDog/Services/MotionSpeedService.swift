@@ -34,8 +34,8 @@ final class MotionSpeedService: ObservableObject {
 
     var dedupWindow: TimeInterval {
         switch mode {
-        case .stationary: return 60
-        case .walking: return 45
+        case .stationary: return 30
+        case .walking: return 25
         case .vehicle: return 15
         }
     }
@@ -53,8 +53,8 @@ final class MotionSpeedService: ObservableObject {
     /// Minimum seconds between processing the same bounding-box region
     var regionCooldown: TimeInterval {
         switch mode {
-        case .stationary: return 8
-        case .walking: return 4
+        case .stationary: return 3
+        case .walking: return 2
         case .vehicle: return 0.5
         }
     }
