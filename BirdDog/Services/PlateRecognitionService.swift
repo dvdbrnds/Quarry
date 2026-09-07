@@ -83,15 +83,56 @@ final class PlateRecognitionService {
         return output
     }
 
+    /// Physically rotate a pixel buffer using Core Image so Vision always
+    /// sees correctly oriented text. This is necessary because the raw
+    /// sample buffer from external cameras isn't rotated — only the preview
+    /// layer applies rotation for display.
+    private func rotatePixelBuffer(_ pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) -> CVPixelBuffer? {
+        guard orientation != .up else { return nil }
+        var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        ciImage = ciImage.oriented(orientation)
+
+        let width = Int(ciImage.extent.width)
+        let height = Int(ciImage.extent.height)
+
+        var rotatedBuffer: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+        ]
+        CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                            CVPixelBufferGetPixelFormatType(pixelBuffer),
+                            attrs as CFDictionary, &rotatedBuffer)
+        guard let output = rotatedBuffer else { return nil }
+
+        let ctx = rotationContext ?? CIContext(options: [.useSoftwareRenderer: false])
+        if rotationContext == nil { rotationContext = ctx }
+        ctx.render(ciImage, to: output)
+        return output
+    }
+    private var rotationContext: CIContext?
+
     func recognizePlates(in sampleBuffer: CMSampleBuffer,
                          orientation: CGImagePropertyOrientation,
                          completion: @escaping (RecognitionResult) -> Void) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+        guard let rawBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             completion(RecognitionResult(plates: [], diagnostics: [], rectangleDetected: lastRectangleDetected))
             return
         }
 
         let useExternal = isExternalCamera
+
+        // For external cameras, physically rotate the buffer so OCR always
+        // sees right-side-up text. Pass .up to Vision since pixels are now correct.
+        let pixelBuffer: CVPixelBuffer
+        let ocrOrientation: CGImagePropertyOrientation
+        if useExternal && orientation != .up, let rotated = rotatePixelBuffer(rawBuffer, orientation: orientation) {
+            pixelBuffer = rotated
+            ocrOrientation = .up
+        } else {
+            pixelBuffer = rawBuffer
+            ocrOrientation = orientation
+        }
 
         requestQueue.async { [self] in
             let roi = useExternal ? externalScanRegion : builtInScanRegion
@@ -101,14 +142,14 @@ final class PlateRecognitionService {
             var rectHint = false
             if useExternal {
                 let detectBuffer = self.downscaleForDetection(pixelBuffer) ?? pixelBuffer
-                rectHint = self.detectPlateRectangles(in: detectBuffer, orientation: orientation, roi: roi)
+                rectHint = self.detectPlateRectangles(in: detectBuffer, orientation: ocrOrientation, roi: roi)
                 self.lastRectangleDetected = rectHint
             }
 
             var pathUsed: RecognitionPath = useExternal ? .fastOnly : .builtIn
 
             func runOCR(on buffer: CVPixelBuffer, level: VNRequestTextRecognitionLevel = .accurate, region: CGRect? = nil) -> [VNRecognizedTextObservation] {
-                let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation)
+                let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: ocrOrientation)
                 let req = VNRecognizeTextRequest()
                 req.recognitionLevel = level
                 req.usesLanguageCorrection = false
@@ -286,13 +327,13 @@ final class PlateRecognitionService {
                         reCropText = self.perspectiveCorrectedReCropAndOCR(
                             pixelBuffer: pixelBuffer,
                             observation: obs,
-                            orientation: orientation
+                            orientation: ocrOrientation
                         )
                     } else {
                         reCropText = self.reCropAndOCR(
                             pixelBuffer: pixelBuffer,
                             boundingBox: plate.boundingBox,
-                            orientation: orientation
+                            orientation: ocrOrientation
                         )
                     }
                     if let reCropText, reCropText != plate.text,
