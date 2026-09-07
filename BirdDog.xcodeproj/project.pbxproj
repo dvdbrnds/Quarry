@@ -65,6 +65,7 @@
 		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
 		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
 		E6763C74F1B8C205F45C7B0A /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */; };
+		E8210C48E27B4F829534C990 /* VehicleTagFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54E953B32EAD899A3EDA9E1 /* VehicleTagFormView.swift */; };
 		F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */; };
 /* End PBXBuildFile section */
 
@@ -117,6 +118,7 @@
 		995B0C59C443E480C6E8929E /* AdminSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminSettingsView.swift; sourceTree = "<group>"; };
 		9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9C892FB471FBA100CC681F7F /* BirdDog.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BirdDog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A54E953B32EAD899A3EDA9E1 /* VehicleTagFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleTagFormView.swift; sourceTree = "<group>"; };
 		A60D6819CAAEDDD374807655 /* ScanLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogView.swift; sourceTree = "<group>"; };
 		A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateOverlayView.swift; sourceTree = "<group>"; };
 		A6A4B5A485C2EE7AAE00AFF3 /* MovingViolationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovingViolationView.swift; sourceTree = "<group>"; };
@@ -279,6 +281,7 @@
 				A60D6819CAAEDDD374807655 /* ScanLogView.swift */,
 				6C5BB3C711625B1438395ED1 /* SessionHistoryView.swift */,
 				4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */,
+				A54E953B32EAD899A3EDA9E1 /* VehicleTagFormView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -473,6 +476,7 @@
 				8F5F5EE340D5F20CF18E7E40 /* SessionHistoryView.swift in Sources */,
 				5B1EB054A758DA6ECE742D69 /* TicketIssuanceView.swift in Sources */,
 				1E92882A49F81E47B67DE436 /* TicketReceiptBuilder.swift in Sources */,
+				E8210C48E27B4F829534C990 /* VehicleTagFormView.swift in Sources */,
 				83F9428A410F478E8C061F6C /* ViolationTypeStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
