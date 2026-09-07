@@ -238,22 +238,16 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     private func saveBufferAsJPEG(_ imageBuffer: CVPixelBuffer) -> String? {
-        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-
-        let imageOrientation: UIImage.Orientation
-        if isUsingExternalCamera {
-            switch externalCameraOrientation {
-            case .right: imageOrientation = .right
-            case .down:  imageOrientation = .down
-            case .left:  imageOrientation = .left
-            default:     imageOrientation = .up
-            }
-        } else {
-            imageOrientation = .right
+        let orientation = isUsingExternalCamera ? externalCameraOrientation : .right
+        var ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        if orientation != .up {
+            ciImage = ciImage.oriented(orientation)
         }
-        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: imageOrientation)
+
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        let uiImage = UIImage(cgImage: cgImage)
+
         let targetSize = CGSize(width: 640, height: 480)
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
