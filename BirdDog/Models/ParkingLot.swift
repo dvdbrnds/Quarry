@@ -50,10 +50,16 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
 
     /// Check whether a given permit type is allowed in this lot at the specified time.
     /// Returns true if no schedule rules apply (unrestricted) or if the permit type matches.
+    private static let easternCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        return cal
+    }()
+
     func isPermitTypeAllowed(_ permitType: String, at date: Date = Date()) -> Bool {
         guard !accessSchedule.isEmpty else { return true }
 
-        let calendar = Calendar.current
+        let calendar = Self.easternCalendar
         let hour = calendar.component(.hour, from: date)
         let minute = calendar.component(.minute, from: date)
         let timeStr = String(format: "%02d:%02d", hour, minute)

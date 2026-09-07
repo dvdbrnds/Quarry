@@ -335,6 +335,7 @@ struct TicketIssuanceView: View {
     private static let timestampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.timeZone = TimeZone(identifier: "America/New_York")
         return f
     }()
 

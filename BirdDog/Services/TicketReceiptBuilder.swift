@@ -36,6 +36,7 @@ struct TicketReceiptBuilder {
 
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MM/dd/yyyy  h:mm a"
+        dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
         let dateStr = dateFormatter.string(from: ticket.issuedAt)
         let title = ticket.ticketCategory == "moving" ? " CITATION " : " PARKING TICKET "
         let school = schoolName.isEmpty ? "Campus Police" : schoolName

@@ -28,6 +28,12 @@ final class PlateAuthService: PlateCheckable {
     /// HoundDog uses "active"; legacy BirdDog JSON used "Valid".
     private static let activeStatuses: Set<String> = ["active", "valid"]
 
+    private static let easternCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        return cal
+    }()
+
     private var lookupCache: [String: AuthResult] = [:]
     private var cacheTimestamp: Date = .distantPast
     private static let cacheTTL: TimeInterval = 30.0
@@ -135,7 +141,7 @@ final class PlateAuthService: PlateCheckable {
         }
 
         // Past end date
-        if let expiration = record.expirationDate, expiration < Calendar.current.startOfDay(for: now) {
+        if let expiration = record.expirationDate, expiration < Self.easternCalendar.startOfDay(for: now) {
             return .expired(permit: info)
         }
 
