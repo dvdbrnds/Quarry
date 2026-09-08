@@ -48,5 +48,6 @@ class Permit(Base):
     vehicle_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     vehicle_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
     vehicle_year: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    vehicle_description: Mapped[str | None] = mapped_column(String(256), nullable=True)
     tag_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tag_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
