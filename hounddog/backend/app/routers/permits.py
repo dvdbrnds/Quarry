@@ -308,16 +308,20 @@ async def list_permits(
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
     if company:
-        # If it looks like a UUID, filter by preset_id; otherwise search text
+        # If it looks like a UUID, it's a preset ID — resolve to label/company_name
         try:
-            uuid.UUID(company)
-            is_preset_id = True
+            preset_uuid = uuid.UUID(company)
+            preset = await db.get(VisitorPreset, preset_uuid)
+            if preset:
+                conditions = [Permit.student_id.ilike(f"%preset_id:{company}%")]
+                if preset.label:
+                    conditions.append(Permit.student_id.ilike(f"%{preset.label.strip()}%"))
+                if preset.company_name and preset.company_name.strip().lower() != preset.label.strip().lower():
+                    conditions.append(Permit.student_id.ilike(f"%{preset.company_name.strip()}%"))
+                query = query.where(or_(*conditions))
+            else:
+                query = query.where(Permit.student_id.ilike(f"%preset_id:{company}%"))
         except (ValueError, AttributeError):
-            is_preset_id = False
-
-        if is_preset_id:
-            query = query.where(Permit.student_id.ilike(f"%preset_id:{company}%"))
-        else:
             query = query.where(or_(
                 Permit.student_id.ilike(f"%company_name:{company}%"),
                 Permit.student_id.ilike(f"%work_description:{company}%"),
@@ -1579,13 +1583,18 @@ async def export_permits(
         query = query.where(Permit.permit_type == permit_type)
     if company:
         try:
-            uuid.UUID(company)
-            is_preset_id = True
+            preset_uuid = uuid.UUID(company)
+            preset = await db.get(VisitorPreset, preset_uuid)
+            if preset:
+                conditions = [Permit.student_id.ilike(f"%preset_id:{company}%")]
+                if preset.label:
+                    conditions.append(Permit.student_id.ilike(f"%{preset.label.strip()}%"))
+                if preset.company_name and preset.company_name.strip().lower() != preset.label.strip().lower():
+                    conditions.append(Permit.student_id.ilike(f"%{preset.company_name.strip()}%"))
+                query = query.where(or_(*conditions))
+            else:
+                query = query.where(Permit.student_id.ilike(f"%preset_id:{company}%"))
         except (ValueError, AttributeError):
-            is_preset_id = False
-        if is_preset_id:
-            query = query.where(Permit.student_id.ilike(f"%preset_id:{company}%"))
-        else:
             query = query.where(or_(
                 Permit.student_id.ilike(f"%company_name:{company}%"),
                 Permit.student_id.ilike(f"%work_description:{company}%"),
