@@ -73,7 +73,8 @@ def _permit_search_clause(search: str) -> ColumnElement[bool]:
 
 @router.get("/companies")
 async def list_companies(db: AsyncSession = Depends(get_db)):
-    """Return distinct company/program names from visitor permits for filtering."""
+    """Return distinct company/program names from visitor permits and presets."""
+    # 1. Extract from existing permit metadata
     rows = (
         await db.execute(
             select(Permit.student_id)
@@ -94,6 +95,19 @@ async def list_companies(db: AsyncSession = Depends(get_db)):
                 val = part[len("company_name:"):].strip()
                 if val and val.lower() != "visitor":
                     companies.add(val)
+
+    # 2. Also include labels from all visitor presets (active and inactive)
+    presets = (
+        await db.execute(
+            select(VisitorPreset.label, VisitorPreset.company_name)
+        )
+    ).all()
+    for label, company_name in presets:
+        if label:
+            companies.add(label.strip())
+        if company_name and company_name.strip().lower() != "visitor":
+            companies.add(company_name.strip())
+
     return sorted(companies, key=str.casefold)
 
 
@@ -286,7 +300,10 @@ async def list_permits(
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
     if company:
-        query = query.where(Permit.student_id.ilike(f"%company_name:{company}%"))
+        query = query.where(or_(
+            Permit.student_id.ilike(f"%company_name:{company}%"),
+            Permit.student_id.ilike(f"%work_description:{company}%"),
+        ))
 
     order_col = Permit.name
     order_dir = asc
@@ -1542,7 +1559,10 @@ async def export_permits(
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
     if company:
-        query = query.where(Permit.student_id.ilike(f"%company_name:{company}%"))
+        query = query.where(or_(
+            Permit.student_id.ilike(f"%company_name:{company}%"),
+            Permit.student_id.ilike(f"%work_description:{company}%"),
+        ))
     if lot:
         variants = lot_filter_variants(lot)
         lot_conditions = []

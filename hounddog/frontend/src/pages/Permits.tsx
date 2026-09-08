@@ -1073,8 +1073,10 @@ export default function Permits() {
                   />
                   {companies.length > 0 && (
                     <Select value={filterCompany || undefined} onChange={v => { setFilterCompany(v || ""); setPage(1); }}
-                      placeholder="All Programs" allowClear style={{ width: 180 }}
+                      placeholder="All Programs" allowClear style={{ width: 220 }}
                       showSearch
+                      optionFilterProp="label"
+                      popupMatchSelectWidth={false}
                       options={companies.map(c => ({ label: c, value: c }))}
                     />
                   )}
