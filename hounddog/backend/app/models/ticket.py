@@ -60,6 +60,8 @@ class Ticket(Base):
     appeal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     appeal_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
     appeal_decided_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    appeal_decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     dispute_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)

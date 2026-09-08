@@ -758,6 +758,9 @@ async def submit_plate_correction(
 class VehicleTagUpload(BaseModel):
     plates: list[str]
     owner_name: str = ""
+    owner_address: str = ""
+    student_name: str = ""
+    student_email: str = ""
     vehicle_make: str = ""
     vehicle_model: str = ""
     vehicle_color: str = ""
@@ -795,11 +798,18 @@ async def create_vehicle_tag_from_device(
             officer_info += f" ({data.officer_email})"
     notes = "\n".join(filter(None, [data.notes, officer_info])).strip()
 
+    meta_parts = []
+    if data.owner_address:
+        meta_parts.append(f"owner_address:{data.owner_address.strip()[:256]}")
+    if data.student_name:
+        meta_parts.append(f"student_name:{data.student_name.strip()[:128]}")
+
     tag = Permit(
         name=data.owner_name or f"Unknown — {', '.join(normalized)}",
         plates=normalized,
-        email="",
+        email=data.student_email.strip()[:256] if data.student_email else "",
         phone="",
+        student_id="|".join(meta_parts) if meta_parts else "",
         permit_type="vehicle_tag",
         status="active",
         lot_assignment="",

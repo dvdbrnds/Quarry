@@ -32,6 +32,7 @@ from ..schemas.ticket import (
     TicketRead,
     TicketUpdate,
     TrendDay,
+    VoidRequest,
 )
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -369,6 +370,7 @@ async def update_ticket(
 @router.post("/{ticket_id}/void", response_model=TicketRead)
 async def void_ticket(
     ticket_id: uuid.UUID,
+    body: VoidRequest | None = None,
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
 ):
@@ -378,6 +380,8 @@ async def void_ticket(
     if ticket.status == "paid":
         raise HTTPException(400, "Cannot void a paid ticket")
     ticket.status = "voided"
+    if body and body.reason:
+        ticket.void_reason = body.reason.strip()[:1024]
     await db.flush()
     await db.refresh(ticket)
     return ticket
@@ -471,6 +475,8 @@ async def decide_appeal(
 
     ticket.appeal_decision = decision.decision
     ticket.appeal_decided_by = decision.decided_by
+    if decision.reason:
+        ticket.appeal_decision_reason = decision.reason.strip()[:1024]
 
     if decision.decision == "approved":
         ticket.status = "voided"

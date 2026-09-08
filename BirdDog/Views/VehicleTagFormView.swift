@@ -10,6 +10,9 @@ struct VehicleTagFormView: View {
 
     @State private var plates: String = ""
     @State private var ownerName = ""
+    @State private var ownerAddress = ""
+    @State private var studentName = ""
+    @State private var studentEmail = ""
     @State private var vehicleMake = ""
     @State private var vehicleModel = ""
     @State private var vehicleColor = ""
@@ -76,6 +79,17 @@ struct VehicleTagFormView: View {
             Section("Owner (if known)") {
                 TextField("Owner name", text: $ownerName)
                     .textInputAutocapitalization(.words)
+                TextField("Owner address", text: $ownerAddress)
+                    .textInputAutocapitalization(.words)
+            }
+
+            Section("Student (if identified)") {
+                TextField("Student name", text: $studentName)
+                    .textInputAutocapitalization(.words)
+                TextField("Student email", text: $studentEmail)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
             }
 
             Section("Source") {
@@ -139,6 +153,21 @@ struct VehicleTagFormView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if !studentName.isEmpty || !studentEmail.isEmpty {
+                VStack(spacing: 2) {
+                    if !studentName.isEmpty {
+                        Text("Student: \(studentName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !studentEmail.isEmpty {
+                        Text(studentEmail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Text("This vehicle will now appear as\n\"Known Vehicle — No Permit\"\nwhen scanned.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -178,6 +207,9 @@ struct VehicleTagFormView: View {
                 _ = try await HoundDogSyncService.shared.createVehicleTag(
                     plates: plateList,
                     ownerName: ownerName.trimmingCharacters(in: .whitespaces),
+                    ownerAddress: ownerAddress.trimmingCharacters(in: .whitespaces),
+                    studentName: studentName.trimmingCharacters(in: .whitespaces),
+                    studentEmail: studentEmail.trimmingCharacters(in: .whitespaces),
                     vehicleMake: vehicleMake.trimmingCharacters(in: .whitespaces),
                     vehicleModel: vehicleModel.trimmingCharacters(in: .whitespaces),
                     vehicleColor: vehicleColor.trimmingCharacters(in: .whitespaces),

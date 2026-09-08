@@ -78,6 +78,8 @@ class TicketRead(BaseModel):
     appeal_note: str | None = None
     appeal_decision: str | None = None
     appeal_decided_by: str | None = None
+    appeal_decision_reason: str | None = None
+    void_reason: str | None = None
     dispute_name: str | None = None
     dispute_email: str | None = None
     dispute_phone: str | None = None
@@ -94,9 +96,14 @@ class AppealRequest(BaseModel):
     note: str
 
 
+class VoidRequest(BaseModel):
+    reason: str = ""
+
+
 class AppealDecision(BaseModel):
     decision: str
     decided_by: str
+    reason: str = ""
 
 
 class TicketPipeline(BaseModel):

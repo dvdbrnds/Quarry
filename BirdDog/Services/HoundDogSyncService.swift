@@ -544,6 +544,9 @@ final class HoundDogSyncService: ObservableObject {
     struct VehicleTagPayload: Encodable {
         let plates: [String]
         let owner_name: String
+        let owner_address: String
+        let student_name: String
+        let student_email: String
         let vehicle_make: String
         let vehicle_model: String
         let vehicle_color: String
@@ -563,6 +566,9 @@ final class HoundDogSyncService: ObservableObject {
     func createVehicleTag(
         plates: [String],
         ownerName: String = "",
+        ownerAddress: String = "",
+        studentName: String = "",
+        studentEmail: String = "",
         vehicleMake: String = "",
         vehicleModel: String = "",
         vehicleColor: String = "",
@@ -582,6 +588,9 @@ final class HoundDogSyncService: ObservableObject {
         let payload = VehicleTagPayload(
             plates: plates,
             owner_name: ownerName,
+            owner_address: ownerAddress,
+            student_name: studentName,
+            student_email: studentEmail,
             vehicle_make: vehicleMake,
             vehicle_model: vehicleModel,
             vehicle_color: vehicleColor,

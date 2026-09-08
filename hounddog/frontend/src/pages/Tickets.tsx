@@ -36,6 +36,8 @@ interface Ticket {
   appeal_note: string | null;
   appeal_decision: string | null;
   appeal_decided_by: string | null;
+  appeal_decision_reason: string | null;
+  void_reason: string | null;
   dispute_name: string | null;
   dispute_email: string | null;
   dispute_phone: string | null;
@@ -185,7 +187,14 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       <tr><td class="label">Note</td><td>${ticket.appeal_note}</td></tr>
       <tr><td class="label">Decision</td><td>${ticket.appeal_decision || "Pending"}</td></tr>
       ${ticket.appeal_decided_by ? `<tr><td class="label">Decided By</td><td>${ticket.appeal_decided_by}</td></tr>` : ""}
+      ${ticket.appeal_decision_reason ? `<tr><td class="label">Reason</td><td>${ticket.appeal_decision_reason}</td></tr>` : ""}
     </table>
+  </div>` : ""}
+
+  ${ticket.void_reason ? `
+  <div class="section">
+    <div class="section-title">Void Reason</div>
+    <p>${ticket.void_reason}</p>
   </div>` : ""}
 
   ${photoUrl ? `
@@ -215,18 +224,32 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
   async function handleVoid(id: string) {
     if (!isAdmin) return;
+    let voidReason = "";
     modal.confirm({
       title: "Void this ticket?",
-      content: "This action will void the ticket and cannot be easily reversed.",
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>This action will void the ticket and cannot be easily reversed.</p>
+          <Input.TextArea
+            placeholder="Reason for voiding (optional)"
+            rows={3}
+            onChange={(e) => { voidReason = e.target.value; }}
+          />
+        </div>
+      ),
       okText: "Void Ticket",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const res = await fetch(`/api/tickets/${id}/void`, { method: "POST", headers: await authHeaders() });
+          const res = await fetch(`/api/tickets/${id}/void`, {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ reason: voidReason }),
+          });
           message.success("Ticket voided");
           load();
           if (res.ok && selected?.id === id) {
-            setSelected({ ...selected, status: "voided" });
+            setSelected({ ...selected, status: "voided", void_reason: voidReason || null });
           }
         } catch {
           message.error("Failed to void ticket");
@@ -256,18 +279,40 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   async function handleAppealDecision(id: string, decision: string) {
     if (!isAdmin) return;
     const decided_by = user?.email || "admin";
-    try {
-      await fetch(`/api/tickets/${id}/appeal/decide`, {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify({ decision, decided_by }),
-      });
-      message.success(`Appeal ${decision}`);
-      load();
-      setSelected(null);
-    } catch {
-      message.error("Failed to process appeal decision");
-    }
+    let appealReason = "";
+    modal.confirm({
+      title: `${decision === "approved" ? "Approve" : "Deny"} this appeal?`,
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            {decision === "approved"
+              ? "The ticket will be voided."
+              : "The ticket will return to pending payment."}
+          </p>
+          <Input.TextArea
+            placeholder="Explanation / reason (optional)"
+            rows={3}
+            onChange={(e) => { appealReason = e.target.value; }}
+          />
+        </div>
+      ),
+      okText: decision === "approved" ? "Approve" : "Deny",
+      okButtonProps: decision === "denied" ? { danger: true } : {},
+      onOk: async () => {
+        try {
+          await fetch(`/api/tickets/${id}/appeal/decide`, {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ decision, decided_by, reason: appealReason }),
+          });
+          message.success(`Appeal ${decision}`);
+          load();
+          setSelected(null);
+        } catch {
+          message.error("Failed to process appeal decision");
+        }
+      },
+    });
   }
 
   const columns: ColumnsType<Ticket> = [
@@ -654,8 +699,18 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   <div className="mt-2 text-xs text-ink-mute">
                     Decision: <strong>{selected.appeal_decision}</strong>
                     {selected.appeal_decided_by && ` by ${selected.appeal_decided_by}`}
+                    {selected.appeal_decision_reason && (
+                      <div className="mt-1">Reason: {selected.appeal_decision_reason}</div>
+                    )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {selected.void_reason && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <div className="font-medium text-gray-700 mb-1">Void Reason</div>
+                <p>{selected.void_reason}</p>
               </div>
             )}
           </div>
