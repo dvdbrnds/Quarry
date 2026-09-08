@@ -778,6 +778,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_model VARCHAR(64)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_color VARCHAR(32)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_year VARCHAR(4)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS vehicle_description VARCHAR(256)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS tag_notes TEXT",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS tag_source VARCHAR(32)",
             # Lot closure diversion
