@@ -67,6 +67,7 @@
 		E6763C74F1B8C205F45C7B0A /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */; };
 		E8210C48E27B4F829534C990 /* VehicleTagFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54E953B32EAD899A3EDA9E1 /* VehicleTagFormView.swift */; };
 		69A09F02DC01CAFE12345678 /* DiagnosticCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A09F02DC01CAFE87654321 /* DiagnosticCaptureView.swift */; };
+		7A1B2C3D4E5F60718293A4B5 /* ManualLookupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B6 /* ManualLookupView.swift */; };
 		F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */; };
 /* End PBXBuildFile section */
 
@@ -120,6 +121,7 @@
 		9BDA77FC5C4A56D844AB9B65 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9C892FB471FBA100CC681F7F /* BirdDog.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BirdDog.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69A09F02DC01CAFE87654321 /* DiagnosticCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticCaptureView.swift; sourceTree = "<group>"; };
+		7A1B2C3D4E5F60718293A4B6 /* ManualLookupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualLookupView.swift; sourceTree = "<group>"; };
 		A54E953B32EAD899A3EDA9E1 /* VehicleTagFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleTagFormView.swift; sourceTree = "<group>"; };
 		A60D6819CAAEDDD374807655 /* ScanLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanLogView.swift; sourceTree = "<group>"; };
 		A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateOverlayView.swift; sourceTree = "<group>"; };
@@ -285,6 +287,7 @@
 				4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */,
 				A54E953B32EAD899A3EDA9E1 /* VehicleTagFormView.swift */,
 				69A09F02DC01CAFE87654321 /* DiagnosticCaptureView.swift */,
+				7A1B2C3D4E5F60718293A4B6 /* ManualLookupView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -481,6 +484,7 @@
 				1E92882A49F81E47B67DE436 /* TicketReceiptBuilder.swift in Sources */,
 				E8210C48E27B4F829534C990 /* VehicleTagFormView.swift in Sources */,
 				69A09F02DC01CAFE12345678 /* DiagnosticCaptureView.swift in Sources */,
+				7A1B2C3D4E5F60718293A4B5 /* ManualLookupView.swift in Sources */,
 				83F9428A410F478E8C061F6C /* ViolationTypeStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

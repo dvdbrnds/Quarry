@@ -262,7 +262,7 @@ final class PlateReaderViewModel: ObservableObject {
     /// Inject a manually corrected plate into the scan log with a fresh DB lookup.
     /// Called when an officer corrects a misread — the corrected plate appears as
     /// a new actionable entry (green/red/orange) they can then issue a ticket on.
-    func injectCorrectedPlate(_ plate: String, replacingOCR ocrPlate: String? = nil) {
+    func injectCorrectedPlate(_ plate: String, replacingOCR ocrPlate: String? = nil, source: String = "Manual Correction") {
         let normalized = PlatePatternMatcher.normalize(plate)
         let now = Date()
         let currentLot = geofenceService.currentLotName
@@ -285,7 +285,7 @@ final class PlateReaderViewModel: ObservableObject {
             authStatus: effectiveStatus,
             matchMethod: authResult.matchMethod,
             matchedPlate: authResult.matchedPlate,
-            cameraName: "Manual Correction"
+            cameraName: source
         )
 
         // Remove the old misread entry if present

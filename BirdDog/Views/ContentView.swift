@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var correctionEntry: ScannedPlate?
     @State private var showVehicleTag = false
     @State private var tagPlate: String?
+    @State private var showManualLookup = false
     @State private var exportURLs: [URL] = []
 
     /// Deferred menu action — set by Menu buttons, executed by .onChange
@@ -63,7 +64,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
-                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag
+                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag || showManualLookup
             if viewModel.cameraPermission == .authorized && !anyScreenOpen {
                 // Resume if paused by willResignActive (share sheet, app switcher)
                 if viewModel.isScanningPaused {
@@ -79,7 +80,7 @@ struct ContentView: View {
         }
         .onReceive(tick) { t in
             let anyScreenOpen = showTicketIssuance || showMovingViolation
-                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag
+                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag || showManualLookup
             if !anyScreenOpen {
                 now = t
             }
@@ -321,6 +322,11 @@ struct ContentView: View {
                     tagPlate = nil
                 }
         }
+        .sheet(isPresented: $showManualLookup) {
+            ManualLookupView { plate in
+                viewModel.injectCorrectedPlate(plate, source: "Manual Lookup")
+            }
+        }
         .onChange(of: showPlateCorrection) { _, isOpen in
             if !isOpen {
                 correctionEntry = nil
@@ -328,6 +334,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: showVehicleTag) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: showManualLookup) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
         }
         .onChange(of: showTicketIssuance) { _, isOpen in
@@ -581,6 +590,15 @@ struct ContentView: View {
                 Image(systemName: viewModel.audioAlertsEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
                     .font(.body)
                     .foregroundStyle(viewModel.audioAlertsEnabled ? .primary : .secondary)
+            }
+
+            Button {
+                viewModel.pauseScanning()
+                showManualLookup = true
+            } label: {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.body)
+                    .foregroundStyle(.blue)
             }
 
             if officerAuth.isStaff {
