@@ -71,6 +71,32 @@ def _permit_search_clause(search: str) -> ColumnElement[bool]:
     )
 
 
+@router.get("/companies")
+async def list_companies(db: AsyncSession = Depends(get_db)):
+    """Return distinct company/program names from visitor permits for filtering."""
+    rows = (
+        await db.execute(
+            select(Permit.student_id)
+            .where(
+                Permit.deleted_at.is_(None),
+                Permit.student_id.ilike("%company_name:%"),
+            )
+            .distinct()
+        )
+    ).scalars().all()
+
+    companies: set[str] = set()
+    for sid in rows:
+        if not sid:
+            continue
+        for part in sid.split("|"):
+            if part.startswith("company_name:"):
+                val = part[len("company_name:"):].strip()
+                if val and val.lower() != "visitor":
+                    companies.add(val)
+    return sorted(companies, key=str.casefold)
+
+
 @router.get("/stats")
 async def permit_stats(db: AsyncSession = Depends(get_db)):
     return await get_permit_stats(db)
@@ -221,6 +247,7 @@ async def list_permits(
     status: str | None = None,
     lot: str | None = None,
     permit_type: str | None = None,
+    company: str | None = None,
     max_age_years: int | None = Query(None, ge=1),
     sort: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -258,6 +285,8 @@ async def list_permits(
         query = query.where(or_(*lot_conditions))
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
+    if company:
+        query = query.where(Permit.student_id.ilike(f"%company_name:{company}%"))
 
     order_col = Permit.name
     order_dir = asc
@@ -1503,6 +1532,7 @@ async def export_permits(
     status: str | None = None,
     permit_type: str | None = None,
     lot: str | None = None,
+    company: str | None = None,
     search: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -1511,6 +1541,8 @@ async def export_permits(
         query = query.where(Permit.status == status)
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
+    if company:
+        query = query.where(Permit.student_id.ilike(f"%company_name:{company}%"))
     if lot:
         variants = lot_filter_variants(lot)
         lot_conditions = []

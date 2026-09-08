@@ -611,17 +611,19 @@ export const api = {
     list: () => request<AcademicSeason[]>("/academic-calendar"),
   },
   permits: {
-    list: (params?: { page?: number; search?: string; status?: string; lot?: string; permit_type?: string; max_age_years?: number; sort?: string }) => {
+    list: (params?: { page?: number; search?: string; status?: string; lot?: string; permit_type?: string; company?: string; max_age_years?: number; sort?: string }) => {
       const qs = new URLSearchParams();
       if (params?.page) qs.set("page", String(params.page));
       if (params?.search) qs.set("search", params.search);
       if (params?.status) qs.set("status", params.status);
       if (params?.lot) qs.set("lot", params.lot);
       if (params?.permit_type) qs.set("permit_type", params.permit_type);
+      if (params?.company) qs.set("company", params.company);
       if (params?.max_age_years) qs.set("max_age_years", String(params.max_age_years));
       if (params?.sort) qs.set("sort", params.sort);
       return request<PermitList>(`/permits?${qs}`);
     },
+    companies: () => request<string[]>("/permits/companies"),
     get: (id: string) => request<Permit>(`/permits/${id}`),
     create: (data: Partial<Permit>) =>
       request<Permit>("/permits", { method: "POST", body: JSON.stringify(data) }),

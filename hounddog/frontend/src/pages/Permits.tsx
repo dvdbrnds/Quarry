@@ -805,6 +805,8 @@ export default function Permits() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterLot, setFilterLot] = useState("");
+  const [filterCompany, setFilterCompany] = useState("");
+  const [companies, setCompanies] = useState<string[]>([]);
   const [recentOnly, setRecentOnly] = useState(false);
   const [sort, setSort] = useState("");
   const [editing, setEditing] = useState<Permit | null>(null);
@@ -834,6 +836,7 @@ export default function Permits() {
       const data = await api.permits.list({
         page, search: search || undefined, status: filterStatus || undefined,
         lot: filterLot || undefined, permit_type: filterType || undefined,
+        company: filterCompany || undefined,
         max_age_years: recentOnly ? 5 : undefined, sort: sort || undefined,
       });
       setPermits(data.items);
@@ -843,15 +846,16 @@ export default function Permits() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, filterStatus, filterType, filterLot, recentOnly, sort, message]);
+  }, [page, search, filterStatus, filterType, filterLot, filterCompany, recentOnly, sort, message]);
 
   const loadMeta = useCallback(async () => {
     try {
-      const [s, ptRes, lotsRes, dupRes] = await Promise.all([
+      const [s, ptRes, lotsRes, dupRes, compRes] = await Promise.all([
         api.permits.stats(),
         fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
         api.lots.list(),
         fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
+        api.permits.companies().catch(() => [] as string[]),
       ]);
       setStats(s);
       setPermitTypes(ptRes.map((pt: any) => ({
@@ -862,6 +866,7 @@ export default function Permits() {
       })));
       setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
       setDuplicateGroups(dupRes.duplicate_groups ?? []);
+      setCompanies(compRes);
     } catch { /* silently fail */ }
   }, []);
 
@@ -985,6 +990,7 @@ export default function Permits() {
                       if (filterStatus) params.set("status", filterStatus);
                       if (filterType) params.set("permit_type", filterType);
                       if (filterLot) params.set("lot", filterLot);
+                      if (filterCompany) params.set("company", filterCompany);
                       if (search) params.set("search", search);
                       const qs = params.toString();
                       downloadWithAuth(`/api/permits/export/csv${qs ? `?${qs}` : ""}`, "permits.csv");
@@ -1065,6 +1071,13 @@ export default function Permits() {
                     placeholder="All Lots" allowClear style={{ width: 140 }}
                     options={lots.map(l => ({ label: l.name, value: l.name }))}
                   />
+                  {companies.length > 0 && (
+                    <Select value={filterCompany || undefined} onChange={v => { setFilterCompany(v || ""); setPage(1); }}
+                      placeholder="All Programs" allowClear style={{ width: 180 }}
+                      showSearch
+                      options={companies.map(c => ({ label: c, value: c }))}
+                    />
+                  )}
                   {/* "5 years or younger" filter — hidden for now, re-enable for legacy data customers */}
                   {false && <Checkbox
                     checked={recentOnly}
@@ -1072,9 +1085,9 @@ export default function Permits() {
                   >
                     5 years or younger
                   </Checkbox>}
-                  {(filterStatus || filterType || filterLot || recentOnly) && (
+                  {(filterStatus || filterType || filterLot || filterCompany || recentOnly) && (
                     <Button type="link" danger size="small"
-                      onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setRecentOnly(false); setPage(1); }}>
+                      onClick={() => { setFilterStatus(""); setFilterType(""); setFilterLot(""); setFilterCompany(""); setRecentOnly(false); setPage(1); }}>
                       Clear Filters
                     </Button>
                   )}
