@@ -623,7 +623,7 @@ export const api = {
       if (params?.sort) qs.set("sort", params.sort);
       return request<PermitList>(`/permits?${qs}`);
     },
-    companies: () => request<string[]>("/permits/companies"),
+    companies: () => request<Array<{ id: string; label: string; type: string }>>("/permits/companies"),
     get: (id: string) => request<Permit>(`/permits/${id}`),
     create: (data: Partial<Permit>) =>
       request<Permit>("/permits", { method: "POST", body: JSON.stringify(data) }),

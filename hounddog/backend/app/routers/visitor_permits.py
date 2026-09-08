@@ -769,6 +769,8 @@ async def _get_valid_token(token: str, db: AsyncSession, check_used: bool) -> Vi
 
 def _build_metadata(data: VisitorPermitCreate) -> str:
     parts = []
+    if data.preset_id:
+        parts.append(f"preset_id:{data.preset_id}")
     if data.company_name.strip():
         parts.append(f"company_name:{data.company_name.strip()}")
     if data.work_description.strip():

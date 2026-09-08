@@ -74,48 +74,49 @@ def _permit_search_clause(search: str) -> ColumnElement[bool]:
 
 @router.get("/companies")
 async def list_companies(db: AsyncSession = Depends(get_db)):
-    """Return distinct company/program names from visitor permits and presets."""
-    # 1. Extract from existing permit metadata
+    """Return visitor presets as filterable programs, plus any freeform companies."""
+    # 1. All visitor presets (these are the main programs)
+    presets = (
+        await db.execute(
+            select(VisitorPreset)
+            .order_by(VisitorPreset.sort_order, VisitorPreset.label)
+        )
+    ).scalars().all()
+
+    programs: list[dict] = []
+    for p in presets:
+        programs.append({
+            "id": str(p.id),
+            "label": p.label,
+            "type": "preset",
+        })
+
+    # 2. Extract freeform company names from non-preset visitor permits
     rows = (
         await db.execute(
             select(Permit.student_id)
             .where(
                 Permit.deleted_at.is_(None),
                 Permit.student_id.ilike("%company_name:%"),
+                ~Permit.student_id.ilike("%preset_id:%"),
+                Permit.permit_type.in_(["visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"]),
             )
             .distinct()
         )
     ).scalars().all()
 
-    companies: set[str] = set()
+    seen_names: set[str] = {p.label.lower() for p in presets}
     for sid in rows:
         if not sid:
             continue
         for part in sid.split("|"):
             if part.startswith("company_name:"):
                 val = part[len("company_name:"):].strip()
-                if val and val.lower() != "visitor":
-                    companies.add(val)
+                if val and val.lower() not in ("visitor", "") and val.lower() not in seen_names:
+                    programs.append({"id": val, "label": val, "type": "company"})
+                    seen_names.add(val.lower())
 
-    # 2. Also include labels from all visitor presets (active and inactive)
-    presets = (
-        await db.execute(
-            select(VisitorPreset.label, VisitorPreset.company_name)
-        )
-    ).all()
-    for label, company_name in presets:
-        if label:
-            companies.add(label.strip())
-        if company_name and company_name.strip().lower() != "visitor":
-            companies.add(company_name.strip())
-
-    # Deduplicate case-insensitively, keeping the first-seen casing
-    seen: dict[str, str] = {}
-    for c in companies:
-        key = c.lower()
-        if key not in seen:
-            seen[key] = c
-    return sorted(seen.values(), key=str.casefold)
+    return programs
 
 
 @router.get("/stats")
@@ -307,11 +308,21 @@ async def list_permits(
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
     if company:
-        query = query.where(or_(
-            Permit.student_id.ilike(f"%company_name:{company}%"),
-            Permit.student_id.ilike(f"%work_description:{company}%"),
-            Permit.student_id.ilike(f"%{company}%"),
-        ))
+        # If it looks like a UUID, filter by preset_id; otherwise search text
+        try:
+            uuid.UUID(company)
+            is_preset_id = True
+        except (ValueError, AttributeError):
+            is_preset_id = False
+
+        if is_preset_id:
+            query = query.where(Permit.student_id.ilike(f"%preset_id:{company}%"))
+        else:
+            query = query.where(or_(
+                Permit.student_id.ilike(f"%company_name:{company}%"),
+                Permit.student_id.ilike(f"%work_description:{company}%"),
+                Permit.student_id.ilike(f"%{company}%"),
+            ))
 
     order_col = Permit.name
     order_dir = asc
@@ -1567,11 +1578,19 @@ async def export_permits(
     if permit_type:
         query = query.where(Permit.permit_type == permit_type)
     if company:
-        query = query.where(or_(
-            Permit.student_id.ilike(f"%company_name:{company}%"),
-            Permit.student_id.ilike(f"%work_description:{company}%"),
-            Permit.student_id.ilike(f"%{company}%"),
-        ))
+        try:
+            uuid.UUID(company)
+            is_preset_id = True
+        except (ValueError, AttributeError):
+            is_preset_id = False
+        if is_preset_id:
+            query = query.where(Permit.student_id.ilike(f"%preset_id:{company}%"))
+        else:
+            query = query.where(or_(
+                Permit.student_id.ilike(f"%company_name:{company}%"),
+                Permit.student_id.ilike(f"%work_description:{company}%"),
+                Permit.student_id.ilike(f"%{company}%"),
+            ))
     if lot:
         variants = lot_filter_variants(lot)
         lot_conditions = []

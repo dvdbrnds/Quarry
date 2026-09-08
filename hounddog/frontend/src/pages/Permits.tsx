@@ -806,7 +806,7 @@ export default function Permits() {
   const [filterType, setFilterType] = useState("");
   const [filterLot, setFilterLot] = useState("");
   const [filterCompany, setFilterCompany] = useState("");
-  const [companies, setCompanies] = useState<string[]>([]);
+  const [companies, setCompanies] = useState<Array<{ id: string; label: string; type: string }>>([]);
   const [recentOnly, setRecentOnly] = useState(false);
   const [sort, setSort] = useState("");
   const [editing, setEditing] = useState<Permit | null>(null);
@@ -855,7 +855,7 @@ export default function Permits() {
         fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
         api.lots.list(),
         fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
-        api.permits.companies().catch(() => [] as string[]),
+        api.permits.companies().catch(() => [] as Array<{ id: string; label: string; type: string }>),
       ]);
       setStats(s);
       setPermitTypes(ptRes.map((pt: any) => ({
@@ -1077,7 +1077,7 @@ export default function Permits() {
                       showSearch
                       optionFilterProp="label"
                       popupMatchSelectWidth={false}
-                      options={companies.map(c => ({ label: c, value: c }))}
+                      options={companies.map(c => ({ label: c.label, value: c.id }))}
                     />
                   )}
                   {/* "5 years or younger" filter — hidden for now, re-enable for legacy data customers */}

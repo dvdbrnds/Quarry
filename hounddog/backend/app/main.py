@@ -131,6 +131,70 @@ async def _backfill_moravian_ids():
         logger.info("Backfilled moravian_id: %d/%d emails resolved, %d rows updated", len(email_to_mid), len(emails), updated)
 
 
+async def _backfill_visitor_preset_ids():
+    """One-shot: tag existing visitor permits with their preset_id in metadata."""
+    try:
+        from .database import async_session
+        from .models.permit import Permit
+        from .models.visitor_preset import VisitorPreset
+        from sqlalchemy import select, and_
+
+        async with async_session() as db:
+            # Load all presets
+            presets = (await db.execute(select(VisitorPreset))).scalars().all()
+            if not presets:
+                return
+
+            # Build lookup: label -> preset_id and company_name -> preset_id
+            label_map: dict[str, str] = {}
+            for p in presets:
+                pid = str(p.id)
+                if p.label:
+                    label_map[p.label.strip().lower()] = pid
+                if p.company_name and p.company_name.strip().lower() != "visitor":
+                    label_map[p.company_name.strip().lower()] = pid
+
+            # Find visitor permits missing preset_id
+            rows = (await db.execute(
+                select(Permit).where(
+                    Permit.deleted_at.is_(None),
+                    Permit.permit_type.in_(["visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"]),
+                    Permit.student_id.ilike("%company_name:%"),
+                    ~Permit.student_id.ilike("%preset_id:%"),
+                )
+            )).scalars().all()
+
+            if not rows:
+                logger.info("preset_id backfill: all visitor permits already tagged")
+                return
+
+            updated = 0
+            for permit in rows:
+                if not permit.student_id:
+                    continue
+                # Extract company_name and work_description from metadata
+                company = ""
+                work_desc = ""
+                for part in permit.student_id.split("|"):
+                    if part.startswith("company_name:"):
+                        company = part[len("company_name:"):].strip().lower()
+                    elif part.startswith("work_description:"):
+                        work_desc = part[len("work_description:"):].strip().lower()
+
+                preset_id = label_map.get(work_desc) or label_map.get(company)
+                if preset_id:
+                    permit.student_id = f"preset_id:{preset_id}|{permit.student_id}"
+                    updated += 1
+
+            if updated:
+                await db.commit()
+                logger.info("preset_id backfill: tagged %d/%d visitor permits", updated, len(rows))
+            else:
+                logger.info("preset_id backfill: no matches found for %d untagged permits", len(rows))
+    except Exception:
+        logger.exception("preset_id backfill failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from sqlalchemy import text
@@ -1239,6 +1303,9 @@ async def lifespan(app: FastAPI):
     # Launch moravian_id backfill as a background task (doesn't block startup)
     import asyncio
     _backfill_task = asyncio.create_task(_backfill_moravian_ids())
+
+    # Backfill preset_id into existing visitor permits that came from presets
+    asyncio.create_task(_backfill_visitor_preset_ids())
 
     yield
 
