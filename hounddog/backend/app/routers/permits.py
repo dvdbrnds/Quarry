@@ -19,6 +19,7 @@ from ..services.lottery_runner import run_lottery, verify_lottery, LotteryResult
 from ..models.audit_log import AuditLog
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
+from ..models.visitor_preset import VisitorPreset
 from ..models.ticket import Ticket
 from ..models.payment import Payment
 from ..schemas.permit import (
