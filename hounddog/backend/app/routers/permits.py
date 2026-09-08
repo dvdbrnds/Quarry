@@ -109,7 +109,13 @@ async def list_companies(db: AsyncSession = Depends(get_db)):
         if company_name and company_name.strip().lower() != "visitor":
             companies.add(company_name.strip())
 
-    return sorted(companies, key=str.casefold)
+    # Deduplicate case-insensitively, keeping the first-seen casing
+    seen: dict[str, str] = {}
+    for c in companies:
+        key = c.lower()
+        if key not in seen:
+            seen[key] = c
+    return sorted(seen.values(), key=str.casefold)
 
 
 @router.get("/stats")
@@ -304,6 +310,7 @@ async def list_permits(
         query = query.where(or_(
             Permit.student_id.ilike(f"%company_name:{company}%"),
             Permit.student_id.ilike(f"%work_description:{company}%"),
+            Permit.student_id.ilike(f"%{company}%"),
         ))
 
     order_col = Permit.name
@@ -1563,6 +1570,7 @@ async def export_permits(
         query = query.where(or_(
             Permit.student_id.ilike(f"%company_name:{company}%"),
             Permit.student_id.ilike(f"%work_description:{company}%"),
+            Permit.student_id.ilike(f"%{company}%"),
         ))
     if lot:
         variants = lot_filter_variants(lot)
