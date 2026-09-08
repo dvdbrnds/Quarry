@@ -55,7 +55,7 @@ SORTABLE_FIELDS = {
 
 
 def _permit_search_clause(search: str) -> ColumnElement[bool]:
-    """Substring match on name/ID/permit # and any plate in the plates array."""
+    """Substring match on name/ID/permit #, plates, and vehicle description."""
     like = f"%{search}%"
     # plates.any() is exact-only; array_to_string enables partial plate search-as-you-type
     return or_(
@@ -64,6 +64,10 @@ def _permit_search_clause(search: str) -> ColumnElement[bool]:
         Permit.permit_number.ilike(like),
         Permit.email.ilike(like),
         func.array_to_string(Permit.plates, ",").ilike(like),
+        Permit.vehicle_description.ilike(like),
+        Permit.vehicle_make.ilike(like),
+        Permit.vehicle_model.ilike(like),
+        Permit.vehicle_color.ilike(like),
     )
 
 

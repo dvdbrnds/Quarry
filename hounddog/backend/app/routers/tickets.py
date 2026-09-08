@@ -64,6 +64,7 @@ async def list_tickets(
                 Ticket.officer_name.ilike(like),
                 Ticket.owner_name.ilike(like),
                 Ticket.location_text.ilike(like),
+                Ticket.vehicle_description.ilike(like),
                 cast(Ticket.id, String).ilike(like),
             )
         )

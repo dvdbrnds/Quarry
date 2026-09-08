@@ -28,6 +28,7 @@ class PermitBase(BaseModel):
     vehicle_model: str | None = None
     vehicle_color: str | None = None
     vehicle_year: str | None = None
+    vehicle_description: str | None = None
     tag_notes: str | None = None
     tag_source: str | None = None
 
@@ -57,6 +58,7 @@ class PermitUpdate(BaseModel):
     vehicle_model: str | None = None
     vehicle_color: str | None = None
     vehicle_year: str | None = None
+    vehicle_description: str | None = None
     tag_notes: str | None = None
     tag_source: str | None = None
 

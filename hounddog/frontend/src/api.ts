@@ -62,6 +62,7 @@ export interface Permit {
   vehicle_model: string | null;
   vehicle_color: string | null;
   vehicle_year: string | null;
+  vehicle_description: string | null;
   tag_notes: string | null;
   tag_source: string | null;
 }
