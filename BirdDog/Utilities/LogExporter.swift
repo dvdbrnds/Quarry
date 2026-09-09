@@ -358,6 +358,7 @@ enum LogExporter {
     private static func writeToTemp(data: Data, extension ext: String, prefix: String) -> URL? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
         let dateStr = formatter.string(from: Date())
         let filename = "\(prefix)_\(dateStr).\(ext)"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)

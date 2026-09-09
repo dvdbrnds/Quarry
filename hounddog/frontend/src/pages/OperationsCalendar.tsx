@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, AcademicSeason, Lot, LotClosure } from "../api";
 import { authHeaders } from "../auth";
+import { fmtDateTime } from "../dateUtils";
 import { Button, Select, Modal, Input, Tag, Space, App, Descriptions, DatePicker, Empty, Tabs } from "antd";
 import dayjs from "dayjs";
 import AcademicCalendar from "./AcademicCalendar";
@@ -314,8 +315,8 @@ function LotClosureCalendar() {
         {selectedClosure && (
           <Descriptions column={1} size="small">
             <Descriptions.Item label="Reason">{selectedClosure.reason || "—"}</Descriptions.Item>
-            <Descriptions.Item label="Closes">{new Date(selectedClosure.closes_at).toLocaleString()}</Descriptions.Item>
-            <Descriptions.Item label="Reopens">{selectedClosure.reopens_at ? new Date(selectedClosure.reopens_at).toLocaleString() : "Manual reopen"}</Descriptions.Item>
+            <Descriptions.Item label="Closes">{fmtDateTime(selectedClosure.closes_at)}</Descriptions.Item>
+            <Descriptions.Item label="Reopens">{selectedClosure.reopens_at ? fmtDateTime(selectedClosure.reopens_at) : "Manual reopen"}</Descriptions.Item>
             {selectedClosure.divert_to_lot_name && (
               <Descriptions.Item label="Diverted To"><Tag color="blue">{selectedClosure.divert_to_lot_name}</Tag> — permit holders allowed without citation</Descriptions.Item>
             )}

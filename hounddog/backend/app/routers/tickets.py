@@ -14,7 +14,7 @@ from ..models.payment import Payment
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
-from ..services.timeutils import campus_tz, today_local
+from ..services.timeutils import campus_tz, today_local, to_local
 from ..services.email import send_citation_email
 from ..schemas.ticket import (
     ActionItem,
@@ -129,7 +129,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                     fine_amount=str(ticket.fine_amount),
                     payment_url=payment_url,
                     officer_name=ticket.officer_name,
-                    issued_at=ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if ticket.issued_at else "",
+                    issued_at=to_local(ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if ticket.issued_at else "",
                     ticket_id=ticket.ticket_number or str(ticket.id),
                 )
     except Exception as e:

@@ -248,7 +248,12 @@ struct TicketReceiptBuilder {
 
         _ = printerBuilder
             .actionPrintText("High-quality print check\n")
-            .actionPrintText("\(Date().formatted())\n")
+            .actionPrintText({
+                let f = DateFormatter()
+                f.dateFormat = "MM/dd/yyyy h:mm a"
+                f.timeZone = TimeZone(identifier: "America/New_York")
+                return f.string(from: Date())
+            }() + "\n")
             .actionFeed(1)
             .actionPrintQRCode(
                 StarXpandCommand.Printer.QRCodeParameter(content: "https://parking.moravian.edu")

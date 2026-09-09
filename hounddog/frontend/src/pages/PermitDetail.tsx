@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { fmtDateTimeCompact } from "../dateUtils";
 import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
@@ -111,7 +112,7 @@ export default function PermitDetail() {
             return {
               children: (
                 <div className="flex gap-3 items-start">
-                  <div className="flex-1"><div className="text-sm">{entry.summary}</div><div className="text-xs text-ink-mute">{new Date(entry.timestamp).toLocaleString()} — {entry.user_email}</div></div>
+                  <div className="flex-1"><div className="text-sm">{entry.summary}</div><div className="text-xs text-ink-mute">{fmtDateTimeCompact(entry.timestamp)} — {entry.user_email}</div></div>
                   <Tag color={actionColors[entry.action] || "default"}>{entry.action}</Tag>
                 </div>
               ),

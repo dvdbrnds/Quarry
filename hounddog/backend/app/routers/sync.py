@@ -4,7 +4,7 @@ import os
 import uuid as uuid_mod
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from ..services.timeutils import today_local
+from ..services.timeutils import today_local, to_local
 
 logger = logging.getLogger("quarry.sync")
 
@@ -673,7 +673,7 @@ async def _upload_ticket_impl(
                 fine_amount=str(fine_amount),
                 payment_url=payment_url,
                 officer_name=new_ticket.officer_name,
-                issued_at=new_ticket.issued_at.strftime("%b %d, %Y %I:%M %p") if new_ticket.issued_at else "",
+                issued_at=to_local(new_ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if new_ticket.issued_at else "",
                 ticket_id=str(new_ticket.id),
             )
             if email_ok:

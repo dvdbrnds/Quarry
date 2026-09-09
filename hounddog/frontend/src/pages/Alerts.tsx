@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
 import {
   api, ActiveAlert, AlertChannelInfo, AlertSubscriber, AlertSendPreview,
   AlertSendResult, AlertTestSendResult, AlertLogEntry, SignageScreen,
@@ -78,7 +79,7 @@ export default function Alerts() {
       {activeAlert && (
         <Alert type={activeAlert.category === "emergency" ? "error" : "warning"} showIcon className="mb-6"
           message={<><span className="font-bold">Active Alert:</span> {activeAlert.subject}</>}
-          description={`${activeAlert.category.toUpperCase()} — sent ${new Date(activeAlert.sent_at).toLocaleString()}`}
+          description={`${activeAlert.category.toUpperCase()} — sent ${fmtDateTimeCompact(activeAlert.sent_at)}`}
           action={<Button size="small" danger onClick={handleClear}>Clear Alert</Button>}
         />
       )}
@@ -431,7 +432,7 @@ function HistorySection() {
   }
 
   const columns: ColumnsType<AlertLogEntry> = [
-    { title: "Time", dataIndex: "sent_at", key: "time", width: 160, render: d => new Date(d).toLocaleString() },
+    { title: "Time", dataIndex: "sent_at", key: "time", width: 160, render: d => fmtDateTimeCompact(d) },
     { title: "Category", dataIndex: "category", key: "cat", render: c => <Tag color={CATEGORIES.find(ci => ci.id === c)?.color}>{CATEGORIES.find(ci => ci.id === c)?.label ?? c}</Tag> },
     { title: "Status", dataIndex: "status", key: "status", render: (s, e) => <Space size={4}><Tag color={s === "active" ? "red" : s === "test" ? "blue" : "default"}>{s}</Tag>{e.is_checkin && <Tag color="cyan">Check-In</Tag>}</Space> },
     { title: "Subject", dataIndex: "subject", key: "subject", ellipsis: true },
@@ -450,7 +451,7 @@ function HistorySection() {
         expandable={{
           expandedRowRender: e => (
             <div className="space-y-3">
-              {e.cleared_at && <p className="text-xs text-ink-mute">Cleared {new Date(e.cleared_at).toLocaleString()} by {e.cleared_by}</p>}
+              {e.cleared_at && <p className="text-xs text-ink-mute">Cleared {fmtDateTimeCompact(e.cleared_at)} by {e.cleared_by}</p>}
               {e.channel_results && Object.keys(e.channel_results).length > 0 && (
                 <Space wrap>{Object.entries(e.channel_results).map(([ch, r]) => (
                   <Tag key={ch}>{ch}: {r.sent} sent{r.failed > 0 ? `, ${r.failed} failed` : ""}</Tag>
@@ -1274,7 +1275,7 @@ function SignageSection() {
                   <Space className="mb-2"><span className={`w-2.5 h-2.5 rounded-full inline-block ${s.is_online ? "bg-green-500" : "bg-gray-400"}`} /><h4 className="font-medium text-sm">{s.name}</h4></Space>
                   {s.location && <p className="text-xs text-ink-mute mb-2">{s.location}</p>}
                   <p className="text-xs text-ink-mute">{s.playlist.length} slide{s.playlist.length !== 1 ? "s" : ""}</p>
-                  {s.last_seen && <p className="text-xs text-ink-mute mt-1">Last seen: {new Date(s.last_seen).toLocaleString()}</p>}
+                  {s.last_seen && <p className="text-xs text-ink-mute mt-1">Last seen: {fmtDateTimeCompact(s.last_seen)}</p>}
                   <Space className="mt-3">
                     <Button type="link" size="small" onClick={() => window.open(`/signage/player/${s.id}`, "_blank")}>Preview</Button>
                     <Button type="link" size="small" onClick={() => { setEditingScreen(s); setShowForm(false); }}>Edit</Button>
@@ -1360,7 +1361,7 @@ function ScheduledSection() {
   function handleCancel(a: AlertLogEntry) {
     modal.confirm({
       title: "Cancel scheduled alert?",
-      content: `"${a.subject}" scheduled for ${new Date(a.scheduled_for!).toLocaleString()}`,
+      content: `"${a.subject}" scheduled for ${fmtDateTime(a.scheduled_for!)}`,
       okText: "Cancel Alert", okButtonProps: { danger: true },
       onOk: async () => {
         try { await api.alerts.scheduled.cancel(a.id); message.success("Scheduled alert cancelled"); load(); }
@@ -1380,7 +1381,7 @@ function ScheduledSection() {
       render: (c: string) => { const ci = CATEGORIES.find(cat => cat.id === c); return <Tag color={ci?.color}>{ci?.label ?? c}</Tag>; }
     },
     { title: "Scheduled For", dataIndex: "scheduled_for", key: "scheduled_for",
-      render: (v: string) => v ? new Date(v).toLocaleString() : "—",
+      render: (v: string) => v ? fmtDateTimeCompact(v) : "—",
     },
     { title: "Repeat", dataIndex: "recurrence_rule", key: "recurrence_rule",
       render: (v: string | null) => v ? <Tag color="blue">{RECURRENCE_LABELS[v] ?? v}</Tag> : "—",
@@ -1548,9 +1549,9 @@ function AnalyticsSection() {
               <div><span className="text-xs text-ink-mute">Subject</span><p className="font-medium">{afterAction.subject}</p></div>
               <div><span className="text-xs text-ink-mute">Category</span><p><Tag color={CATEGORIES.find(c => c.id === afterAction.category)?.color}>{afterAction.category}</Tag></p></div>
               <div><span className="text-xs text-ink-mute">Sent By</span><p>{afterAction.sent_by}</p></div>
-              <div><span className="text-xs text-ink-mute">Sent At</span><p>{new Date(afterAction.sent_at).toLocaleString()}</p></div>
+              <div><span className="text-xs text-ink-mute">Sent At</span><p>{fmtDateTime(afterAction.sent_at)}</p></div>
               {afterAction.cleared_at && (
-                <div><span className="text-xs text-ink-mute">Cleared At</span><p>{new Date(afterAction.cleared_at).toLocaleString()}</p></div>
+                <div><span className="text-xs text-ink-mute">Cleared At</span><p>{fmtDateTime(afterAction.cleared_at)}</p></div>
               )}
             </div>
 
@@ -1594,7 +1595,7 @@ function AnalyticsSection() {
                 <div className="max-h-60 overflow-y-auto space-y-1">
                   {afterAction.timeline.map((entry, i) => (
                     <div key={i} className="flex gap-3 text-xs">
-                      <span className="text-ink-mute w-36">{new Date(entry.time).toLocaleString()}</span>
+                      <span className="text-ink-mute w-36">{fmtDateTimeCompact(entry.time)}</span>
                       <span className="w-28 font-mono">{entry.phone}</span>
                       <Tag>{entry.response}</Tag>
                     </div>
@@ -1744,7 +1745,7 @@ function SisSyncSection() {
           </div>
           <div>
             <span className="text-xs text-ink-mute">Last Sync</span>
-            <p className="text-sm">{config?.last_sync_at ? new Date(config.last_sync_at).toLocaleString() : "Never"}</p>
+            <p className="text-sm">{config?.last_sync_at ? fmtDateTimeCompact(config.last_sync_at) : "Never"}</p>
           </div>
           <div>
             <span className="text-xs text-ink-mute">Records Synced</span>

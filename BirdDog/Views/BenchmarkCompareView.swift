@@ -10,6 +10,7 @@ struct BenchmarkCompareView: View {
         let f = DateFormatter()
         f.dateStyle = .short
         f.timeStyle = .short
+        f.timeZone = TimeZone(identifier: "America/New_York")
         return f
     }()
 

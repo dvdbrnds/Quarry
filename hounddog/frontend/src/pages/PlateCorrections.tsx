@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Table, Card, Tag, Statistic, Row, Col } from "antd";
 import { getAccessToken } from "../auth";
+import { fmtDateTimeCompact } from "../dateUtils";
 
 interface PlateCorrection {
   id: string;
@@ -64,13 +65,7 @@ export default function PlateCorrections() {
       dataIndex: "created_at",
       key: "created_at",
       width: 160,
-      render: (v: string) =>
-        new Date(v).toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        }),
+      render: (v: string) => fmtDateTimeCompact(v),
     },
     {
       title: "OCR Read",

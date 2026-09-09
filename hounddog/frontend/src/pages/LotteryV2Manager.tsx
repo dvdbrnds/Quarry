@@ -3,6 +3,7 @@ import {
   Alert, Badge, Button, Card, Collapse, DatePicker, Divider, Drawer, Input, Modal, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, App as AntApp, InputNumber,
 } from "antd";
 import { authHeaders } from "../auth";
+import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
 import dayjs from "dayjs";
 
 interface Cycle {
@@ -1135,7 +1136,7 @@ export default function LotteryV2Manager() {
               {active.drawn_at && (
                 <Statistic
                   title="Drawn"
-                  value={new Date(active.drawn_at).toLocaleString()}
+                  value={fmtDateTime(active.drawn_at)}
                 />
               )}
               {results?.live ? (
@@ -1234,7 +1235,7 @@ export default function LotteryV2Manager() {
                     Capacity audit
                     {capacityAudit.generated_at && (
                       <span className="font-normal text-xs text-amber-700 ml-2">
-                        as of {new Date(capacityAudit.generated_at).toLocaleString()}
+                        as of {fmtDateTimeCompact(capacityAudit.generated_at)}
                       </span>
                     )}
                   </h4>
@@ -2282,7 +2283,7 @@ export default function LotteryV2Manager() {
                   )}
                   {caseApp.offer_expires_at && caseApp.status === "selected" && (
                     <div className="text-amber-700 text-xs mt-1">
-                      Offer expires {new Date(caseApp.offer_expires_at).toLocaleString()}
+                      Offer expires {fmtDateTime(caseApp.offer_expires_at)}
                     </div>
                   )}
                 </div>
@@ -2716,14 +2717,14 @@ export default function LotteryV2Manager() {
               const csvRows = (d.active_permits || []).map((p: any) => [
                 p.name, p.email, p.class_code || "", p.housing_label || "",
                 p.res_life_staff ? "Yes" : "", p.employee ? "Yes" : "", p.accel_nursing ? "Yes" : "",
-                p.applied_at ? new Date(p.applied_at).toLocaleString() : "",
+                p.applied_at ? fmtDateTimeCompact(p.applied_at) : "",
                 p.plate, p.permit_number,
               ]);
               if (d.pending_offers?.length) {
                 csvRows.push([]); // blank row
                 csvRows.push(["--- Pending Payment ---"]);
                 for (const s of d.pending_offers) {
-                  csvRows.push([s.name, s.email, s.class_year || "", "", "", "", "", s.applied_at ? new Date(s.applied_at).toLocaleString() : "", s.plate, s.is_upgrade ? "Upgrade" : ""]);
+                  csvRows.push([s.name, s.email, s.class_year || "", "", "", "", "", s.applied_at ? fmtDateTimeCompact(s.applied_at) : "", s.plate, s.is_upgrade ? "Upgrade" : ""]);
                 }
               }
               const csv = [headers, ...csvRows].map(r => r.map((v: any) => `"${v ?? ""}"`).join(",")).join("\n");
@@ -2752,7 +2753,7 @@ export default function LotteryV2Manager() {
                 table{border-collapse:collapse;width:100%;}th{text-align:left;padding:4px 10px;border-bottom:2px solid #333;font-size:11px;text-transform:uppercase;color:#666;}
                 @media print{body{padding:0;}}</style></head><body>
                 <h1>${d.permit_type.label}</h1>
-                <div class="meta">Price: $${d.permit_type.price} · Capacity: ${d.permit_type.max_capacity} · Active permits: ${d.summary.active_permit_count} · Pending: ${d.summary.pending_count} · Printed: ${new Date().toLocaleString()}</div>
+                <div class="meta">Price: $${d.permit_type.price} · Capacity: ${d.permit_type.max_capacity} · Active permits: ${d.summary.active_permit_count} · Pending: ${d.summary.pending_count} · Printed: ${fmtDateTime(new Date())}</div>
                 <h2>Active Permits (${d.active_permits.length})</h2>
                 <table><thead><tr><th>Name</th><th>Email</th><th>Year</th><th>Housing</th><th>RA/RD</th><th>Plate</th><th>Permit #</th></tr></thead>
                 <tbody>${d.active_permits.map((p: any) => `<tr>
@@ -2867,7 +2868,7 @@ export default function LotteryV2Manager() {
                                   {p.employee && <Tag color="blue" className="text-[10px]">Employee</Tag>}
                                   {p.accel_nursing && <Tag color="purple" className="text-[10px]">ABSN</Tag>}
                                 </td>
-                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{p.applied_at ? new Date(p.applied_at).toLocaleString() : "—"}</td>
+                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{p.applied_at ? fmtDateTimeCompact(p.applied_at) : "—"}</td>
                                 <td className="py-1 pr-2 font-mono">{p.plate}</td>
                                 <td className="py-1 pr-2 font-mono">{p.permit_number}</td>
                               </tr>
@@ -2906,7 +2907,7 @@ export default function LotteryV2Manager() {
                                 <td className="py-1 pr-2">{s.name}</td>
                                 <td className="py-1 pr-2 text-gray-600">{s.email}</td>
                                 <td className="py-1 pr-2">{yearLabel}</td>
-                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{s.applied_at ? new Date(s.applied_at).toLocaleString() : "—"}</td>
+                                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{s.applied_at ? fmtDateTimeCompact(s.applied_at) : "—"}</td>
                                 <td className="py-1 pr-2 font-mono">{s.plate}</td>
                                 <td className="py-1 pr-2">{s.is_upgrade ? <Tag color="purple" className="text-[10px]">Upgrade</Tag> : ""}</td>
                               </tr>

@@ -106,6 +106,7 @@ private struct PermitRowView: View {
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
+        f.timeZone = TimeZone(identifier: "America/New_York")
         return f
     }()
 

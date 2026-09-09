@@ -272,7 +272,12 @@ struct AdminSettingsView: View {
             }
 
             if let lastSync = syncService.lastSyncDate {
-                infoRow("Last Sync", value: lastSync.formatted(.dateTime.hour().minute().second()))
+                infoRow("Last Sync", value: {
+                    let f = DateFormatter()
+                    f.dateFormat = "h:mm:ss a"
+                    f.timeZone = TimeZone(identifier: "America/New_York")
+                    return f.string(from: lastSync)
+                }())
             }
 
             if let error = syncService.lastError {

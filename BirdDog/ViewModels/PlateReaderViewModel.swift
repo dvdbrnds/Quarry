@@ -144,6 +144,7 @@ final class PlateReaderViewModel: ObservableObject {
             let cam = cameraService.activeCameraName
             let df = DateFormatter()
             df.dateFormat = "h:mma"
+            df.timeZone = TimeZone(identifier: "America/New_York")
             let label = cam.isEmpty || cam == "None" ? "Scan \(df.string(from: Date()))" : "\(cam) \(df.string(from: Date()))"
             let session = ScanSession(label: label)
             activeSession = session

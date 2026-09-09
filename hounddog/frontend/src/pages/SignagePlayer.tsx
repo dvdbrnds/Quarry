@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { fmtDateTimeCompact } from "../dateUtils";
 
 interface PlaylistSlide {
   type: "image" | "html" | "iframe";
@@ -132,7 +133,7 @@ export default function SignagePlayer() {
           </p>
         )}
         <p className="absolute bottom-8 text-sm opacity-60">
-          {new Date(alert.sent_at).toLocaleString()}
+          {fmtDateTimeCompact(alert.sent_at)}
         </p>
       </div>
     );

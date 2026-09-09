@@ -298,6 +298,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         let formatter = DateFormatter()
         formatter.dateFormat = "HHmmss"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
         let timeStr = formatter.string(from: Date())
         let safePlate = plateText.replacingOccurrences(of: " ", with: "_")
         let filename = "\(timeStr)_\(safePlate).jpg"

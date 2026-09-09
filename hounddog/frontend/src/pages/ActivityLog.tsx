@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "../auth";
+import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
 import { Table, Input, Select, Tag, Button, Space, Empty, Modal, Timeline, Spin, Card } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { UserOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
@@ -134,7 +135,7 @@ export default function ActivityLog() {
   useEffect(() => { load(); }, [load]);
 
   const columns: ColumnsType<AuditEntry> = [
-    { title: "Time", dataIndex: "timestamp", key: "timestamp", width: 160, sorter: true, sortOrder: sortField === "timestamp" ? sortOrder : null, render: (d) => new Date(d).toLocaleString() },
+    { title: "Time", dataIndex: "timestamp", key: "timestamp", width: 160, sorter: true, sortOrder: sortField === "timestamp" ? sortOrder : null, render: (d) => fmtDateTimeCompact(d) },
     { title: "User", dataIndex: "user_email", key: "user_email", ellipsis: true, sorter: true, sortOrder: sortField === "user_email" ? sortOrder : null },
     { title: "Action", dataIndex: "action", key: "action", sorter: true, sortOrder: sortField === "action" ? sortOrder : null, render: (a) => <Tag color={ACTION_COLORS[a] || "default"}>{a}</Tag> },
     {
@@ -273,10 +274,7 @@ export default function ActivityLog() {
                     </div>
                     <p className="text-xs text-gray-500 m-0">{ev.detail}</p>
                     <p className="text-[10px] text-gray-400 m-0">
-                      {new Date(ev.timestamp).toLocaleString("en-US", {
-                        month: "short", day: "numeric", year: "numeric",
-                        hour: "numeric", minute: "2-digit",
-                      })}
+                      {fmtDateTimeCompact(ev.timestamp)}
                     </p>
                   </div>
                 ),

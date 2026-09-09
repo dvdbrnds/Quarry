@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
 import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
@@ -151,7 +152,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       <div style="font-size:14px; margin-top:4px; color:#333;">${ticket.ticket_number || ""}</div>
     </div>
     <div class="meta">
-      <div>Printed: ${new Date().toLocaleString()}</div>
+      <div>Printed: ${fmtDateTime(new Date())}</div>
       <div>Moravian University Parking Services</div>
     </div>
   </div>
@@ -162,7 +163,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       <tr><td class="label">Ticket #</td><td>${ticket.ticket_number || "—"}</td><td class="label">Status</td><td><span class="status status-${ticket.status}">${ticket.status}</span></td></tr>
       <tr><td class="label">Plate</td><td style="font-family:monospace;font-size:15px;font-weight:600;">${ticket.plate}${ticket.ocr_original_plate ? ` <span style="font-size:11px;color:#c2410c;">(corrected from ${ticket.ocr_original_plate})</span>` : ""}</td><td class="label">Fine</td><td>$${Number(ticket.fine_amount).toFixed(2)}</td></tr>
       <tr><td class="label">Violation</td><td>${ticket.violation_type.replace(/_/g, " ")}</td><td class="label">${ticket.ticket_category === "moving" ? "Location" : "Lot"}</td><td>${ticket.ticket_category === "moving" ? (ticket.location_text || "—") : ticket.lot}</td></tr>
-      <tr><td class="label">Issued</td><td>${new Date(ticket.issued_at).toLocaleString()}</td><td class="label">Officer</td><td>${ticket.officer_name || ticket.officer_id}</td></tr>
+      <tr><td class="label">Issued</td><td>${fmtDateTime(ticket.issued_at)}</td><td class="label">Officer</td><td>${ticket.officer_name || ticket.officer_id}</td></tr>
       ${ticket.owner_name ? `<tr><td class="label">Owner</td><td>${ticket.owner_name}</td><td class="label">Permit #</td><td>${ticket.permit_number || "—"}</td></tr>` : ""}
       ${ticket.permit_type_label ? `<tr><td class="label">Permit Type</td><td>${ticket.permit_type_label}</td><td class="label">Permit Lot</td><td>${ticket.permit_lot_zone || "—"}</td></tr>` : ""}
       ${gpsLink ? `<tr><td class="label">GPS</td><td colspan="3"><a href="${gpsLink}" style="font-family:monospace;font-size:12px;">${ticket.location_lat!.toFixed(6)}, ${ticket.location_lng!.toFixed(6)}</a></td></tr>` : ""}
@@ -643,7 +644,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
               {selected.permit_type_label && <Descriptions.Item label="Permit Type">{selected.permit_type_label}</Descriptions.Item>}
               {selected.permit_lot_zone && <Descriptions.Item label="Permit Lot">{selected.permit_lot_zone}</Descriptions.Item>}
-              <Descriptions.Item label="Issued" span={2}>{new Date(selected.issued_at).toLocaleString()}</Descriptions.Item>
+              <Descriptions.Item label="Issued" span={2}>{fmtDateTime(selected.issued_at)}</Descriptions.Item>
               {selected.location_lat && selected.location_lng && (
                 <Descriptions.Item label="GPS" span={2}>
                   <a
@@ -660,9 +661,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
             <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-1">
               <div className="font-medium text-gray-600 mb-1">Audit Trail</div>
-              <div>Created: {new Date(selected.created_at).toLocaleString()}</div>
-              <div>Last updated: {new Date(selected.updated_at).toLocaleString()}</div>
-              {selected.mailed_at && <div>Mailed: {new Date(selected.mailed_at).toLocaleString()}{selected.mailed_address ? ` — ${selected.mailed_address}` : ""}</div>}
+              <div>Created: {fmtDateTime(selected.created_at)}</div>
+              <div>Last updated: {fmtDateTime(selected.updated_at)}</div>
+              {selected.mailed_at && <div>Mailed: {fmtDateTime(selected.mailed_at)}{selected.mailed_address ? ` — ${selected.mailed_address}` : ""}</div>}
               <div className="font-mono text-[10px] text-gray-400 select-all">ID: {selected.id}</div>
             </div>
 

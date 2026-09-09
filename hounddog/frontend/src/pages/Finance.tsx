@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authHeaders } from "../auth";
+import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
 import {
   Card, Statistic, Table, Tag, Select, Button, Space, Segmented, DatePicker, Alert, App, Empty, Spin, Tabs, Descriptions, Tooltip, Input,
 } from "antd";
@@ -351,7 +352,7 @@ export default function Finance() {
   const stripeColumns: ColumnsType<StripeTransaction> = [
     {
       title: "Date", dataIndex: "created", key: "created", width: 160,
-      render: d => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+      render: d => fmtDateTimeCompact(d),
     },
     {
       title: "Type", key: "type", width: 100,
@@ -429,7 +430,7 @@ export default function Finance() {
   const paymentColumns: ColumnsType<PaymentListItem> = [
     {
       title: "Date", dataIndex: "paid_at", key: "paid_at", width: 160,
-      render: d => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+      render: d => fmtDateTimeCompact(d),
     },
     {
       title: "Type", dataIndex: "payment_type", key: "payment_type",
@@ -676,7 +677,7 @@ export default function Finance() {
                             <Descriptions.Item label="Offense #">{m.offense_number || "—"}</Descriptions.Item>
                             <Descriptions.Item label="Lot">{m.lot || "—"}</Descriptions.Item>
                             <Descriptions.Item label="Zone">{m.zone || "—"}</Descriptions.Item>
-                            <Descriptions.Item label="Issued">{m.issued_at ? new Date(m.issued_at).toLocaleString() : "—"}</Descriptions.Item>
+                            <Descriptions.Item label="Issued">{m.issued_at ? fmtDateTime(m.issued_at) : "—"}</Descriptions.Item>
                           </>)}
                           {isPermit && (<>
                             <Descriptions.Item label="Permit Type">{m.permit_type_label || m.permit_type_code || "—"}</Descriptions.Item>

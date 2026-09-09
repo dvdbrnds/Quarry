@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders, isAdminRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
+import { fmtDateTime } from "../dateUtils";
 import {
   Card, Button, Input, InputNumber, Select, Checkbox, Space, App, Spin,
 } from "antd";
@@ -95,7 +96,7 @@ export default function EnforcementSettings() {
           <div className="flex items-center gap-4 pt-4 border-t">
             {isAdmin && <Button type="primary" onClick={handleSave} loading={saving}>Save Settings</Button>}
             <span className={isAdmin ? "ml-auto text-xs text-ink-mute" : "text-xs text-ink-mute"}>
-              Last updated by {settings.updated_by} on {new Date(settings.updated_at).toLocaleString()}
+              Last updated by {settings.updated_by} on {fmtDateTime(settings.updated_at)}
             </span>
           </div>
         </Card>

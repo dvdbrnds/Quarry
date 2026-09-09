@@ -48,6 +48,7 @@ struct ScanLogView: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss"
+        f.timeZone = TimeZone(identifier: "America/New_York")
         return f
     }()
 

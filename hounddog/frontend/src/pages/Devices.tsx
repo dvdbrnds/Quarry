@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, Device } from "../api";
+import { fmtDateTimeCompact } from "../dateUtils";
 import { Table, Button, Input, Card, Space, Empty, App, Spin } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
@@ -57,8 +58,8 @@ export default function Devices() {
   const columns: ColumnsType<Device> = [
     { title: "Name", dataIndex: "name", key: "name", render: (v) => <span className="font-medium">{v}</span> },
     { title: "Type", dataIndex: "device_type", key: "type", render: (v) => <span className="capitalize">{v}</span> },
-    { title: "Last Seen", dataIndex: "last_seen", key: "last_seen", render: (d) => d ? new Date(d).toLocaleString() : "Never" },
-    { title: "Created", dataIndex: "created_at", key: "created_at", render: (d) => d ? new Date(d).toLocaleString() : "—" },
+    { title: "Last Seen", dataIndex: "last_seen", key: "last_seen", render: (d) => d ? fmtDateTimeCompact(d) : "Never" },
+    { title: "Created", dataIndex: "created_at", key: "created_at", render: (d) => d ? fmtDateTimeCompact(d) : "—" },
     {
       title: "Actions", key: "actions", align: "right" as const,
       render: (_, d) => (
