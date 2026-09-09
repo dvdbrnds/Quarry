@@ -387,7 +387,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Issued",
       dataIndex: "issued_at",
       key: "issued_at",
-      render: (d: string) => new Date(d).toLocaleDateString(),
+      render: (d: string) => fmtDateTimeCompact(d),
     },
     ...(isAdmin ? [{
       title: "Actions",
@@ -475,7 +475,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             <tr><td>License Plate</td><td style="font-family:monospace;letter-spacing:1px;">${t.plate}</td></tr>
             <tr><td>Violation</td><td>${(t.violation_type || "").replace(/_/g, " ")}</td></tr>
             <tr><td>Location</td><td>${t.lot || "—"}</td></tr>
-            <tr><td>Date Issued</td><td>${t.issued_at ? new Date(t.issued_at).toLocaleDateString() : "—"}</td></tr>
+            <tr><td>Date Issued</td><td>${t.issued_at ? fmtDateTime(t.issued_at) : "—"}</td></tr>
             <tr><td>Fine Amount</td><td style="color:#dc2626;font-size:16px;">$${Number(t.fine_amount).toFixed(2)}</td></tr>
             <tr><td>Status</td><td>${t.status.toUpperCase()}</td></tr>
             ${t.vehicle_description ? `<tr><td>Vehicle</td><td>${t.vehicle_description}</td></tr>` : ""}
@@ -759,7 +759,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 { title: "Violation", dataIndex: "violation_type", render: (v: string) => <span className="capitalize text-xs">{(v || "").replace(/_/g, " ")}</span> },
                 { title: "Lot", dataIndex: "lot", width: 60 },
                 { title: "Fine", dataIndex: "fine_amount", width: 80, render: (v: string) => `$${Number(v).toFixed(2)}` },
-                { title: "Issued", dataIndex: "issued_at", width: 100, render: (v: string) => v ? new Date(v).toLocaleDateString() : "—" },
+                { title: "Issued", dataIndex: "issued_at", width: 160, render: (v: string) => v ? fmtDateTimeCompact(v) : "—" },
                 { title: "Status", dataIndex: "status", width: 90, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
               ]}
             />
