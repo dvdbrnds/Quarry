@@ -214,8 +214,22 @@ async def list_audit_logs(
     from_date: str | None = None,
     to_date: str | None = None,
     search: str | None = None,
+    sort_field: str | None = None,
+    sort_order: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    SORTABLE = {
+        "timestamp": AuditLog.timestamp,
+        "user_email": AuditLog.user_email,
+        "action": AuditLog.action,
+        "resource_type": AuditLog.resource_type,
+        "summary": AuditLog.summary,
+        "response_status": AuditLog.response_status,
+    }
+    sort_col = SORTABLE.get(sort_field or "timestamp", AuditLog.timestamp)
+    if sort_order not in ("ascend", "descend"):
+        sort_order = "descend"
+
     query = select(AuditLog)
 
     if user_email:
@@ -251,7 +265,9 @@ async def list_audit_logs(
 
     items = (
         await db.execute(
-            query.order_by(desc(AuditLog.timestamp))
+            query.order_by(
+                sort_col.desc() if sort_order == "descend" else sort_col.asc()
+            )
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

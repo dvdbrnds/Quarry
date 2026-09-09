@@ -83,6 +83,8 @@ export default function ActivityLog() {
   const [filterResource, setFilterResource] = useState("");
   const [filterAction, setFilterAction] = useState("");
   const [search, setSearch] = useState("");
+  const [sortField, setSortField] = useState("timestamp");
+  const [sortOrder, setSortOrder] = useState<"ascend" | "descend">("descend");
   const [loading, setLoading] = useState(true);
 
   // Student Timeline state
@@ -118,6 +120,8 @@ export default function ActivityLog() {
       if (filterResource) qs.set("resource_type", filterResource);
       if (filterAction) qs.set("action", filterAction);
       if (search) qs.set("search", search);
+      if (sortField) qs.set("sort_field", sortField);
+      if (sortOrder) qs.set("sort_order", sortOrder);
       const res = await fetch(`/api/audit?${qs}`, { headers: await authHeaders() });
       if (res.ok) {
         const data: AuditListResponse = await res.json();
@@ -125,25 +129,25 @@ export default function ActivityLog() {
         setTotal(data.total);
       }
     } finally { setLoading(false); }
-  }, [page, filterUser, filterResource, filterAction, search]);
+  }, [page, filterUser, filterResource, filterAction, search, sortField, sortOrder]);
 
   useEffect(() => { load(); }, [load]);
 
   const columns: ColumnsType<AuditEntry> = [
-    { title: "Time", dataIndex: "timestamp", key: "timestamp", width: 160, render: (d) => new Date(d).toLocaleString() },
-    { title: "User", dataIndex: "user_email", key: "user_email", ellipsis: true },
-    { title: "Action", dataIndex: "action", key: "action", render: (a) => <Tag color={ACTION_COLORS[a] || "default"}>{a}</Tag> },
+    { title: "Time", dataIndex: "timestamp", key: "timestamp", width: 160, sorter: true, sortOrder: sortField === "timestamp" ? sortOrder : null, render: (d) => new Date(d).toLocaleString() },
+    { title: "User", dataIndex: "user_email", key: "user_email", ellipsis: true, sorter: true, sortOrder: sortField === "user_email" ? sortOrder : null },
+    { title: "Action", dataIndex: "action", key: "action", sorter: true, sortOrder: sortField === "action" ? sortOrder : null, render: (a) => <Tag color={ACTION_COLORS[a] || "default"}>{a}</Tag> },
     {
-      title: "Resource", key: "resource", render: (_, e) => (
+      title: "Resource", dataIndex: "resource_type", key: "resource_type", sorter: true, sortOrder: sortField === "resource_type" ? sortOrder : null, render: (_, e) => (
         <span className="capitalize text-xs">
           {e.resource_type.replace(/_/g, " ")}
           {e.resource_id && <span className="text-ink-mute ml-1">#{e.resource_id.slice(0, 8)}</span>}
         </span>
       ),
     },
-    { title: "Summary", dataIndex: "summary", key: "summary", ellipsis: true },
+    { title: "Summary", dataIndex: "summary", key: "summary", ellipsis: true, sorter: true, sortOrder: sortField === "summary" ? sortOrder : null },
     {
-      title: "Status", dataIndex: "response_status", key: "status", width: 70,
+      title: "Status", dataIndex: "response_status", key: "response_status", width: 70, sorter: true, sortOrder: sortField === "response_status" ? sortOrder : null,
       render: (s) => <Tag color={s < 300 ? "green" : s < 500 ? "gold" : "red"}>{s}</Tag>,
     },
   ];
@@ -293,8 +297,15 @@ export default function ActivityLog() {
             !!(entry.changes && Object.keys(entry.changes).length) ||
             !!(entry.request_body && Object.keys(entry.request_body).length),
         }}
+        onChange={(_pagination, _filters, sorter) => {
+          if (!Array.isArray(sorter) && sorter.columnKey) {
+            setSortField(String(sorter.columnKey));
+            setSortOrder(sorter.order || "descend");
+          }
+          setPage(_pagination.current || 1);
+        }}
         pagination={{
-          current: page, total, pageSize: 50, onChange: setPage,
+          current: page, total, pageSize: 50,
           showSizeChanger: false, showTotal: t => `${t} entries`,
         }}
         locale={{ emptyText: <Empty description="No activity recorded" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
