@@ -996,7 +996,7 @@ export default function Permits() {
                       const qs = params.toString();
                       downloadWithAuth(`/api/permits/export/csv${qs ? `?${qs}` : ""}`, "permits.csv");
                     }}>Export CSV</Button>
-                    {isAdmin && <Button onClick={() => setTagModalOpen(true)}>🏷️ Add Vehicle Tag</Button>}
+                    <Button onClick={() => setTagModalOpen(true)}>🏷️ Add Vehicle Tag</Button>
                     {isAdmin && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>}
                   </Space>
                 </div>
