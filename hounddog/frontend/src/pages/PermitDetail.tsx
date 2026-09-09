@@ -48,7 +48,8 @@ export default function PermitDetail() {
   const p = data.permit;
 
   const ticketCols: ColumnsType<any> = [
-    { title: "Date", dataIndex: "issued_at", key: "date", render: v => v ? new Date(v).toLocaleDateString() : "—" },
+    { title: "Ticket #", dataIndex: "ticket_number", key: "ticket_number", render: (v, t) => v ? <a href={`/tickets?search=${v}`} className="font-mono text-xs font-medium text-blue-600 hover:underline">{v}</a> : "—" },
+    { title: "Date", dataIndex: "issued_at", key: "date", render: v => v ? fmtDateTimeCompact(v) : "—" },
     { title: "Violation", dataIndex: "violation_type", key: "type", render: v => <span className="capitalize">{v?.replace(/_/g, " ")}</span> },
     { title: "Lot", dataIndex: "lot", key: "lot" },
     { title: "Fine", dataIndex: "fine_amount", key: "fine", render: v => `$${v}` },
@@ -56,7 +57,7 @@ export default function PermitDetail() {
   ];
 
   const paymentCols: ColumnsType<any> = [
-    { title: "Date", dataIndex: "paid_at", key: "date", render: v => v ? new Date(v).toLocaleDateString() : "—" },
+    { title: "Date", dataIndex: "paid_at", key: "date", render: v => v ? fmtDateTimeCompact(v) : "—" },
     { title: "Description", dataIndex: "description", key: "desc", render: (v: string, r: any) => v || r.payment_type?.replace(/_/g, " ") || "Payment" },
     { title: "Amount", dataIndex: "amount", key: "amount", render: v => `$${v}` },
     { title: "Method", dataIndex: "method", key: "method", render: v => <span className="capitalize">{v?.replace(/_/g, " ")}</span> },

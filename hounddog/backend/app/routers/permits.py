@@ -1453,6 +1453,7 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
         "tickets": [
             {
                 "id": str(t.id),
+                "ticket_number": t.ticket_number,
                 "plate": t.plate,
                 "lot": t.lot,
                 "violation_type": t.violation_type,
