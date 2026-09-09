@@ -1380,9 +1380,15 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             for (const lot of lots) {
               const isAssigned = _assignedLotNames.some(pn => normalizeLotKey(pn) === normalizeLotKey(lot.name));
               if (isAssigned) {
+                const isFSLot = lot.designation_code === "FS" || lot.designation_code === "FSC";
+                const isFacultyType = _permitTypes.includes("faculty_staff");
                 const schedule = lot.access_schedule;
-                if (!schedule || schedule.length === 0) {
-                  // No schedule = always accessible (primary lot)
+                if (isFSLot && !isFacultyType) {
+                  // Faculty/Staff lot assigned to a non-faculty permit → after-hours only
+                  _permitColors[lot.name] = "#eab308";
+                  _afterHoursLots.push(lot.name);
+                } else if (!schedule || schedule.length === 0) {
+                  // No schedule and not a restricted lot = always accessible
                   _permitColors[lot.name] = "#16a34a";
                   _anytimeLots.push(lot.name);
                 } else {
