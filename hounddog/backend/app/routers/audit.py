@@ -152,6 +152,57 @@ async def audit_diagnostic(
     return results
 
 
+async def _affected_resource_ids(email: str, db: AsyncSession) -> list[str]:
+    """Find all permit and ticket IDs that belong to a given email.
+
+    This allows us to surface admin actions (voids, appeal decisions, edits)
+    that affected a student's account when filtering by that student's email.
+    """
+    from ..models.permit import Permit
+    from ..models.ticket import Ticket
+
+    email_lower = email.strip().lower()
+    ids: list[str] = []
+
+    # Permits owned by this email
+    permit_rows = (await db.execute(
+        select(Permit.id, Permit.plates).where(
+            func.lower(Permit.email) == email_lower
+        )
+    )).all()
+    all_plates: set[str] = set()
+    for pid, plates in permit_rows:
+        ids.append(str(pid))
+        if plates:
+            all_plates.update(p.upper() for p in plates)
+
+    # Also find permits where name matches the email prefix (vehicle tags often have email="" but name matches)
+    name_prefix = email_lower.split("@")[0] if "@" in email_lower else ""
+    if name_prefix and len(name_prefix) >= 3:
+        tag_rows = (await db.execute(
+            select(Permit.id, Permit.plates).where(
+                Permit.is_tag_only.is_(True),
+                func.lower(Permit.name).contains(name_prefix),
+            )
+        )).all()
+        for pid, plates in tag_rows:
+            ids.append(str(pid))
+            if plates:
+                all_plates.update(p.upper() for p in plates)
+
+    # Tickets by plate
+    if all_plates:
+        ticket_rows = (await db.execute(
+            select(Ticket.id).where(
+                func.upper(Ticket.plate).in_(list(all_plates))
+            )
+        )).all()
+        for (tid,) in ticket_rows:
+            ids.append(str(tid))
+
+    return ids
+
+
 @router.get("", response_model=AuditLogList)
 async def list_audit_logs(
     page: int = Query(1, ge=1),
@@ -168,7 +219,12 @@ async def list_audit_logs(
     query = select(AuditLog)
 
     if user_email:
-        query = query.where(AuditLog.user_email.ilike(f"%{user_email}%"))
+        # Match entries performed BY this user OR that AFFECTED their resources
+        conditions = [AuditLog.user_email.ilike(f"%{user_email}%")]
+        affected_ids = await _affected_resource_ids(user_email, db)
+        if affected_ids:
+            conditions.append(AuditLog.resource_id.in_(affected_ids))
+        query = query.where(or_(*conditions))
     if resource_type:
         query = query.where(AuditLog.resource_type == resource_type)
     if resource_id:
