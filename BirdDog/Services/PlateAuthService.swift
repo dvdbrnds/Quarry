@@ -152,8 +152,14 @@ final class PlateAuthService: PlateCheckable {
 
         // Lot access: check zone match, diversions, and time-of-day schedule
         if let currentLot {
-            let zoneMatch = record.lotZone.isEmpty || lotMatches(permitZone: record.lotZone, currentLot: currentLot)
             let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot })
+
+            // After hours: any active permit holder can park in any lot
+            if let lot, !lot.accessSchedule.isEmpty, !lot.isWithinEnforcementHours() {
+                return .authorized(permit: info)
+            }
+
+            let zoneMatch = record.lotZone.isEmpty || lotMatches(permitZone: record.lotZone, currentLot: currentLot)
 
             if !zoneMatch {
                 // Check active diversion (closed lot → this lot)

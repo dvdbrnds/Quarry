@@ -76,7 +76,30 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
                 return false
             }
         }
+        // No rule covers this time/day — after hours: all valid permits are allowed
         return true
+    }
+
+    /// Whether the current time falls within any defined enforcement rule for this lot.
+    func isWithinEnforcementHours(at date: Date = Date()) -> Bool {
+        guard !accessSchedule.isEmpty else { return false }
+
+        let calendar = Self.easternCalendar
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        let timeStr = String(format: "%02d:%02d", hour, minute)
+
+        let weekday = calendar.component(.weekday, from: date)
+        let dayAbbrev = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][weekday - 1]
+
+        for season in accessSchedule {
+            for rule in season.rules {
+                if rule.days.contains(dayAbbrev) && timeStr >= rule.start && timeStr < rule.end {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
 
