@@ -537,15 +537,6 @@ export default function Finance() {
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                   <span className="text-sm text-ink-mute">Live data from Stripe API — no webhook dependency</span>
                   <Space wrap>
-                    <Button
-                      size="small"
-                      type="primary"
-                      danger
-                      disabled={!bulkRefundIds.length}
-                      onClick={() => setBulkOpen(true)}
-                    >
-                      Bulk Refund{bulkRefundIds.length ? ` (${bulkRefundIds.length})` : ""}
-                    </Button>
                     <Button size="small" onClick={handleBackfillEmails} loading={backfillRunning}>Backfill Emails</Button>
                     <Button size="small" onClick={runStripeDebug} loading={debugLoading}>Diagnose Connection</Button>
                     <Button size="small" onClick={() => loadStripe(false)} loading={stripeLoading}>Refresh</Button>
