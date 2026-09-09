@@ -31,6 +31,7 @@ from ..schemas.permit import (
     PermitImportPayload,
     PermitImportResult,
 )
+from ..services.plate_utils import normalize_plate
 from ..services.permit_lifecycle import (
     compute_hold,
     find_duplicates,
@@ -443,7 +444,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             name=data.name,
             email=data.email,
             phone=data.phone,
-            plates=[p.upper().strip() for p in data.plates if p.strip()],
+            plates=[normalize_plate(p) for p in data.plates if p.strip()],
             student_id=data.student_id,
             lot_assignment=lot_assignment,
             permit_type=data.permit_type,
@@ -491,7 +492,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             name=data.name,
             email=data.email,
             phone=data.phone,
-            plates=[p.upper().strip() for p in data.plates if p.strip()],
+            plates=[normalize_plate(p) for p in data.plates if p.strip()],
             student_id=data.student_id,
             lot_assignment=lot_assignment,
             permit_type=data.permit_type,
@@ -520,7 +521,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
         name=data.name,
         email=data.email,
         phone=data.phone,
-        plates=[p.upper().strip() for p in data.plates if p.strip()],
+        plates=[normalize_plate(p) for p in data.plates if p.strip()],
         student_id=data.student_id,
         lot_assignment=lot_assignment,
         permit_type=data.permit_type,

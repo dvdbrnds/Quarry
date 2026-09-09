@@ -5,6 +5,7 @@ import uuid as uuid_mod
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from ..services.timeutils import today_local, to_local
+from ..services.plate_utils import normalize_plate
 
 logger = logging.getLogger("quarry.sync")
 
@@ -549,15 +550,20 @@ async def _upload_ticket_impl(
             notification_email=None,
         )
 
-    # Look up permit by plate to link ticket
+    # Look up permit by plate to link ticket (try exact then normalized)
     permit_id = None
     owner_name = ticket.owner_name
     permit_number = ticket.permit_number
     permit_type_label = ticket.permit_type_label
     permit_lot_zone = ticket.permit_lot_zone
+    raw_plate = ticket.plate.upper()
+    norm_plate = normalize_plate(ticket.plate)
     permit_result = await db.execute(
         select(Permit).where(
-            Permit.plates.contains([ticket.plate.upper()])
+            or_(
+                Permit.plates.contains([raw_plate]),
+                Permit.plates.contains([norm_plate]),
+            )
         ).order_by(Permit.end_date.desc()).limit(1)
     )
     permit = permit_result.scalar()
@@ -646,7 +652,10 @@ async def _upload_ticket_impl(
     if not recipient_email:
         plate_email_result = await db.execute(
             select(Permit.email).where(
-                Permit.plates.contains([ticket.plate.upper()]),
+                or_(
+                    Permit.plates.contains([raw_plate]),
+                    Permit.plates.contains([norm_plate]),
+                ),
                 Permit.email.isnot(None),
                 Permit.email != "",
                 Permit.email.contains("@"),

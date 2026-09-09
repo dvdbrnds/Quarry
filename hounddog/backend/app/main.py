@@ -131,6 +131,32 @@ async def _backfill_moravian_ids():
         logger.info("Backfilled moravian_id: %d/%d emails resolved, %d rows updated", len(email_to_mid), len(emails), updated)
 
 
+async def _normalize_permit_plates():
+    """One-shot: strip dashes/spaces from all stored plate strings so OCR matches work."""
+    import re
+    strip_re = re.compile(r"[\s\-\.•·]+")
+    try:
+        from .database import async_session
+        from .models.permit import Permit
+        async with async_session() as db:
+            from sqlalchemy import select as sa_select
+            result = await db.execute(sa_select(Permit).where(Permit.deleted_at.is_(None)))
+            permits = result.scalars().all()
+            updated = 0
+            for permit in permits:
+                if not permit.plates:
+                    continue
+                normalized = [strip_re.sub("", p.strip().upper()) for p in permit.plates]
+                if normalized != list(permit.plates):
+                    permit.plates = normalized
+                    updated += 1
+            if updated:
+                await db.commit()
+                logger.info("Normalized plates on %d permits (stripped dashes/spaces)", updated)
+    except Exception:
+        logger.exception("Plate normalization backfill failed (non-fatal)")
+
+
 async def _backfill_visitor_preset_ids():
     """One-shot: tag existing visitor permits with their preset_id in metadata."""
     try:
@@ -1309,6 +1335,9 @@ async def lifespan(app: FastAPI):
 
     # Backfill preset_id into existing visitor permits that came from presets
     asyncio.create_task(_backfill_visitor_preset_ids())
+
+    # Normalize plates (strip dashes/spaces) so OCR reads match stored plates
+    asyncio.create_task(_normalize_permit_plates())
 
     yield
 
