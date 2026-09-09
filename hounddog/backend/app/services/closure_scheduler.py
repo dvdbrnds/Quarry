@@ -442,6 +442,44 @@ async def _expire_lottery_offers():
         logger.info("Expired %d lottery V2 offers", len(v2_expired))
 
 
+async def _expire_guest_permits():
+    """Expire guest registrations and their associated permits past check-out date."""
+    from .timeutils import today_local
+    from ..models.guest_registration import GuestRegistration
+    today = today_local()
+    async with async_session() as db:
+        async with db.begin():
+            # Expire guest registrations past check-out
+            regs_result = await db.execute(
+                select(GuestRegistration).where(
+                    GuestRegistration.status == "active",
+                    GuestRegistration.check_out < today,
+                )
+            )
+            expired_regs = regs_result.scalars().all()
+            for reg in expired_regs:
+                reg.status = "expired"
+
+            # Expire guest permits past end_date
+            permits_result = await db.execute(
+                select(Permit).where(
+                    Permit.permit_type == "student_guest",
+                    Permit.status == "active",
+                    Permit.deleted_at.is_(None),
+                    Permit.end_date.isnot(None),
+                    Permit.end_date < today,
+                )
+            )
+            expired_permits = permits_result.scalars().all()
+            for p in expired_permits:
+                p.status = "expired"
+
+            total = len(expired_regs) + len(expired_permits)
+            if total > 0:
+                logger.info("Expired %d guest registration(s) and %d guest permit(s)",
+                            len(expired_regs), len(expired_permits))
+
+
 async def _run_loop():
     logger.info("Closure scheduler started (60s interval)")
 
@@ -502,6 +540,15 @@ async def _run_loop():
             await _auto_send_renewal_emails()
         except Exception as e:
             logger.error("Scheduler tick (renewal emails) failed: %s", e, exc_info=True)
+            try:
+                import sentry_sdk; sentry_sdk.capture_exception(e)
+            except Exception:
+                pass
+
+        try:
+            await _expire_guest_permits()
+        except Exception as e:
+            logger.error("Scheduler tick (guest permit expiry) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
             except Exception:

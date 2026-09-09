@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Table, App, Tag, Input, DatePicker, Select } from "antd";
+import { Table, App, Tag, Input, DatePicker, Select, Modal, Descriptions } from "antd";
 import { authHeaders } from "../auth";
 import dayjs from "dayjs";
+import { fmtDateTimeCompact } from "../dateUtils";
 
 interface GuestRow {
   id: string;
@@ -25,6 +26,7 @@ export default function GuestRegistrations() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [selected, setSelected] = useState<GuestRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,6 +74,7 @@ export default function GuestRegistrations() {
           style={{ width: 140 }}
           options={[
             { label: "Active", value: "active" },
+            { label: "Expired", value: "expired" },
             { label: "Cancelled", value: "cancelled" },
           ]}
         />
@@ -132,8 +135,11 @@ export default function GuestRegistrations() {
             title: "Status",
             dataIndex: "status",
             key: "status",
-            render: (v: string) => {
+            render: (v: string, r: GuestRow) => {
               if (v === "cancelled") return <Tag color="red">Cancelled</Tag>;
+              if (v === "expired") return <Tag>Expired</Tag>;
+              const pastCheckout = dayjs(r.check_out).isBefore(dayjs(), "day");
+              if (pastCheckout) return <Tag>Expired</Tag>;
               return <><Tag color="green">Active</Tag><Tag color="pink">Permit Issued</Tag></>;
             },
           },
@@ -141,11 +147,64 @@ export default function GuestRegistrations() {
             title: "Registered",
             dataIndex: "created_at",
             key: "created_at",
-            render: (v: string) => v ? dayjs(v).format("MMM D h:mm A") : "-",
+            render: (v: string) => v ? fmtDateTimeCompact(v) : "-",
             sorter: (a, b) => (a.created_at || "").localeCompare(b.created_at || ""),
           },
         ]}
+        onRow={(r) => ({
+          onClick: () => setSelected(r),
+          style: { cursor: "pointer" },
+        })}
       />
+
+      <Modal
+        open={!!selected}
+        onCancel={() => setSelected(null)}
+        footer={null}
+        title="Guest Registration Details"
+        width={560}
+      >
+        {selected && (
+          <Descriptions column={2} size="small" bordered className="mt-4">
+            <Descriptions.Item label="Host" span={2}>
+              <div className="font-medium">{selected.host_name}</div>
+              <div className="text-xs text-gray-500">{selected.host_email}</div>
+            </Descriptions.Item>
+            <Descriptions.Item label="Guest" span={2}>
+              {selected.guest_name}
+            </Descriptions.Item>
+            <Descriptions.Item label="Vehicle" span={2}>
+              {selected.guest_plate
+                ? <span className="font-mono">{selected.guest_plate} ({selected.guest_plate_state})</span>
+                : <span className="text-gray-400">None</span>}
+            </Descriptions.Item>
+            <Descriptions.Item label="Check-in">
+              {dayjs(selected.check_in).format("MMM D, YYYY")}
+            </Descriptions.Item>
+            <Descriptions.Item label="Check-out">
+              {dayjs(selected.check_out).format("MMM D, YYYY")}
+            </Descriptions.Item>
+            <Descriptions.Item label="Status">
+              {selected.status === "cancelled"
+                ? <Tag color="red">Cancelled</Tag>
+                : selected.status === "expired" || dayjs(selected.check_out).isBefore(dayjs(), "day")
+                  ? <Tag>Expired</Tag>
+                  : <Tag color="green">Active</Tag>}
+            </Descriptions.Item>
+            <Descriptions.Item label="Registered">
+              {selected.created_at ? fmtDateTimeCompact(selected.created_at) : "-"}
+            </Descriptions.Item>
+            {selected.notes && (
+              <Descriptions.Item label="Notes" span={2}>
+                {selected.notes}
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="Roommate Consent" span={2}>
+              {selected.roommate_consent ? "Yes" : "No"}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 }
