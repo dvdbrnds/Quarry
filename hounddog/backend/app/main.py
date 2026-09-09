@@ -874,6 +874,9 @@ async def lifespan(app: FastAPI):
             # Ticket void/appeal reasons
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS void_reason TEXT",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_decision_reason TEXT",
+            # Additional photos on tickets
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS additional_photo_count INTEGER DEFAULT 0",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS additional_photos JSONB",
             # Lot closure diversion
             "ALTER TABLE lot_closures ADD COLUMN IF NOT EXISTS divert_to_lot_id UUID REFERENCES parking_lots(id)",
             # Plate corrections: officer-reported OCR misreads (no citation)

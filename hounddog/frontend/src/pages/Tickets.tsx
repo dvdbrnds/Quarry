@@ -17,6 +17,7 @@ interface Ticket {
   violation_type: string;
   fine_amount: string;
   photo_url: string | null;
+  additional_photo_count: number;
   officer_id: string;
   officer_name: string | null;
   officer_email: string | null;
@@ -200,8 +201,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
   ${photoUrl ? `
   <div class="section">
-    <div class="section-title">Evidence Photo</div>
+    <div class="section-title">Evidence Photo${ticket.additional_photo_count > 0 ? "s" : ""}</div>
     <img src="${photoUrl}" class="photo" />
+    ${ticket.additional_photo_count > 0 ? Array.from({ length: ticket.additional_photo_count }).map((_, i) => `<img src="${window.location.origin}/api/tickets/${ticket.id}/photos/${i}" class="photo" style="margin-top:8px" />`).join("") : ""}
   </div>` : ""}
 
   <div class="footer">
@@ -680,7 +682,16 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             )}
 
             {selected.photo_url && (
-              <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" />
+              <div>
+                <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" />
+                {selected.additional_photo_count > 0 && (
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {Array.from({ length: selected.additional_photo_count }).map((_, i) => (
+                      <Image key={i} src={`/api/tickets/${selected.id}/photos/${i}`} alt={`Additional photo ${i + 1}`} className="rounded-lg max-h-32 object-cover" />
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {selected.appeal_note && (

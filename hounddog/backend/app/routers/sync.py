@@ -523,6 +523,18 @@ async def _upload_ticket_impl(
         photo_data = base64.b64decode(ticket.photo_base64)
         photo_mime = "image/jpeg"
 
+    # Additional photos (stored as list of base64 strings in JSON column)
+    additional_photos_data: list[dict] | None = None
+    additional_photo_count = 0
+    if ticket.additional_photos_base64:
+        additional_photos_data = []
+        for b64 in ticket.additional_photos_base64:
+            additional_photos_data.append({
+                "data": b64,
+                "mime": "image/jpeg",
+            })
+        additional_photo_count = len(additional_photos_data)
+
     officer_id = ticket.officer_email or ticket.officer_name or device.name
 
     # Duplicate ticket prevention: reject if same plate has an open ticket
@@ -609,6 +621,8 @@ async def _upload_ticket_impl(
         driver_name=ticket.driver_name,
         driver_license=ticket.driver_license,
         ocr_original_plate=ticket.ocr_original_plate,
+        additional_photo_count=additional_photo_count,
+        additional_photos=additional_photos_data,
         status="warning" if ticket.is_warning else "issued",
     )
     if ticket.client_ticket_id:

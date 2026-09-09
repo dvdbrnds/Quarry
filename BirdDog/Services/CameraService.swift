@@ -92,6 +92,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @Published var focusPeak: Double = 0
     @Published var exposureLocked: Bool = false
     @Published var liveMetrics = FrameMetrics()
+    @Published var isTorchOn: Bool = false
+    @Published var torchAvailable: Bool = false
     var focusMeterEnabled = false
     var highBandwidthMode = false
 
@@ -940,6 +942,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             self?.activeResolution = res
             self?.activeFPS = fpsStr
         }
+        updateTorchAvailability()
     }
 
     private static let logFileURL: URL = {
@@ -1055,6 +1058,60 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             }
             camera.unlockForConfiguration()
             self.log("exposure bias → \(clamped)")
+        }
+    }
+
+    // MARK: - Torch / Flash
+
+    func toggleTorch() {
+        sessionQueue.async { [weak self] in
+            guard let self, let camera = self.currentDevice else { return }
+            guard camera.hasTorch && camera.isTorchAvailable else {
+                self.log("torch: not available on this device")
+                return
+            }
+            do {
+                try camera.lockForConfiguration()
+                if camera.torchMode == .on {
+                    camera.torchMode = .off
+                    self.log("torch: OFF")
+                } else {
+                    try camera.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                    self.log("torch: ON")
+                }
+                camera.unlockForConfiguration()
+                let isOn = camera.torchMode == .on
+                DispatchQueue.main.async { self.isTorchOn = isOn }
+            } catch {
+                self.log("torch: failed — \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func setTorch(on: Bool) {
+        sessionQueue.async { [weak self] in
+            guard let self, let camera = self.currentDevice else { return }
+            guard camera.hasTorch && camera.isTorchAvailable else { return }
+            do {
+                try camera.lockForConfiguration()
+                if on {
+                    try camera.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                } else {
+                    camera.torchMode = .off
+                }
+                camera.unlockForConfiguration()
+                DispatchQueue.main.async { self.isTorchOn = on }
+            } catch {
+                self.log("torch: failed — \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func updateTorchAvailability() {
+        let available = currentDevice?.hasTorch == true && currentDevice?.isTorchAvailable == true
+        DispatchQueue.main.async { [weak self] in
+            self?.torchAvailable = available
+            if !available { self?.isTorchOn = false }
         }
     }
 

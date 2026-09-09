@@ -627,3 +627,30 @@ async def serve_photo(
             return FileResponse(filepath, media_type="image/jpeg")
 
     raise HTTPException(404, "No photo found")
+
+
+@public_router.get("/{ticket_id}/photos/{index}")
+async def serve_additional_photo(
+    ticket_id: uuid.UUID,
+    index: int,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select as _select
+    result = await db.execute(
+        _select(Ticket).where(Ticket.id == ticket_id)
+    )
+    ticket = result.scalar()
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+
+    if not ticket.additional_photos or index < 0 or index >= len(ticket.additional_photos):
+        raise HTTPException(404, "Photo not found")
+
+    photo_entry = ticket.additional_photos[index]
+    from fastapi.responses import Response
+    import base64
+    return Response(
+        content=base64.b64decode(photo_entry["data"]),
+        media_type=photo_entry.get("mime", "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

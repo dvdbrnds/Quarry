@@ -15,6 +15,8 @@ struct TicketIssuanceView: View {
     @State private var errorMessage: String?
     @State private var capturedPhotoPath: String?
     @State private var capturedPhotoImage: UIImage?
+    @State private var additionalPhotoPaths: [String] = []
+    @State private var additionalPhotoImages: [UIImage] = []
     @State private var captureTimestamp = Date()
     @State private var isWarning = false
     @State private var selectedWarningReason = ""
@@ -191,6 +193,16 @@ struct TicketIssuanceView: View {
             }
 
             Section {
+                if let camera = cameraService, camera.torchAvailable {
+                    Toggle(isOn: Binding(
+                        get: { camera.isTorchOn },
+                        set: { camera.setTorch(on: $0) }
+                    )) {
+                        Label("Flash", systemImage: camera.isTorchOn ? "bolt.fill" : "bolt.slash")
+                    }
+                    .tint(.yellow)
+                }
+
                 if let image = capturedPhotoImage {
                     VStack(spacing: 8) {
                         ZStack(alignment: .bottomLeading) {
@@ -208,11 +220,21 @@ struct TicketIssuanceView: View {
                                 .padding(6)
                         }
 
-                        Button {
-                            capturePhoto()
-                        } label: {
-                            Label("Retake Photo", systemImage: "camera.rotate")
-                                .font(.caption)
+                        HStack {
+                            Button {
+                                capturePhoto()
+                            } label: {
+                                Label("Retake", systemImage: "camera.rotate")
+                                    .font(.caption)
+                            }
+                            Spacer()
+                            Button {
+                                captureAdditionalPhoto()
+                            } label: {
+                                Label("Add Photo", systemImage: "plus.circle")
+                                    .font(.caption)
+                            }
+                            .tint(.green)
                         }
                     }
                 } else {
@@ -227,6 +249,30 @@ struct TicketIssuanceView: View {
                             Button("Capture") { capturePhoto() }
                                 .font(.caption)
                         }
+                    }
+                }
+
+                ForEach(Array(additionalPhotoImages.enumerated()), id: \.offset) { index, img in
+                    VStack(spacing: 4) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            Button {
+                                additionalPhotoPaths.remove(at: index)
+                                additionalPhotoImages.remove(at: index)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white, .red)
+                            }
+                            .padding(6)
+                        }
+                        Text("Photo \(index + 2)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -250,9 +296,17 @@ struct TicketIssuanceView: View {
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Text("Evidence")
+                HStack {
+                    Text("Evidence")
+                    Spacer()
+                    if !additionalPhotoImages.isEmpty {
+                        Text("\(1 + additionalPhotoImages.count) photos")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } footer: {
-                Text("Photo is captured automatically when the ticket form opens.")
+                Text("Photo is captured automatically. Tap + Add Photo to capture additional angles.")
             }
 
             Section("Notes") {
@@ -368,6 +422,22 @@ struct TicketIssuanceView: View {
         }
     }
 
+    private func captureAdditionalPhoto() {
+        guard let camera = cameraService, !isCapturingPhoto else { return }
+        isCapturingPhoto = true
+        Task.detached(priority: .userInitiated) {
+            let path = await camera.captureOneShotPhoto()
+            let image: UIImage? = if let path { UIImage(contentsOfFile: path) } else { nil }
+            await MainActor.run {
+                if let path, let image {
+                    additionalPhotoPaths.append(path)
+                    additionalPhotoImages.append(image)
+                }
+                isCapturingPhoto = false
+            }
+        }
+    }
+
     // Confirmation screen is extracted to TicketConfirmationView to isolate
     // PrinterService observation from the form and avoid re-render lag.
 
@@ -403,6 +473,7 @@ struct TicketIssuanceView: View {
             violationType: selectedViolation,
             confidence: 1.0,
             photoPath: capturedPhotoPath,
+            additionalPhotoPaths: additionalPhotoPaths,
             ticketCategory: "parking",
             locationLat: ticketLat,
             locationLng: ticketLng,

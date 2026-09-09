@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import String, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func
+from sqlalchemy import String, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,8 @@ class Ticket(Base):
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     photo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     photo_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    additional_photo_count: Mapped[int] = mapped_column(Integer, default=0)
+    additional_photos: Mapped[list | None] = mapped_column(JSON, nullable=True)
     officer_id: Mapped[str] = mapped_column(String(128), default="")
     officer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     officer_email: Mapped[str | None] = mapped_column(String(256), nullable=True)

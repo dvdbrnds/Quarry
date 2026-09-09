@@ -92,6 +92,7 @@ class TicketUpload(BaseModel):
     camera_name: str = ""
     timestamp: datetime
     photo_base64: str | None = None
+    additional_photos_base64: list[str] | None = None
     client_ticket_id: uuid.UUID | None = None
 
 

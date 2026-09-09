@@ -439,6 +439,18 @@ final class HoundDogSyncService: ObservableObject {
             body["photo_base64"] = imageData.base64EncodedString()
         }
 
+        if !ticket.additionalPhotoPaths.isEmpty {
+            var extras: [String] = []
+            for path in ticket.additionalPhotoPaths {
+                if let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                    extras.append(data.base64EncodedString())
+                }
+            }
+            if !extras.isEmpty {
+                body["additional_photos_base64"] = extras
+            }
+        }
+
         if let lat = ticket.locationLat { body["location_lat"] = lat }
         if let lng = ticket.locationLng { body["location_lng"] = lng }
         if let text = ticket.locationText { body["location_text"] = text }

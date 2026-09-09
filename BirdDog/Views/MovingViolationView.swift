@@ -17,6 +17,8 @@ struct MovingViolationView: View {
     @State private var errorMessage: String?
     @State private var capturedPhotoPath: String?
     @State private var capturedPhotoImage: UIImage?
+    @State private var additionalPhotoPaths: [String] = []
+    @State private var additionalPhotoImages: [UIImage] = []
     @State private var captureTimestamp = Date()
 
     var cameraService: CameraService?
@@ -91,6 +93,16 @@ struct MovingViolationView: View {
             }
 
             Section {
+                if let camera = cameraService, camera.torchAvailable {
+                    Toggle(isOn: Binding(
+                        get: { camera.isTorchOn },
+                        set: { camera.setTorch(on: $0) }
+                    )) {
+                        Label("Flash", systemImage: camera.isTorchOn ? "bolt.fill" : "bolt.slash")
+                    }
+                    .tint(.yellow)
+                }
+
                 if let image = capturedPhotoImage {
                     VStack(spacing: 8) {
                         ZStack(alignment: .bottomLeading) {
@@ -108,11 +120,21 @@ struct MovingViolationView: View {
                                 .padding(6)
                         }
 
-                        Button {
-                            capturePhoto()
-                        } label: {
-                            Label("Retake Photo", systemImage: "camera.rotate")
-                                .font(.caption)
+                        HStack {
+                            Button {
+                                capturePhoto()
+                            } label: {
+                                Label("Retake", systemImage: "camera.rotate")
+                                    .font(.caption)
+                            }
+                            Spacer()
+                            Button {
+                                captureAdditionalPhoto()
+                            } label: {
+                                Label("Add Photo", systemImage: "plus.circle")
+                                    .font(.caption)
+                            }
+                            .tint(.green)
                         }
                     }
                 } else {
@@ -129,10 +151,42 @@ struct MovingViolationView: View {
                         }
                     }
                 }
+
+                ForEach(Array(additionalPhotoImages.enumerated()), id: \.offset) { index, img in
+                    VStack(spacing: 4) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            Button {
+                                additionalPhotoPaths.remove(at: index)
+                                additionalPhotoImages.remove(at: index)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white, .red)
+                            }
+                            .padding(6)
+                        }
+                        Text("Photo \(index + 2)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
-                Text("Evidence Photo")
+                HStack {
+                    Text("Evidence Photo")
+                    Spacer()
+                    if !additionalPhotoImages.isEmpty {
+                        Text("\(1 + additionalPhotoImages.count) photos")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } footer: {
-                Text("Photo is captured automatically when the citation form opens.")
+                Text("Photo is captured automatically. Tap + Add Photo to capture additional angles.")
             }
 
             Section("Officer Notes") {
@@ -213,6 +267,22 @@ struct MovingViolationView: View {
         }
     }
 
+    private func captureAdditionalPhoto() {
+        guard let camera = cameraService, !isCapturingPhoto else { return }
+        isCapturingPhoto = true
+        Task.detached(priority: .userInitiated) {
+            let path = await camera.captureOneShotPhoto()
+            let image: UIImage? = if let path { UIImage(contentsOfFile: path) } else { nil }
+            await MainActor.run {
+                if let path, let image {
+                    additionalPhotoPaths.append(path)
+                    additionalPhotoImages.append(image)
+                }
+                isCapturingPhoto = false
+            }
+        }
+    }
+
     private func submitViolation() {
         isSubmitting = true
         errorMessage = nil
@@ -226,6 +296,7 @@ struct MovingViolationView: View {
             violationType: selectedViolation,
             confidence: 1.0,
             photoPath: capturedPhotoPath,
+            additionalPhotoPaths: additionalPhotoPaths,
             ticketCategory: "moving",
             locationLat: ticketLat,
             locationLng: ticketLng,

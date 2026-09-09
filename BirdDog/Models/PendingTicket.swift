@@ -10,6 +10,7 @@ final class PendingTicket {
     var confidence: Double
     var cameraName: String
     var photoPath: String?
+    var additionalPhotoPaths: [String]
     var issuedAt: Date
     var uploaded: Bool
 
@@ -52,6 +53,7 @@ final class PendingTicket {
         confidence: Double,
         cameraName: String = "",
         photoPath: String? = nil,
+        additionalPhotoPaths: [String] = [],
         ticketCategory: String = "parking",
         locationLat: Double? = nil,
         locationLng: Double? = nil,
@@ -77,6 +79,7 @@ final class PendingTicket {
         self.confidence = confidence
         self.cameraName = cameraName
         self.photoPath = photoPath
+        self.additionalPhotoPaths = additionalPhotoPaths
         self.issuedAt = Date()
         self.uploaded = false
         self.ticketCategory = ticketCategory
