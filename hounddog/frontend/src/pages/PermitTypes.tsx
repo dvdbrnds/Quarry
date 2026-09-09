@@ -107,6 +107,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
       allow_multiple: values.allow_multiple ?? false,
       requires_lottery: values.requires_lottery ?? false,
       auto_advance_waitlist: values.auto_advance_waitlist ?? true,
+      offer_window_days: values.offer_window_days ?? 5,
       min_class_year: values.min_class_year ? parseInt(values.min_class_year) : null,
       application_opens_at: values.application_opens_at?.toISOString() ?? null,
       application_closes_at: values.application_closes_at?.toISOString() ?? null,
@@ -132,7 +133,7 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
   return (
     <Card className="mb-6">
       <Form form={form} layout="vertical" onFinish={handleFinish}
-        initialValues={{ price: "0.00", max_capacity: 100, reserved_pct: 0, reserved_spots: 0, valid_days: 365, sort_order: 0, lot_assignments: [] }}>
+        initialValues={{ price: "0.00", max_capacity: 100, reserved_pct: 0, reserved_spots: 0, valid_days: 365, offer_window_days: 5, sort_order: 0, lot_assignments: [] }}>
         <div className="grid grid-cols-2 gap-x-4">
           <Form.Item name="code" label="Code" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="label" label="Label" rules={[{ required: true }]}><Input /></Form.Item>
@@ -146,6 +147,9 @@ function PermitTypeForm({ initial, onSave, onCancel, lots }: { initial?: PermitT
             <Tooltip title="Fixed number of spots held back. The larger of this and the percentage is used.">Reserved (fixed)</Tooltip>
           }><InputNumber className="w-full" min={0} /></Form.Item>
           <Form.Item name="valid_days" label="Valid Days"><InputNumber className="w-full" /></Form.Item>
+          <Form.Item name="offer_window_days" label={
+            <Tooltip title="Number of days a student has to accept and pay after being offered a permit (lottery/waitlist). Default: 5 days.">Offer Window (days)</Tooltip>
+          }><InputNumber className="w-full" min={1} max={30} placeholder="5" /></Form.Item>
           <Form.Item name="lot_assignments" label={
             <span className="flex items-center gap-2">
               Lot Assignments
