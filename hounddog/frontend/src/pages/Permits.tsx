@@ -1239,6 +1239,7 @@ export default function Permits() {
             await api.vehicleTags.create({
               name: values.tag_name,
               plates: values.tag_plates.split(/[,\n]/).map((p: string) => p.trim()).filter(Boolean),
+              plate_state: (values.tag_plate_state || "").toUpperCase().trim(),
               email: values.tag_email || null,
               phone: values.tag_phone || "",
               vehicle_year: values.tag_vehicle_year || null,
@@ -1270,13 +1271,18 @@ export default function Permits() {
           <Form.Item name="tag_name" label="Owner Name" rules={[{ required: true, message: "Required" }]}>
             <Input placeholder="John Doe" />
           </Form.Item>
-          <Form.Item name="tag_plates" label="License Plate(s)" rules={[{ required: true, message: "Required" }]}
-            help="Separate multiple plates with commas">
-            <Input placeholder="ABC1234" className="font-mono" />
-          </Form.Item>
+          <div className="grid grid-cols-3 gap-3">
+            <Form.Item name="tag_plates" label="License Plate(s)" className="col-span-2" rules={[{ required: true, message: "Required" }]}
+              help="Separate multiple plates with commas">
+              <Input placeholder="ABC1234" className="font-mono" />
+            </Form.Item>
+            <Form.Item name="tag_plate_state" label="Plate State" rules={[{ required: true, message: "Required" }]}>
+              <Input placeholder="PA" maxLength={2} style={{ textTransform: "uppercase" }} />
+            </Form.Item>
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <Form.Item name="tag_email" label="Email">
-              <Input placeholder="owner@example.com" />
+            <Form.Item name="tag_email" label="Student Email" help="If identified as a student">
+              <Input placeholder="student@moravian.edu" />
             </Form.Item>
             <Form.Item name="tag_phone" label="Phone">
               <Input placeholder="(555) 123-4567" />
