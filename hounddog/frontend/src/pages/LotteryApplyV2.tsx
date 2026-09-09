@@ -1216,7 +1216,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const showSouthAccessColors = isSouthPath && (step === "intake" || step === "rank");
   const showTierColors = !isCommuterPath && !isSouthPath && (step === "rank" || step === "choose");
 
-  const GUEST_FULL_TIME_LOTS = guestCampus === "north" ? ["X"] : [];
+  const GUEST_FULL_TIME_LOTS = guestCampus === "north" ? GUEST_LOTS_NORTH : GUEST_LOTS_SOUTH;
 
   const guestLotColors: Record<string, string> = {};
   for (const lot of GUEST_MAP_LOTS) {
@@ -1241,11 +1241,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   // single-highlight mode (bright yellow highlighted lots, near-invisible others).
   const activeLotColors = highlightedLots.length > 0 ? undefined : baseActiveLotColors;
   const guestLegend = guestCampus === "south"
-    ? [{ label: "Lot U — After 4 PM & weekends", color: "#EAB308" }]
-    : [
-        { label: "Lot X — Park anytime", color: "#22C55E" },
-        { label: "Other lots — After 4 PM & weekends", color: "#EAB308" },
-      ];
+    ? [{ label: "Lot U — Park anytime (guest)", color: "#22C55E" }]
+    : [{ label: "Guest parking — all lots, anytime", color: "#22C55E" }];
 
   const activeLegend = showGuestForm
     ? guestLegend
@@ -1721,7 +1718,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                       </div>
                       {guestCampus === "south" && (
                         <div className="mb-3 rounded bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
-                          <strong>Lot U</strong> (south campus) — after 4 PM &amp; weekends only. For anytime parking, use <strong>Lot X</strong> on North campus.
+                          <strong>Lot U</strong> (south campus) — your guest may park here anytime during their registration.
                         </div>
                       )}
                       <Form form={guestForm} layout="vertical" onFinish={submitGuest}>
@@ -1804,15 +1801,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             <div className="mt-2 pt-2 border-t border-pink-100">
                               <p className="text-xs font-semibold text-gray-700 m-0 mb-1">Authorized parking lots:</p>
                               <div className="flex flex-wrap gap-1">
-                                <span className="inline-block rounded bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5">X <span className="text-green-600 font-normal">(anytime)</span></span>
-                                {["A", "F", "H", "M", "N", "O", "R", "S"].map(lot => (
-                                  <span key={lot} className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">{lot}</span>
+                                {["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"].map(lot => (
+                                  <span key={lot} className="inline-block rounded bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5">{lot}</span>
                                 ))}
-                                <span className="inline-block rounded bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5">U <span className="text-yellow-600 font-normal">(south)</span></span>
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
-                                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500"></span> Park anytime</span>
-                                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-500"></span> After 4 PM &amp; weekends only</span>
+                                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500"></span> Park anytime during guest registration</span>
                               </div>
                               <p className="text-xs text-gray-600 m-0 mt-1.5">
                                 <strong>Valid:</strong> {new Date(g.check_in + "T00:00").toLocaleDateString()} – {new Date(g.check_out + "T00:00").toLocaleDateString()}

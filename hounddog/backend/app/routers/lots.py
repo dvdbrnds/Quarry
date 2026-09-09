@@ -48,6 +48,7 @@ _AFTER_HOURS_TYPES = [
     "south_guaranteed_resident",
     "steel_field_resident",
     "south_standalone",
+    "student_guest",
 ]
 
 COMMUTER_EVENING_SCHEDULE = [
@@ -59,7 +60,7 @@ COMMUTER_EVENING_SCHEDULE = [
                 "start": "06:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": ["faculty_staff"],
+                "allowed_permit_types": ["faculty_staff", "student_guest"],
                 "label": "Faculty/Staff Only (Weekday Daytime)",
             },
             {

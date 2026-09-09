@@ -150,6 +150,11 @@ final class PlateAuthService: PlateCheckable {
             return .expired(permit: info)
         }
 
+        // Guest permits can park in any lot at any time during their registration
+        if record.permitType.lowercased() == "student_guest" {
+            return .authorized(permit: info)
+        }
+
         // Lot access: check zone match, diversions, and time-of-day schedule
         if let currentLot {
             let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot })
