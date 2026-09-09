@@ -944,6 +944,7 @@ export default function Permits() {
         <Space>
           <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "cancelled" ? "purple" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
           {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
+          {p.active_ticket_count > 0 && <Tag color="red">🚨 {p.active_ticket_count} citation{p.active_ticket_count > 1 ? "s" : ""}</Tag>}
           {p.hc_status === "permanent" && <Tag color="blue">♿ HC</Tag>}
           {p.hc_status === "temporary" && <Tag color={p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"}>{p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "♿ HC Expired" : "♿ HC Temp"}</Tag>}
         </Space>

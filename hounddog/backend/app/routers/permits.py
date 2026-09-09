@@ -371,7 +371,35 @@ async def list_permits(
         )
     ).scalars().all()
 
-    return PermitList(items=items, total=total, page=page, page_size=page_size)
+    # Annotate each permit with active citation count
+    all_plates: set[str] = set()
+    for p in items:
+        all_plates.update(p.plates or [])
+    ticket_counts: dict[str, int] = {}
+    if all_plates:
+        from sqlalchemy import case
+        rows = (await db.execute(
+            select(
+                func.upper(Ticket.plate),
+                func.count(Ticket.id),
+            )
+            .where(
+                func.upper(Ticket.plate).in_([pl.upper() for pl in all_plates]),
+                Ticket.status.notin_(["voided", "paid"]),
+            )
+            .group_by(func.upper(Ticket.plate))
+        )).all()
+        for plate_upper, cnt in rows:
+            ticket_counts[plate_upper] = cnt
+
+    enriched = []
+    for p in items:
+        data = PermitRead.model_validate(p)
+        count = sum(ticket_counts.get(pl.upper(), 0) for pl in (p.plates or []))
+        data.active_ticket_count = count
+        enriched.append(data)
+
+    return PermitList(items=enriched, total=total, page=page, page_size=page_size)
 
 
 @router.post("", response_model=PermitRead, status_code=201)

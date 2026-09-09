@@ -76,6 +76,7 @@ class PermitRead(PermitBase):
     cancel_notes: str | None = None
     cancelled_at: datetime | None = None
     cancelled_by: str | None = None
+    active_ticket_count: int = 0
 
 
 class PermitImportRow(BaseModel):

@@ -65,6 +65,7 @@ export interface Permit {
   vehicle_description: string | null;
   tag_notes: string | null;
   tag_source: string | null;
+  active_ticket_count: number;
 }
 
 export interface MessageTemplate {
