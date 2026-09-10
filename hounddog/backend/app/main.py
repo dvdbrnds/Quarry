@@ -907,6 +907,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS committee_notes TEXT",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_by VARCHAR(256)",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ",
+            # Committee votes: track when a vote was changed
+            "ALTER TABLE committee_votes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
             ]
             for migration in migrations:
                 try:

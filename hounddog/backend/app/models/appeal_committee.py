@@ -31,3 +31,4 @@ class CommitteeVote(Base):
     vote: Mapped[str] = mapped_column(String(16))  # "uphold" or "deny"
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     voted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

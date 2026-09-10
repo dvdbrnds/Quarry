@@ -58,6 +58,7 @@ class VoteRead(BaseModel):
     vote: str
     comment: str | None
     voted_at: datetime
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -113,6 +114,7 @@ class CaseDetail(CaseSummary):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     votes: list[VoteRead] = []
+    my_vote: str | None = None  # current user's vote ("uphold"/"deny") or None
 
 
 # ---------------------------------------------------------------------------
@@ -348,12 +350,14 @@ async def get_case(
     votes_uphold = sum(1 for v in vote_rows if v.vote == "uphold")
     votes_deny = sum(1 for v in vote_rows if v.vote == "deny")
     user_voted = any(v.voter_email.lower() == user.email.lower() for v in vote_rows)
+    my_vote_val = next((v.vote for v in vote_rows if v.voter_email.lower() == user.email.lower()), None)
 
     votes = [VoteRead(
         voter_email=v.voter_email,
         vote=v.vote,
         comment=v.comment,
         voted_at=v.voted_at,
+        updated_at=v.updated_at,
     ) for v in vote_rows]
 
     return CaseDetail(
@@ -403,6 +407,7 @@ async def get_case(
         total_members=total_members,
         has_voted=user_voted,
         votes=votes,
+        my_vote=my_vote_val,
     )
 
 
@@ -430,8 +435,14 @@ async def cast_vote(
             func.lower(CommitteeVote.voter_email) == user.email.lower(),
         )
     )).scalar()
+
     if existing:
-        raise HTTPException(409, "You have already voted on this case")
+        old_vote = existing.vote
+        existing.vote = body.vote
+        existing.comment = body.comment.strip() if body.comment else None
+        existing.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        return {"ok": True, "vote": body.vote, "changed_from": old_vote}
 
     vote = CommitteeVote(
         ticket_id=ticket_id,

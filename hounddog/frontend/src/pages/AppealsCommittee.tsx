@@ -14,6 +14,7 @@ interface VoteInfo {
   vote: string;
   comment: string | null;
   voted_at: string;
+  updated_at: string | null;
 }
 
 interface CaseSummary {
@@ -66,6 +67,7 @@ interface CaseDetail extends CaseSummary {
   created_at: string | null;
   updated_at: string | null;
   votes: VoteInfo[];
+  my_vote: string | null;
 }
 
 type Filter = "all" | "voting" | "decided";
@@ -173,7 +175,8 @@ function CommitteePage() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || "Failed to vote");
       }
-      message.success(`Vote cast: ${vote}`);
+      const result = await res.json();
+      message.success(result.changed_from ? `Vote changed to: ${vote}` : `Vote cast: ${vote}`);
       setVoteComment("");
       await loadDetail(selectedId);
       await loadCases();
@@ -355,23 +358,28 @@ function CommitteePage() {
                 )}
               </div>
               <Space>
-                {!detail.has_voted ? (
-                  <>
-                    <Button
-                      type="primary"
-                      style={{ background: "#22C55E" }}
-                      loading={voting}
-                      onClick={() => handleVote("uphold")}
-                    >
-                      Uphold Appeal
-                    </Button>
-                    <Button danger loading={voting} onClick={() => handleVote("deny")}>
-                      Deny Appeal
-                    </Button>
-                  </>
-                ) : (
-                  <Tag color="blue">You have voted</Tag>
+                {detail.my_vote && (
+                  <Tag color={detail.my_vote === "uphold" ? "green" : "red"} className="mr-1">
+                    You voted: {detail.my_vote === "uphold" ? "Uphold" : "Deny"}
+                  </Tag>
                 )}
+                <Button
+                  type="primary"
+                  style={{ background: "#22C55E" }}
+                  loading={voting}
+                  disabled={detail.my_vote === "uphold"}
+                  onClick={() => handleVote("uphold")}
+                >
+                  {detail.my_vote && detail.my_vote !== "uphold" ? "Change to Uphold" : "Uphold Appeal"}
+                </Button>
+                <Button
+                  danger
+                  loading={voting}
+                  disabled={detail.my_vote === "deny"}
+                  onClick={() => handleVote("deny")}
+                >
+                  {detail.my_vote && detail.my_vote !== "deny" ? "Change to Deny" : "Deny Appeal"}
+                </Button>
               </Space>
             </div>
           ) : detail?.committee_status === "decided" ? (
@@ -434,12 +442,55 @@ function CommitteePage() {
               )}
             </Descriptions>
 
-            {/* Audit Trail */}
-            <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-1">
-              <div className="font-medium text-gray-600 mb-1">Audit Trail</div>
-              <div>Created: {fmtDateTime(detail.created_at)}</div>
-              <div>Last updated: {fmtDateTime(detail.updated_at)}</div>
-              <div className="font-mono text-[10px] text-gray-400 select-all">ID: {detail.id}</div>
+            {/* Activity Log */}
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
+              <div className="font-medium text-gray-600 mb-2">Activity Log</div>
+              <div className="space-y-1.5 border-l-2 border-gray-200 pl-3 ml-1">
+                <div className="relative">
+                  <span className="absolute -left-[11px] top-1 w-2 h-2 rounded-full bg-gray-300" />
+                  <span className="text-gray-400">{fmtDateTime(detail.created_at)}</span>
+                  <span className="ml-2">Ticket issued</span>
+                </div>
+                {detail.appeal_note && (
+                  <div className="relative">
+                    <span className="absolute -left-[11px] top-1 w-2 h-2 rounded-full bg-yellow-400" />
+                    <span className="text-gray-400">{fmtDateTime(detail.updated_at)}</span>
+                    <span className="ml-2">Appeal submitted by student</span>
+                  </div>
+                )}
+                {detail.escalated_at && (
+                  <div className="relative">
+                    <span className="absolute -left-[11px] top-1 w-2 h-2 rounded-full bg-purple-400" />
+                    <span className="text-gray-400">{fmtDateTime(detail.escalated_at)}</span>
+                    <span className="ml-2">Escalated to committee by <strong>{detail.escalated_by}</strong></span>
+                  </div>
+                )}
+                {detail.votes.map((v, i) => (
+                  <div key={i} className="relative">
+                    <span className={`absolute -left-[11px] top-1 w-2 h-2 rounded-full ${v.vote === "uphold" ? "bg-green-400" : "bg-red-400"}`} />
+                    <span className="text-gray-400">{fmtDateTime(v.voted_at)}</span>
+                    <span className="ml-2">
+                      <strong>{v.voter_email}</strong> voted <Tag color={v.vote === "uphold" ? "green" : "red"} className="!text-[10px] !px-1 !py-0 !leading-4">{v.vote === "uphold" ? "Uphold" : "Deny"}</Tag>
+                    </span>
+                    {v.updated_at && (
+                      <span className="text-orange-500 ml-1">(changed {fmtDateTime(v.updated_at)})</span>
+                    )}
+                  </div>
+                ))}
+                {detail.committee_decided_at && (
+                  <div className="relative">
+                    <span className={`absolute -left-[11px] top-1 w-2 h-2 rounded-full ${detail.committee_decision === "upheld" ? "bg-green-600" : "bg-red-600"}`} />
+                    <span className="text-gray-400">{fmtDateTime(detail.committee_decided_at)}</span>
+                    <span className="ml-2 font-medium">
+                      Decision recorded: {detail.committee_decision === "upheld" ? "Appeal Upheld" : "Appeal Denied"}
+                      {detail.appeal_decided_by && <span className="font-normal text-gray-400"> by {detail.appeal_decided_by}</span>}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="font-mono text-[10px] text-gray-400 select-all mt-2 pt-1.5 border-t border-gray-200">
+                Ticket ID: {detail.id}
+              </div>
             </div>
 
             {/* Driver & Vehicle (moving violations) */}
@@ -508,14 +559,16 @@ function CommitteePage() {
               </div>
             </Card>
 
-            {/* Vote Comment (only when voting is open and user hasn't voted) */}
-            {detail.committee_status === "voting" && !detail.has_voted && (
+            {/* Vote Comment (shown when voting is open) */}
+            {detail.committee_status === "voting" && (
               <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Comment (optional)</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">
+                  {detail.my_vote ? "Update comment (optional)" : "Comment (optional)"}
+                </div>
                 <Input.TextArea
                   value={voteComment}
                   onChange={e => setVoteComment(e.target.value)}
-                  placeholder="Add a comment with your vote..."
+                  placeholder={detail.my_vote ? "Update your comment when changing your vote..." : "Add a comment with your vote..."}
                   rows={2}
                 />
               </div>
@@ -539,6 +592,11 @@ function CommitteePage() {
                       <div>
                         <span className="font-medium">{v.voter_email}</span>
                         <span className="text-gray-400 ml-2">{fmtDateTime(v.voted_at)}</span>
+                        {v.updated_at && (
+                          <Tooltip title={`Vote last changed on ${fmtDateTime(v.updated_at)}`}>
+                            <span className="text-orange-500 ml-1">(changed)</span>
+                          </Tooltip>
+                        )}
                         {v.comment && <p className="text-gray-600 mt-0.5">{v.comment}</p>}
                       </div>
                     </div>
