@@ -41,6 +41,12 @@ interface Ticket {
   appeal_decided_by: string | null;
   appeal_decision_reason: string | null;
   void_reason: string | null;
+  committee_status: string | null;
+  committee_decision: string | null;
+  committee_decided_at: string | null;
+  committee_notes: string | null;
+  escalated_by: string | null;
+  escalated_at: string | null;
   dispute_name: string | null;
   dispute_email: string | null;
   dispute_phone: string | null;
@@ -1100,6 +1106,41 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     });
   }
 
+  async function handleEscalateToCommittee(id: string) {
+    if (!isAdmin) return;
+    let notes = "";
+    modal.confirm({
+      title: "Escalate to Appeals Committee?",
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            This will send the case to the parking appeals committee for review and voting.
+          </p>
+          <Input.TextArea
+            placeholder="Notes for the committee (optional)"
+            rows={3}
+            onChange={(e) => { notes = e.target.value; }}
+          />
+        </div>
+      ),
+      okText: "Escalate",
+      onOk: async () => {
+        try {
+          await fetch(`/api/appeal-committee/escalate/${id}`, {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ notes }),
+          });
+          message.success("Escalated to appeals committee");
+          load();
+          setSelected(null);
+        } catch {
+          message.error("Failed to escalate");
+        }
+      },
+    });
+  }
+
   const columns: ColumnsType<Ticket> = [
     {
       title: "Ticket #",
@@ -1398,6 +1439,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 <Button danger onClick={() => handleAppealDecision(selected!.id, "denied")}>
                   Deny Appeal
                 </Button>
+                <Button style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected!.id)}>
+                  Escalate to Committee
+                </Button>
               </>
             )}
             {isAdmin && selected && !["paid", "voided"].includes(selected.status) && (
@@ -1507,6 +1551,20 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {selected.committee_status && (
+              <div className="bg-purple-50 rounded-lg p-3 text-sm">
+                <div className="font-medium text-purple-800 mb-1">Appeals Committee</div>
+                <div className="text-xs space-y-1">
+                  <div>Status: <Tag color={selected.committee_status === "voting" ? "processing" : "success"}>{selected.committee_status}</Tag></div>
+                  {selected.escalated_by && <div>Escalated by {selected.escalated_by}</div>}
+                  {selected.committee_notes && <div>Notes: {selected.committee_notes}</div>}
+                  {selected.committee_decision && (
+                    <div>Decision: <Tag color={selected.committee_decision === "upheld" ? "green" : "red"}>{selected.committee_decision}</Tag></div>
+                  )}
+                </div>
               </div>
             )}
 

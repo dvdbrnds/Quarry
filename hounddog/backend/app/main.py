@@ -34,6 +34,7 @@ if settings.sentry_dsn:
 from .routers import (
     academic_calendar,
     alerts,
+    appeal_committee,
     appeals,
     audit,
     auth,
@@ -1397,6 +1398,7 @@ app.include_router(sync.diagnostic_router, prefix="/api/sync", tags=["sync-diagn
 app.include_router(tickets.router, prefix="/api/tickets", tags=["tickets"])
 app.include_router(tickets.public_router, prefix="/api/tickets", tags=["tickets-public"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
+app.include_router(appeal_committee.router, prefix="/api/appeal-committee", tags=["appeal-committee"])
 app.include_router(appeals.router, prefix="/api/appeals", tags=["appeals"])
 app.include_router(appeals.public_router, prefix="/api/appeals", tags=["appeals-public"])
 app.include_router(violation_types.router, prefix="/api/violation-types", tags=["violation-types"])

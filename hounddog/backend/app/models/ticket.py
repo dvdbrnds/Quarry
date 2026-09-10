@@ -65,6 +65,14 @@ class Ticket(Base):
     appeal_decided_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     appeal_decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Committee escalation fields
+    committee_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    committee_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    committee_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    committee_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    escalated_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     dispute_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)

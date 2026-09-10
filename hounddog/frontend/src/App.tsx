@@ -25,6 +25,7 @@ import SponsorDashboard from "./pages/SponsorDashboard";
 import LotteryApplyV2 from "./pages/LotteryApplyV2";
 import ParkingMap from "./pages/ParkingMap";
 import Appeals from "./pages/Appeals";
+import AppealsCommittee from "./pages/AppealsCommittee";
 import VehicleApproval from "./pages/VehicleApproval";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
@@ -312,6 +313,7 @@ export default function App() {
   const isParkingMapRoute = location.pathname === "/parking-map";
   const isVisitorRoute = location.pathname.startsWith("/visitor");
   const isAppealsRoute = location.pathname === "/appeals";
+  const isAppealsCommitteeRoute = location.pathname === "/appeals-committee";
   const isVehicleApproveRoute = location.pathname.startsWith("/vehicle-approve");
   const isRootRoute = location.pathname === "/";
   const isAuthCallback = location.pathname === "/auth/callback";
@@ -423,6 +425,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/appeals" element={<Appeals />} />
+      </Routes>
+    );
+  }
+
+  if (isAppealsCommitteeRoute) {
+    return (
+      <Routes>
+        <Route path="/appeals-committee" element={<AppealsCommittee />} />
       </Routes>
     );
   }
