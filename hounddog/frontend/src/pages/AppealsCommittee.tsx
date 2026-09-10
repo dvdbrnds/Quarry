@@ -462,12 +462,12 @@ function CommitteePage() {
               </div>
             )}
 
-            {/* Evidence Photos */}
+            {/* Evidence Photos — use the public ticket photo endpoints */}
             <div>
               <div className="text-xs font-medium text-gray-500 mb-2">Evidence Photos</div>
               <div className="flex gap-2 flex-wrap">
                 <img
-                  src={`/api/appeal-committee/cases/${detail.id}/photo`}
+                  src={`/api/tickets/${detail.id}/photo`}
                   alt="Primary citation photo"
                   className="max-h-48 rounded border cursor-pointer"
                   onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
@@ -476,7 +476,7 @@ function CommitteePage() {
                 {detail.additional_photo_count > 0 && Array.from({ length: detail.additional_photo_count }).map((_, i) => (
                   <img
                     key={i}
-                    src={`/api/appeal-committee/cases/${detail.id}/photos/${i}`}
+                    src={`/api/tickets/${detail.id}/photos/${i}`}
                     alt={`Additional photo ${i + 1}`}
                     className="max-h-48 rounded border cursor-pointer"
                     onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
