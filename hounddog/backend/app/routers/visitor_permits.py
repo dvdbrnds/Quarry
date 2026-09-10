@@ -584,6 +584,56 @@ async def sponsor_my_permits(
     return permits_out
 
 
+class SponsorPermitEdit(BaseModel):
+    name: str | None = None
+    plate: str | None = None
+    end_date: str | None = None
+    revoke: bool = False
+
+
+@router.patch("/sponsor/permit/{token}")
+async def sponsor_edit_permit(
+    token: str,
+    body: SponsorPermitEdit,
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticated sponsor: edit fields on a vendor permit they sponsor."""
+    result = await db.execute(
+        select(VisitorApprovalToken).where(VisitorApprovalToken.token == token)
+    )
+    approval = result.scalar_one_or_none()
+    if not approval:
+        raise HTTPException(404, "Permit not found")
+    if approval.sponsor_email.lower() != user.email.lower():
+        raise HTTPException(403, "You are not the sponsor for this permit")
+
+    permit = await db.get(Permit, approval.permit_id)
+    if not permit:
+        raise HTTPException(404, "Permit not found")
+
+    if body.revoke:
+        permit.status = "revoked"
+        permit.deleted_at = datetime.now(timezone.utc)
+        permit.cancel_reason = "sponsor_revoked"
+        permit.cancelled_at = datetime.now(timezone.utc)
+        permit.cancelled_by = user.email
+        await db.flush()
+        return {"status": "revoked", "message": "Permit has been revoked."}
+
+    if body.name is not None and body.name.strip():
+        permit.name = body.name.strip()
+    if body.plate is not None and body.plate.strip():
+        plate_clean = re.sub(r"[^A-Za-z0-9]", "", body.plate.strip()).upper()
+        if plate_clean:
+            permit.plates = [plate_clean]
+    if body.end_date is not None:
+        permit.end_date = date.fromisoformat(body.end_date)
+
+    await db.flush()
+    return {"status": "updated", "message": "Permit updated."}
+
+
 @router.post("/sponsor/decide/{token}")
 async def sponsor_decide(
     token: str,

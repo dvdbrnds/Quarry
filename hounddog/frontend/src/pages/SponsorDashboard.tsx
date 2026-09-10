@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Empty, Spin, Tag, Table, App, Segmented, Descriptions, Modal } from "antd";
+import { Button, Card, Empty, Spin, Tag, Table, App, Segmented, Descriptions, Modal, Form, Input, DatePicker, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
@@ -57,6 +58,9 @@ function SponsorPage() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [deciding, setDeciding] = useState<string | null>(null);
   const [selected, setSelected] = useState<SponsorPermit | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form] = Form.useForm();
 
   useEffect(() => {
     (async () => {
@@ -115,6 +119,70 @@ function SponsorPage() {
       message.error(e.message);
     } finally {
       setDeciding(null);
+    }
+  }
+
+  function openDetail(permit: SponsorPermit) {
+    setSelected(permit);
+    setEditing(false);
+    form.setFieldsValue({
+      name: permit.name,
+      plate: permit.plate,
+      end_date: permit.end_date ? dayjs(permit.end_date) : null,
+    });
+  }
+
+  async function handleSave() {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const values = form.getFieldsValue();
+      const headers = await authHeaders();
+      const res = await fetch(`/api/visitor/permits/sponsor/permit/${selected.token}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: values.name,
+          plate: values.plate,
+          end_date: values.end_date ? values.end_date.format("YYYY-MM-DD") : null,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Failed to save changes");
+      }
+      message.success("Permit updated.");
+      setEditing(false);
+      setSelected(null);
+      await loadPermits();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRevoke() {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/visitor/permits/sponsor/permit/${selected.token}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ revoke: true }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Failed to revoke permit");
+      }
+      message.success("Permit revoked.");
+      setSelected(null);
+      await loadPermits();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -267,7 +335,7 @@ function SponsorPage() {
             loading={loading}
             pagination={false}
             locale={{ emptyText: <Empty description="No permits found" /> }}
-            onRow={r => ({ onClick: () => setSelected(r), style: { cursor: "pointer" } })}
+            onRow={r => ({ onClick: () => openDetail(r), style: { cursor: "pointer" } })}
             size="middle"
           />
         </Card>
@@ -275,32 +343,62 @@ function SponsorPage() {
 
       <Modal
         open={!!selected}
-        onCancel={() => setSelected(null)}
+        onCancel={() => { setSelected(null); setEditing(false); }}
+        destroyOnClose
         footer={
-          selected?.status === "pending_approval" && !selected?.decision ? (
+          !selected ? null : editing ? (
             <div className="flex gap-2 justify-end">
-              <Button
-                danger
-                loading={deciding === selected?.token}
-                onClick={() => selected && handleDecision(selected.token, "denied")}
-              >
-                Deny
-              </Button>
-              <Button
-                type="primary"
-                loading={deciding === selected?.token}
-                onClick={() => selected && handleDecision(selected.token, "approved")}
-                style={{ background: brand.primaryColor }}
-              >
-                Approve Permit
+              <Button onClick={() => setEditing(false)}>Cancel</Button>
+              <Button type="primary" loading={saving} onClick={handleSave} style={{ background: brand.primaryColor }}>
+                Save Changes
               </Button>
             </div>
-          ) : null
+          ) : (
+            <div className="flex justify-between">
+              <div>
+                {selected.status === "active" && (
+                  <Popconfirm
+                    title="Revoke this permit?"
+                    description="The vendor will no longer be authorized to park."
+                    onConfirm={handleRevoke}
+                    okText="Revoke"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button danger loading={saving}>Revoke</Button>
+                  </Popconfirm>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {selected.status === "pending_approval" && !selected.decision && (
+                  <>
+                    <Button
+                      danger
+                      loading={deciding === selected.token}
+                      onClick={() => handleDecision(selected.token, "denied")}
+                    >
+                      Deny
+                    </Button>
+                    <Button
+                      type="primary"
+                      loading={deciding === selected.token}
+                      onClick={() => handleDecision(selected.token, "approved")}
+                      style={{ background: brand.primaryColor }}
+                    >
+                      Approve
+                    </Button>
+                  </>
+                )}
+                {(selected.status === "active" || selected.status === "pending_approval") && (
+                  <Button onClick={() => setEditing(true)}>Edit</Button>
+                )}
+              </div>
+            </div>
+          )
         }
-        title="Vendor Permit Details"
+        title={editing ? "Edit Vendor Permit" : "Vendor Permit Details"}
         width={560}
       >
-        {selected && (
+        {selected && !editing && (
           <Descriptions column={1} bordered size="small" className="mt-4">
             <Descriptions.Item label="Vendor Name">{selected.name}</Descriptions.Item>
             <Descriptions.Item label="Company">{selected.company_name}</Descriptions.Item>
@@ -323,6 +421,25 @@ function SponsorPage() {
             </Descriptions.Item>
             <Descriptions.Item label="Submitted">{fmtDate(selected.created_at)}</Descriptions.Item>
           </Descriptions>
+        )}
+        {selected && editing && (
+          <Form form={form} layout="vertical" className="mt-4">
+            <Form.Item label="Vendor Name" name="name" rules={[{ required: true, message: "Name is required" }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="License Plate" name="plate" rules={[{ required: true, message: "Plate is required" }]}>
+              <Input style={{ textTransform: "uppercase", fontFamily: "monospace" }} />
+            </Form.Item>
+            <Form.Item label="End Date" name="end_date">
+              <DatePicker className="w-full" />
+            </Form.Item>
+            <Descriptions column={1} size="small" className="mt-2">
+              <Descriptions.Item label="Company">{selected.company_name}</Descriptions.Item>
+              {selected.student_name && <Descriptions.Item label="Student">{selected.student_name}</Descriptions.Item>}
+              {selected.instructor_name && <Descriptions.Item label="Instructor / Ensemble">{selected.instructor_name}</Descriptions.Item>}
+              <Descriptions.Item label="Start Date">{fmtDate(selected.start_date)}</Descriptions.Item>
+            </Descriptions>
+          </Form>
         )}
       </Modal>
 
