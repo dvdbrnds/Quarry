@@ -43,15 +43,28 @@ interface CaseDetail extends CaseSummary {
   officer_email: string | null;
   officer_notes: string | null;
   ticket_category: string;
+  status: string;
   location_text: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
   vehicle_description: string | null;
   driver_name: string | null;
+  driver_license: string | null;
   dispute_name: string | null;
   dispute_email: string | null;
+  dispute_phone: string | null;
+  photo_url: string | null;
   additional_photo_count: number;
+  additional_violations: { code: string; label: string; fine: string }[] | null;
+  permit_number: string | null;
+  permit_type_label: string | null;
+  permit_lot_zone: string | null;
+  ocr_original_plate: string | null;
   appeal_decision: string | null;
   appeal_decided_by: string | null;
   appeal_decision_reason: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   votes: VoteInfo[];
 }
 
@@ -377,50 +390,113 @@ function CommitteePage() {
           <div className="text-center py-8"><Spin /></div>
         ) : (
           <div className="space-y-4">
-            {/* Ticket Info */}
+            {/* Full Ticket Info */}
             <Descriptions size="small" column={2} bordered>
               <Descriptions.Item label="Plate">
                 <span className="font-mono font-bold">{detail.plate}</span>
+                {detail.ocr_original_plate && (
+                  <Tag color="volcano" className="ml-2" style={{ fontSize: 11 }}>
+                    OCR read: {detail.ocr_original_plate}
+                  </Tag>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label={detail.ticket_category === "moving" ? "Location" : "Lot"}>
                 {detail.ticket_category === "moving" ? (detail.location_text || "—") : detail.lot}
               </Descriptions.Item>
-              <Descriptions.Item label="Violation">{detail.violation_type.replace(/_/g, " ")}</Descriptions.Item>
+              <Descriptions.Item label="Violation">
+                <span className="capitalize">{detail.violation_type.replace(/_/g, " ")}</span>
+                {detail.additional_violations?.map((v, i) => (
+                  <Tag key={i} color="blue" className="ml-1 capitalize">{v.label || v.code.replace(/_/g, " ")}</Tag>
+                ))}
+              </Descriptions.Item>
               <Descriptions.Item label="Fine">${detail.fine_amount.toFixed(2)}</Descriptions.Item>
-              <Descriptions.Item label="Issued">{fmtDateTime(detail.issued_at)}</Descriptions.Item>
-              <Descriptions.Item label="Officer">{detail.officer_name || detail.officer_email || "—"}</Descriptions.Item>
-              {detail.owner_name && (
-                <Descriptions.Item label="Owner" span={2}>{detail.owner_name}</Descriptions.Item>
-              )}
-              {detail.vehicle_description && (
-                <Descriptions.Item label="Vehicle" span={2}>{detail.vehicle_description}</Descriptions.Item>
-              )}
-              {detail.driver_name && (
-                <Descriptions.Item label="Driver">{detail.driver_name}</Descriptions.Item>
-              )}
-              {detail.officer_notes && (
-                <Descriptions.Item label="Officer Notes" span={2}>{detail.officer_notes}</Descriptions.Item>
+              <Descriptions.Item label="Status"><Tag color={detail.status === "escalated" ? "purple" : "default"}>{detail.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Officer">
+                <div>{detail.officer_name || "—"}</div>
+                {detail.officer_email && <div className="text-xs text-gray-400">{detail.officer_email}</div>}
+              </Descriptions.Item>
+              {detail.owner_name && <Descriptions.Item label="Owner">{detail.owner_name}</Descriptions.Item>}
+              {detail.permit_number && <Descriptions.Item label="Permit #">{detail.permit_number}</Descriptions.Item>}
+              {detail.permit_type_label && <Descriptions.Item label="Permit Type">{detail.permit_type_label}</Descriptions.Item>}
+              {detail.permit_lot_zone && <Descriptions.Item label="Permit Lot">{detail.permit_lot_zone}</Descriptions.Item>}
+              <Descriptions.Item label="Issued" span={2}>{fmtDateTime(detail.issued_at)}</Descriptions.Item>
+              {detail.location_lat && detail.location_lng && (
+                <Descriptions.Item label="GPS" span={2}>
+                  <a
+                    href={`https://maps.google.com/?q=${detail.location_lat},${detail.location_lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline font-mono text-xs"
+                  >
+                    {detail.location_lat.toFixed(6)}, {detail.location_lng.toFixed(6)}
+                  </a>
+                </Descriptions.Item>
               )}
             </Descriptions>
 
-            {/* Photo */}
-            {detail.additional_photo_count > 0 || true ? (
-              <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Citation Photo</div>
+            {/* Audit Trail */}
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-1">
+              <div className="font-medium text-gray-600 mb-1">Audit Trail</div>
+              <div>Created: {fmtDateTime(detail.created_at)}</div>
+              <div>Last updated: {fmtDateTime(detail.updated_at)}</div>
+              <div className="font-mono text-[10px] text-gray-400 select-all">ID: {detail.id}</div>
+            </div>
+
+            {/* Driver & Vehicle (moving violations) */}
+            {detail.ticket_category === "moving" && (detail.driver_name || detail.vehicle_description) && (
+              <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm">
+                <div className="font-medium text-red-800 mb-2">Driver &amp; Vehicle</div>
+                <Descriptions size="small" column={2}>
+                  {detail.driver_name && <Descriptions.Item label="Driver">{detail.driver_name}</Descriptions.Item>}
+                  {detail.driver_license && <Descriptions.Item label="License"><span className="font-mono">{detail.driver_license}</span></Descriptions.Item>}
+                  {detail.vehicle_description && <Descriptions.Item label="Vehicle" span={2}>{detail.vehicle_description}</Descriptions.Item>}
+                </Descriptions>
+              </div>
+            )}
+
+            {/* Officer Notes */}
+            {detail.officer_notes && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <div className="font-medium text-gray-700 mb-1">Officer Notes</div>
+                <p>{detail.officer_notes}</p>
+              </div>
+            )}
+
+            {/* Evidence Photos */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2">Evidence Photos</div>
+              <div className="flex gap-2 flex-wrap">
                 <img
                   src={`/api/appeal-committee/cases/${detail.id}/photo`}
-                  alt="Citation"
-                  className="max-h-48 rounded border"
+                  alt="Primary citation photo"
+                  className="max-h-48 rounded border cursor-pointer"
+                  onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
                   onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
+                {detail.additional_photo_count > 0 && Array.from({ length: detail.additional_photo_count }).map((_, i) => (
+                  <img
+                    key={i}
+                    src={`/api/appeal-committee/cases/${detail.id}/photos/${i}`}
+                    alt={`Additional photo ${i + 1}`}
+                    className="max-h-48 rounded border cursor-pointer"
+                    onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
+                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                ))}
               </div>
-            ) : null}
+            </div>
 
             {/* Appeal Note */}
             <Card size="small" title="Student's Appeal" className="!bg-yellow-50">
               <p className="text-sm">{detail.appeal_note || <em className="text-gray-400">No note provided</em>}</p>
-              {detail.dispute_name && (
-                <p className="text-xs text-gray-500 mt-1">Filed by: {detail.dispute_name} ({detail.dispute_email})</p>
+              {(detail.dispute_name || detail.dispute_email || detail.dispute_phone) && (
+                <div className="mt-2 pt-2 border-t border-yellow-200 text-xs text-gray-500 space-y-0.5">
+                  {detail.dispute_name && <div>Name: <span className="text-gray-700">{detail.dispute_name}</span></div>}
+                  {detail.dispute_email && (
+                    <div>Email: <a href={`mailto:${detail.dispute_email}`} className="text-blue-600 hover:underline">{detail.dispute_email}</a></div>
+                  )}
+                  {detail.dispute_phone && <div>Phone: <span className="text-gray-700">{detail.dispute_phone}</span></div>}
+                </div>
               )}
             </Card>
 

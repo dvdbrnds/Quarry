@@ -90,15 +90,28 @@ class CaseDetail(CaseSummary):
     officer_email: str | None
     officer_notes: str | None
     ticket_category: str = "parking"
+    status: str = "escalated"
     location_text: str | None = None
+    location_lat: float | None = None
+    location_lng: float | None = None
     vehicle_description: str | None = None
     driver_name: str | None = None
+    driver_license: str | None = None
     dispute_name: str | None = None
     dispute_email: str | None = None
+    dispute_phone: str | None = None
+    photo_url: str | None = None
     additional_photo_count: int = 0
+    additional_violations: list[dict] | None = None
+    permit_number: str | None = None
+    permit_type_label: str | None = None
+    permit_lot_zone: str | None = None
+    ocr_original_plate: str | None = None
     appeal_decision: str | None
     appeal_decided_by: str | None
     appeal_decision_reason: str | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     votes: list[VoteRead] = []
 
 
@@ -339,15 +352,28 @@ async def get_case(
         officer_email=ticket.officer_email,
         officer_notes=ticket.officer_notes,
         ticket_category=ticket.ticket_category,
+        status=ticket.status,
         location_text=ticket.location_text,
+        location_lat=ticket.location_lat,
+        location_lng=ticket.location_lng,
         vehicle_description=ticket.vehicle_description,
         driver_name=ticket.driver_name,
+        driver_license=ticket.driver_license,
         dispute_name=ticket.dispute_name,
         dispute_email=ticket.dispute_email,
+        dispute_phone=ticket.dispute_phone,
+        photo_url=ticket.photo_url,
         additional_photo_count=ticket.additional_photo_count,
+        additional_violations=ticket.additional_violations,
+        permit_number=ticket.permit_number,
+        permit_type_label=ticket.permit_type_label,
+        permit_lot_zone=ticket.permit_lot_zone,
+        ocr_original_plate=ticket.ocr_original_plate,
         appeal_decision=ticket.appeal_decision,
         appeal_decided_by=ticket.appeal_decided_by,
         appeal_decision_reason=ticket.appeal_decision_reason,
+        created_at=ticket.created_at,
+        updated_at=ticket.updated_at,
         votes_uphold=votes_uphold,
         votes_deny=votes_deny,
         total_members=total_members,
@@ -454,4 +480,29 @@ async def get_case_photo(
     return Response(
         content=ticket.photo_data,
         media_type=ticket.photo_mime or "image/jpeg",
+    )
+
+
+@router.get("/cases/{ticket_id}/photos/{index}")
+async def get_case_additional_photo(
+    ticket_id: uuid.UUID,
+    index: int,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(_require_committee_or_admin),
+):
+    ticket = (await db.execute(
+        select(Ticket).where(Ticket.id == ticket_id, Ticket.committee_status.isnot(None))
+    )).scalar()
+    if not ticket or not ticket.additional_photos:
+        raise HTTPException(404, "Photo not found")
+    if index < 0 or index >= len(ticket.additional_photos):
+        raise HTTPException(404, "Photo index out of range")
+
+    import base64
+    from fastapi.responses import Response
+    entry = ticket.additional_photos[index]
+    photo_bytes = base64.b64decode(entry["data"])
+    return Response(
+        content=photo_bytes,
+        media_type=entry.get("mime", "image/jpeg"),
     )
