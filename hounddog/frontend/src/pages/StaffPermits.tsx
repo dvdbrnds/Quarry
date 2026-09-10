@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbox, Descriptions } from "antd";
+import { Button, Card, Empty, Modal, Form, Input, Spin, Tag, App, Alert, Checkbox, Descriptions, Select } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
+import { US_STATES } from "../usStates";
 import PublicFooter from "../components/PublicFooter";
 import StudentLotMap from "../components/StudentLotMap";
 import type { Lot } from "../api";
@@ -513,7 +514,7 @@ function EnrollModal({ open, onClose, onSuccess, onError, impersonateEmail }: {
               <Input placeholder="ABC1234" className="font-mono" />
             </Form.Item>
             <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}>
-              <Input placeholder="PA" maxLength={2} className="font-mono uppercase" />
+              <Select placeholder="PA" options={US_STATES} showSearch />
             </Form.Item>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t mt-4">

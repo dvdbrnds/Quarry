@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Checkbox, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip, Modal } from "antd";
+import { Button, Card, Checkbox, Tag, Empty, Form, Input, InputNumber, Spin, Space, App, Tooltip, Modal, Select } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, logout, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
+import { US_STATES } from "../usStates";
 
 const CAMPUS_LAT_THRESHOLD = 40.623;
 
@@ -531,12 +532,13 @@ function LotteryPage({ user }: { user: AuthUser }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">State (optional)</label>
-              <Input
-                value={swapState}
-                onChange={e => setSwapState(e.target.value.toUpperCase())}
+              <Select
+                value={swapState || undefined}
+                onChange={v => setSwapState(v)}
+                options={US_STATES}
+                showSearch
+                allowClear
                 placeholder="PA"
-                className="font-mono"
-                maxLength={2}
               />
             </div>
             <p className="text-xs text-gray-400">
@@ -639,7 +641,7 @@ function ApplyPanel({ permit, onClose, onSuccess, onError, onLotHover }: {
                   <Input placeholder="ABC1234" className="font-mono" />
                 </Form.Item>
                 <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}>
-                  <Input placeholder="PA" maxLength={2} className="font-mono uppercase" />
+                  <Select placeholder="PA" options={US_STATES} showSearch />
                 </Form.Item>
               </div>
               {!permit.allow_multiple && (
@@ -779,7 +781,7 @@ function BuyPanel({ permit, onClose, onError }: {
                   <Input placeholder="ABC1234" className="font-mono" />
                 </Form.Item>
                 <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}>
-                  <Input placeholder="PA" maxLength={2} className="font-mono uppercase" />
+                  <Select placeholder="PA" options={US_STATES} showSearch />
                 </Form.Item>
               </div>
               {!permit.allow_multiple && (

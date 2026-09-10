@@ -13,6 +13,7 @@ import {
   Select,
 } from "antd";
 import dayjs from "dayjs";
+import { US_STATES } from "../usStates";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
@@ -349,9 +350,8 @@ function VisitorFlow() {
                       label="State"
                       required
                       rules={[{ required: true, message: "State is required" }]}
-                      getValueFromEvent={(e) => e.target.value.toUpperCase()}
                     >
-                      <Input className="font-mono" maxLength={2} placeholder="PA" />
+                      <Select options={US_STATES} showSearch placeholder="PA" />
                     </Form.Item>
 
                     <Form.Item name="email" label="Your email">
@@ -811,9 +811,8 @@ function VanityVisitorPage({ slug }: { slug: string }) {
                     label="State"
                     required
                     rules={[{ required: true, message: "State is required" }]}
-                    getValueFromEvent={(e) => e.target.value.toUpperCase()}
                   >
-                    <Input className="font-mono" maxLength={2} placeholder="PA" />
+                    <Select options={US_STATES} showSearch placeholder="PA" />
                   </Form.Item>
 
                   <Form.Item name="email" label="Your email">

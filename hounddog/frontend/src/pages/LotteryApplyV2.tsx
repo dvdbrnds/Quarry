@@ -148,7 +148,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   ineligible: { text: "Ineligible", color: "red" },
 };
 
-const PLATE_STATES = ["PA","NJ","NY","CT","DE","MD","VA","MA","OH","FL","TX","CA"];
+import { US_STATES } from "../usStates";
 
 function PlateSwapForm({
   permitId,
@@ -247,7 +247,8 @@ function PlateSwapForm({
           size="small"
           value={plateState}
           onChange={setPlateState}
-          options={PLATE_STATES.map(s => ({ label: s, value: s }))}
+          options={US_STATES}
+          showSearch
           style={{ width: 72 }}
         />
         <Button size="small" type="primary" loading={submitting} onClick={handleSubmit}>
@@ -371,7 +372,8 @@ function MultiVehicleRequestForm({
               size="small"
               value={plateState}
               onChange={setPlateState}
-              options={PLATE_STATES.map(s => ({ label: s, value: s }))}
+              options={US_STATES}
+              showSearch
               style={{ width: 72 }}
             />
           </div>
@@ -1730,7 +1732,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                             <Input placeholder="License plate number" style={{ textTransform: "uppercase" }} />
                           </Form.Item>
                           <Form.Item name="guest_plate_state" label="State" initialValue="PA">
-                            <Select options={["PA","NJ","NY","CT","DE","MD","VA","MA","OH"].map(s => ({ label: s, value: s }))} />
+                            <Select options={US_STATES} showSearch />
                           </Form.Item>
                         </div>
                         <Form.Item name="dates" label="Check-in / Check-out" rules={[{ required: true, message: "Select dates" }]}>
@@ -2039,11 +2041,11 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                     />
                   </Form.Item>
                   <Form.Item label="State">
-                    <Input
+                    <Select
                       value={plateState}
-                      onChange={(e) => setPlateState(e.target.value.toUpperCase())}
-                      className="font-mono"
-                      maxLength={2}
+                      onChange={setPlateState}
+                      options={US_STATES}
+                      showSearch
                       placeholder="PA"
                     />
                   </Form.Item>

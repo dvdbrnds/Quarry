@@ -18,6 +18,7 @@ import VisitorPresets from "./VisitorPresets";
 import GuestRegistrations from "./GuestRegistrations";
 import VehicleRequests from "./VehicleRequests";
 import HousingOverrides from "./HousingOverrides";
+import { US_STATES } from "../usStates";
 import { useBranding } from "../useBranding";
 import { useCurrentUser } from "../UserContext";
 
@@ -1277,7 +1278,7 @@ export default function Permits() {
               <Input placeholder="ABC1234" className="font-mono" />
             </Form.Item>
             <Form.Item name="tag_plate_state" label="Plate State" rules={[{ required: true, message: "Required" }]}>
-              <Input placeholder="PA" maxLength={2} style={{ textTransform: "uppercase" }} />
+              <Select placeholder="PA" options={US_STATES} showSearch />
             </Form.Item>
           </div>
           <div className="grid grid-cols-2 gap-3">

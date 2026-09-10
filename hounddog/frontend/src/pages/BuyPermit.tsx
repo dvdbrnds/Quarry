@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Modal, Form, Input, InputNumber, Alert, Spin, Empty, App } from "antd";
+import { Button, Card, Modal, Form, Input, InputNumber, Alert, Spin, Empty, App, Select } from "antd";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
+import { US_STATES } from "../usStates";
 
 interface AvailablePermit {
   id: string; code: string; label: string; price: string;
@@ -106,7 +107,7 @@ function PurchaseModal({ permit, onClose, onError }: {
             <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}><Input placeholder="you@moravian.edu" /></Form.Item>
             <div className="grid grid-cols-3 gap-3">
               <Form.Item name="plate" label="License Plate" rules={[{ required: true }]} className="col-span-2"><Input placeholder="ABC1234" className="font-mono" /></Form.Item>
-              <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}><Input placeholder="PA" maxLength={2} className="font-mono uppercase" /></Form.Item>
+              <Form.Item name="plate_state" label="State" rules={[{ required: true, message: "State required" }]}><Select placeholder="PA" options={US_STATES} showSearch /></Form.Item>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Form.Item name="class_year" label="Graduation Year"><InputNumber min={2024} max={2035} placeholder="2027" className="w-full" /></Form.Item>
