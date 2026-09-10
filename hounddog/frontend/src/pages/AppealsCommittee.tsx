@@ -412,9 +412,9 @@ function CommitteePage() {
                 {detail.ticket_category === "moving" ? (detail.location_text || "—") : detail.lot}
               </Descriptions.Item>
               <Descriptions.Item label="Violation">
-                <span className="capitalize">{detail.violation_type.replace(/_/g, " ")}</span>
+                <Tag color="blue" className="capitalize">{detail.violation_type.replace(/_/g, " ")}</Tag>
                 {detail.additional_violations?.map((v, i) => (
-                  <Tag key={i} color="blue" className="ml-1 capitalize">{v.label || v.code.replace(/_/g, " ")}</Tag>
+                  <Tag key={i} color="blue" className="capitalize">{v.label || v.code.replace(/_/g, " ")}</Tag>
                 ))}
               </Descriptions.Item>
               <Descriptions.Item label="Fine">${detail.fine_amount.toFixed(2)}</Descriptions.Item>
