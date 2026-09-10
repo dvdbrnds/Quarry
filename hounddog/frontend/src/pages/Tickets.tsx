@@ -1120,7 +1120,7 @@ export default function Tickets() {
   const tabItems = [
     { key: "tickets", label: "Tickets", children: <TicketsList /> },
     ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
-    ...(isAdmin ? [{ key: "officer-report", label: "Officer Report", children: <OfficerReport /> }] : []),
+    ...(isAdmin ? [{ key: "officer-report", label: "Reporting", children: <OfficerReport /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];
