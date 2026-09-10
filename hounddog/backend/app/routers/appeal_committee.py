@@ -227,6 +227,30 @@ async def escalate_to_committee(
     ticket.escalated_at = datetime.now(timezone.utc)
     await db.flush()
     await db.refresh(ticket)
+
+    # Notify all committee members by email
+    try:
+        members = (await db.execute(select(AppealCommitteeMember))).scalars().all()
+        member_emails = [m.email for m in members if m.email]
+        if member_emails:
+            from ..services.email import send_committee_escalation_email
+            await send_committee_escalation_email(
+                member_emails=member_emails,
+                ticket_number=ticket.ticket_number,
+                plate=ticket.plate,
+                violation_type=ticket.violation_type,
+                lot=ticket.lot,
+                fine_amount=str(ticket.fine_amount),
+                appeal_note=ticket.appeal_note,
+                escalated_by=admin.email,
+                committee_notes=ticket.committee_notes,
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger("quarry.appeal_committee").warning(
+            "Committee notification email failed (non-fatal): %s", e
+        )
+
     return {"ok": True, "ticket_id": str(ticket.id), "status": ticket.status}
 
 
