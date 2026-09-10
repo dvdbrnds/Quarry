@@ -295,6 +295,7 @@ function OfficerReport() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
+  const [selectedOfficer, setSelectedOfficer] = useState<OfficerRow | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -372,13 +373,13 @@ function OfficerReport() {
             const qs = Math.round((1 - (o.appeal_void_rate?.void_rate || 0) / 100) * 100);
             const qColor = qs >= 85 ? "#22c55e" : qs >= 70 ? "#eab308" : "#ef4444";
             return (
-              <div key={o.officer_email} className="flex items-center gap-3">
+              <div key={o.officer_email} className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-2 py-1 -mx-2 cursor-pointer transition-colors" onClick={() => setSelectedOfficer(o)}>
                 <div className="w-6 text-right text-sm font-bold text-gray-400">#{i + 1}</div>
                 <Tooltip title={compareKeys.includes(o.officer_email) ? "Remove from comparison" : "Add to comparison"}>
                   <Button
                     size="small"
                     type={compareKeys.includes(o.officer_email) ? "primary" : "default"}
-                    onClick={() => toggleCompare(o.officer_email)}
+                    onClick={(e) => { e.stopPropagation(); toggleCompare(o.officer_email); }}
                     className="shrink-0"
                     style={compareKeys.includes(o.officer_email) ? { background: COMPARE_COLORS[compareKeys.indexOf(o.officer_email) % COMPARE_COLORS.length] } : {}}
                   >
@@ -553,6 +554,118 @@ function OfficerReport() {
           <p className="text-sm text-blue-700">Select at least one more officer to see a side-by-side comparison.</p>
         </Card>
       )}
+
+      {/* Officer detail drilldown */}
+      <Modal
+        open={!!selectedOfficer}
+        onCancel={() => setSelectedOfficer(null)}
+        footer={null}
+        title={null}
+        width={900}
+        styles={{ body: { maxHeight: "80vh", overflow: "auto" } }}
+      >
+        {selectedOfficer && <OfficerDetail officer={selectedOfficer} totalAll={data.total_all} />}
+      </Modal>
+    </div>
+  );
+}
+
+function OfficerDetail({ officer: o, totalAll }: { officer: OfficerRow; totalAll: number }) {
+  const qualityScore = Math.round((1 - (o.appeal_void_rate?.void_rate || 0) / 100) * 100);
+  const qualityColor = qualityScore >= 85 ? "#22c55e" : qualityScore >= 70 ? "#eab308" : "#ef4444";
+  const name = o.officer_name || o.officer_email.split("@")[0];
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-gray-800">{name}</h2>
+        <p className="text-sm text-gray-500">{o.officer_email}</p>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Card size="small" className="shadow-sm"><Statistic title="This Week" value={o.this_week} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="This Month" value={o.this_month} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="All Time" value={o.all_time} /></Card>
+        <Card size="small" className="shadow-sm">
+          <div className="flex items-center gap-2">
+            <Progress type="circle" percent={o.global_share} size={44} format={p => `${p}%`} />
+            <div>
+              <div className="text-xs text-gray-500">Share</div>
+              <div className="text-[10px] text-gray-400">{o.all_time}/{totalAll}</div>
+            </div>
+          </div>
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <Statistic title="Revenue" value={o.revenue?.total_fines || 0} prefix="$" precision={0} />
+          <div className="text-[10px] text-gray-400 mt-0.5">${(o.revenue?.paid_fines || 0).toFixed(0)} collected</div>
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <div className="flex items-center gap-2">
+            <Progress type="circle" percent={qualityScore} size={44} strokeColor={qualityColor} format={p => `${p}%`} />
+            <div>
+              <div className="text-xs text-gray-500">Quality</div>
+              <div className="text-[10px] text-gray-400">{o.appeal_void_rate?.void_rate || 0}% void</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* 30-day timeline */}
+      <Card size="small" title="30-Day Activity" className="shadow-sm">
+        {o.daily_activity?.length ? <DailyTimeline data={o.daily_activity} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />}
+      </Card>
+
+      {/* Three columns: violation, lot, hour */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card size="small" title="By Violation" className="shadow-sm">
+          {o.by_violation?.length ? <HBarChart items={o.by_violation.map(v => ({ label: v.label, value: v.count }))} />
+            : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />}
+        </Card>
+        <Card size="small" title="By Lot" className="shadow-sm">
+          {o.by_lot?.length ? <HBarChart items={o.by_lot.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} />
+            : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />}
+        </Card>
+        <Card size="small" title="By Hour of Day" className="shadow-sm">
+          {o.by_hour?.length ? <HourChart data={o.by_hour} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />}
+        </Card>
+      </div>
+
+      {/* Status + appeal/void breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card size="small" title="By Status" className="shadow-sm">
+          {o.by_status?.length ? <HBarChart items={o.by_status.map(s => ({ label: s.status, value: s.count, tag: true }))} colorFn={l => STATUS_BAR_COLORS[l] || "#6b7280"} />
+            : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />}
+        </Card>
+        <Card size="small" title="Quality Breakdown" className="shadow-sm">
+          <div className="space-y-4 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Total Citations</span>
+              <span className="text-lg font-bold">{o.all_time}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Voided</span>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-gray-500">{o.appeal_void_rate?.voided || 0}</span>
+                <Tag color="default">{o.appeal_void_rate?.void_rate || 0}%</Tag>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Appealed</span>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-yellow-600">{o.appeal_void_rate?.appealed || 0}</span>
+                <Tag color="gold">{o.appeal_void_rate?.appeal_rate || 0}%</Tag>
+              </div>
+            </div>
+            <div className="pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">Quality Score</span>
+                <Progress type="circle" percent={qualityScore} size={52} strokeColor={qualityColor} format={p => `${p}%`} />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
