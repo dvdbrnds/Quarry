@@ -505,10 +505,16 @@ async def _upload_ticket_impl(
     violation_type_id = None
     offense_number = 1
 
-    if ticket.violation_type:
+    # Split comma-separated violation codes (multi-violation support)
+    all_codes = [c.strip() for c in (ticket.violation_type or "").split(",") if c.strip()]
+    primary_code = all_codes[0] if all_codes else ""
+    extra_codes = all_codes[1:] if len(all_codes) > 1 else []
+    additional_violations_data: list[dict] | None = None
+
+    if primary_code:
         vtype_result = await db.execute(
             select(ViolationType).where(
-                ViolationType.code == ticket.violation_type,
+                ViolationType.code == primary_code,
                 ViolationType.is_active.is_(True),
             )
         )
@@ -517,7 +523,7 @@ async def _upload_ticket_impl(
         if vtype:
             violation_type_id = vtype.id
 
-            # Count prior offenses for escalation
+            # Count prior offenses for escalation (based on primary violation)
             es_result = await db.execute(
                 select(EnforcementSettings).where(EnforcementSettings.id == 1)
             )
@@ -534,7 +540,7 @@ async def _upload_ticket_impl(
             prior_count_result = await db.execute(
                 select(func.count()).select_from(Ticket).where(
                     Ticket.plate == ticket.plate.upper(),
-                    Ticket.violation_type == ticket.violation_type,
+                    Ticket.violation_type == primary_code,
                     Ticket.issued_at >= datetime(
                         academic_year_start.year,
                         academic_year_start.month,
@@ -554,6 +560,33 @@ async def _upload_ticket_impl(
                     fine_amount = vtype.fine_second
                 else:
                     fine_amount = vtype.fine_first
+
+    # Process additional violations — look up each, sum fines
+    if extra_codes:
+        additional_violations_data = []
+        for code in extra_codes:
+            ev_result = await db.execute(
+                select(ViolationType).where(
+                    ViolationType.code == code,
+                    ViolationType.is_active.is_(True),
+                )
+            )
+            ev = ev_result.scalar()
+            if ev:
+                extra_fine = ev.fine_first or Decimal("0.00")
+                if not ticket.is_warning:
+                    fine_amount += extra_fine
+                additional_violations_data.append({
+                    "code": ev.code,
+                    "label": ev.label,
+                    "fine": str(extra_fine),
+                })
+            else:
+                additional_violations_data.append({
+                    "code": code,
+                    "label": code,
+                    "fine": "0.00",
+                })
 
     # Handle photo upload — store in DB
     photo_url = None
@@ -637,8 +670,9 @@ async def _upload_ticket_impl(
         permit_id=permit_id,
         lot=ticket.lot,
         zone=ticket.zone,
-        violation_type=ticket.violation_type or "unknown",
+        violation_type=primary_code or "unknown",
         violation_type_id=violation_type_id,
+        additional_violations=additional_violations_data,
         fine_amount=fine_amount,
         photo_url=None,
         photo_data=photo_data,
@@ -720,10 +754,10 @@ async def _upload_ticket_impl(
 
     try:
         if recipient_email:
-            vtype_label = ticket.violation_type or "Parking Violation"
-            if ticket.violation_type:
+            vtype_label = primary_code or "Parking Violation"
+            if primary_code:
                 vt_row = await db.execute(
-                    select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+                    select(ViolationType.label).where(ViolationType.code == primary_code)
                 )
                 vt_label_row = vt_row.scalar()
                 if vt_label_row:

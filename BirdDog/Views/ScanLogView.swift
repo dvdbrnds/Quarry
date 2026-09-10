@@ -161,6 +161,20 @@ struct ScanLogView: View {
 
             Spacer()
 
+            if case .ticketed = entry.authStatus, let issue = onIssueTapped {
+                Button {
+                    issue(entry)
+                } label: {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.purple, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
+
             if case .unknown = entry.authStatus, let tag = onTagTapped {
                 Button {
                     tag(entry)

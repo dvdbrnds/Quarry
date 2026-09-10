@@ -80,6 +80,7 @@ class TicketRead(BaseModel):
     appeal_decided_by: str | None = None
     appeal_decision_reason: str | None = None
     void_reason: str | None = None
+    additional_violations: list[dict] | None = None
     additional_photo_count: int = 0
     dispute_name: str | None = None
     dispute_email: str | None = None

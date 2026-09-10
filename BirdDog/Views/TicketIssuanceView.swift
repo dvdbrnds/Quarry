@@ -7,7 +7,7 @@ struct TicketIssuanceView: View {
 
     @State private var plate = ""
     @State private var selectedLot = ""
-    @State private var selectedViolation = ""
+    @State private var selectedViolations: Set<String> = []
     @State private var vehicleDescription = ""
     @State private var officerNotes = ""
     @State private var isSubmitting = false
@@ -52,19 +52,34 @@ struct TicketIssuanceView: View {
         // No-op: officers must deliberately choose a violation type
     }
 
+    /// Primary violation code (first in selection order preserved by violationTypes list order)
+    private var primaryViolation: String {
+        violationTypes.first(where: { selectedViolations.contains($0.0) })?.0 ?? ""
+    }
+
+    /// Comma-joined violation codes for upload
+    private var joinedViolations: String {
+        violationTypes.filter { selectedViolations.contains($0.0) }.map(\.0).joined(separator: ",")
+    }
+
+    /// Human-readable label for all selected violations
+    private var allViolationLabels: String {
+        violationTypes.filter { selectedViolations.contains($0.0) }.map(\.1).joined(separator: ", ")
+    }
+
     var body: some View {
         NavigationStack {
             if let result = submittedResult {
                 TicketConfirmationView(
                     result: result,
                     plate: plate,
-                    selectedViolation: selectedViolation,
+                    selectedViolation: joinedViolations,
                     selectedLot: selectedLot,
                     vehicleDescription: vehicleDescription,
                     officerNotes: officerNotes,
                     officerName: officerName,
                     officerEmail: officerEmail,
-                    violationLabel: violationLabel(for: selectedViolation),
+                    violationLabel: allViolationLabels,
                     isWarning: isWarning,
                     permitTypeLabel: prefilledEntry?.authStatus.permit?.displayType,
                     permitLotZone: prefilledEntry?.authStatus.permit?.lotZone,
@@ -175,11 +190,27 @@ struct TicketIssuanceView: View {
                 }
             }
 
-            Section("Violation") {
-                Picker("Type", selection: $selectedViolation) {
-                    Text("— Select —").tag("")
-                    ForEach(violationTypes, id: \.0) { code, label in
-                        Text(label).tag(code)
+            Section {
+                ForEach(violationTypes, id: \.0) { code, label in
+                    Button {
+                        if selectedViolations.contains(code) {
+                            selectedViolations.remove(code)
+                        } else {
+                            selectedViolations.insert(code)
+                        }
+                    } label: {
+                        HStack {
+                            Text(label)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if selectedViolations.contains(code) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.blue)
+                            } else {
+                                Image(systemName: "circle")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
                 if !lots.isEmpty {
@@ -188,6 +219,16 @@ struct TicketIssuanceView: View {
                         ForEach(lots, id: \.id) { lot in
                             Text(lot.name).tag(lot.name)
                         }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Violations")
+                    Spacer()
+                    if !selectedViolations.isEmpty {
+                        Text("\(selectedViolations.count) selected")
+                            .font(.caption)
+                            .foregroundStyle(.blue)
                     }
                 }
             }
@@ -330,7 +371,7 @@ struct TicketIssuanceView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(isWarning ? "Issue Warning" : "Issue") { submitTicket() }
-                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolation.isEmpty || (isWarning && selectedWarningReason.isEmpty) || isSubmitting)
+                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolations.isEmpty || (isWarning && selectedWarningReason.isEmpty) || isSubmitting)
                     .bold()
             }
         }
@@ -470,7 +511,7 @@ struct TicketIssuanceView: View {
         let ticket = PendingTicket(
             plate: normalizedPlate,
             lot: selectedLot,
-            violationType: selectedViolation,
+            violationType: joinedViolations,
             confidence: 1.0,
             photoPath: capturedPhotoPath,
             additionalPhotoPaths: additionalPhotoPaths,
@@ -535,7 +576,14 @@ struct TicketIssuanceView: View {
                         status: "accepted",
                         ticketId: ticket.ticketId,
                         paymentUrl: offlinePaymentUrl,
-                        fineAmount: ViolationTypeStore.shared.fineAmount(forCode: ticket.violationType),
+                        fineAmount: {
+                            let store = ViolationTypeStore.shared
+                            let codes = ticket.violationType.split(separator: ",").map(String.init)
+                            let total = codes.reduce(0.0) { sum, code in
+                                sum + (Double(store.fineAmount(forCode: code)) ?? 0)
+                            }
+                            return String(format: "%.2f", total)
+                        }(),
                         offenseNumber: db.offenseCount(forPlate: normalizedPlate),
                         notificationSent: false,
                         notificationEmail: nil

@@ -15,6 +15,7 @@ interface Ticket {
   lot: string;
   zone: string | null;
   violation_type: string;
+  additional_violations: { code: string; label: string; fine: string }[] | null;
   fine_amount: string;
   photo_url: string | null;
   additional_photo_count: number;
@@ -163,7 +164,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     <table>
       <tr><td class="label">Ticket #</td><td>${ticket.ticket_number || "—"}</td><td class="label">Status</td><td><span class="status status-${ticket.status}">${ticket.status}</span></td></tr>
       <tr><td class="label">Plate</td><td style="font-family:monospace;font-size:15px;font-weight:600;">${ticket.plate}${ticket.ocr_original_plate ? ` <span style="font-size:11px;color:#c2410c;">(corrected from ${ticket.ocr_original_plate})</span>` : ""}</td><td class="label">Fine</td><td>$${Number(ticket.fine_amount).toFixed(2)}</td></tr>
-      <tr><td class="label">Violation</td><td>${ticket.violation_type.replace(/_/g, " ")}</td><td class="label">${ticket.ticket_category === "moving" ? "Location" : "Lot"}</td><td>${ticket.ticket_category === "moving" ? (ticket.location_text || "—") : ticket.lot}</td></tr>
+      <tr><td class="label">Violation</td><td>${ticket.violation_type.replace(/_/g, " ")}${ticket.additional_violations?.length ? ", " + ticket.additional_violations.map(v => (v.label || v.code).replace(/_/g, " ")).join(", ") : ""}</td><td class="label">${ticket.ticket_category === "moving" ? "Location" : "Lot"}</td><td>${ticket.ticket_category === "moving" ? (ticket.location_text || "—") : ticket.lot}</td></tr>
       <tr><td class="label">Issued</td><td>${fmtDateTime(ticket.issued_at)}</td><td class="label">Officer</td><td>${ticket.officer_name || ticket.officer_id}</td></tr>
       ${ticket.owner_name ? `<tr><td class="label">Owner</td><td>${ticket.owner_name}</td><td class="label">Permit #</td><td>${ticket.permit_number || "—"}</td></tr>` : ""}
       ${ticket.permit_type_label ? `<tr><td class="label">Permit Type</td><td>${ticket.permit_type_label}</td><td class="label">Permit Lot</td><td>${ticket.permit_lot_zone || "—"}</td></tr>` : ""}
@@ -355,8 +356,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Violation",
       key: "violation",
       render: (_, t) => (
-        <Space>
+        <Space wrap>
           <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
+          {t.additional_violations?.map((v, i) => (
+            <Tag key={i} color="blue" className="capitalize" style={{ margin: 0 }}>{v.label || v.code.replace(/_/g, " ")}</Tag>
+          ))}
           {t.ticket_category === "moving" && <Tag color="red">MOVING</Tag>}
         </Space>
       ),
@@ -635,7 +639,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <Descriptions.Item label={selected.ticket_category === "moving" ? "Location" : "Lot"}>
                 {selected.ticket_category === "moving" ? (selected.location_text || "—") : selected.lot}
               </Descriptions.Item>
-              <Descriptions.Item label="Violation">{selected.violation_type.replace(/_/g, " ")}</Descriptions.Item>
+              <Descriptions.Item label="Violation">
+                <span className="capitalize">{selected.violation_type.replace(/_/g, " ")}</span>
+                {selected.additional_violations?.map((v, i) => (
+                  <Tag key={i} color="blue" className="ml-1 capitalize">{v.label || v.code.replace(/_/g, " ")}</Tag>
+                ))}
+              </Descriptions.Item>
               <Descriptions.Item label="Fine">${Number(selected.fine_amount).toFixed(2)}</Descriptions.Item>
               <Descriptions.Item label="Status"><Tag color={STATUS_COLORS[selected.status]}>{selected.status}</Tag></Descriptions.Item>
               <Descriptions.Item label="Officer">

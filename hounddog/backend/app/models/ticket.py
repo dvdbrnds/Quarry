@@ -24,6 +24,7 @@ class Ticket(Base):
     violation_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("violation_types.id"), nullable=True
     )
+    additional_violations: Mapped[list | None] = mapped_column(JSON, nullable=True)
     fine_amount: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("50.00"))
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     photo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

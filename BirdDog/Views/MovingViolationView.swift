@@ -10,7 +10,7 @@ struct MovingViolationView: View {
     @State private var driverLicense = ""
     @State private var vehicleDescription = ""
     @State private var locationText = ""
-    @State private var selectedViolation = ""
+    @State private var selectedViolations: Set<String> = []
     @State private var officerNotes = ""
     @State private var isSubmitting = false
     @State private var submittedResult: HoundDogSyncService.TicketUploadResponse?
@@ -36,14 +36,14 @@ struct MovingViolationView: View {
                     result: result,
                     plate: plate,
                     driverName: driverName,
-                    selectedViolation: selectedViolation,
+                    selectedViolation: joinedViolations,
                     vehicleDescription: vehicleDescription,
                     locationText: locationText,
                     officerNotes: officerNotes,
                     officerName: officerName,
                     officerEmail: officerEmail,
                     driverLicense: driverLicense,
-                    violationLabel: violationLabel(for: selectedViolation)
+                    violationLabel: allViolationLabels
                 )
             } else {
                 formView
@@ -68,11 +68,37 @@ struct MovingViolationView: View {
                     .textInputAutocapitalization(.sentences)
             }
 
-            Section("Violation") {
-                Picker("Type", selection: $selectedViolation) {
-                    Text("— Select —").tag("")
-                    ForEach(movingViolations, id: \.0) { code, label in
-                        Text(label).tag(code)
+            Section {
+                ForEach(movingViolations, id: \.0) { code, label in
+                    Button {
+                        if selectedViolations.contains(code) {
+                            selectedViolations.remove(code)
+                        } else {
+                            selectedViolations.insert(code)
+                        }
+                    } label: {
+                        HStack {
+                            Text(label)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if selectedViolations.contains(code) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.blue)
+                            } else {
+                                Image(systemName: "circle")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Violations")
+                    Spacer()
+                    if !selectedViolations.isEmpty {
+                        Text("\(selectedViolations.count) selected")
+                            .font(.caption)
+                            .foregroundStyle(.blue)
                     }
                 }
             }
@@ -210,7 +236,7 @@ struct MovingViolationView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Issue") { submitViolation() }
-                    .disabled(plate.isEmpty || driverName.isEmpty || selectedViolation.isEmpty || isSubmitting)
+                    .disabled(plate.isEmpty || driverName.isEmpty || selectedViolations.isEmpty || isSubmitting)
                     .bold()
             }
         }
@@ -229,13 +255,20 @@ struct MovingViolationView: View {
         }
     }
 
+    private var primaryViolation: String {
+        movingViolations.first(where: { selectedViolations.contains($0.0) })?.0 ?? ""
+    }
+
+    private var joinedViolations: String {
+        movingViolations.filter { selectedViolations.contains($0.0) }.map(\.0).joined(separator: ",")
+    }
+
+    private var allViolationLabels: String {
+        movingViolations.filter { selectedViolations.contains($0.0) }.map(\.1).joined(separator: ", ")
+    }
+
     private func ensureValidViolationSelection() {
-        let codes = Set(movingViolations.map(\.0))
-        if !selectedViolation.isEmpty, codes.contains(selectedViolation) { return }
-        selectedViolation = ViolationTypeStore.shared.resolveCode(
-            preferred: ["stop_sign", "speeding"],
-            category: "moving"
-        )
+        // No-op: officers must deliberately choose violation types
     }
 
     private static let timestampFormatter: DateFormatter = {
@@ -293,7 +326,7 @@ struct MovingViolationView: View {
         let ticket = PendingTicket(
             plate: normalizedPlate,
             lot: "",
-            violationType: selectedViolation,
+            violationType: joinedViolations,
             confidence: 1.0,
             photoPath: capturedPhotoPath,
             additionalPhotoPaths: additionalPhotoPaths,
@@ -477,8 +510,8 @@ struct CitationConfirmationView: View {
         let ticketData = TicketReceiptBuilder.TicketData(
             ticketId: result.ticketId,
             plate: plate,
-            violationType: selectedViolation,
-            violationLabel: violationLabel,
+            violationType: selectedViolation,  // comma-joined codes
+            violationLabel: violationLabel,    // comma-joined labels
             lot: "",
             fineAmount: result.fineAmount,
             offenseNumber: result.offenseNumber,

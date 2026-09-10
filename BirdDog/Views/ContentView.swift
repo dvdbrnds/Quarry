@@ -287,7 +287,7 @@ struct ContentView: View {
                     }
             }
         }
-        .sheet(isPresented: $showTicketIssuance) {
+        .fullScreenCover(isPresented: $showTicketIssuance) {
             TicketIssuanceView(
                 cameraService: viewModel.cameraService,
                 prefilledPlate: ticketPrefilledPlate,
@@ -301,7 +301,7 @@ struct ContentView: View {
                 ticketPrefilledEntry = nil
             }
         }
-        .sheet(isPresented: $showMovingViolation) {
+        .fullScreenCover(isPresented: $showMovingViolation) {
             MovingViolationView(cameraService: viewModel.cameraService)
         }
         .sheet(isPresented: $showPlateCorrection) {
