@@ -208,17 +208,17 @@ function fmtHour(h: number) {
   return `${h - 12}p`;
 }
 
-function HourChart({ data, color = "#3b82f6" }: { data: { hour: number; count: number }[]; color?: string }) {
+function HourChart({ data, color = "#3b82f6", height = 220 }: { data: { hour: number; count: number }[]; color?: string; height?: number }) {
   const max = Math.max(...data.map(d => d.count), 1);
   return (
     <div>
-      <div className="flex items-end gap-0.5" style={{ height: 120 }}>
+      <div className="flex items-end gap-1" style={{ height }}>
         {data.map(d => {
           const pct = (d.count / max) * 100;
           return (
             <Tooltip key={d.hour} title={`${fmtHour(d.hour)} (${d.hour}:00) — ${d.count} citation${d.count !== 1 ? "s" : ""}`}>
-              <div className="flex-1 flex flex-col items-center justify-end h-full">
-                {d.count > 0 && <span className="text-[8px] font-semibold text-gray-600 mb-0.5">{d.count}</span>}
+              <div className="flex-1 flex flex-col items-center justify-end h-full min-w-0">
+                {d.count > 0 && <span className="text-[9px] font-semibold text-gray-600 mb-0.5">{d.count}</span>}
                 <div
                   className="w-full rounded-t transition-all"
                   style={{ height: `${pct}%`, minHeight: d.count > 0 ? 4 : 0, backgroundColor: color }}
@@ -228,10 +228,10 @@ function HourChart({ data, color = "#3b82f6" }: { data: { hour: number; count: n
           );
         })}
       </div>
-      <div className="flex gap-0.5 mt-1">
+      <div className="flex gap-1 mt-1">
         {data.map(d => (
-          <div key={d.hour} className="flex-1 text-center text-[7px] text-gray-400 leading-tight">
-            {d.hour % 2 === 0 ? fmtHour(d.hour) : ""}
+          <div key={d.hour} className="flex-1 text-center text-[8px] text-gray-500 leading-tight min-w-0">
+            {fmtHour(d.hour)}
           </div>
         ))}
       </div>
