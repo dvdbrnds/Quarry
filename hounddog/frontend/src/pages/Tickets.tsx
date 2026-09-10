@@ -1426,28 +1426,29 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           </Space>
         }
         footer={
-          <Space>
+          <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => setSelected(null)}>Close</Button>
             {selected && (
-              <Button onClick={() => handlePrintTicket(selected)}>Print Case</Button>
+              <Button onClick={() => handlePrintTicket(selected)}>Print</Button>
             )}
+            <div className="flex-1" />
             {isAdmin && selected?.appeal_decision === "pending" && (
               <>
-                <Button type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
-                  Approve Appeal
+                <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
+                  Approve
                 </Button>
-                <Button danger onClick={() => handleAppealDecision(selected!.id, "denied")}>
-                  Deny Appeal
+                <Button size="small" danger onClick={() => handleAppealDecision(selected!.id, "denied")}>
+                  Deny
                 </Button>
-                <Button style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected!.id)}>
-                  Escalate to Committee
+                <Button size="small" style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected!.id)}>
+                  Escalate
                 </Button>
               </>
             )}
             {isAdmin && selected && !["paid", "voided"].includes(selected.status) && (
-              <Button danger type="primary" onClick={() => handleVoid(selected.id)}>Void Ticket</Button>
+              <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
             )}
-          </Space>
+          </div>
         }
         width={560}
       >
