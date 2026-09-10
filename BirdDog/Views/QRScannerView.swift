@@ -8,15 +8,46 @@ struct QRScannerView: View {
     @State private var scannedPayload: PairingPayload?
     @State private var errorMessage: String?
     @State private var isPairing = false
+    @State private var cameraAuthorized = false
+    @State private var cameraDenied = false
 
     var body: some View {
         NavigationStack {
             ZStack {
-                QRCameraPreview(onCodeScanned: handleScanned)
-                    .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
+
+                if cameraAuthorized {
+                    QRCameraPreview(onCodeScanned: handleScanned)
+                        .ignoresSafeArea()
+                }
 
                 VStack {
                     Spacer()
+
+                    if cameraDenied {
+                        VStack(spacing: 12) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.orange)
+                            Text("Camera Access Required")
+                                .font(.title3.bold())
+                                .foregroundStyle(.white)
+                            Text("Open Settings and enable Camera for Bird Dog.")
+                                .font(.callout)
+                                .foregroundStyle(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                            Button("Open Settings") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top, 4)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .padding()
+                    }
 
                     if let error = errorMessage {
                         Text(error)
@@ -29,7 +60,7 @@ struct QRScannerView: View {
 
                     if let payload = scannedPayload {
                         confirmationCard(payload)
-                    } else {
+                    } else if cameraAuthorized {
                         instructionCard
                     }
                 }
@@ -41,6 +72,28 @@ struct QRScannerView: View {
                         .foregroundStyle(.white)
                 }
             }
+            .onAppear {
+                checkCamera()
+            }
+        }
+    }
+
+    private func checkCamera() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            cameraAuthorized = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        cameraAuthorized = true
+                    } else {
+                        cameraDenied = true
+                    }
+                }
+            }
+        default:
+            cameraDenied = true
         }
     }
 
@@ -159,6 +212,8 @@ struct PairingPayload: Decodable {
     }
 }
 
+// MARK: - Camera preview (only instantiated after permission granted)
+
 struct QRCameraPreview: UIViewRepresentable {
     var onCodeScanned: (String) -> Void
 
@@ -176,27 +231,12 @@ class QRPreviewUIView: UIView, AVCaptureMetadataOutputObjectsDelegate {
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var hasScanned = false
-    private var didRequestPermission = false
 
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer?.frame = bounds
-        if captureSession == nil && !didRequestPermission {
-            requestAccessThenSetup()
-        }
-    }
-
-    private func requestAccessThenSetup() {
-        didRequestPermission = true
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        if status == .authorized {
+        if captureSession == nil {
             setupCamera()
-        } else if status == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                if granted {
-                    DispatchQueue.main.async { self?.setupCamera() }
-                }
-            }
         }
     }
 
