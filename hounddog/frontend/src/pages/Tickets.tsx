@@ -937,7 +937,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   useEffect(() => { load(); }, [load]);
 
   function handlePrintTicket(ticket: Ticket) {
-    const photoUrl = ticket.photo_url ? `${window.location.origin}${ticket.photo_url}` : null;
+    const photoUrl = ticket.photo_url
+      ? `${window.location.origin}${ticket.photo_url}`
+      : `${window.location.origin}/api/tickets/${ticket.id}/photo`;
     const gpsLink = ticket.location_lat && ticket.location_lng
       ? `https://maps.google.com/?q=${ticket.location_lat},${ticket.location_lng}`
       : null;
@@ -1576,16 +1578,20 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               </div>
             )}
 
-            {selected.photo_url && (
+            {(selected.photo_url || selected.additional_photo_count > 0) && (
               <div>
-                <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" />
-                {selected.additional_photo_count > 0 && (
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {Array.from({ length: selected.additional_photo_count }).map((_, i) => (
-                      <Image key={i} src={`/api/tickets/${selected.id}/photos/${i}`} alt={`Additional photo ${i + 1}`} className="rounded-lg max-h-32 object-cover" />
-                    ))}
-                  </div>
-                )}
+                <div className="flex gap-2 flex-wrap">
+                  {selected.photo_url && (
+                    <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" />
+                  )}
+                  {!selected.photo_url && (
+                    <Image src={`/api/tickets/${selected.id}/photo`} alt="Violation photo" className="rounded-lg max-h-48 object-cover"
+                      onError={(e: any) => { e.target.style.display = "none"; }} />
+                  )}
+                  {selected.additional_photo_count > 0 && Array.from({ length: selected.additional_photo_count }).map((_, i) => (
+                    <Image key={i} src={`/api/tickets/${selected.id}/photos/${i}`} alt={`Additional photo ${i + 1}`} className="rounded-lg max-h-48 object-cover" />
+                  ))}
+                </div>
               </div>
             )}
 

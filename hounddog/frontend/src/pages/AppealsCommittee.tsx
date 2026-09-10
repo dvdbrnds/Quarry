@@ -514,28 +514,7 @@ function CommitteePage() {
             )}
 
             {/* Evidence Photos — use the public ticket photo endpoints */}
-            <div>
-              <div className="text-xs font-medium text-gray-500 mb-2">Evidence Photos</div>
-              <div className="flex gap-2 flex-wrap">
-                <img
-                  src={`/api/tickets/${detail.id}/photo`}
-                  alt="Primary citation photo"
-                  className="max-h-48 rounded border cursor-pointer"
-                  onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
-                  onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                />
-                {detail.additional_photo_count > 0 && Array.from({ length: detail.additional_photo_count }).map((_, i) => (
-                  <img
-                    key={i}
-                    src={`/api/tickets/${detail.id}/photos/${i}`}
-                    alt={`Additional photo ${i + 1}`}
-                    className="max-h-48 rounded border cursor-pointer"
-                    onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
-                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  />
-                ))}
-              </div>
-            </div>
+            <EvidencePhotos ticketId={detail.id} additionalCount={detail.additional_photo_count} />
 
             {/* Appeal Note */}
             <Card size="small" title="Student's Appeal" className="!bg-yellow-50">
@@ -623,6 +602,44 @@ function CommitteePage() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function EvidencePhotos({ ticketId, additionalCount }: { ticketId: string; additionalCount: number }) {
+  const [primaryFailed, setPrimaryFailed] = useState(false);
+  const totalPhotos = 1 + additionalCount;
+
+  return (
+    <div>
+      <div className="text-xs font-medium text-gray-500 mb-2">
+        Evidence Photos {totalPhotos > 1 && `(${totalPhotos})`}
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {!primaryFailed ? (
+          <img
+            src={`/api/tickets/${ticketId}/photo`}
+            alt="Primary citation photo"
+            className="max-h-48 rounded border cursor-pointer"
+            onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
+            onError={() => setPrimaryFailed(true)}
+          />
+        ) : (
+          <div className="flex items-center justify-center w-48 h-32 rounded border border-dashed border-gray-300 text-gray-400 text-xs">
+            No photo available
+          </div>
+        )}
+        {additionalCount > 0 && Array.from({ length: additionalCount }).map((_, i) => (
+          <img
+            key={i}
+            src={`/api/tickets/${ticketId}/photos/${i}`}
+            alt={`Additional photo ${i + 1}`}
+            className="max-h-48 rounded border cursor-pointer"
+            onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
+            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
