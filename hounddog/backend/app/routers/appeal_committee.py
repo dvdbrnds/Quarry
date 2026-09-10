@@ -202,7 +202,7 @@ async def remove_member(
     if not member:
         raise HTTPException(404, "Member not found")
     await db.delete(member)
-    await db.flush()
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------

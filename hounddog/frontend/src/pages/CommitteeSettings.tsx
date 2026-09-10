@@ -54,12 +54,17 @@ export default function CommitteeSettings() {
 
   async function handleRemove(id: string) {
     try {
-      await fetch(`/api/appeal-committee/members/${id}`, {
+      const res = await fetch(`/api/appeal-committee/members/${id}`, {
         method: "DELETE",
         headers: await authHeaders(),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        message.error(err.detail || `Failed to remove (${res.status})`);
+        return;
+      }
       message.success("Member removed");
-      load();
+      await load();
     } catch { message.error("Failed to remove"); }
   }
 
