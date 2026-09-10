@@ -93,33 +93,23 @@ async def list_tickets(
     return TicketList(items=items, total=total, page=page, page_size=page_size)
 
 
-@router.get("/my-stats")
-async def my_ticket_stats(
-    user: OktaUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Officer performance stats for the logged-in user."""
-    email = user.email
-    now = datetime.now(timezone.utc)
+async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime) -> dict:
+    """Compute full stats for a single officer email. Shared by my-stats and officer-report."""
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    thirty_days_ago = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     base = select(func.count()).where(Ticket.officer_email == email)
-
     all_time = (await db.execute(base)).scalar() or 0
     this_week = (await db.execute(base.where(Ticket.issued_at >= week_start))).scalar() or 0
     this_month = (await db.execute(base.where(Ticket.issued_at >= month_start))).scalar() or 0
 
-    total_all = (await db.execute(select(func.count()).select_from(Ticket))).scalar() or 0
-    global_share = round((all_time / total_all) * 100, 1) if total_all else 0
-
-    by_violation_q = (
+    # By violation
+    by_violation_rows = (await db.execute(
         select(Ticket.violation_type, func.count().label("cnt"))
         .where(Ticket.officer_email == email)
-        .group_by(Ticket.violation_type)
-        .order_by(func.count().desc())
-    )
-    by_violation_rows = (await db.execute(by_violation_q)).all()
+        .group_by(Ticket.violation_type).order_by(func.count().desc())
+    )).all()
 
     vt_codes = [r[0] for r in by_violation_rows]
     label_map: dict[str, str] = {}
@@ -128,32 +118,91 @@ async def my_ticket_stats(
             select(ViolationType.code, ViolationType.label).where(ViolationType.code.in_(vt_codes))
         )
         label_map = {r[0]: r[1] for r in vt_result.all()}
+    by_violation = [{"violation_type": r[0], "label": label_map.get(r[0], r[0]), "count": r[1]} for r in by_violation_rows]
 
-    by_violation = [
-        {"violation_type": r[0], "label": label_map.get(r[0], r[0]), "count": r[1]}
-        for r in by_violation_rows
-    ]
-
-    by_status_q = (
+    # By status
+    by_status = [{"status": r[0], "count": r[1]} for r in (await db.execute(
         select(Ticket.status, func.count().label("cnt"))
         .where(Ticket.officer_email == email)
-        .group_by(Ticket.status)
-        .order_by(func.count().desc())
+        .group_by(Ticket.status).order_by(func.count().desc())
+    )).all()]
+
+    # Daily activity (last 30 days)
+    daily_q = (
+        select(cast(Ticket.issued_at, Date).label("day"), func.count().label("cnt"))
+        .where(Ticket.officer_email == email, Ticket.issued_at >= thirty_days_ago)
+        .group_by("day").order_by("day")
     )
-    by_status = [
-        {"status": r[0], "count": r[1]}
-        for r in (await db.execute(by_status_q)).all()
-    ]
+    daily_rows = (await db.execute(daily_q)).all()
+    daily_map = {str(r[0]): r[1] for r in daily_rows}
+    daily_activity = []
+    for i in range(30):
+        d = (thirty_days_ago + timedelta(days=i)).strftime("%Y-%m-%d")
+        daily_activity.append({"date": d, "count": daily_map.get(d, 0)})
+
+    # By lot
+    by_lot = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(
+        select(Ticket.lot, func.count().label("cnt"))
+        .where(Ticket.officer_email == email)
+        .group_by(Ticket.lot).order_by(func.count().desc())
+    )).all()]
+
+    # By hour
+    by_hour_rows = (await db.execute(
+        select(func.extract("hour", Ticket.issued_at).label("hr"), func.count().label("cnt"))
+        .where(Ticket.officer_email == email)
+        .group_by("hr").order_by("hr")
+    )).all()
+    hour_map = {int(r[0]): r[1] for r in by_hour_rows}
+    by_hour = [{"hour": h, "count": hour_map.get(h, 0)} for h in range(24)]
+
+    # Appeal/void rates
+    status_counts = {s["status"]: s["count"] for s in by_status}
+    voided = status_counts.get("voided", 0)
+    appealed = status_counts.get("appealed", 0)
+    void_rate = round((voided / all_time) * 100, 1) if all_time else 0
+    appeal_rate = round((appealed / all_time) * 100, 1) if all_time else 0
+
+    # Revenue
+    total_fines = float((await db.execute(
+        select(func.coalesce(func.sum(Ticket.fine_amount), 0))
+        .where(Ticket.officer_email == email)
+    )).scalar() or 0)
+    paid_fines = float((await db.execute(
+        select(func.coalesce(func.sum(Ticket.fine_amount), 0))
+        .where(Ticket.officer_email == email, Ticket.status == "paid")
+    )).scalar() or 0)
 
     return {
         "this_week": this_week,
         "this_month": this_month,
         "all_time": all_time,
-        "global_share": global_share,
-        "total_all": total_all,
         "by_violation": by_violation,
         "by_status": by_status,
+        "daily_activity": daily_activity,
+        "by_lot": by_lot,
+        "by_hour": by_hour,
+        "appeal_void_rate": {
+            "voided": voided, "appealed": appealed,
+            "void_rate": void_rate, "appeal_rate": appeal_rate,
+        },
+        "revenue": {"total_fines": round(total_fines, 2), "paid_fines": round(paid_fines, 2)},
     }
+
+
+@router.get("/my-stats")
+async def my_ticket_stats(
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Officer performance stats for the logged-in user."""
+    now = datetime.now(timezone.utc)
+    stats = await _officer_stats_for_email(user.email, db, now)
+
+    total_all = (await db.execute(select(func.count()).select_from(Ticket))).scalar() or 0
+    stats["global_share"] = round((stats["all_time"] / total_all) * 100, 1) if total_all else 0
+    stats["total_all"] = total_all
+    return stats
 
 
 @router.get("/officer-report")
@@ -163,88 +212,88 @@ async def officer_report(
 ):
     """Admin-only: performance stats for every officer."""
     now = datetime.now(timezone.utc)
-    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    thirty_days_ago = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     total_all = (await db.execute(select(func.count()).select_from(Ticket))).scalar() or 0
 
-    # All-time counts per officer
-    all_time_q = (
-        select(
-            Ticket.officer_email,
-            func.max(Ticket.officer_name).label("officer_name"),
-            func.count().label("all_time"),
-        )
+    # Get all officer emails
+    officer_emails_q = (
+        select(Ticket.officer_email)
         .where(Ticket.officer_email.isnot(None))
         .group_by(Ticket.officer_email)
-        .order_by(func.count().desc())
     )
-    all_time_rows = {r[0]: {"officer_email": r[0], "officer_name": r[1], "all_time": r[2]} for r in (await db.execute(all_time_q)).all()}
+    officer_emails = [r[0] for r in (await db.execute(officer_emails_q)).all()]
 
-    # This week counts
-    week_q = (
-        select(Ticket.officer_email, func.count().label("cnt"))
-        .where(Ticket.officer_email.isnot(None), Ticket.issued_at >= week_start)
-        .group_by(Ticket.officer_email)
-    )
-    week_map = {r[0]: r[1] for r in (await db.execute(week_q)).all()}
-
-    # This month counts
-    month_q = (
-        select(Ticket.officer_email, func.count().label("cnt"))
-        .where(Ticket.officer_email.isnot(None), Ticket.issued_at >= month_start)
-        .group_by(Ticket.officer_email)
-    )
-    month_map = {r[0]: r[1] for r in (await db.execute(month_q)).all()}
-
-    # By violation per officer
-    viol_q = (
-        select(Ticket.officer_email, Ticket.violation_type, func.count().label("cnt"))
-        .where(Ticket.officer_email.isnot(None))
-        .group_by(Ticket.officer_email, Ticket.violation_type)
-        .order_by(func.count().desc())
-    )
-    viol_rows = (await db.execute(viol_q)).all()
-    viol_map: dict[str, list] = {}
-    vt_codes_set: set[str] = set()
-    for email, vtype, cnt in viol_rows:
-        viol_map.setdefault(email, []).append({"violation_type": vtype, "count": cnt})
-        vt_codes_set.add(vtype)
-
-    label_map: dict[str, str] = {}
-    if vt_codes_set:
-        vt_result = await db.execute(
-            select(ViolationType.code, ViolationType.label).where(ViolationType.code.in_(list(vt_codes_set)))
-        )
-        label_map = {r[0]: r[1] for r in vt_result.all()}
-
-    # By status per officer
-    status_q = (
-        select(Ticket.officer_email, Ticket.status, func.count().label("cnt"))
-        .where(Ticket.officer_email.isnot(None))
-        .group_by(Ticket.officer_email, Ticket.status)
-        .order_by(func.count().desc())
-    )
-    status_rows = (await db.execute(status_q)).all()
-    status_map: dict[str, list] = {}
-    for email, st, cnt in status_rows:
-        status_map.setdefault(email, []).append({"status": st, "count": cnt})
-
+    # Build per-officer stats using the shared helper
     officers = []
-    for email, data in all_time_rows.items():
-        viols = viol_map.get(email, [])
-        for v in viols:
-            v["label"] = label_map.get(v["violation_type"], v["violation_type"])
-        officers.append({
-            **data,
-            "this_week": week_map.get(email, 0),
-            "this_month": month_map.get(email, 0),
-            "global_share": round((data["all_time"] / total_all) * 100, 1) if total_all else 0,
-            "by_violation": viols,
-            "by_status": status_map.get(email, []),
-        })
+    for email in officer_emails:
+        stats = await _officer_stats_for_email(email, db, now)
+        officer_name_row = (await db.execute(
+            select(Ticket.officer_name).where(Ticket.officer_email == email, Ticket.officer_name.isnot(None))
+            .order_by(Ticket.issued_at.desc()).limit(1)
+        )).scalar()
+        stats["officer_email"] = email
+        stats["officer_name"] = officer_name_row
+        stats["global_share"] = round((stats["all_time"] / total_all) * 100, 1) if total_all else 0
+        officers.append(stats)
 
-    return {"total_all": total_all, "officers": officers}
+    officers.sort(key=lambda o: o["all_time"], reverse=True)
+
+    # Team-wide daily totals (last 30 days)
+    daily_total_rows = (await db.execute(
+        select(cast(Ticket.issued_at, Date).label("day"), func.count().label("cnt"))
+        .where(Ticket.issued_at >= thirty_days_ago)
+        .group_by("day").order_by("day")
+    )).all()
+    daily_total_map = {str(r[0]): r[1] for r in daily_total_rows}
+    daily_total = []
+    for i in range(30):
+        d = (thirty_days_ago + timedelta(days=i)).strftime("%Y-%m-%d")
+        daily_total.append({"date": d, "count": daily_total_map.get(d, 0)})
+
+    # Team-wide lot breakdown
+    by_lot_total = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(
+        select(Ticket.lot, func.count().label("cnt"))
+        .group_by(Ticket.lot).order_by(func.count().desc())
+    )).all()]
+
+    # Team-wide hour breakdown
+    by_hour_total_rows = (await db.execute(
+        select(func.extract("hour", Ticket.issued_at).label("hr"), func.count().label("cnt"))
+        .group_by("hr").order_by("hr")
+    )).all()
+    hour_map = {int(r[0]): r[1] for r in by_hour_total_rows}
+    by_hour_total = [{"hour": h, "count": hour_map.get(h, 0)} for h in range(24)]
+
+    # Team-wide revenue
+    total_revenue = float((await db.execute(
+        select(func.coalesce(func.sum(Ticket.fine_amount), 0))
+    )).scalar() or 0)
+    paid_revenue = float((await db.execute(
+        select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(Ticket.status == "paid")
+    )).scalar() or 0)
+
+    # Team-wide week/month
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    team_this_week = (await db.execute(select(func.count()).where(Ticket.issued_at >= week_start))).scalar() or 0
+    team_this_month = (await db.execute(select(func.count()).where(Ticket.issued_at >= month_start))).scalar() or 0
+
+    # Team avg void rate
+    total_voided = sum(1 for o in officers for s in o["by_status"] if s["status"] == "voided" for _ in range(s["count"]))
+    avg_void_rate = round((total_voided / total_all) * 100, 1) if total_all else 0
+
+    return {
+        "total_all": total_all,
+        "team_this_week": team_this_week,
+        "team_this_month": team_this_month,
+        "team_revenue": {"total_fines": round(total_revenue, 2), "paid_fines": round(paid_revenue, 2)},
+        "avg_void_rate": avg_void_rate,
+        "daily_total": daily_total,
+        "by_lot_total": by_lot_total,
+        "by_hour_total": by_hour_total,
+        "officers": officers,
+    }
 
 
 @router.post("", response_model=TicketRead, status_code=201)

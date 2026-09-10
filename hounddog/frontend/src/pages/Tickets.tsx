@@ -62,7 +62,13 @@ const STATUS_COLORS: Record<string, string> = {
   voided: "default",
 };
 
-interface OfficerStatsData {
+const STATUS_BAR_COLORS: Record<string, string> = {
+  issued: "#ef4444", warning: "#f97316", paid: "#22c55e",
+  voided: "#9ca3af", appealed: "#eab308", escalated: "#a855f7",
+  overdue: "#dc2626", pending_payment: "#f97316",
+};
+
+interface FullStatsData {
   this_week: number;
   this_month: number;
   all_time: number;
@@ -70,10 +76,86 @@ interface OfficerStatsData {
   total_all: number;
   by_violation: { violation_type: string; label: string; count: number }[];
   by_status: { status: string; count: number }[];
+  daily_activity: { date: string; count: number }[];
+  by_lot: { lot: string; count: number }[];
+  by_hour: { hour: number; count: number }[];
+  appeal_void_rate: { voided: number; appealed: number; void_rate: number; appeal_rate: number };
+  revenue: { total_fines: number; paid_fines: number };
+}
+
+function HBarChart({ items, colorFn }: { items: { label: string; value: number; tag?: boolean }[]; colorFn?: (label: string) => string }) {
+  const max = Math.max(...items.map(i => i.value), 1);
+  return (
+    <div className="space-y-2">
+      {items.map(item => (
+        <div key={item.label}>
+          <div className="flex justify-between text-xs mb-0.5">
+            {item.tag ? <Tag color={STATUS_COLORS[item.label] || "default"} className="mr-0">{item.label}</Tag>
+              : <span className="text-gray-600 truncate mr-2">{item.label}</span>}
+            <span className="font-semibold text-gray-800 shrink-0">{item.value}</span>
+          </div>
+          <div className="h-4 bg-gray-100 rounded overflow-hidden">
+            <div className="h-full rounded transition-all" style={{
+              width: `${(item.value / max) * 100}%`,
+              backgroundColor: colorFn ? colorFn(item.label) : "#3b82f6",
+            }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DailyTimeline({ data, height = 120, color = "#3b82f6" }: { data: { date: string; count: number }[]; height?: number; color?: string }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * 100;
+    const y = 100 - (d.count / max) * 100;
+    return { x, y, ...d };
+  });
+  const polyline = points.map(p => `${p.x},${p.y}`).join(" ");
+  const areaPath = `M ${points[0].x},100 ` + points.map(p => `L ${p.x},${p.y}`).join(" ") + ` L ${points[points.length - 1].x},100 Z`;
+
+  return (
+    <div style={{ height }} className="relative">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
+        <path d={areaPath} fill={color} opacity="0.15" />
+        <polyline points={polyline} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        {points.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="1.2" fill={color} vectorEffect="non-scaling-stroke">
+            <title>{p.date}: {p.count}</title>
+          </circle>
+        ))}
+      </svg>
+      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-gray-400 mt-1">
+        <span>{data[0]?.date?.slice(5)}</span>
+        <span>{data[data.length - 1]?.date?.slice(5)}</span>
+      </div>
+    </div>
+  );
+}
+
+function HourChart({ data, color = "#3b82f6" }: { data: { hour: number; count: number }[]; color?: string }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  return (
+    <div className="flex items-end gap-px h-28">
+      {data.map(d => (
+        <Tooltip key={d.hour} title={`${d.hour}:00 — ${d.count} citations`}>
+          <div className="flex-1 flex flex-col items-center justify-end h-full">
+            <div
+              className="w-full rounded-t transition-all"
+              style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? 2 : 0, backgroundColor: color }}
+            />
+            {d.hour % 4 === 0 && <span className="text-[8px] text-gray-400 mt-0.5">{d.hour}</span>}
+          </div>
+        </Tooltip>
+      ))}
+    </div>
+  );
 }
 
 function OfficerStats() {
-  const [stats, setStats] = useState<OfficerStatsData | null>(null);
+  const [stats, setStats] = useState<FullStatsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -89,110 +171,128 @@ function OfficerStats() {
   if (loading) return <div className="text-center py-8"><Spin /></div>;
   if (!stats) return null;
 
-  const maxViolation = Math.max(...stats.by_violation.map(v => v.count), 1);
-  const maxStatus = Math.max(...stats.by_status.map(s => s.count), 1);
+  const qualityScore = Math.round((1 - stats.appeal_void_rate.void_rate / 100) * 100);
+  const qualityColor = qualityScore >= 85 ? "#22c55e" : qualityScore >= 70 ? "#eab308" : "#ef4444";
 
   return (
     <div className="mb-6 space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Row 1 — stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Card size="small" className="shadow-sm"><Statistic title="This Week" value={stats.this_week} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="This Month" value={stats.this_month} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="All Time" value={stats.all_time} /></Card>
         <Card size="small" className="shadow-sm">
-          <Statistic title="This Week" value={stats.this_week} />
+          <div className="flex items-center gap-3">
+            <Progress type="circle" percent={stats.global_share} size={48} format={p => `${p}%`} />
+            <div>
+              <div className="text-xs text-gray-500">Share</div>
+              <Tooltip title={`${stats.all_time} of ${stats.total_all} total`}>
+                <div className="text-xs font-semibold cursor-help">{stats.all_time}/{stats.total_all}</div>
+              </Tooltip>
+            </div>
+          </div>
         </Card>
         <Card size="small" className="shadow-sm">
-          <Statistic title="This Month" value={stats.this_month} />
-        </Card>
-        <Card size="small" className="shadow-sm">
-          <Statistic title="All Time" value={stats.all_time} />
+          <Statistic title="Revenue" value={stats.revenue.total_fines} prefix="$" precision={0} />
+          <div className="text-[10px] text-gray-400 mt-0.5">${stats.revenue.paid_fines.toFixed(0)} collected</div>
         </Card>
         <Card size="small" className="shadow-sm">
           <div className="flex items-center gap-3">
-            <Progress
-              type="circle"
-              percent={stats.global_share}
-              size={56}
-              format={pct => `${pct}%`}
-            />
+            <Progress type="circle" percent={qualityScore} size={48} strokeColor={qualityColor} format={p => `${p}%`} />
             <div>
-              <div className="text-xs text-gray-500">Global Share</div>
-              <Tooltip title={`${stats.all_time} of ${stats.total_all} total citations`}>
-                <div className="text-sm font-semibold cursor-help">{stats.all_time} / {stats.total_all}</div>
+              <div className="text-xs text-gray-500">Quality</div>
+              <Tooltip title={`${stats.appeal_void_rate.voided} voided, ${stats.appeal_void_rate.appealed} appealed`}>
+                <div className="text-[10px] text-gray-400 cursor-help">{stats.appeal_void_rate.void_rate}% void</div>
               </Tooltip>
             </div>
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card size="small" title="Citations by Violation" className="shadow-sm">
-          {stats.by_violation.length === 0 ? (
-            <Empty description="No data" className="py-4" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          ) : (
-            <div className="space-y-2">
-              {stats.by_violation.map(v => (
-                <div key={v.violation_type}>
-                  <div className="flex justify-between text-xs mb-0.5">
-                    <span className="text-gray-600 truncate mr-2">{v.label}</span>
-                    <span className="font-semibold text-gray-800 shrink-0">{v.count}</span>
-                  </div>
-                  <div className="h-4 bg-gray-100 rounded overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${(v.count / maxViolation) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+      {/* Row 2 — 30-day timeline */}
+      <Card size="small" title="30-Day Activity" className="shadow-sm">
+        {stats.daily_activity.length > 0 ? <DailyTimeline data={stats.daily_activity} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />}
+      </Card>
 
-        <Card size="small" title="Citations by Status" className="shadow-sm">
-          {stats.by_status.length === 0 ? (
-            <Empty description="No data" className="py-4" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          ) : (
-            <div className="space-y-2">
-              {stats.by_status.map(s => (
-                <div key={s.status}>
-                  <div className="flex justify-between text-xs mb-0.5">
-                    <Tag color={STATUS_COLORS[s.status] || "default"} className="mr-0">{s.status}</Tag>
-                    <span className="font-semibold text-gray-800">{s.count}</span>
-                  </div>
-                  <div className="h-4 bg-gray-100 rounded overflow-hidden">
-                    <div
-                      className="h-full rounded transition-all"
-                      style={{
-                        width: `${(s.count / maxStatus) * 100}%`,
-                        backgroundColor: {
-                          issued: "#ef4444", warning: "#f97316", paid: "#22c55e",
-                          voided: "#9ca3af", appealed: "#eab308", escalated: "#a855f7",
-                          overdue: "#dc2626", pending_payment: "#f97316",
-                        }[s.status] || "#6b7280",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Row 3 — three columns */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card size="small" title="By Violation" className="shadow-sm">
+          {stats.by_violation.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />
+            : <HBarChart items={stats.by_violation.map(v => ({ label: v.label, value: v.count }))} />}
+        </Card>
+        <Card size="small" title="By Lot" className="shadow-sm">
+          {stats.by_lot.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />
+            : <HBarChart items={stats.by_lot.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} />}
+        </Card>
+        <Card size="small" title="By Hour of Day" className="shadow-sm">
+          <HourChart data={stats.by_hour} />
         </Card>
       </div>
+
+      {/* Row 4 — status */}
+      <Card size="small" title="By Status" className="shadow-sm" style={{ maxWidth: 500 }}>
+        {stats.by_status.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />
+          : <HBarChart items={stats.by_status.map(s => ({ label: s.status, value: s.count, tag: true }))} colorFn={l => STATUS_BAR_COLORS[l] || "#6b7280"} />}
+      </Card>
     </div>
   );
 }
 
-interface OfficerRow {
+interface OfficerRow extends FullStatsData {
   officer_email: string;
   officer_name: string | null;
-  this_week: number;
-  this_month: number;
-  all_time: number;
   global_share: number;
-  by_violation: { violation_type: string; label: string; count: number }[];
-  by_status: { status: string; count: number }[];
+}
+
+interface ReportData {
+  total_all: number;
+  team_this_week: number;
+  team_this_month: number;
+  team_revenue: { total_fines: number; paid_fines: number };
+  avg_void_rate: number;
+  daily_total: { date: string; count: number }[];
+  by_lot_total: { lot: string; count: number }[];
+  by_hour_total: { hour: number; count: number }[];
+  officers: OfficerRow[];
+}
+
+function CompareGroupedBars({ label, compared, accessor, colors, displayName }: {
+  label: string;
+  compared: OfficerRow[];
+  accessor: (o: OfficerRow) => { key: string; label?: string; count: number }[];
+  colors: string[];
+  displayName: (o: OfficerRow) => string;
+}) {
+  const allKeys = new Map<string, string>();
+  compared.forEach(o => accessor(o).forEach(v => allKeys.set(v.key, v.label || v.key)));
+  const maxV = Math.max(...compared.flatMap(o => accessor(o).map(v => v.count)), 1);
+  return (
+    <div className="mb-4">
+      <h4 className="text-sm font-semibold text-gray-700 mb-3">{label}</h4>
+      {Array.from(allKeys.entries()).map(([key, lbl]) => (
+        <div key={key} className="mb-3">
+          <div className="text-xs text-gray-600 mb-1">{lbl}</div>
+          {compared.map((o, i) => {
+            const found = accessor(o).find(v => v.key === key);
+            const cnt = found?.count || 0;
+            return (
+              <div key={o.officer_email} className="flex items-center gap-2 mb-0.5">
+                <div className="w-20 text-[10px] text-right truncate" style={{ color: colors[i % colors.length] }}>{displayName(o)}</div>
+                <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                  <div className="h-full rounded transition-all" style={{ width: `${(cnt / maxV) * 100}%`, backgroundColor: colors[i % colors.length] }} />
+                </div>
+                <div className="w-8 text-xs font-semibold text-right">{cnt}</div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function OfficerReport() {
-  const [data, setData] = useState<{ total_all: number; officers: OfficerRow[] } | null>(null);
+  const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
 
@@ -214,67 +314,109 @@ function OfficerReport() {
   const compared = officers.filter(o => compareKeys.includes(o.officer_email));
 
   const toggleCompare = (email: string) => {
-    setCompareKeys(prev =>
-      prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
-    );
+    setCompareKeys(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]);
   };
 
   const displayName = (o: OfficerRow) => o.officer_name || o.officer_email.split("@")[0];
-
   const COMPARE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-1">Officer Performance Report</h2>
-        <p className="text-sm text-gray-500">{officers.length} officer{officers.length !== 1 ? "s" : ""} · {data.total_all} total citations</p>
+        <p className="text-sm text-gray-500">{officers.length} officer{officers.length !== 1 ? "s" : ""} &middot; {data.total_all} total citations</p>
       </div>
 
-      {/* Leaderboard */}
-      <Card size="small" title="All Officers — Ranked by All-Time Citations" className="shadow-sm">
+      {/* Section 1 — Team overview cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <Card size="small" className="shadow-sm"><Statistic title="Total Citations" value={data.total_all} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="This Week" value={data.team_this_week} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="This Month" value={data.team_this_month} /></Card>
+        <Card size="small" className="shadow-sm">
+          <Statistic title="Total Revenue" value={data.team_revenue.total_fines} prefix="$" precision={0} />
+          <div className="text-[10px] text-gray-400 mt-0.5">${data.team_revenue.paid_fines.toFixed(0)} collected</div>
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <div className="flex items-center gap-3">
+            <Progress type="circle" percent={Math.round(100 - data.avg_void_rate)} size={48}
+              strokeColor={data.avg_void_rate <= 15 ? "#22c55e" : data.avg_void_rate <= 30 ? "#eab308" : "#ef4444"}
+              format={p => `${p}%`} />
+            <div>
+              <div className="text-xs text-gray-500">Team Quality</div>
+              <div className="text-[10px] text-gray-400">{data.avg_void_rate}% void rate</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Section 2 — 30-day team timeline */}
+      <Card size="small" title="30-Day Team Activity" className="shadow-sm">
+        <DailyTimeline data={data.daily_total} height={140} />
+      </Card>
+
+      {/* Section 3 & 4 — Lot Coverage and Peak Hours */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card size="small" title="Citations by Lot" className="shadow-sm">
+          {data.by_lot_total.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />
+            : <HBarChart items={data.by_lot_total.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} />}
+        </Card>
+        <Card size="small" title="Peak Enforcement Hours" className="shadow-sm">
+          <HourChart data={data.by_hour_total} color="#f59e0b" />
+        </Card>
+      </div>
+
+      {/* Section 5 — Leaderboard */}
+      <Card size="small" title="Officer Leaderboard" className="shadow-sm">
         <div className="space-y-3">
-          {officers.map((o, i) => (
-            <div key={o.officer_email} className="flex items-center gap-3">
-              <div className="w-6 text-right text-sm font-bold text-gray-400">#{i + 1}</div>
-              <Tooltip title={compareKeys.includes(o.officer_email) ? "Remove from comparison" : "Add to comparison"}>
-                <Button
-                  size="small"
-                  type={compareKeys.includes(o.officer_email) ? "primary" : "default"}
-                  onClick={() => toggleCompare(o.officer_email)}
-                  className="shrink-0"
-                  style={compareKeys.includes(o.officer_email) ? { background: COMPARE_COLORS[compareKeys.indexOf(o.officer_email) % COMPARE_COLORS.length] } : {}}
-                >
-                  {compareKeys.includes(o.officer_email) ? "✓" : "Compare"}
-                </Button>
-              </Tooltip>
-              <div className="w-36 shrink-0">
-                <div className="font-semibold text-sm truncate">{displayName(o)}</div>
-                <div className="text-[10px] text-gray-400 truncate">{o.officer_email}</div>
-              </div>
-              <div className="flex-1">
-                <div className="h-6 bg-gray-100 rounded overflow-hidden relative">
-                  <div
-                    className="h-full bg-blue-500 rounded transition-all"
-                    style={{ width: `${(o.all_time / maxAllTime) * 100}%` }}
-                  />
-                  <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold" style={{ color: o.all_time > maxAllTime * 0.3 ? "#fff" : "#333" }}>
-                    {o.all_time}
-                  </span>
+          {officers.map((o, i) => {
+            const qs = Math.round((1 - (o.appeal_void_rate?.void_rate || 0) / 100) * 100);
+            const qColor = qs >= 85 ? "#22c55e" : qs >= 70 ? "#eab308" : "#ef4444";
+            return (
+              <div key={o.officer_email} className="flex items-center gap-3">
+                <div className="w-6 text-right text-sm font-bold text-gray-400">#{i + 1}</div>
+                <Tooltip title={compareKeys.includes(o.officer_email) ? "Remove from comparison" : "Add to comparison"}>
+                  <Button
+                    size="small"
+                    type={compareKeys.includes(o.officer_email) ? "primary" : "default"}
+                    onClick={() => toggleCompare(o.officer_email)}
+                    className="shrink-0"
+                    style={compareKeys.includes(o.officer_email) ? { background: COMPARE_COLORS[compareKeys.indexOf(o.officer_email) % COMPARE_COLORS.length] } : {}}
+                  >
+                    {compareKeys.includes(o.officer_email) ? "✓" : "Compare"}
+                  </Button>
+                </Tooltip>
+                <div className="w-32 shrink-0">
+                  <div className="font-semibold text-sm truncate">{displayName(o)}</div>
+                  <div className="text-[10px] text-gray-400 truncate">{o.officer_email}</div>
+                </div>
+                <div className="flex-1">
+                  <div className="h-6 bg-gray-100 rounded overflow-hidden relative">
+                    <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${(o.all_time / maxAllTime) * 100}%` }} />
+                    <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold" style={{ color: o.all_time > maxAllTime * 0.3 ? "#fff" : "#333" }}>
+                      {o.all_time}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 w-20">
+                  <div className="text-xs text-gray-500">Wk: <span className="font-semibold text-gray-800">{o.this_week}</span></div>
+                  <div className="text-xs text-gray-500">Mo: <span className="font-semibold text-gray-800">{o.this_month}</span></div>
+                </div>
+                <Tooltip title={`$${(o.revenue?.total_fines || 0).toFixed(0)} total / $${(o.revenue?.paid_fines || 0).toFixed(0)} collected`}>
+                  <div className="shrink-0 w-16 text-right text-xs font-semibold text-green-700">${(o.revenue?.total_fines || 0).toFixed(0)}</div>
+                </Tooltip>
+                <Tooltip title={`Quality: ${qs}% (${o.appeal_void_rate?.void_rate || 0}% voided)`}>
+                  <div className="shrink-0"><Progress type="circle" percent={qs} size={32} strokeColor={qColor} format={p => `${p}`} /></div>
+                </Tooltip>
+                <div className="shrink-0 w-12">
+                  <Progress type="circle" percent={o.global_share} size={32} format={p => `${p}%`} />
                 </div>
               </div>
-              <div className="text-right shrink-0 w-24">
-                <div className="text-xs text-gray-500">Week: <span className="font-semibold text-gray-800">{o.this_week}</span></div>
-                <div className="text-xs text-gray-500">Month: <span className="font-semibold text-gray-800">{o.this_month}</span></div>
-              </div>
-              <div className="shrink-0 w-14">
-                <Progress type="circle" percent={o.global_share} size={36} format={p => `${p}%`} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
 
-      {/* Side-by-side comparison */}
+      {/* Section 6 — Side-by-side comparison */}
       {compared.length >= 2 && (
         <Card
           size="small"
@@ -282,7 +424,7 @@ function OfficerReport() {
           extra={<Button size="small" onClick={() => setCompareKeys([])}>Clear</Button>}
           className="shadow-sm"
         >
-          {/* Summary numbers */}
+          {/* Summary table */}
           <div className="overflow-x-auto mb-6">
             <table className="w-full text-sm">
               <thead>
@@ -296,80 +438,113 @@ function OfficerReport() {
                 </tr>
               </thead>
               <tbody>
-                {(["this_week", "this_month", "all_time", "global_share"] as const).map(metric => (
-                  <tr key={metric} className="border-b border-gray-50">
-                    <td className="py-2 pr-4 text-gray-600 capitalize">{metric.replace(/_/g, " ")}{metric === "global_share" ? " %" : ""}</td>
-                    {compared.map((o, i) => {
-                      const val = o[metric];
-                      const vals = compared.map(c => c[metric]);
-                      const isMax = val === Math.max(...vals) && vals.filter(v => v === val).length === 1;
-                      return (
-                        <td key={o.officer_email} className={`text-right py-2 px-3 ${isMax ? "font-bold" : ""}`} style={isMax ? { color: COMPARE_COLORS[i % COMPARE_COLORS.length] } : {}}>
-                          {metric === "global_share" ? `${val}%` : val}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {(
+                  [
+                    { key: "this_week", label: "This Week", get: (o: OfficerRow) => o.this_week, fmt: (v: number) => String(v) },
+                    { key: "this_month", label: "This Month", get: (o: OfficerRow) => o.this_month, fmt: (v: number) => String(v) },
+                    { key: "all_time", label: "All Time", get: (o: OfficerRow) => o.all_time, fmt: (v: number) => String(v) },
+                    { key: "global_share", label: "Global Share", get: (o: OfficerRow) => o.global_share, fmt: (v: number) => `${v}%` },
+                    { key: "revenue", label: "Revenue", get: (o: OfficerRow) => o.revenue?.total_fines || 0, fmt: (v: number) => `$${v.toFixed(0)}` },
+                    { key: "paid", label: "Collected", get: (o: OfficerRow) => o.revenue?.paid_fines || 0, fmt: (v: number) => `$${v.toFixed(0)}` },
+                    { key: "quality", label: "Quality Score", get: (o: OfficerRow) => Math.round((1 - (o.appeal_void_rate?.void_rate || 0) / 100) * 100), fmt: (v: number) => `${v}%` },
+                    { key: "void_rate", label: "Void Rate", get: (o: OfficerRow) => o.appeal_void_rate?.void_rate || 0, fmt: (v: number) => `${v}%` },
+                  ] as const
+                ).map(metric => {
+                  const vals = compared.map(o => metric.get(o));
+                  const maxVal = Math.max(...vals);
+                  return (
+                    <tr key={metric.key} className="border-b border-gray-50">
+                      <td className="py-2 pr-4 text-gray-600">{metric.label}</td>
+                      {compared.map((o, i) => {
+                        const val = metric.get(o);
+                        const isMax = val === maxVal && vals.filter(v => v === val).length === 1;
+                        return (
+                          <td key={o.officer_email} className={`text-right py-2 px-3 ${isMax ? "font-bold" : ""}`}
+                            style={isMax ? { color: COMPARE_COLORS[i % COMPARE_COLORS.length] } : {}}>
+                            {metric.fmt(val)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          {/* Violation type comparison bars */}
-          <div className="mb-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Violations by Type</h4>
-            {(() => {
-              const allTypes = new Map<string, string>();
-              compared.forEach(o => o.by_violation.forEach(v => allTypes.set(v.violation_type, v.label)));
-              const maxV = Math.max(...compared.flatMap(o => o.by_violation.map(v => v.count)), 1);
-              return Array.from(allTypes.entries()).map(([code, label]) => (
-                <div key={code} className="mb-3">
-                  <div className="text-xs text-gray-600 mb-1">{label}</div>
-                  {compared.map((o, i) => {
-                    const found = o.by_violation.find(v => v.violation_type === code);
-                    const cnt = found?.count || 0;
-                    return (
-                      <div key={o.officer_email} className="flex items-center gap-2 mb-0.5">
-                        <div className="w-20 text-[10px] text-right truncate" style={{ color: COMPARE_COLORS[i % COMPARE_COLORS.length] }}>{displayName(o)}</div>
-                        <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
-                          <div className="h-full rounded transition-all" style={{ width: `${(cnt / maxV) * 100}%`, backgroundColor: COMPARE_COLORS[i % COMPARE_COLORS.length] }} />
-                        </div>
-                        <div className="w-8 text-xs font-semibold text-right">{cnt}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ));
-            })()}
+          {/* 30-day timeline overlay */}
+          <div className="mb-6">
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">30-Day Activity</h4>
+            <div style={{ height: 120 }} className="relative">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
+                {compared.map((o, ci) => {
+                  const maxD = Math.max(...o.daily_activity.map(d => d.count), 1);
+                  const pts = o.daily_activity.map((d, i) => ({
+                    x: (i / (o.daily_activity.length - 1)) * 100,
+                    y: 100 - (d.count / maxD) * 100,
+                  }));
+                  const polyline = pts.map(p => `${p.x},${p.y}`).join(" ");
+                  return <polyline key={o.officer_email} points={polyline} fill="none" stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />;
+                })}
+              </svg>
+              <div className="flex gap-3 mt-1">
+                {compared.map((o, i) => (
+                  <span key={o.officer_email} className="text-[10px] flex items-center gap-1">
+                    <span className="w-3 h-0.5 inline-block rounded" style={{ backgroundColor: COMPARE_COLORS[i % COMPARE_COLORS.length] }} />
+                    {displayName(o)}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* Status comparison bars */}
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">By Status</h4>
-            {(() => {
-              const allStatuses = new Set<string>();
-              compared.forEach(o => o.by_status.forEach(s => allStatuses.add(s.status)));
-              const maxS = Math.max(...compared.flatMap(o => o.by_status.map(s => s.count)), 1);
-              return Array.from(allStatuses).map(status => (
-                <div key={status} className="mb-3">
-                  <Tag color={STATUS_COLORS[status] || "default"} className="mb-1">{status}</Tag>
-                  {compared.map((o, i) => {
-                    const found = o.by_status.find(s => s.status === status);
-                    const cnt = found?.count || 0;
-                    return (
-                      <div key={o.officer_email} className="flex items-center gap-2 mb-0.5">
-                        <div className="w-20 text-[10px] text-right truncate" style={{ color: COMPARE_COLORS[i % COMPARE_COLORS.length] }}>{displayName(o)}</div>
-                        <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
-                          <div className="h-full rounded transition-all" style={{ width: `${(cnt / maxS) * 100}%`, backgroundColor: COMPARE_COLORS[i % COMPARE_COLORS.length] }} />
-                        </div>
-                        <div className="w-8 text-xs font-semibold text-right">{cnt}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ));
-            })()}
+          {/* Violation comparison */}
+          <CompareGroupedBars
+            label="Violations by Type"
+            compared={compared}
+            accessor={o => o.by_violation.map(v => ({ key: v.violation_type, label: v.label, count: v.count }))}
+            colors={COMPARE_COLORS}
+            displayName={displayName}
+          />
+
+          {/* Lot comparison */}
+          <CompareGroupedBars
+            label="By Lot"
+            compared={compared}
+            accessor={o => o.by_lot.map(l => ({ key: l.lot, label: l.lot, count: l.count }))}
+            colors={COMPARE_COLORS}
+            displayName={displayName}
+          />
+
+          {/* Hour comparison */}
+          <div className="mb-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">By Hour of Day</h4>
+            <div className="flex items-end gap-px h-24">
+              {Array.from({ length: 24 }, (_, h) => {
+                const maxH = Math.max(...compared.flatMap(o => o.by_hour.map(b => b.count)), 1);
+                return (
+                  <Tooltip key={h} title={`${h}:00 — ${compared.map(o => `${displayName(o)}: ${o.by_hour[h]?.count || 0}`).join(", ")}`}>
+                    <div className="flex-1 flex flex-col items-center justify-end h-full gap-px">
+                      {compared.map((o, ci) => {
+                        const cnt = o.by_hour[h]?.count || 0;
+                        return <div key={o.officer_email} className="w-full rounded-sm" style={{ height: `${(cnt / maxH) * 100}%`, minHeight: cnt > 0 ? 1 : 0, backgroundColor: COMPARE_COLORS[ci % COMPARE_COLORS.length] }} />;
+                      })}
+                      {h % 4 === 0 && <span className="text-[7px] text-gray-400">{h}</span>}
+                    </div>
+                  </Tooltip>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Status comparison */}
+          <CompareGroupedBars
+            label="By Status"
+            compared={compared}
+            accessor={o => o.by_status.map(s => ({ key: s.status, count: s.count }))}
+            colors={COMPARE_COLORS}
+            displayName={displayName}
+          />
         </Card>
       )}
 
