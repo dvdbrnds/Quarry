@@ -900,6 +900,13 @@ async def lifespan(app: FastAPI):
             # Permit info on tickets for enforcement context
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS permit_type_label VARCHAR(256)",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS permit_lot_zone VARCHAR(256)",
+            # Appeals committee escalation fields on tickets
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS committee_status VARCHAR(32)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS committee_decision VARCHAR(32)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS committee_decided_at TIMESTAMPTZ",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS committee_notes TEXT",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_by VARCHAR(256)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ",
             ]
             for migration in migrations:
                 try:
