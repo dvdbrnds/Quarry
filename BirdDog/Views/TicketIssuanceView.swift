@@ -17,6 +17,7 @@ struct TicketIssuanceView: View {
     @State private var capturedPhotoImage: UIImage?
     @State private var additionalPhotoPaths: [String] = []
     @State private var additionalPhotoImages: [UIImage] = []
+    @State private var photoCaptureFailed = false
     @State private var captureTimestamp = Date()
     @State private var isWarning = false
     @State private var selectedWarningReason = ""
@@ -245,20 +246,29 @@ struct TicketIssuanceView: View {
                 }
 
                 if let image = capturedPhotoImage {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 4) {
                         ZStack(alignment: .bottomLeading) {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFit()
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                            Text(evidenceTimestampString)
-                                .font(.caption2.monospaced())
-                                .padding(4)
-                                .background(.black.opacity(0.6))
-                                .foregroundStyle(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .padding(6)
+                            HStack {
+                                Text(evidenceTimestampString)
+                                    .font(.caption2.monospaced())
+                                    .padding(4)
+                                    .background(.black.opacity(0.6))
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                Spacer()
+                                Text("Photo 1")
+                                    .font(.caption2.bold())
+                                    .padding(4)
+                                    .background(.black.opacity(0.6))
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                            .padding(6)
                         }
 
                         HStack {
@@ -269,13 +279,6 @@ struct TicketIssuanceView: View {
                                     .font(.caption)
                             }
                             Spacer()
-                            Button {
-                                captureAdditionalPhoto()
-                            } label: {
-                                Label("Add Photo", systemImage: "plus.circle")
-                                    .font(.caption)
-                            }
-                            .tint(.green)
                         }
                     }
                 } else {
@@ -315,6 +318,40 @@ struct TicketIssuanceView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                if isCapturingPhoto {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Capturing...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if photoCaptureFailed {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Photo capture failed. Try again.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button("Retry") { captureAdditionalPhoto() }
+                            .font(.caption.bold())
+                    }
+                }
+
+                if cameraService != nil {
+                    Button {
+                        captureAdditionalPhoto()
+                    } label: {
+                        Label("Add Photo", systemImage: "plus.circle")
+                            .font(.callout)
+                    }
+                    .tint(.green)
+                    .disabled(isCapturingPhoto)
                 }
 
                 if let lat = ticketLat, let lng = ticketLng {
@@ -450,14 +487,19 @@ struct TicketIssuanceView: View {
     private func capturePhoto() {
         guard let camera = cameraService, !isCapturingPhoto else { return }
         isCapturingPhoto = true
+        photoCaptureFailed = false
         let timestamp = Date()
         Task.detached(priority: .userInitiated) {
             let path = await camera.captureOneShotPhoto()
             let image: UIImage? = if let path { UIImage(contentsOfFile: path) } else { nil }
             await MainActor.run {
-                captureTimestamp = timestamp
-                capturedPhotoPath = path
-                capturedPhotoImage = image
+                if let path, let image {
+                    captureTimestamp = timestamp
+                    capturedPhotoPath = path
+                    capturedPhotoImage = image
+                } else {
+                    photoCaptureFailed = true
+                }
                 isCapturingPhoto = false
             }
         }
@@ -466,6 +508,7 @@ struct TicketIssuanceView: View {
     private func captureAdditionalPhoto() {
         guard let camera = cameraService, !isCapturingPhoto else { return }
         isCapturingPhoto = true
+        photoCaptureFailed = false
         Task.detached(priority: .userInitiated) {
             let path = await camera.captureOneShotPhoto()
             let image: UIImage? = if let path { UIImage(contentsOfFile: path) } else { nil }
@@ -473,6 +516,8 @@ struct TicketIssuanceView: View {
                 if let path, let image {
                     additionalPhotoPaths.append(path)
                     additionalPhotoImages.append(image)
+                } else {
+                    photoCaptureFailed = true
                 }
                 isCapturingPhoto = false
             }
