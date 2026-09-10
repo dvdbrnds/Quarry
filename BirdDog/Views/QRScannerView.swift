@@ -176,12 +176,27 @@ class QRPreviewUIView: UIView, AVCaptureMetadataOutputObjectsDelegate {
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var hasScanned = false
+    private var didRequestPermission = false
 
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer?.frame = bounds
-        if captureSession == nil {
+        if captureSession == nil && !didRequestPermission {
+            requestAccessThenSetup()
+        }
+    }
+
+    private func requestAccessThenSetup() {
+        didRequestPermission = true
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .authorized {
             setupCamera()
+        } else if status == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                if granted {
+                    DispatchQueue.main.async { self?.setupCamera() }
+                }
+            }
         }
     }
 
