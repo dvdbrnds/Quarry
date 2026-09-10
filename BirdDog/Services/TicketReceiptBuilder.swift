@@ -42,7 +42,7 @@ struct TicketReceiptBuilder {
         dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
         let dateStr = dateFormatter.string(from: ticket.issuedAt)
         let title = ticket.ticketCategory == "moving" ? " CITATION " : " PARKING TICKET "
-        let school = schoolName.isEmpty ? "Campus Police" : schoolName
+        let school = schoolName.isEmpty ? "Parking Services" : schoolName
 
         let printerBuilder = makeBasePrinterBuilder()
 
@@ -62,7 +62,7 @@ struct TicketReceiptBuilder {
                     .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 2))
                     .actionPrintText("\(school)\n")
             )
-            .actionPrintText("Campus Police Department\n")
+            .actionPrintText("Parking Services\n")
 
         appendRuledLine(to: printerBuilder)
 
@@ -174,7 +174,7 @@ struct TicketReceiptBuilder {
                         .setCellSize(7)
                 )
                 .actionFeed(1)
-                .actionPrintText("Pay online or at Campus Police\n")
+                .actionPrintText("Scan to pay online\n")
         }
 
         if let name = ticket.officerName, !name.isEmpty {
