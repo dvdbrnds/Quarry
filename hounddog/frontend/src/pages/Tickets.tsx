@@ -83,11 +83,21 @@ interface FullStatsData {
   revenue: { total_fines: number; paid_fines: number };
 }
 
-function HBarChart({ items, colorFn }: { items: { label: string; value: number; tag?: boolean }[]; colorFn?: (label: string) => string }) {
+function HBarChart({ items, colorFn, maxItems, scrollHeight }: {
+  items: { label: string; value: number; tag?: boolean }[];
+  colorFn?: (label: string) => string;
+  maxItems?: number;
+  scrollHeight?: number;
+}) {
   const max = Math.max(...items.map(i => i.value), 1);
-  return (
+  const visible = maxItems ? items.slice(0, maxItems) : items;
+  const hasMore = maxItems && items.length > maxItems;
+  const [expanded, setExpanded] = useState(false);
+  const display = expanded ? items : visible;
+
+  const content = (
     <div className="space-y-2">
-      {items.map(item => (
+      {display.map(item => (
         <div key={item.label}>
           <div className="flex justify-between text-xs mb-0.5">
             {item.tag ? <Tag color={STATUS_COLORS[item.label] || "default"} className="mr-0">{item.label}</Tag>
@@ -102,12 +112,37 @@ function HBarChart({ items, colorFn }: { items: { label: string; value: number; 
           </div>
         </div>
       ))}
+      {hasMore && (
+        <button
+          className="text-xs text-blue-500 hover:text-blue-700 mt-1"
+          onClick={() => setExpanded(e => !e)}
+        >
+          {expanded ? "Show less" : `Show all ${items.length}`}
+        </button>
+      )}
     </div>
   );
+
+  if (scrollHeight && (expanded || !maxItems)) {
+    return <div style={{ maxHeight: scrollHeight, overflowY: "auto" }}>{content}</div>;
+  }
+  return content;
 }
 
-function DailyTimeline({ data, height = 120, color = "#3b82f6" }: { data: { date: string; count: number }[]; height?: number; color?: string }) {
+function fmtShortDate(iso: string) {
+  const d = new Date(iso + "T00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function fmtWeekday(iso: string) {
+  const d = new Date(iso + "T00:00");
+  return d.toLocaleDateString("en-US", { weekday: "short" });
+}
+
+function DailyTimeline({ data, height = 140, color = "#3b82f6" }: { data: { date: string; count: number }[]; height?: number; color?: string }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const max = Math.max(...data.map(d => d.count), 1);
+  const total = data.reduce((s, d) => s + d.count, 0);
   const points = data.map((d, i) => {
     const x = (i / (data.length - 1)) * 100;
     const y = 100 - (d.count / max) * 100;
@@ -116,40 +151,90 @@ function DailyTimeline({ data, height = 120, color = "#3b82f6" }: { data: { date
   const polyline = points.map(p => `${p.x},${p.y}`).join(" ");
   const areaPath = `M ${points[0].x},100 ` + points.map(p => `L ${p.x},${p.y}`).join(" ") + ` L ${points[points.length - 1].x},100 Z`;
 
+  const labelInterval = data.length <= 14 ? 2 : data.length <= 21 ? 3 : 5;
+
   return (
-    <div style={{ height }} className="relative">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-        <path d={areaPath} fill={color} opacity="0.15" />
-        <polyline points={polyline} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="1.2" fill={color} vectorEffect="non-scaling-stroke">
-            <title>{p.date}: {p.count}</title>
-          </circle>
-        ))}
-      </svg>
-      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-gray-400 mt-1">
-        <span>{data[0]?.date?.slice(5)}</span>
-        <span>{data[data.length - 1]?.date?.slice(5)}</span>
+    <div style={{ height: height + 28 }} className="relative">
+      <div style={{ height }} className="relative"
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
+          <path d={areaPath} fill={color} opacity="0.15" />
+          <polyline points={polyline} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={hoverIdx === i ? "2.5" : "1.2"} fill={color} vectorEffect="non-scaling-stroke" />
+          ))}
+        </svg>
+        {/* Invisible hover zones */}
+        <div className="absolute inset-0 flex">
+          {points.map((p, i) => (
+            <div key={i} className="flex-1 h-full" onMouseEnter={() => setHoverIdx(i)} />
+          ))}
+        </div>
+        {/* Hover tooltip */}
+        {hoverIdx !== null && points[hoverIdx] && (
+          <div
+            className="absolute z-10 bg-gray-800 text-white text-xs rounded px-2 py-1.5 pointer-events-none whitespace-nowrap shadow-lg"
+            style={{ left: `${points[hoverIdx].x}%`, bottom: `${100 - points[hoverIdx].y + 8}%`, transform: "translateX(-50%)" }}
+          >
+            <div className="font-semibold">{fmtWeekday(points[hoverIdx].date)}, {fmtShortDate(points[hoverIdx].date)}</div>
+            <div>{points[hoverIdx].count} citation{points[hoverIdx].count !== 1 ? "s" : ""}</div>
+          </div>
+        )}
       </div>
+      {/* Date labels along bottom */}
+      <div className="relative h-5 mt-1">
+        {data.map((d, i) => (
+          i % labelInterval === 0 || i === data.length - 1 ? (
+            <span
+              key={i}
+              className="absolute text-[9px] text-gray-400 -translate-x-1/2"
+              style={{ left: `${(i / (data.length - 1)) * 100}%` }}
+            >
+              {fmtShortDate(d.date)}
+            </span>
+          ) : null
+        ))}
+      </div>
+      <div className="text-[10px] text-gray-400 text-right mt-0.5">{total} total over 30 days</div>
     </div>
   );
+}
+
+function fmtHour(h: number) {
+  if (h === 0) return "12a";
+  if (h < 12) return `${h}a`;
+  if (h === 12) return "12p";
+  return `${h - 12}p`;
 }
 
 function HourChart({ data, color = "#3b82f6" }: { data: { hour: number; count: number }[]; color?: string }) {
   const max = Math.max(...data.map(d => d.count), 1);
   return (
-    <div className="flex items-end gap-px h-28">
-      {data.map(d => (
-        <Tooltip key={d.hour} title={`${d.hour}:00 — ${d.count} citations`}>
-          <div className="flex-1 flex flex-col items-center justify-end h-full">
-            <div
-              className="w-full rounded-t transition-all"
-              style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? 2 : 0, backgroundColor: color }}
-            />
-            {d.hour % 4 === 0 && <span className="text-[8px] text-gray-400 mt-0.5">{d.hour}</span>}
+    <div>
+      <div className="flex items-end gap-0.5" style={{ height: 120 }}>
+        {data.map(d => {
+          const pct = (d.count / max) * 100;
+          return (
+            <Tooltip key={d.hour} title={`${fmtHour(d.hour)} (${d.hour}:00) — ${d.count} citation${d.count !== 1 ? "s" : ""}`}>
+              <div className="flex-1 flex flex-col items-center justify-end h-full">
+                {d.count > 0 && <span className="text-[8px] font-semibold text-gray-600 mb-0.5">{d.count}</span>}
+                <div
+                  className="w-full rounded-t transition-all"
+                  style={{ height: `${pct}%`, minHeight: d.count > 0 ? 4 : 0, backgroundColor: color }}
+                />
+              </div>
+            </Tooltip>
+          );
+        })}
+      </div>
+      <div className="flex gap-0.5 mt-1">
+        {data.map(d => (
+          <div key={d.hour} className="flex-1 text-center text-[7px] text-gray-400 leading-tight">
+            {d.hour % 2 === 0 ? fmtHour(d.hour) : ""}
           </div>
-        </Tooltip>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -220,9 +305,9 @@ function OfficerStats() {
           {stats.by_violation.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />
             : <HBarChart items={stats.by_violation.map(v => ({ label: v.label, value: v.count }))} />}
         </Card>
-        <Card size="small" title="By Lot" className="shadow-sm">
+        <Card size="small" title={`By Lot (${stats.by_lot.length})`} className="shadow-sm">
           {stats.by_lot.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />
-            : <HBarChart items={stats.by_lot.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} />}
+            : <HBarChart items={stats.by_lot.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} maxItems={10} scrollHeight={400} />}
         </Card>
         <Card size="small" title="By Hour of Day" className="shadow-sm">
           <HourChart data={stats.by_hour} />
@@ -357,9 +442,9 @@ function OfficerReport() {
 
       {/* Section 3 & 4 — Lot Coverage and Peak Hours */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card size="small" title="Citations by Lot" className="shadow-sm">
+        <Card size="small" title={`Citations by Lot (${data.by_lot_total.length})`} className="shadow-sm">
           {data.by_lot_total.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />
-            : <HBarChart items={data.by_lot_total.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} />}
+            : <HBarChart items={data.by_lot_total.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} maxItems={10} scrollHeight={400} />}
         </Card>
         <Card size="small" title="Peak Enforcement Hours" className="shadow-sm">
           <HourChart data={data.by_hour_total} color="#f59e0b" />
@@ -622,8 +707,8 @@ function OfficerDetail({ officer: o, totalAll }: { officer: OfficerRow; totalAll
           {o.by_violation?.length ? <HBarChart items={o.by_violation.map(v => ({ label: v.label, value: v.count }))} />
             : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />}
         </Card>
-        <Card size="small" title="By Lot" className="shadow-sm">
-          {o.by_lot?.length ? <HBarChart items={o.by_lot.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} />
+        <Card size="small" title={`By Lot (${o.by_lot?.length || 0})`} className="shadow-sm">
+          {o.by_lot?.length ? <HBarChart items={o.by_lot.map(l => ({ label: l.lot, value: l.count }))} colorFn={() => "#8b5cf6"} maxItems={10} scrollHeight={400} />
             : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" className="py-4" />}
         </Card>
         <Card size="small" title="By Hour of Day" className="shadow-sm">
