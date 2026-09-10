@@ -1450,11 +1450,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             )}
           </div>
         }
-        width={720}
+        width="80vw"
+        style={{ maxWidth: 900 }}
+        styles={{ body: { maxHeight: "80vh", overflow: "auto" } }}
       >
         {selected && (
           <div className="space-y-4">
-            <Descriptions size="small" column={2} bordered>
+            <Descriptions size="small" column={{ xs: 1, sm: 2, md: 2 }} bordered>
               <Descriptions.Item label="Plate">
                 <span className="font-mono">{selected.plate}</span>
                 {selected.ocr_original_plate && (
