@@ -107,7 +107,7 @@ function CommitteePage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("voting");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
