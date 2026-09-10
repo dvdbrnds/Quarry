@@ -571,7 +571,22 @@ function OfficerReport() {
                 </div>
                 <div className="flex-1">
                   <div className="h-6 bg-gray-100 rounded overflow-hidden relative">
-                    <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${(o.all_time / maxAllTime) * 100}%` }} />
+                    {(() => {
+                      const barPct = (o.all_time / maxAllTime) * 100;
+                      const appealedCount = o.appeal_void_rate?.appealed || 0;
+                      const appealPct = o.all_time > 0 ? (appealedCount / o.all_time) * barPct : 0;
+                      const cleanPct = barPct - appealPct;
+                      return (
+                        <div className="h-full flex">
+                          <div className="h-full bg-blue-500 transition-all" style={{ width: `${cleanPct}%` }} />
+                          {appealPct > 0 && (
+                            <Tooltip title={`${appealedCount} appealed (${(appealedCount / o.all_time * 100).toFixed(1)}%)`}>
+                              <div className="h-full bg-amber-400 transition-all" style={{ width: `${appealPct}%` }} />
+                            </Tooltip>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold" style={{ color: o.all_time > maxAllTime * 0.3 ? "#fff" : "#333" }}>
                       {o.all_time}
                     </span>
