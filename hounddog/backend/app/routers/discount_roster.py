@@ -231,6 +231,55 @@ async def upload_roster(
     return RosterUploadResult(imported=imported, skipped=skipped, errors=errors[:20])
 
 
+class RosterUpdateRequest(BaseModel):
+    student_id: str | None = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    program_name: str | None = None
+    discount_amount: float | None = None
+
+
+@router.patch("/roster/{entry_id}", response_model=RosterEntry)
+async def update_roster_entry(
+    entry_id: uuid.UUID,
+    data: RosterUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    entry = await db.get(DiscountRoster, entry_id)
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+
+    if data.student_id is not None:
+        entry.student_id = data.student_id.strip()
+    if data.email is not None:
+        entry.email = data.email.strip() or None
+    if data.first_name is not None:
+        entry.first_name = data.first_name.strip()
+    if data.last_name is not None:
+        entry.last_name = data.last_name.strip()
+    if data.program_name is not None:
+        entry.program_name = data.program_name.strip()
+    if data.discount_amount is not None:
+        entry.discount_amount = Decimal(str(data.discount_amount))
+
+    await db.flush()
+    await db.refresh(entry)
+    by_email, by_student_id, by_name = await load_active_permit_indexes(db)
+    return _entry_from_row(
+        entry,
+        match_roster_to_permit(
+            student_id=entry.student_id,
+            email=entry.email,
+            first_name=entry.first_name,
+            last_name=entry.last_name,
+            by_email=by_email,
+            by_student_id=by_student_id,
+            by_name=by_name,
+        ),
+    )
+
+
 @router.delete("/roster/{entry_id}")
 async def delete_roster_entry(entry_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     entry = await db.get(DiscountRoster, entry_id)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Table, App, Tag, Space, Input, Popconfirm, Modal, Form, InputNumber } from "antd";
-import { UploadOutlined, DeleteOutlined, SearchOutlined, PlusOutlined } from "@ant-design/icons";
+import { UploadOutlined, DeleteOutlined, SearchOutlined, PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { authHeaders } from "../auth";
 
 interface RosterEntry {
@@ -31,6 +31,8 @@ export default function DiscountRoster() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addForm] = Form.useForm();
   const [addingSingle, setAddingSingle] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Partial<RosterEntry>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -122,6 +124,37 @@ export default function DiscountRoster() {
       if (!res.ok) throw new Error("Clear failed");
       const data = await res.json();
       message.success(`Cleared ${data.deleted} entries`);
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    }
+  }
+
+  function startEdit(entry: RosterEntry) {
+    setEditingId(entry.id);
+    setEditValues({
+      first_name: entry.first_name,
+      last_name: entry.last_name,
+      email: entry.email,
+      student_id: entry.student_id,
+    });
+  }
+
+  async function saveEdit() {
+    if (!editingId) return;
+    try {
+      const res = await fetch(`/api/admin/discounts/roster/${editingId}`, {
+        method: "PATCH",
+        headers: await authHeaders(),
+        body: JSON.stringify(editValues),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to update");
+      }
+      message.success("Updated");
+      setEditingId(null);
+      setEditValues({});
       load();
     } catch (e: any) {
       message.error(e.message);
@@ -255,14 +288,54 @@ export default function DiscountRoster() {
         size="small"
         pagination={{ defaultPageSize: 25, showSizeChanger: true }}
         columns={[
-          { title: "ID", dataIndex: "student_id", key: "student_id", width: 100 },
+          {
+            title: "ID", dataIndex: "student_id", key: "student_id", width: 100,
+            render: (v: string, r: RosterEntry) =>
+              editingId === r.id ? (
+                <Input
+                  size="small"
+                  value={editValues.student_id ?? v}
+                  onChange={e => setEditValues(prev => ({ ...prev, student_id: e.target.value }))}
+                  style={{ width: 90 }}
+                />
+              ) : v,
+          },
           {
             title: "Name",
             key: "name",
-            render: (_, r) => `${r.first_name} ${r.last_name}`,
-            sorter: (a, b) => a.last_name.localeCompare(b.last_name),
+            render: (_: any, r: RosterEntry) =>
+              editingId === r.id ? (
+                <Space size={4}>
+                  <Input
+                    size="small"
+                    value={editValues.first_name ?? r.first_name}
+                    onChange={e => setEditValues(prev => ({ ...prev, first_name: e.target.value }))}
+                    placeholder="First"
+                    style={{ width: 100 }}
+                  />
+                  <Input
+                    size="small"
+                    value={editValues.last_name ?? r.last_name}
+                    onChange={e => setEditValues(prev => ({ ...prev, last_name: e.target.value }))}
+                    placeholder="Last"
+                    style={{ width: 120 }}
+                  />
+                </Space>
+              ) : `${r.first_name} ${r.last_name}`,
+            sorter: (a: RosterEntry, b: RosterEntry) => a.last_name.localeCompare(b.last_name),
           },
-          { title: "Email", dataIndex: "email", key: "email", render: (v: string | null) => v || "—" },
+          {
+            title: "Email", dataIndex: "email", key: "email",
+            render: (v: string | null, r: RosterEntry) =>
+              editingId === r.id ? (
+                <Input
+                  size="small"
+                  value={editValues.email ?? v ?? ""}
+                  onChange={e => setEditValues(prev => ({ ...prev, email: e.target.value }))}
+                  style={{ width: 200 }}
+                />
+              ) : v || "—",
+          },
           {
             title: "Program",
             dataIndex: "program_name",
@@ -301,12 +374,21 @@ export default function DiscountRoster() {
           {
             title: "",
             key: "actions",
-            width: 60,
-            render: (_, r) => (
-              <Popconfirm title="Remove?" onConfirm={() => handleDelete(r.id)} okType="danger">
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-              </Popconfirm>
-            ),
+            width: 100,
+            render: (_: any, r: RosterEntry) =>
+              editingId === r.id ? (
+                <Space size={4}>
+                  <Button type="link" size="small" icon={<CheckOutlined />} onClick={saveEdit} style={{ color: "#22c55e" }} />
+                  <Button type="link" size="small" icon={<CloseOutlined />} onClick={() => { setEditingId(null); setEditValues({}); }} />
+                </Space>
+              ) : (
+                <Space size={4}>
+                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => startEdit(r)} />
+                  <Popconfirm title="Remove?" onConfirm={() => handleDelete(r.id)} okType="danger">
+                    <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </Space>
+              ),
           },
         ]}
       />
