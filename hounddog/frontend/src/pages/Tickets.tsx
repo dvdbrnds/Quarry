@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
-import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs } from "antd";
+import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs, Card, Statistic, Progress, Spin, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
@@ -61,6 +61,124 @@ const STATUS_COLORS: Record<string, string> = {
   escalated: "purple",
   voided: "default",
 };
+
+interface OfficerStatsData {
+  this_week: number;
+  this_month: number;
+  all_time: number;
+  global_share: number;
+  total_all: number;
+  by_violation: { violation_type: string; label: string; count: number }[];
+  by_status: { status: string; count: number }[];
+}
+
+function OfficerStats() {
+  const [stats, setStats] = useState<OfficerStatsData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/tickets/my-stats", { headers: await authHeaders() });
+        if (res.ok) setStats(await res.json());
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  if (loading) return <div className="text-center py-8"><Spin /></div>;
+  if (!stats) return null;
+
+  const maxViolation = Math.max(...stats.by_violation.map(v => v.count), 1);
+  const maxStatus = Math.max(...stats.by_status.map(s => s.count), 1);
+
+  return (
+    <div className="mb-6 space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card size="small" className="shadow-sm">
+          <Statistic title="This Week" value={stats.this_week} />
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <Statistic title="This Month" value={stats.this_month} />
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <Statistic title="All Time" value={stats.all_time} />
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <div className="flex items-center gap-3">
+            <Progress
+              type="circle"
+              percent={stats.global_share}
+              size={56}
+              format={pct => `${pct}%`}
+            />
+            <div>
+              <div className="text-xs text-gray-500">Global Share</div>
+              <Tooltip title={`${stats.all_time} of ${stats.total_all} total citations`}>
+                <div className="text-sm font-semibold cursor-help">{stats.all_time} / {stats.total_all}</div>
+              </Tooltip>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card size="small" title="Citations by Violation" className="shadow-sm">
+          {stats.by_violation.length === 0 ? (
+            <Empty description="No data" className="py-4" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <div className="space-y-2">
+              {stats.by_violation.map(v => (
+                <div key={v.violation_type}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span className="text-gray-600 truncate mr-2">{v.label}</span>
+                    <span className="font-semibold text-gray-800 shrink-0">{v.count}</span>
+                  </div>
+                  <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded transition-all"
+                      style={{ width: `${(v.count / maxViolation) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card size="small" title="Citations by Status" className="shadow-sm">
+          {stats.by_status.length === 0 ? (
+            <Empty description="No data" className="py-4" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <div className="space-y-2">
+              {stats.by_status.map(s => (
+                <div key={s.status}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <Tag color={STATUS_COLORS[s.status] || "default"} className="mr-0">{s.status}</Tag>
+                    <span className="font-semibold text-gray-800">{s.count}</span>
+                  </div>
+                  <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                    <div
+                      className="h-full rounded transition-all"
+                      style={{
+                        width: `${(s.count / maxStatus) * 100}%`,
+                        backgroundColor: {
+                          issued: "#ef4444", warning: "#f97316", paid: "#22c55e",
+                          voided: "#9ca3af", appealed: "#eab308", escalated: "#a855f7",
+                          overdue: "#dc2626", pending_payment: "#f97316",
+                        }[s.status] || "#6b7280",
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
 
 function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const { modal, message } = App.useApp();
@@ -507,6 +625,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
   return (
     <div>
+      {officerEmail && <OfficerStats />}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Tickets</h2>
         <Space>

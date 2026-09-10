@@ -93,6 +93,69 @@ async def list_tickets(
     return TicketList(items=items, total=total, page=page, page_size=page_size)
 
 
+@router.get("/my-stats")
+async def my_ticket_stats(
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Officer performance stats for the logged-in user."""
+    email = user.email
+    now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    base = select(func.count()).where(Ticket.officer_email == email)
+
+    all_time = (await db.execute(base)).scalar() or 0
+    this_week = (await db.execute(base.where(Ticket.issued_at >= week_start))).scalar() or 0
+    this_month = (await db.execute(base.where(Ticket.issued_at >= month_start))).scalar() or 0
+
+    total_all = (await db.execute(select(func.count()).select_from(Ticket))).scalar() or 0
+    global_share = round((all_time / total_all) * 100, 1) if total_all else 0
+
+    by_violation_q = (
+        select(Ticket.violation_type, func.count().label("cnt"))
+        .where(Ticket.officer_email == email)
+        .group_by(Ticket.violation_type)
+        .order_by(func.count().desc())
+    )
+    by_violation_rows = (await db.execute(by_violation_q)).all()
+
+    vt_codes = [r[0] for r in by_violation_rows]
+    label_map: dict[str, str] = {}
+    if vt_codes:
+        vt_result = await db.execute(
+            select(ViolationType.code, ViolationType.label).where(ViolationType.code.in_(vt_codes))
+        )
+        label_map = {r[0]: r[1] for r in vt_result.all()}
+
+    by_violation = [
+        {"violation_type": r[0], "label": label_map.get(r[0], r[0]), "count": r[1]}
+        for r in by_violation_rows
+    ]
+
+    by_status_q = (
+        select(Ticket.status, func.count().label("cnt"))
+        .where(Ticket.officer_email == email)
+        .group_by(Ticket.status)
+        .order_by(func.count().desc())
+    )
+    by_status = [
+        {"status": r[0], "count": r[1]}
+        for r in (await db.execute(by_status_q)).all()
+    ]
+
+    return {
+        "this_week": this_week,
+        "this_month": this_month,
+        "all_time": all_time,
+        "global_share": global_share,
+        "total_all": total_all,
+        "by_violation": by_violation,
+        "by_status": by_status,
+    }
+
+
 @router.post("", response_model=TicketRead, status_code=201)
 async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
     from ..services.ticket_numbering import next_ticket_number
