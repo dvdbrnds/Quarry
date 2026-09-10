@@ -95,6 +95,8 @@ class ApprovalInfo(BaseModel):
     status: str
     already_decided: bool = False
     decision: str | None = None
+    student_name: str = ""
+    instructor_name: str = ""
 
 
 class ApprovalDecision(BaseModel):
@@ -479,6 +481,8 @@ async def get_approval_info(token: str, db: AsyncSession = Depends(get_db)):
         status=permit.status,
         already_decided=approval.used_at is not None,
         decision=approval.decision,
+        student_name=_extract_metadata(permit, "student_name"),
+        instructor_name=_extract_metadata(permit, "instructor_name"),
     )
 
 
@@ -517,6 +521,7 @@ async def resend_sponsor_email(
         end_date=permit.end_date.isoformat() if permit.end_date else "",
         token=approval.token,
         student_name=_extract_metadata(permit, "student_name"),
+        instructor_name=_extract_metadata(permit, "instructor_name"),
     )
     if sent:
         return {"status": "sent", "message": f"Approval email resent to {approval.sponsor_email}"}
@@ -723,6 +728,7 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         end_date=end.isoformat(),
         token=token,
         student_name=data.student_name.strip(),
+        instructor_name=data.instructor_name.strip(),
     )
     if email_sent:
         msg = (
@@ -837,6 +843,7 @@ async def _send_sponsor_approval_email(
     end_date: str,
     token: str,
     student_name: str = "",
+    instructor_name: str = "",
 ) -> bool:
     """Send an approval request email to the department sponsor. Never raises."""
     try:
@@ -853,6 +860,7 @@ async def _send_sponsor_approval_email(
             end_date=end_date,
             approval_url=approval_url,
             student_name=student_name,
+            instructor_name=instructor_name,
         )
     except Exception:
         import logging

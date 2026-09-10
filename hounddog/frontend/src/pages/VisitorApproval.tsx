@@ -18,6 +18,8 @@ interface ApprovalInfo {
   status: string;
   already_decided: boolean;
   decision: string | null;
+  student_name: string;
+  instructor_name: string;
 }
 
 export default function VisitorApproval() {
@@ -144,6 +146,18 @@ function ApprovalPage() {
                 <td className="py-3 text-gray-500">Company</td>
                 <td className="py-3 font-semibold text-right">{info.company_name}</td>
               </tr>
+              {info.student_name && (
+              <tr className="border-b">
+                <td className="py-3 text-gray-500">Student</td>
+                <td className="py-3 font-semibold text-right">{info.student_name}</td>
+              </tr>
+              )}
+              {info.instructor_name && (
+              <tr className="border-b">
+                <td className="py-3 text-gray-500">Instructor / Ensemble</td>
+                <td className="py-3 font-semibold text-right">{info.instructor_name}</td>
+              </tr>
+              )}
               <tr className="border-b">
                 <td className="py-3 text-gray-500">Vehicle</td>
                 <td className="py-3 font-mono font-semibold text-right">{info.plate}</td>
