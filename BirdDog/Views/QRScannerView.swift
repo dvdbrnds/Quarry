@@ -8,32 +8,61 @@ struct QRScannerView: View {
     @State private var scannedPayload: PairingPayload?
     @State private var errorMessage: String?
     @State private var isPairing = false
+    @State private var cameraFailed = false
 
     var body: some View {
-        ZStack {
-            QRCameraPreview(onCodeScanned: handleScanned)
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                QRCameraPreview(onCodeScanned: handleScanned, onCameraFailed: {
+                    cameraFailed = true
+                })
                 .ignoresSafeArea()
 
-            VStack {
-                Spacer()
+                VStack {
+                    Spacer()
 
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.callout)
-                        .foregroundStyle(.white)
+                    if cameraFailed {
+                        VStack(spacing: 12) {
+                            Image(systemName: "camera.metering.unknown")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.orange)
+                            Text("Camera Unavailable")
+                                .font(.title3.bold())
+                                .foregroundStyle(.white)
+                            Text("Close this screen and try again. Make sure BirdDog has camera permission in Settings.")
+                                .font(.callout)
+                                .foregroundStyle(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                         .padding()
-                        .background(.red.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
-                        .padding()
+                    } else if let error = errorMessage {
+                        Text(error)
+                            .font(.callout)
+                            .foregroundStyle(.white)
+                            .padding()
+                            .background(.red.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
+                            .padding()
+                    }
+
+                    if let payload = scannedPayload {
+                        confirmationCard(payload)
+                    } else if !cameraFailed {
+                        instructionCard
+                    }
                 }
-
-                if let payload = scannedPayload {
-                    confirmationCard(payload)
-                } else {
-                    instructionCard
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isPresented = false }
+                        .foregroundStyle(.white)
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var instructionCard: some View {
@@ -151,93 +180,153 @@ struct PairingPayload: Decodable {
     }
 }
 
+// MARK: - Camera Preview (UIViewRepresentable)
+
 struct QRCameraPreview: UIViewRepresentable {
     var onCodeScanned: (String) -> Void
+    var onCameraFailed: () -> Void
 
-    func makeUIView(context: Context) -> QRPreviewUIView {
-        let view = QRPreviewUIView()
-        view.onCodeScanned = onCodeScanned
-        return view
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCodeScanned: onCodeScanned, onCameraFailed: onCameraFailed)
     }
 
-    func updateUIView(_ uiView: QRPreviewUIView, context: Context) {}
-}
-
-class QRPreviewUIView: UIView, AVCaptureMetadataOutputObjectsDelegate {
-    var onCodeScanned: ((String) -> Void)?
-    private var captureSession: AVCaptureSession?
-    private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var hasScanned = false
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        previewLayer?.frame = bounds
-        if captureSession == nil {
-            setupCamera()
-        }
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .black
+        context.coordinator.containerView = container
+        return container
     }
 
-    private func setupCamera() {
-        let session = AVCaptureSession()
-        session.beginConfiguration()
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.startIfNeeded()
+    }
 
-        if session.canSetSessionPreset(.high) {
-            session.sessionPreset = .high
+    class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+        let onCodeScanned: (String) -> Void
+        let onCameraFailed: () -> Void
+        weak var containerView: UIView?
+        private var captureSession: AVCaptureSession?
+        private var previewLayer: AVCaptureVideoPreviewLayer?
+        private var hasScanned = false
+        private var didAttemptSetup = false
+
+        init(onCodeScanned: @escaping (String) -> Void, onCameraFailed: @escaping () -> Void) {
+            self.onCodeScanned = onCodeScanned
+            self.onCameraFailed = onCameraFailed
         }
 
-        let device: AVCaptureDevice? =
-            AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-            ?? AVCaptureDevice.default(for: .video)
+        deinit {
+            captureSession?.stopRunning()
+        }
 
-        guard let camera = device,
-              let input = try? AVCaptureDeviceInput(device: camera),
-              session.canAddInput(input) else {
+        func startIfNeeded() {
+            guard !didAttemptSetup, let container = containerView, container.bounds.width > 0 else { return }
+            didAttemptSetup = true
+
+            let authStatus = AVCaptureDevice.authorizationStatus(for: .video)
+            switch authStatus {
+            case .authorized:
+                setupCamera(in: container)
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                    DispatchQueue.main.async {
+                        if granted, let self, let container = self.containerView {
+                            self.setupCamera(in: container)
+                        } else {
+                            self?.onCameraFailed()
+                        }
+                    }
+                }
+            default:
+                onCameraFailed()
+            }
+        }
+
+        private func setupCamera(in container: UIView) {
+            let session = AVCaptureSession()
+            session.beginConfiguration()
+
+            if session.canSetSessionPreset(.high) {
+                session.sessionPreset = .high
+            } else if session.canSetSessionPreset(.medium) {
+                session.sessionPreset = .medium
+            }
+
+            let device: AVCaptureDevice? =
+                AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+                ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+                ?? AVCaptureDevice.default(for: .video)
+
+            guard let camera = device else {
+                session.commitConfiguration()
+                DispatchQueue.main.async { self.onCameraFailed() }
+                return
+            }
+
+            do {
+                let input = try AVCaptureDeviceInput(device: camera)
+                guard session.canAddInput(input) else {
+                    session.commitConfiguration()
+                    DispatchQueue.main.async { self.onCameraFailed() }
+                    return
+                }
+                session.addInput(input)
+            } catch {
+                session.commitConfiguration()
+                DispatchQueue.main.async { self.onCameraFailed() }
+                return
+            }
+
+            let output = AVCaptureMetadataOutput()
+            guard session.canAddOutput(output) else {
+                session.commitConfiguration()
+                DispatchQueue.main.async { self.onCameraFailed() }
+                return
+            }
+            session.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            output.metadataObjectTypes = [.qr]
+
             session.commitConfiguration()
-            return
+
+            let preview = AVCaptureVideoPreviewLayer(session: session)
+            preview.videoGravity = .resizeAspectFill
+            preview.frame = container.bounds
+            container.layer.addSublayer(preview)
+
+            self.captureSession = session
+            self.previewLayer = preview
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                session.startRunning()
+
+                DispatchQueue.main.async { [weak self] in
+                    self?.previewLayer?.frame = container.bounds
+                }
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, let container = self.containerView else { return }
+                self.previewLayer?.frame = container.bounds
+            }
         }
 
-        session.addInput(input)
+        func metadataOutput(
+            _ output: AVCaptureMetadataOutput,
+            didOutput metadataObjects: [AVMetadataObject],
+            from connection: AVCaptureConnection
+        ) {
+            guard !hasScanned,
+                  let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+                  let value = object.stringValue else { return }
 
-        let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else {
-            session.commitConfiguration()
-            return
-        }
-        session.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: .main)
-        output.metadataObjectTypes = [.qr]
+            hasScanned = true
+            AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+            onCodeScanned(value)
 
-        session.commitConfiguration()
-
-        let preview = AVCaptureVideoPreviewLayer(session: session)
-        preview.videoGravity = .resizeAspectFill
-        preview.frame = bounds
-        layer.addSublayer(preview)
-
-        self.captureSession = session
-        self.previewLayer = preview
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            session.startRunning()
-        }
-    }
-
-    func metadataOutput(
-        _ output: AVCaptureMetadataOutput,
-        didOutput metadataObjects: [AVMetadataObject],
-        from connection: AVCaptureConnection
-    ) {
-        guard !hasScanned,
-              let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-              let value = object.stringValue else { return }
-
-        hasScanned = true
-        AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        onCodeScanned?(value)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            self?.hasScanned = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.hasScanned = false
+            }
         }
     }
 }
