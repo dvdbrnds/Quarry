@@ -8,38 +8,17 @@ struct QRScannerView: View {
     @State private var scannedPayload: PairingPayload?
     @State private var errorMessage: String?
     @State private var isPairing = false
-    @State private var cameraFailed = false
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
-
-                QRCameraPreview(onCodeScanned: handleScanned, onCameraFailed: {
-                    cameraFailed = true
-                })
-                .ignoresSafeArea()
+                QRCameraPreview(onCodeScanned: handleScanned)
+                    .ignoresSafeArea()
 
                 VStack {
                     Spacer()
 
-                    if cameraFailed {
-                        VStack(spacing: 12) {
-                            Image(systemName: "camera.metering.unknown")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.orange)
-                            Text("Camera Unavailable")
-                                .font(.title3.bold())
-                                .foregroundStyle(.white)
-                            Text("Close this screen and try again. Make sure BirdDog has camera permission in Settings.")
-                                .font(.callout)
-                                .foregroundStyle(.white.opacity(0.8))
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(24)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .padding()
-                    } else if let error = errorMessage {
+                    if let error = errorMessage {
                         Text(error)
                             .font(.callout)
                             .foregroundStyle(.white)
@@ -50,7 +29,7 @@ struct QRScannerView: View {
 
                     if let payload = scannedPayload {
                         confirmationCard(payload)
-                    } else if !cameraFailed {
+                    } else {
                         instructionCard
                     }
                 }
@@ -180,111 +159,45 @@ struct PairingPayload: Decodable {
     }
 }
 
-// MARK: - Camera Preview (UIViewRepresentable)
-
 struct QRCameraPreview: UIViewRepresentable {
     var onCodeScanned: (String) -> Void
-    var onCameraFailed: () -> Void
 
-    func makeUIView(context: Context) -> QRCameraUIView {
-        let view = QRCameraUIView()
+    func makeUIView(context: Context) -> QRPreviewUIView {
+        let view = QRPreviewUIView()
         view.onCodeScanned = onCodeScanned
-        view.onCameraFailed = onCameraFailed
         return view
     }
 
-    func updateUIView(_ uiView: QRCameraUIView, context: Context) {}
+    func updateUIView(_ uiView: QRPreviewUIView, context: Context) {}
 }
 
-class QRCameraUIView: UIView, AVCaptureMetadataOutputObjectsDelegate {
+class QRPreviewUIView: UIView, AVCaptureMetadataOutputObjectsDelegate {
     var onCodeScanned: ((String) -> Void)?
-    var onCameraFailed: (() -> Void)?
-
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var hasScanned = false
-    private var didAttemptSetup = false
-
-    deinit {
-        captureSession?.stopRunning()
-    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer?.frame = bounds
-
-        if !didAttemptSetup && bounds.width > 0 && bounds.height > 0 {
-            didAttemptSetup = true
-            checkPermissionAndSetup()
+        if captureSession == nil {
+            setupCamera()
         }
     }
 
-    private func checkPermissionAndSetup() {
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        switch status {
-        case .authorized:
-            startCamera()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        self?.startCamera()
-                    } else {
-                        self?.onCameraFailed?()
-                    }
-                }
-            }
-        default:
-            onCameraFailed?()
-        }
-    }
-
-    private func startCamera() {
+    private func setupCamera() {
         let session = AVCaptureSession()
-        session.beginConfiguration()
+        guard let device = AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else { return }
 
-        if session.canSetSessionPreset(.high) {
-            session.sessionPreset = .high
-        } else if session.canSetSessionPreset(.medium) {
-            session.sessionPreset = .medium
-        }
-
-        let device: AVCaptureDevice? =
-            AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-            ?? AVCaptureDevice.default(for: .video)
-
-        guard let camera = device else {
-            session.commitConfiguration()
-            onCameraFailed?()
-            return
-        }
-
-        do {
-            let input = try AVCaptureDeviceInput(device: camera)
-            guard session.canAddInput(input) else {
-                session.commitConfiguration()
-                onCameraFailed?()
-                return
-            }
-            session.addInput(input)
-        } catch {
-            session.commitConfiguration()
-            onCameraFailed?()
-            return
-        }
+        session.addInput(input)
 
         let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else {
-            session.commitConfiguration()
-            onCameraFailed?()
-            return
-        }
+        guard session.canAddOutput(output) else { return }
         session.addOutput(output)
         output.setMetadataObjectsDelegate(self, queue: .main)
         output.metadataObjectTypes = [.qr]
-
-        session.commitConfiguration()
 
         let preview = AVCaptureVideoPreviewLayer(session: session)
         preview.videoGravity = .resizeAspectFill

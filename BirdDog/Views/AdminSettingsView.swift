@@ -47,8 +47,6 @@ struct AdminSettingsView: View {
         }
         .fullScreenCover(isPresented: $showQRScanner) {
             QRScannerView(isPresented: $showQRScanner, onPaired: {})
-                .onAppear { cameraService.stop() }
-                .onDisappear { cameraService.start() }
         }
     }
 
