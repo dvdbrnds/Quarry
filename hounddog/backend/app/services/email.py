@@ -473,6 +473,10 @@ async def send_sponsor_approval_email(
         f'padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">Review &amp; Approve</a>'
         f'</div>'
         f'<p style="color:#999;font-size:13px;">This link expires in 7 days. If you did not expect this request, you can ignore this email.</p>'
+        f'<hr style="border:none;border-top:1px solid #eee;margin:24px 0 16px;" />'
+        f'<p style="color:#999;font-size:13px;text-align:center;">'
+        f'<a href="{settings.student_facing_url}/sponsor" style="color:{primary};text-decoration:none;">'
+        f'View all your permits</a> — manage every vendor permit you sponsor in one place.</p>'
     )
     body_html = await branded_email_shell(school, inner)
     body_text = (
@@ -488,6 +492,7 @@ async def send_sponsor_approval_email(
         f"Duration: {start_date} to {end_date}\n\n"
         f"Review and approve: {approval_url}\n\n"
         f"This link expires in 7 days.\n\n"
+        f"View all your permits: {settings.student_facing_url}/sponsor\n\n"
         f"{school} {department}"
     )
     return await send_email([sponsor_email], subject, body_html, body_text)

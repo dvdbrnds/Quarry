@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import require_office
+from ..auth.okta import require_office, get_current_user, OktaUser
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
@@ -526,6 +526,99 @@ async def resend_sponsor_email(
     if sent:
         return {"status": "sent", "message": f"Approval email resent to {approval.sponsor_email}"}
     raise HTTPException(500, f"Failed to send email to {approval.sponsor_email} — check server logs")
+
+
+class SponsorPermitInfo(BaseModel):
+    permit_id: str
+    permit_number: str | None
+    name: str
+    company_name: str
+    plate: str
+    student_name: str = ""
+    instructor_name: str = ""
+    work_description: str = ""
+    sponsor_department: str = ""
+    start_date: str = ""
+    end_date: str | None = None
+    status: str
+    decision: str | None = None
+    token: str
+    created_at: str
+
+
+@router.get("/sponsor/my-permits", response_model=list[SponsorPermitInfo])
+async def sponsor_my_permits(
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticated sponsor: list all vendor permits where the logged-in user is the sponsor."""
+    result = await db.execute(
+        select(VisitorApprovalToken)
+        .where(VisitorApprovalToken.sponsor_email.ilike(user.email))
+        .order_by(VisitorApprovalToken.created_at.desc())
+    )
+    tokens = result.scalars().all()
+
+    permits_out: list[SponsorPermitInfo] = []
+    for tok in tokens:
+        permit = await db.get(Permit, tok.permit_id)
+        if not permit:
+            continue
+        permits_out.append(SponsorPermitInfo(
+            permit_id=str(permit.id),
+            permit_number=permit.permit_number,
+            name=permit.name,
+            company_name=_extract_metadata(permit, "company_name") or permit.student_id or "",
+            plate=permit.plates[0] if permit.plates else "",
+            student_name=_extract_metadata(permit, "student_name"),
+            instructor_name=_extract_metadata(permit, "instructor_name"),
+            work_description=_extract_metadata(permit, "work_description"),
+            sponsor_department=_extract_metadata(permit, "sponsor_department"),
+            start_date=permit.start_date.isoformat() if permit.start_date else "",
+            end_date=permit.end_date.isoformat() if permit.end_date else None,
+            status=permit.status,
+            decision=tok.decision,
+            token=tok.token,
+            created_at=tok.created_at.isoformat() if tok.created_at else "",
+        ))
+    return permits_out
+
+
+@router.post("/sponsor/decide/{token}")
+async def sponsor_decide(
+    token: str,
+    body: ApprovalDecision,
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticated sponsor: approve or deny a vendor permit they are responsible for."""
+    approval = await _get_valid_token(token, db, check_used=True)
+
+    if approval.sponsor_email.lower() != user.email.lower():
+        raise HTTPException(403, "You are not the sponsor for this permit")
+
+    permit = await db.get(Permit, approval.permit_id)
+    if not permit:
+        raise HTTPException(404, "Permit not found")
+
+    if body.decision not in ("approved", "denied"):
+        raise HTTPException(400, "Decision must be 'approved' or 'denied'")
+
+    approval.used_at = datetime.now(timezone.utc)
+    approval.decision = body.decision
+
+    if body.decision == "approved":
+        permit.status = "active"
+        await db.flush()
+        await _notify_permit_change("created", 1)
+        if permit.email:
+            await _send_visitor_confirmation(permit)
+        return {"status": "approved", "message": "Permit has been approved and is now active."}
+    else:
+        permit.status = "denied"
+        permit.deleted_at = datetime.now(timezone.utc)
+        await db.flush()
+        return {"status": "denied", "message": "Permit has been denied."}
 
 
 @router.post("/approve/{token}")

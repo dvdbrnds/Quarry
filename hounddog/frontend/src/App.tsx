@@ -21,6 +21,7 @@ import SignagePlayer from "./pages/SignagePlayer";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
 import StaffPermits from "./pages/StaffPermits";
+import SponsorDashboard from "./pages/SponsorDashboard";
 import LotteryApplyV2 from "./pages/LotteryApplyV2";
 import ParkingMap from "./pages/ParkingMap";
 import Appeals from "./pages/Appeals";
@@ -307,6 +308,7 @@ export default function App() {
   const isSignageRoute = location.pathname.startsWith("/signage/player");
   const isLotteryRoute = location.pathname === "/parking" || location.pathname === "/parking/lottery-v2";
   const isEmployeeParkingRoute = location.pathname === "/employee-parking";
+  const isSponsorRoute = location.pathname === "/sponsor";
   const isParkingMapRoute = location.pathname === "/parking-map";
   const isVisitorRoute = location.pathname.startsWith("/visitor");
   const isAppealsRoute = location.pathname === "/appeals";
@@ -387,6 +389,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/employee-parking" element={<StaffPermits />} />
+      </Routes>
+    );
+  }
+
+  if (isSponsorRoute) {
+    return (
+      <Routes>
+        <Route path="/sponsor" element={<SponsorDashboard />} />
       </Routes>
     );
   }
