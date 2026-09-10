@@ -1450,7 +1450,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             )}
           </div>
         }
-        width={560}
+        width={720}
       >
         {selected && (
           <div className="space-y-4">
