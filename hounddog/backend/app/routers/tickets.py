@@ -265,6 +265,51 @@ async def officer_report(
     hour_map = {int(r[0]): r[1] for r in by_hour_total_rows}
     by_hour_total = [{"hour": h, "count": hour_map.get(h, 0)} for h in range(24)]
 
+    # Team-wide violation type breakdown with per-officer detail
+    viol_total_q = (
+        select(Ticket.violation_type, func.count().label("cnt"))
+        .group_by(Ticket.violation_type).order_by(func.count().desc())
+    )
+    viol_total_rows = (await db.execute(viol_total_q)).all()
+    viol_codes = [r[0] for r in viol_total_rows]
+    viol_label_map: dict[str, str] = {}
+    if viol_codes:
+        vt_r = await db.execute(
+            select(ViolationType.code, ViolationType.label).where(ViolationType.code.in_(viol_codes))
+        )
+        viol_label_map = {r[0]: r[1] for r in vt_r.all()}
+
+    # Per-officer counts for each violation type
+    viol_officer_q = (
+        select(Ticket.violation_type, Ticket.officer_email, func.count().label("cnt"))
+        .where(Ticket.officer_email.isnot(None))
+        .group_by(Ticket.violation_type, Ticket.officer_email)
+    )
+    viol_officer_rows = (await db.execute(viol_officer_q)).all()
+    viol_officer_map: dict[str, list] = {}
+    for vtype, email, cnt in viol_officer_rows:
+        viol_officer_map.setdefault(vtype, []).append({"officer_email": email, "count": cnt})
+
+    # Sort each violation's officers by count desc
+    for vtype in viol_officer_map:
+        viol_officer_map[vtype].sort(key=lambda x: x["count"], reverse=True)
+
+    # Build officer name lookup
+    officer_name_map = {o["officer_email"]: o.get("officer_name") or o["officer_email"].split("@")[0] for o in officers}
+    for entries in viol_officer_map.values():
+        for entry in entries:
+            entry["officer_name"] = officer_name_map.get(entry["officer_email"], entry["officer_email"].split("@")[0])
+
+    by_violation_total = [
+        {
+            "violation_type": r[0],
+            "label": viol_label_map.get(r[0], r[0]),
+            "count": r[1],
+            "officers": viol_officer_map.get(r[0], []),
+        }
+        for r in viol_total_rows
+    ]
+
     # Team-wide revenue
     total_revenue = float((await db.execute(
         select(func.coalesce(func.sum(Ticket.fine_amount), 0))
@@ -292,6 +337,7 @@ async def officer_report(
         "daily_total": daily_total,
         "by_lot_total": by_lot_total,
         "by_hour_total": by_hour_total,
+        "by_violation_total": by_violation_total,
         "officers": officers,
     }
 

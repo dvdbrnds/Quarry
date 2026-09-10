@@ -329,6 +329,13 @@ interface OfficerRow extends FullStatsData {
   global_share: number;
 }
 
+interface ViolationDetail {
+  violation_type: string;
+  label: string;
+  count: number;
+  officers: { officer_email: string; officer_name: string; count: number }[];
+}
+
 interface ReportData {
   total_all: number;
   team_this_week: number;
@@ -338,6 +345,7 @@ interface ReportData {
   daily_total: { date: string; count: number }[];
   by_lot_total: { lot: string; count: number }[];
   by_hour_total: { hour: number; count: number }[];
+  by_violation_total: ViolationDetail[];
   officers: OfficerRow[];
 }
 
@@ -381,6 +389,7 @@ function OfficerReport() {
   const [loading, setLoading] = useState(true);
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [selectedOfficer, setSelectedOfficer] = useState<OfficerRow | null>(null);
+  const [selectedViolation, setSelectedViolation] = useState<ViolationDetail | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -451,7 +460,86 @@ function OfficerReport() {
         </Card>
       </div>
 
-      {/* Section 5 — Leaderboard */}
+      {/* Section 5 — Citations by Type */}
+      <Card size="small" title={`Citations by Type (${data.by_violation_total.length})`} className="shadow-sm">
+        {data.by_violation_total.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" /> : (
+          <div className="space-y-2">
+            {data.by_violation_total.slice(0, 15).map(v => {
+              const maxV = data.by_violation_total[0]?.count || 1;
+              return (
+                <div key={v.violation_type} className="cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 -mx-1 transition-colors" onClick={() => setSelectedViolation(v)}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span className="text-gray-600 truncate mr-2">{v.label}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-gray-400">{v.officers.length} officer{v.officers.length !== 1 ? "s" : ""}</span>
+                      <span className="font-semibold text-gray-800">{v.count}</span>
+                    </div>
+                  </div>
+                  <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${(v.count / maxV) * 100}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {data.by_violation_total.length > 15 && (
+              <div className="text-xs text-gray-400 text-center pt-1">+ {data.by_violation_total.length - 15} more types</div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Violation type detail modal */}
+      <Modal
+        open={!!selectedViolation}
+        onCancel={() => setSelectedViolation(null)}
+        footer={null}
+        title={null}
+        width={700}
+      >
+        {selectedViolation && (() => {
+          const v = selectedViolation;
+          const maxO = v.officers[0]?.count || 1;
+          const pctOfTotal = data.total_all ? ((v.count / data.total_all) * 100).toFixed(1) : "0";
+          return (
+            <div className="space-y-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">{v.label}</h2>
+                <p className="text-sm text-gray-500">{v.count} total citations &middot; {pctOfTotal}% of all citations &middot; {v.officers.length} officer{v.officers.length !== 1 ? "s" : ""}</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <Card size="small" className="shadow-sm"><Statistic title="Total" value={v.count} /></Card>
+                <Card size="small" className="shadow-sm"><Statistic title="% of All" value={pctOfTotal} suffix="%" /></Card>
+                <Card size="small" className="shadow-sm"><Statistic title="Officers" value={v.officers.length} /></Card>
+              </div>
+
+              <Card size="small" title="By Officer" className="shadow-sm">
+                <div className="space-y-2">
+                  {v.officers.map((o, i) => (
+                    <div key={o.officer_email}>
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="text-gray-700">
+                          <span className="font-semibold text-gray-400 mr-1.5">#{i + 1}</span>
+                          {o.officer_name}
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-gray-400">{v.count ? ((o.count / v.count) * 100).toFixed(0) : 0}%</span>
+                          <span className="font-semibold text-gray-800">{o.count}</span>
+                        </div>
+                      </div>
+                      <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${(o.count / maxO) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Section 6 — Leaderboard */}
       <Card size="small" title="Officer Leaderboard" className="shadow-sm">
         <div className="space-y-3">
           {officers.map((o, i) => {
