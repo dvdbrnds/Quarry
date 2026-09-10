@@ -235,6 +235,23 @@ final class PlateReaderViewModel: ObservableObject {
         deletePersistedScanLog()
     }
 
+    /// Check if a plate has been ticketed — either locally on this device or by another officer (via server sync).
+    private func isPlateTicketed(_ normalizedPlate: String, currentLot: String?) -> (ticketed: Bool, lot: String) {
+        // Check local tickets first (this device)
+        if let ticketedLot = ticketedPlates[normalizedPlate] {
+            let lotName = currentLot ?? ""
+            let isTicketedHere = ticketedLot.isEmpty || lotName.isEmpty || ticketedLot == lotName
+            if isTicketedHere { return (true, ticketedLot) }
+        }
+        // Check server-synced tickets (other devices)
+        if let ticketedLot = HoundDogSyncService.shared.recentlyTicketedPlates[normalizedPlate] {
+            let lotName = currentLot ?? ""
+            let isTicketedHere = ticketedLot.isEmpty || lotName.isEmpty || ticketedLot == lotName
+            if isTicketedHere { return (true, ticketedLot) }
+        }
+        return (false, "")
+    }
+
     func markPlateTicketed(_ plate: String, lot: String? = nil) {
         let normalized = plate.uppercased().trimmingCharacters(in: .whitespaces)
         let ticketLot = lot ?? geofenceService.currentLotName ?? ""
@@ -269,14 +286,8 @@ final class PlateReaderViewModel: ObservableObject {
         let currentLot = geofenceService.currentLotName
 
         let authResult = authService.checkDetailed(plate: normalized, currentLot: currentLot)
-        let effectiveStatus: PlateStatus
-        if let ticketedLot = ticketedPlates[normalized] {
-            let lotName = currentLot ?? ""
-            let isTicketedHere = ticketedLot.isEmpty || lotName.isEmpty || ticketedLot == lotName
-            effectiveStatus = isTicketedHere ? .ticketed : authResult.status
-        } else {
-            effectiveStatus = authResult.status
-        }
+        let ticketCheck = isPlateTicketed(normalized, currentLot: currentLot)
+        let effectiveStatus: PlateStatus = ticketCheck.ticketed ? .ticketed : authResult.status
 
         let entry = ScannedPlate(
             text: normalized,
@@ -559,15 +570,8 @@ final class PlateReaderViewModel: ObservableObject {
             let authResult = authService.checkDetailed(plate: consensusText, currentLot: geofenceService.currentLotName)
 
             let normalizedPlate = consensusText.uppercased().trimmingCharacters(in: .whitespaces)
-            let currentLotName = geofenceService.currentLotName ?? ""
-            let isTicketedHere: Bool
-            if let ticketedLot = ticketedPlates[normalizedPlate] {
-                // Only show as ticketed if same lot (or either lot is unknown)
-                isTicketedHere = ticketedLot.isEmpty || currentLotName.isEmpty || ticketedLot == currentLotName
-            } else {
-                isTicketedHere = false
-            }
-            let effectiveStatus = isTicketedHere ? .ticketed : authResult.status
+            let ticketCheck = isPlateTicketed(normalizedPlate, currentLot: geofenceService.currentLotName)
+            let effectiveStatus = ticketCheck.ticketed ? .ticketed : authResult.status
             latestAuthStatus = effectiveStatus
 
             if authResult.matchedPlate != consensusText {
@@ -759,14 +763,8 @@ final class PlateReaderViewModel: ObservableObject {
 
         let authResult = authService.checkDetailed(plate: newText, currentLot: geofenceService.currentLotName)
         let normalizedPlate = newText.uppercased().trimmingCharacters(in: .whitespaces)
-        let currentLotName = geofenceService.currentLotName ?? ""
-        let isTicketedHere: Bool
-        if let ticketedLot = ticketedPlates[normalizedPlate] {
-            isTicketedHere = ticketedLot.isEmpty || currentLotName.isEmpty || ticketedLot == currentLotName
-        } else {
-            isTicketedHere = false
-        }
-        let effectiveStatus = isTicketedHere ? .ticketed : authResult.status
+        let ticketCheck = isPlateTicketed(normalizedPlate, currentLot: geofenceService.currentLotName)
+        let effectiveStatus = ticketCheck.ticketed ? .ticketed : authResult.status
 
         let upgraded = ScannedPlate(
             text: newText,

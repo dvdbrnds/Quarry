@@ -2,7 +2,7 @@ import base64
 import logging
 import os
 import uuid as uuid_mod
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from ..services.timeutils import today_local, to_local
 from ..services.plate_utils import normalize_plate
@@ -434,6 +434,46 @@ async def register_push_token(
 ):
     device.push_token = body.token
     await db.flush()
+
+
+class RecentTicketEntry(BaseModel):
+    plate: str
+    lot: str
+    issued_at: datetime
+    officer_email: str | None = None
+
+
+class SyncRecentTicketsResponse(BaseModel):
+    tickets: list[RecentTicketEntry]
+    server_timestamp: datetime
+
+
+@router.get("/recent-tickets", response_model=SyncRecentTicketsResponse)
+async def sync_recent_tickets(
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return plates ticketed in the last 24 hours so all devices can show them as already-ticketed."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    result = await db.execute(
+        select(Ticket).where(
+            Ticket.issued_at >= cutoff,
+            Ticket.status.notin_(["voided"]),
+        ).order_by(Ticket.issued_at.desc())
+    )
+    tickets = result.scalars().all()
+    return SyncRecentTicketsResponse(
+        tickets=[
+            RecentTicketEntry(
+                plate=t.plate,
+                lot=t.lot or "",
+                issued_at=t.issued_at,
+                officer_email=t.officer_email,
+            )
+            for t in tickets
+        ],
+        server_timestamp=datetime.now(timezone.utc),
+    )
 
 
 @router.post("/tickets", status_code=202)

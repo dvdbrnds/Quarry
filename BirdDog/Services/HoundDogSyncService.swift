@@ -135,6 +135,7 @@ final class HoundDogSyncService: ObservableObject {
             try await syncViolationTypes()
             try await syncCalendar()
             try await syncEnforcementSettings()
+            try await syncRecentTickets()
             await retryPendingTickets()
             syncState = .synced
             lastSyncDate = Date()
@@ -243,6 +244,10 @@ final class HoundDogSyncService: ObservableObject {
     /// are allowed in the diversion target without citation.
     @Published private(set) var activeDiversions: [String: String] = [:]
 
+    /// Recently ticketed plates from ALL devices (last 24h).
+    /// Keyed by normalized plate → lot name.
+    @Published private(set) var recentlyTicketedPlates: [String: String] = [:]
+
     private func syncDiversions() async throws {
         let settings = AppSettings.shared
         guard let url = URL(string: "\(settings.houndDogURL)/api/sync/diversions") else { return }
@@ -259,6 +264,41 @@ final class HoundDogSyncService: ObservableObject {
         }
         activeDiversions = map
         print("[HoundDog] Diversions: \(map.count) active")
+    }
+
+    // MARK: - Recently Ticketed Plates
+
+    private struct RecentTicketEntry: Decodable {
+        let plate: String
+        let lot: String
+        let issued_at: String
+        let officer_email: String?
+    }
+
+    private struct RecentTicketsSyncResponse: Decodable {
+        let tickets: [RecentTicketEntry]
+        let server_timestamp: String
+    }
+
+    private func syncRecentTickets() async throws {
+        let settings = AppSettings.shared
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/recent-tickets") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        let syncResponse = try Self.jsonDecoder.decode(RecentTicketsSyncResponse.self, from: data)
+        var map: [String: String] = [:]
+        for entry in syncResponse.tickets {
+            let normalized = entry.plate.uppercased().trimmingCharacters(in: .whitespaces)
+            if map[normalized] == nil {
+                map[normalized] = entry.lot
+            }
+        }
+        recentlyTicketedPlates = map
+        print("[HoundDog] Recent tickets: \(map.count) plates ticketed in last 24h")
     }
 
     // MARK: - Violation Types
