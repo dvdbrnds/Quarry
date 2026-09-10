@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
-import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs, Card, Statistic, Progress, Spin, Tooltip } from "antd";
+import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs, Card, Statistic, Progress, Spin, Tooltip, DatePicker } from "antd";
+import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
@@ -876,6 +877,10 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "");
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") ?? "");
+  const [lotFilter, setLotFilter] = useState(searchParams.get("lot") ?? "");
+  const [dateFrom, setDateFrom] = useState(searchParams.get("date_from") ?? "");
+  const [dateTo, setDateTo] = useState(searchParams.get("date_to") ?? "");
+  const [lotOptions, setLotOptions] = useState<{ label: string; value: string }[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -886,8 +891,23 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (categoryFilter) params.set("category", categoryFilter);
+    if (lotFilter) params.set("lot", lotFilter);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
     setSearchParams(params, { replace: true });
-  }, [search, statusFilter, categoryFilter, setSearchParams]);
+  }, [search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, setSearchParams]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/lots", { headers: await authHeaders() });
+        if (res.ok) {
+          const lots: { name: string }[] = await res.json();
+          setLotOptions(lots.map(l => ({ label: l.name, value: l.name })).sort((a, b) => a.label.localeCompare(b.label)));
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -897,6 +917,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       if (search) qs.set("search", search);
       if (statusFilter) qs.set("status", statusFilter);
       if (categoryFilter) qs.set("category", categoryFilter);
+      if (lotFilter) qs.set("lot", lotFilter);
+      if (dateFrom) qs.set("date_from", dateFrom);
+      if (dateTo) qs.set("date_to", dateTo);
       if (officerEmail) qs.set("officer_email", officerEmail);
       const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
       if (res.ok) {
@@ -909,7 +932,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, categoryFilter, officerEmail, message]);
+  }, [page, search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, officerEmail, message]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1404,6 +1427,25 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             { label: "Parking", value: "parking" },
             { label: "Moving", value: "moving" },
           ]}
+        />
+        <Select
+          value={lotFilter || undefined}
+          onChange={(val) => { setLotFilter(val || ""); setPage(1); }}
+          placeholder="All Lots"
+          allowClear
+          showSearch
+          style={{ width: 140 }}
+          options={lotOptions}
+        />
+        <DatePicker.RangePicker
+          value={dateFrom && dateTo ? [dayjs(dateFrom), dayjs(dateTo)] : dateFrom ? [dayjs(dateFrom), null] : dateTo ? [null, dayjs(dateTo)] : null}
+          onChange={(dates) => {
+            setDateFrom(dates?.[0]?.format("YYYY-MM-DD") ?? "");
+            setDateTo(dates?.[1]?.format("YYYY-MM-DD") ?? "");
+            setPage(1);
+          }}
+          allowClear
+          style={{ width: 240 }}
         />
       </Space>
 

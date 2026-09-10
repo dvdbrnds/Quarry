@@ -50,6 +50,8 @@ async def list_tickets(
     lot: str | None = None,
     category: str | None = None,
     officer_email: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
     _office: OktaUser = Depends(require_office()),
 ):
@@ -77,6 +79,20 @@ async def list_tickets(
         query = query.where(Ticket.ticket_category == category)
     if officer_email:
         query = query.where(Ticket.officer_email == officer_email)
+    if date_from:
+        try:
+            from datetime import datetime as _dt
+            dt_from = _dt.fromisoformat(date_from)
+            query = query.where(Ticket.issued_at >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            dt_to = _dt.fromisoformat(date_to) + _td(days=1)
+            query = query.where(Ticket.issued_at < dt_to)
+        except ValueError:
+            pass
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
