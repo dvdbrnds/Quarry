@@ -180,6 +180,208 @@ function OfficerStats() {
   );
 }
 
+interface OfficerRow {
+  officer_email: string;
+  officer_name: string | null;
+  this_week: number;
+  this_month: number;
+  all_time: number;
+  global_share: number;
+  by_violation: { violation_type: string; label: string; count: number }[];
+  by_status: { status: string; count: number }[];
+}
+
+function OfficerReport() {
+  const [data, setData] = useState<{ total_all: number; officers: OfficerRow[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [compareKeys, setCompareKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/tickets/officer-report", { headers: await authHeaders() });
+        if (res.ok) setData(await res.json());
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  if (loading) return <div className="text-center py-12"><Spin size="large" /><p className="mt-3 text-gray-500">Loading officer data...</p></div>;
+  if (!data || data.officers.length === 0) return <Empty description="No officer data available" className="py-12" />;
+
+  const officers = data.officers;
+  const maxAllTime = Math.max(...officers.map(o => o.all_time), 1);
+  const compared = officers.filter(o => compareKeys.includes(o.officer_email));
+
+  const toggleCompare = (email: string) => {
+    setCompareKeys(prev =>
+      prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
+    );
+  };
+
+  const displayName = (o: OfficerRow) => o.officer_name || o.officer_email.split("@")[0];
+
+  const COMPARE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Officer Performance Report</h2>
+        <p className="text-sm text-gray-500">{officers.length} officer{officers.length !== 1 ? "s" : ""} · {data.total_all} total citations</p>
+      </div>
+
+      {/* Leaderboard */}
+      <Card size="small" title="All Officers — Ranked by All-Time Citations" className="shadow-sm">
+        <div className="space-y-3">
+          {officers.map((o, i) => (
+            <div key={o.officer_email} className="flex items-center gap-3">
+              <div className="w-6 text-right text-sm font-bold text-gray-400">#{i + 1}</div>
+              <Tooltip title={compareKeys.includes(o.officer_email) ? "Remove from comparison" : "Add to comparison"}>
+                <Button
+                  size="small"
+                  type={compareKeys.includes(o.officer_email) ? "primary" : "default"}
+                  onClick={() => toggleCompare(o.officer_email)}
+                  className="shrink-0"
+                  style={compareKeys.includes(o.officer_email) ? { background: COMPARE_COLORS[compareKeys.indexOf(o.officer_email) % COMPARE_COLORS.length] } : {}}
+                >
+                  {compareKeys.includes(o.officer_email) ? "✓" : "Compare"}
+                </Button>
+              </Tooltip>
+              <div className="w-36 shrink-0">
+                <div className="font-semibold text-sm truncate">{displayName(o)}</div>
+                <div className="text-[10px] text-gray-400 truncate">{o.officer_email}</div>
+              </div>
+              <div className="flex-1">
+                <div className="h-6 bg-gray-100 rounded overflow-hidden relative">
+                  <div
+                    className="h-full bg-blue-500 rounded transition-all"
+                    style={{ width: `${(o.all_time / maxAllTime) * 100}%` }}
+                  />
+                  <span className="absolute inset-0 flex items-center px-2 text-xs font-semibold" style={{ color: o.all_time > maxAllTime * 0.3 ? "#fff" : "#333" }}>
+                    {o.all_time}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0 w-24">
+                <div className="text-xs text-gray-500">Week: <span className="font-semibold text-gray-800">{o.this_week}</span></div>
+                <div className="text-xs text-gray-500">Month: <span className="font-semibold text-gray-800">{o.this_month}</span></div>
+              </div>
+              <div className="shrink-0 w-14">
+                <Progress type="circle" percent={o.global_share} size={36} format={p => `${p}%`} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Side-by-side comparison */}
+      {compared.length >= 2 && (
+        <Card
+          size="small"
+          title={`Side-by-Side: ${compared.map(displayName).join(" vs ")}`}
+          extra={<Button size="small" onClick={() => setCompareKeys([])}>Clear</Button>}
+          className="shadow-sm"
+        >
+          {/* Summary numbers */}
+          <div className="overflow-x-auto mb-6">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 pr-4 text-gray-500 font-medium">Metric</th>
+                  {compared.map((o, i) => (
+                    <th key={o.officer_email} className="text-right py-2 px-3 font-semibold" style={{ color: COMPARE_COLORS[i % COMPARE_COLORS.length] }}>
+                      {displayName(o)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(["this_week", "this_month", "all_time", "global_share"] as const).map(metric => (
+                  <tr key={metric} className="border-b border-gray-50">
+                    <td className="py-2 pr-4 text-gray-600 capitalize">{metric.replace(/_/g, " ")}{metric === "global_share" ? " %" : ""}</td>
+                    {compared.map((o, i) => {
+                      const val = o[metric];
+                      const vals = compared.map(c => c[metric]);
+                      const isMax = val === Math.max(...vals) && vals.filter(v => v === val).length === 1;
+                      return (
+                        <td key={o.officer_email} className={`text-right py-2 px-3 ${isMax ? "font-bold" : ""}`} style={isMax ? { color: COMPARE_COLORS[i % COMPARE_COLORS.length] } : {}}>
+                          {metric === "global_share" ? `${val}%` : val}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Violation type comparison bars */}
+          <div className="mb-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Violations by Type</h4>
+            {(() => {
+              const allTypes = new Map<string, string>();
+              compared.forEach(o => o.by_violation.forEach(v => allTypes.set(v.violation_type, v.label)));
+              const maxV = Math.max(...compared.flatMap(o => o.by_violation.map(v => v.count)), 1);
+              return Array.from(allTypes.entries()).map(([code, label]) => (
+                <div key={code} className="mb-3">
+                  <div className="text-xs text-gray-600 mb-1">{label}</div>
+                  {compared.map((o, i) => {
+                    const found = o.by_violation.find(v => v.violation_type === code);
+                    const cnt = found?.count || 0;
+                    return (
+                      <div key={o.officer_email} className="flex items-center gap-2 mb-0.5">
+                        <div className="w-20 text-[10px] text-right truncate" style={{ color: COMPARE_COLORS[i % COMPARE_COLORS.length] }}>{displayName(o)}</div>
+                        <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                          <div className="h-full rounded transition-all" style={{ width: `${(cnt / maxV) * 100}%`, backgroundColor: COMPARE_COLORS[i % COMPARE_COLORS.length] }} />
+                        </div>
+                        <div className="w-8 text-xs font-semibold text-right">{cnt}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+          </div>
+
+          {/* Status comparison bars */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">By Status</h4>
+            {(() => {
+              const allStatuses = new Set<string>();
+              compared.forEach(o => o.by_status.forEach(s => allStatuses.add(s.status)));
+              const maxS = Math.max(...compared.flatMap(o => o.by_status.map(s => s.count)), 1);
+              return Array.from(allStatuses).map(status => (
+                <div key={status} className="mb-3">
+                  <Tag color={STATUS_COLORS[status] || "default"} className="mb-1">{status}</Tag>
+                  {compared.map((o, i) => {
+                    const found = o.by_status.find(s => s.status === status);
+                    const cnt = found?.count || 0;
+                    return (
+                      <div key={o.officer_email} className="flex items-center gap-2 mb-0.5">
+                        <div className="w-20 text-[10px] text-right truncate" style={{ color: COMPARE_COLORS[i % COMPARE_COLORS.length] }}>{displayName(o)}</div>
+                        <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                          <div className="h-full rounded transition-all" style={{ width: `${(cnt / maxS) * 100}%`, backgroundColor: COMPARE_COLORS[i % COMPARE_COLORS.length] }} />
+                        </div>
+                        <div className="w-8 text-xs font-semibold text-right">{cnt}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+          </div>
+        </Card>
+      )}
+
+      {compared.length === 1 && (
+        <Card size="small" className="shadow-sm bg-blue-50 border-blue-200">
+          <p className="text-sm text-blue-700">Select at least one more officer to see a side-by-side comparison.</p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const { modal, message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -918,6 +1120,7 @@ export default function Tickets() {
   const tabItems = [
     { key: "tickets", label: "Tickets", children: <TicketsList /> },
     ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
+    ...(isAdmin ? [{ key: "officer-report", label: "Officer Report", children: <OfficerReport /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];
