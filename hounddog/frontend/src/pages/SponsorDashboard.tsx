@@ -350,32 +350,53 @@ function SponsorPage() {
     {
       title: "Actions",
       key: "actions",
-      render: (_, r) =>
-        r.status === "pending_approval" && !r.decision ? (
-          <div className="flex gap-2">
-            <Button
-              size="small"
-              type="primary"
-              loading={deciding === r.token}
-              onClick={(e) => { e.stopPropagation(); handleDecision(r.token, "approved"); }}
-              style={{ background: brand.primaryColor }}
-            >
-              Approve
-            </Button>
-            <Button
-              size="small"
-              danger
-              loading={deciding === r.token}
-              onClick={(e) => { e.stopPropagation(); handleDecision(r.token, "denied"); }}
-            >
-              Deny
-            </Button>
-          </div>
-        ) : r.decision ? (
-          <Tag color={r.decision === "approved" ? "green" : "red"}>
-            {r.decision === "approved" ? "Approved" : "Denied"}
-          </Tag>
-        ) : null,
+      render: (_, r) => (
+        <div className="flex gap-2 items-center">
+          {r.status === "pending_approval" && !r.decision && (
+            <>
+              <Button
+                size="small"
+                type="primary"
+                loading={deciding === r.token}
+                onClick={(e) => { e.stopPropagation(); handleDecision(r.token, "approved"); }}
+                style={{ background: brand.primaryColor }}
+              >
+                Approve
+              </Button>
+              <Button
+                size="small"
+                danger
+                loading={deciding === r.token}
+                onClick={(e) => { e.stopPropagation(); handleDecision(r.token, "denied"); }}
+              >
+                Deny
+              </Button>
+            </>
+          )}
+          {r.decision && (
+            <Tag color={r.decision === "approved" ? "green" : "red"}>
+              {r.decision === "approved" ? "Approved" : "Denied"}
+            </Tag>
+          )}
+          <Popconfirm
+            title="Delete this permit?"
+            description="This will permanently remove this entry."
+            onConfirm={async () => {
+              try {
+                const headers = await authHeaders();
+                const res = await fetch(`/api/visitor/permits/sponsor/permit/${r.token}`, { method: "DELETE", headers });
+                if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail || "Failed to delete"); }
+                message.success("Permit deleted.");
+                await loadPermits();
+              } catch (e: any) { message.error(e.message); }
+            }}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Button size="small" danger type="text" onClick={(e) => e.stopPropagation()}>Delete</Button>
+          </Popconfirm>
+        </div>
+      ),
     },
   ];
 
