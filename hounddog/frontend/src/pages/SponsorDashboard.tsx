@@ -195,7 +195,7 @@ function SponsorPage() {
       const res = await fetch(`/api/visitor/permits/sponsor/permit/${selected.token}`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ delete: true }),
+        body: JSON.stringify({ remove: true }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -388,7 +388,7 @@ function SponsorPage() {
                 const res = await fetch(`/api/visitor/permits/sponsor/permit/${r.token}`, {
                   method: "PATCH",
                   headers: { ...headers, "Content-Type": "application/json" },
-                  body: JSON.stringify({ delete: true }),
+                  body: JSON.stringify({ remove: true }),
                 });
                 if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail || "Failed to delete"); }
                 message.success("Permit deleted.");

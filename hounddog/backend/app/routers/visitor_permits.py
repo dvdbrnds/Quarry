@@ -589,7 +589,7 @@ class SponsorPermitEdit(BaseModel):
     plate: str | None = None
     end_date: str | None = None
     revoke: bool = False
-    delete: bool = False
+    remove: bool = False
 
 
 @router.patch("/sponsor/permit/{token}")
@@ -613,17 +613,17 @@ async def sponsor_edit_permit(
     if not permit:
         raise HTTPException(404, "Permit not found")
 
-    if body.revoke or body.delete:
-        permit.status = "denied" if body.delete else "revoked"
+    if body.revoke or body.remove:
+        permit.status = "denied" if body.remove else "revoked"
         permit.deleted_at = datetime.now(timezone.utc)
-        permit.cancel_reason = "sponsor_deleted" if body.delete else "sponsor_revoked"
+        permit.cancel_reason = "sponsor_deleted" if body.remove else "sponsor_revoked"
         permit.cancelled_at = datetime.now(timezone.utc)
         permit.cancelled_by = user.email
-        if body.delete and not approval.used_at:
+        if body.remove and not approval.used_at:
             approval.used_at = datetime.now(timezone.utc)
             approval.decision = "denied"
         await db.commit()
-        label = "deleted" if body.delete else "revoked"
+        label = "deleted" if body.remove else "revoked"
         return {"status": label, "message": f"Permit has been {label}."}
 
     if body.name is not None and body.name.strip():
