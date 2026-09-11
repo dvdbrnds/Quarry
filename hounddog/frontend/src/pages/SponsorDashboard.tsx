@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Empty, Spin, Tag, Table, App, Segmented, Descriptions, Modal, Form, Input, DatePicker, Popconfirm } from "antd";
+import { Button, Card, Empty, Space, Spin, Tag, Table, App, Segmented, Descriptions, Modal, Form, Input, DatePicker, Popconfirm } from "antd";
+import { DownloadOutlined, PrinterOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, type AuthUser } from "../auth";
@@ -210,6 +211,64 @@ function SponsorPage() {
     );
   }
 
+  function exportCSV() {
+    const rows = filtered.map(p => ({
+      Vendor: p.name,
+      Company: p.company_name,
+      Student: p.student_name || "",
+      Instructor: p.instructor_name || "",
+      Plate: p.plate,
+      Start: p.start_date || "",
+      End: p.end_date || "",
+      Status: p.status === "pending_approval" ? "Pending" : p.status,
+      Decision: p.decision || "",
+      Submitted: p.created_at || "",
+    }));
+    const header = Object.keys(rows[0] || {}).join(",");
+    const csv = [header, ...rows.map(r =>
+      Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
+    )].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vendor-permits-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handlePrint() {
+    const rows = filtered;
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>Vendor Permits</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+        .sub { font-size: 12px; color: #666; margin-bottom: 16px; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+        th { background: #f5f5f5; font-weight: 600; }
+        .mono { font-family: monospace; }
+        @media print { body { padding: 0; } }
+      </style></head><body>
+      <h1>Vendor Permits</h1>
+      <div class="sub">Sponsor: ${user?.email || ""} · Exported ${new Date().toLocaleDateString()} · ${rows.length} permit${rows.length !== 1 ? "s" : ""}</div>
+      <table>
+        <tr><th>Vendor</th><th>Company</th><th>Student</th><th>Plate</th><th>Duration</th><th>Status</th></tr>
+        ${rows.map(r => `<tr>
+          <td>${r.name}</td>
+          <td>${r.company_name}</td>
+          <td>${r.student_name || r.instructor_name || "—"}</td>
+          <td class="mono">${r.plate}</td>
+          <td>${fmtDate(r.start_date)}${r.end_date ? " — " + fmtDate(r.end_date) : ""}</td>
+          <td>${r.status === "pending_approval" ? "Pending" : r.status}</td>
+        </tr>`).join("")}
+      </table></body></html>`);
+    w.document.close();
+    w.print();
+  }
+
   const filtered = filter === "all" ? permits : permits.filter(p => p.status === filter);
 
   const columns: ColumnsType<SponsorPermit> = [
@@ -325,7 +384,11 @@ function SponsorPage() {
                 { label: `Denied (${permits.filter(p => p.status === "denied").length})`, value: "denied" },
               ]}
             />
-            <Button size="small" onClick={loadPermits} loading={loading}>Refresh</Button>
+            <Space size="small">
+              <Button size="small" icon={<DownloadOutlined />} onClick={exportCSV} disabled={filtered.length === 0}>Export CSV</Button>
+              <Button size="small" icon={<PrinterOutlined />} onClick={handlePrint} disabled={filtered.length === 0}>Print</Button>
+              <Button size="small" onClick={loadPermits} loading={loading}>Refresh</Button>
+            </Space>
           </div>
 
           <Table
