@@ -639,6 +639,40 @@ async def sponsor_edit_permit(
     return {"status": "updated", "message": "Permit updated."}
 
 
+@router.post("/sponsor/revoke/{token}")
+async def sponsor_revoke_permit(
+    token: str,
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticated sponsor: revoke/delete a vendor permit (works even if token expired)."""
+    result = await db.execute(
+        select(VisitorApprovalToken).where(VisitorApprovalToken.token == token)
+    )
+    approval = result.scalar_one_or_none()
+    if not approval:
+        raise HTTPException(404, "Permit not found")
+    if approval.sponsor_email.lower() != user.email.lower():
+        raise HTTPException(403, "You are not the sponsor for this permit")
+
+    permit = await db.get(Permit, approval.permit_id)
+    if not permit:
+        raise HTTPException(404, "Permit not found")
+
+    permit.status = "revoked"
+    permit.deleted_at = datetime.now(timezone.utc)
+    permit.cancel_reason = "sponsor_revoked"
+    permit.cancelled_at = datetime.now(timezone.utc)
+    permit.cancelled_by = user.email
+
+    if not approval.used_at:
+        approval.used_at = datetime.now(timezone.utc)
+        approval.decision = "denied"
+
+    await db.commit()
+    return {"status": "revoked", "message": "Permit has been removed."}
+
+
 @router.post("/sponsor/decide/{token}")
 async def sponsor_decide(
     token: str,
