@@ -187,6 +187,29 @@ function SponsorPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/visitor/permits/sponsor/permit/${selected.token}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Failed to delete permit");
+      }
+      message.success("Permit deleted.");
+      setSelected(null);
+      await loadPermits();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (authState === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -418,7 +441,7 @@ function SponsorPage() {
             </div>
           ) : (
             <div className="flex justify-between">
-              <div>
+              <div className="flex gap-2">
                 {selected.status === "active" && (
                   <Popconfirm
                     title="Revoke this permit?"
@@ -430,6 +453,15 @@ function SponsorPage() {
                     <Button danger loading={saving}>Revoke</Button>
                   </Popconfirm>
                 )}
+                <Popconfirm
+                  title="Delete this permit request?"
+                  description="This will permanently remove this entry."
+                  onConfirm={handleDelete}
+                  okText="Delete"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger loading={saving}>Delete</Button>
+                </Popconfirm>
               </div>
               <div className="flex gap-2">
                 {selected.status === "pending_approval" && !selected.decision && (
