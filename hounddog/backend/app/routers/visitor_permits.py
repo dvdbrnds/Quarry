@@ -589,6 +589,7 @@ class SponsorPermitEdit(BaseModel):
     plate: str | None = None
     end_date: str | None = None
     revoke: bool = False
+    delete: bool = False
 
 
 @router.patch("/sponsor/permit/{token}")
@@ -612,14 +613,18 @@ async def sponsor_edit_permit(
     if not permit:
         raise HTTPException(404, "Permit not found")
 
-    if body.revoke:
-        permit.status = "revoked"
+    if body.revoke or body.delete:
+        permit.status = "denied" if body.delete else "revoked"
         permit.deleted_at = datetime.now(timezone.utc)
-        permit.cancel_reason = "sponsor_revoked"
+        permit.cancel_reason = "sponsor_deleted" if body.delete else "sponsor_revoked"
         permit.cancelled_at = datetime.now(timezone.utc)
         permit.cancelled_by = user.email
-        await db.flush()
-        return {"status": "revoked", "message": "Permit has been revoked."}
+        if body.delete and not approval.used_at:
+            approval.used_at = datetime.now(timezone.utc)
+            approval.decision = "denied"
+        await db.commit()
+        label = "deleted" if body.delete else "revoked"
+        return {"status": label, "message": f"Permit has been {label}."}
 
     if body.name is not None and body.name.strip():
         permit.name = body.name.strip()
@@ -632,40 +637,6 @@ async def sponsor_edit_permit(
 
     await db.flush()
     return {"status": "updated", "message": "Permit updated."}
-
-
-@router.delete("/sponsor/permit/{token}")
-async def sponsor_delete_permit(
-    token: str,
-    user: OktaUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Authenticated sponsor: delete (soft-delete) a vendor permit they sponsor."""
-    result = await db.execute(
-        select(VisitorApprovalToken).where(VisitorApprovalToken.token == token)
-    )
-    approval = result.scalar_one_or_none()
-    if not approval:
-        raise HTTPException(404, "Permit not found")
-    if approval.sponsor_email.lower() != user.email.lower():
-        raise HTTPException(403, "You are not the sponsor for this permit")
-
-    permit = await db.get(Permit, approval.permit_id)
-    if not permit:
-        raise HTTPException(404, "Permit not found")
-
-    permit.status = "denied"
-    permit.deleted_at = datetime.now(timezone.utc)
-    permit.cancel_reason = "sponsor_deleted"
-    permit.cancelled_at = datetime.now(timezone.utc)
-    permit.cancelled_by = user.email
-
-    if not approval.used_at:
-        approval.used_at = datetime.now(timezone.utc)
-        approval.decision = "denied"
-
-    await db.commit()
-    return {"status": "deleted", "message": "Permit has been deleted."}
 
 
 @router.post("/sponsor/decide/{token}")
