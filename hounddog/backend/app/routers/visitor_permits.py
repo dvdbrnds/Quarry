@@ -562,7 +562,7 @@ async def sponsor_my_permits(
     permits_out: list[SponsorPermitInfo] = []
     for tok in tokens:
         permit = await db.get(Permit, tok.permit_id)
-        if not permit:
+        if not permit or permit.status == "revoked":
             continue
         permits_out.append(SponsorPermitInfo(
             permit_id=str(permit.id),
