@@ -561,6 +561,25 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE visitor_presets ALTER COLUMN active SET DEFAULT true",
             "ALTER TABLE visitor_presets ALTER COLUMN sort_order SET DEFAULT 0",
             "ALTER TABLE visitor_presets ADD COLUMN IF NOT EXISTS permit_type_code VARCHAR(64)",
+            # All visitor presets must have a permit_type_code so vendors get proper
+            # lot access. Without it, permits default to visitor_contracted_staff which
+            # is NOT in faculty lot access schedules → vendors get ticketed.
+            "UPDATE visitor_presets SET permit_type_code = 'faculty_staff' WHERE permit_type_code IS NULL",
+            # Fix existing vendor permits that got visitor_contracted_staff instead of
+            # faculty_staff because their preset had no permit_type_code at creation time.
+            # Update permit_type so BirdDog recognizes them in faculty lot schedules.
+            # Also update lot_assignment from the faculty_staff permit type definition.
+            """UPDATE permits
+               SET permit_type = 'faculty_staff',
+                   lot_assignment = COALESCE(
+                       (SELECT array_to_string(lot_assignments, ', ')
+                        FROM permit_types WHERE code = 'faculty_staff' LIMIT 1),
+                       lot_assignment
+                   ),
+                   updated_at = now()
+               WHERE permit_type = 'visitor_contracted_staff'
+                 AND student_id LIKE '%preset_id:%'
+                 AND deleted_at IS NULL""",
             "DELETE FROM visitor_presets WHERE label = 'Sodexo employee'",
             # Rename South Standalone → South Third Party
             "UPDATE permit_types SET label = 'South Third Party' WHERE code = 'south_standalone' AND label = 'South Standalone'",
