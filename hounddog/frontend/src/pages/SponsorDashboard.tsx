@@ -195,13 +195,11 @@ function SponsorPage() {
       const res = await fetch(`/api/visitor/permits/sponsor/permit/${selected.token}`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ remove: true }),
+        body: JSON.stringify({ revoke: true }),
       });
       if (!res.ok) {
-        const text = await res.text();
-        let detail = "Failed to delete";
-        try { detail = JSON.parse(text).detail || `${res.status}: ${text.slice(0, 200)}`; } catch { detail = `${res.status}: ${text.slice(0, 200)}`; }
-        throw new Error(detail);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Failed to delete permit");
       }
       message.success("Permit deleted.");
       setSelected(null);
@@ -390,14 +388,9 @@ function SponsorPage() {
                 const res = await fetch(`/api/visitor/permits/sponsor/permit/${r.token}`, {
                   method: "PATCH",
                   headers: { ...headers, "Content-Type": "application/json" },
-                  body: JSON.stringify({ remove: true }),
+                  body: JSON.stringify({ revoke: true }),
                 });
-                if (!res.ok) {
-                  const text = await res.text();
-                  let detail = "Failed to delete";
-                  try { detail = JSON.parse(text).detail || `${res.status}: ${text.slice(0, 200)}`; } catch { detail = `${res.status}: ${text.slice(0, 200)}`; }
-                  throw new Error(detail);
-                }
+                if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail || "Failed to delete"); }
                 message.success("Permit deleted.");
                 await loadPermits();
               } catch (e: any) { message.error(e.message); }
