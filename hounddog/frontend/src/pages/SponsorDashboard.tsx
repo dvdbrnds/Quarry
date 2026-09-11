@@ -198,8 +198,10 @@ function SponsorPage() {
         body: JSON.stringify({ remove: true }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Failed to delete permit");
+        const text = await res.text();
+        let detail = "Failed to delete";
+        try { detail = JSON.parse(text).detail || `${res.status}: ${text.slice(0, 200)}`; } catch { detail = `${res.status}: ${text.slice(0, 200)}`; }
+        throw new Error(detail);
       }
       message.success("Permit deleted.");
       setSelected(null);
@@ -390,7 +392,12 @@ function SponsorPage() {
                   headers: { ...headers, "Content-Type": "application/json" },
                   body: JSON.stringify({ remove: true }),
                 });
-                if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail || "Failed to delete"); }
+                if (!res.ok) {
+                  const text = await res.text();
+                  let detail = "Failed to delete";
+                  try { detail = JSON.parse(text).detail || `${res.status}: ${text.slice(0, 200)}`; } catch { detail = `${res.status}: ${text.slice(0, 200)}`; }
+                  throw new Error(detail);
+                }
                 message.success("Permit deleted.");
                 await loadPermits();
               } catch (e: any) { message.error(e.message); }
