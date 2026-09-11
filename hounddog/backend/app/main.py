@@ -1,6 +1,9 @@
 import asyncio
 import logging
+import uuid as _uuid
 from contextlib import asynccontextmanager
+
+import structlog
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,10 +69,11 @@ from .routers import (
     vehicle_tags,
     violation_types,
     visitor_permits,
+    device_logs,
 )
 from .middleware.audit import AuditMiddleware
 
-logger = logging.getLogger("quarry")
+logger = structlog.get_logger("quarry")
 
 
 async def _backfill_moravian_ids():
@@ -224,6 +228,9 @@ async def _backfill_visitor_preset_ids():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from .logging_config import setup_logging
+    setup_logging()
+
     from sqlalchemy import text
     from .database import engine, Base
     from .models import (  # noqa: F401
@@ -1415,6 +1422,24 @@ app.add_middleware(
 )
 app.add_middleware(AuditMiddleware)
 
+
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    """Bind correlation ID, user, and endpoint to every log line."""
+    async def dispatch(self, request, call_next):
+        request_id = request.headers.get("x-request-id", str(_uuid.uuid4())[:8])
+        user_email = getattr(request.state, "user_email", None) or "anonymous"
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            user=user_email,
+            method=request.method,
+            path=request.url.path,
+        )
+        response = await call_next(request)
+        return response
+
+app.add_middleware(RequestContextMiddleware)
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
 app.include_router(permits.router, prefix="/api/permits", tags=["permits"])
@@ -1460,6 +1485,7 @@ app.include_router(vehicle_requests.student_router, tags=["vehicle-requests"])
 app.include_router(vehicle_requests.admin_router, tags=["vehicle-requests"])
 app.include_router(vehicle_requests.public_router, tags=["vehicle-requests-public"])
 app.include_router(vehicle_tags.router, prefix="/api/vehicle-tags", tags=["vehicle-tags"])
+app.include_router(device_logs.router, prefix="/api/device-logs", tags=["device-logs"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

@@ -7,8 +7,9 @@ Every HTTP request is logged unconditionally.
 """
 
 import json
-import logging
 import re
+
+import structlog
 from io import BytesIO
 
 from sqlalchemy import select, text
@@ -18,7 +19,7 @@ from ..database import async_session
 from ..models.audit_log import AuditLog
 from ..models.device import Device
 
-logger = logging.getLogger("quarry.audit")
+logger = structlog.get_logger("quarry.audit")
 
 SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/favicon.ico"}
 SKIP_PREFIXES = ("/static/", "/assets/")

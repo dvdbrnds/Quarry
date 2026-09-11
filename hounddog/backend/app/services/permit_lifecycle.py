@@ -1,7 +1,8 @@
 """Permit lifecycle: auto-expiration, hold computation, duplicate detection, ticket escalation."""
 
-import logging
 from datetime import date, datetime, timedelta, timezone
+
+import structlog
 from decimal import Decimal
 
 from sqlalchemy import select, func, and_
@@ -12,7 +13,7 @@ from ..models.ticket import Ticket
 from ..models.enforcement_settings import EnforcementSettings
 from .timeutils import today_local
 
-logger = logging.getLogger("quarry.permits")
+logger = structlog.get_logger("quarry.permits")
 
 
 async def auto_expire_permits(db: AsyncSession) -> int:

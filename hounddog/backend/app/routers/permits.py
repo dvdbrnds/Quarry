@@ -3,6 +3,8 @@ import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
+import structlog
+
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -755,8 +757,7 @@ async def reassign_permit(
     - Downgrade (new costs less): issues a partial Stripe refund.
     - Same price: just updates the permit type and lots.
     """
-    import logging
-    logger = logging.getLogger("quarry.permits")
+    logger = structlog.get_logger("quarry.permits")
 
     permit = await db.get(Permit, permit_id)
     if not permit or permit.deleted_at:
@@ -1137,8 +1138,7 @@ async def cancel_permit(
     db: AsyncSession = Depends(get_db),
     office: OktaUser = Depends(require_office()),
 ):
-    import logging
-    logger = logging.getLogger("quarry.permits")
+    logger = structlog.get_logger("quarry.permits")
 
     if data.reason not in CANCEL_REASONS:
         raise HTTPException(400, f"Invalid reason. Must be one of: {', '.join(CANCEL_REASONS)}")

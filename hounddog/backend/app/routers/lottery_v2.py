@@ -6,8 +6,9 @@ permit_applications lottery tables.
 
 from __future__ import annotations
 
-import logging
 import uuid
+
+import structlog
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -40,7 +41,7 @@ from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 from ..services.lot_assignment import permit_lot_matches
 
-logger = logging.getLogger("quarry.lottery_v2")
+logger = structlog.get_logger("quarry.lottery_v2")
 
 router = APIRouter()
 

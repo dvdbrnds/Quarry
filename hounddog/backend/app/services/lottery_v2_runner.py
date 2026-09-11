@@ -6,8 +6,9 @@ Does not touch permit_applications or the live per-tier lottery.
 
 from __future__ import annotations
 
-import logging
 import uuid
+
+import structlog
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -27,7 +28,7 @@ from app.services.email import (
 )
 from app.services.lottery import distribute_capacity
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Campus → existing permit type codes (capacity/pricing/lots live on those rows)
 # Campus / path → existing permit type codes (capacity/pricing/lots live on those rows)

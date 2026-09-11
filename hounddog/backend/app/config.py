@@ -170,6 +170,12 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_environment: str = "production"
 
+    # Axiom (Observability)
+    axiom_token: str = ""
+    axiom_org_id: str = ""
+    axiom_dataset: str = "hounddog"
+    axiom_device_dataset: str = "birddog"
+
     # Automatic flat program discount (e.g. ABSN) via Okta group membership
     # Comma-separated Okta group names. Roster upload is the primary path; this is optional.
     auto_discount_okta_groups: str = ""

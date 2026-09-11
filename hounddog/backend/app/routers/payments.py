@@ -1,13 +1,14 @@
 import csv
 import io
-import logging
 import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+
+import structlog
 from ..services.timeutils import today_local
 
-logger = logging.getLogger("quarry.payments")
+logger = structlog.get_logger("quarry.payments")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from pydantic import BaseModel

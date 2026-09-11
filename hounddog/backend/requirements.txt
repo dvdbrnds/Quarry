@@ -21,3 +21,5 @@ google-api-python-client~=2.159.0
 python-dateutil~=2.9.0
 pymssql~=2.3.0
 sentry-sdk[fastapi]>=2.44.0
+structlog>=24.1.0
+axiom-py>=1.0.0
