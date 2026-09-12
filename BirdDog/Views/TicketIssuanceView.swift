@@ -606,6 +606,13 @@ struct TicketIssuanceView: View {
                 try? db.saveContext()
 
                 await MainActor.run {
+                    DeviceLogService.shared.log(event: "ticket_issued", extra: [
+                        "lot": ticket.lot,
+                        "violation": ticket.violationType,
+                        "category": ticket.ticketCategory,
+                        "offense": "\(serverResult.offenseNumber)",
+                        "warning": "\(ticket.isWarning)",
+                    ])
                     submittedResult = serverResult
                     onTicketIssued?(normalizedPlate)
                     isSubmitting = false

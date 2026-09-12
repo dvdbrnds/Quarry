@@ -120,13 +120,16 @@ final class HoundDogSyncService: ObservableObject {
             lastLotSync = nil
             if dbEmpty || lotsEmpty {
                 print("[HoundDog] Local data missing (permits=\(dbEmpty), lots=\(lotsEmpty)) — forcing full sync")
+                DeviceLogService.shared.log(event: "full_sync_forced", extra: ["reason": "local_data_missing", "permits_empty": "\(dbEmpty)", "lots_empty": "\(lotsEmpty)"])
             } else {
                 print("[HoundDog] Hourly full refresh (\(String(format: "%.1f", hoursSinceFullSync))h since last)")
+                DeviceLogService.shared.log(event: "full_sync_forced", extra: ["reason": "hourly_refresh", "hours_since": String(format: "%.1f", hoursSinceFullSync)])
             }
         }
 
         do {
             print("[HoundDog] Starting sync… (permits=\(lastPermitSync?.description ?? "nil"), lots=\(lastLotSync?.description ?? "nil"))")
+            DeviceLogService.shared.log(event: "sync_started")
             try await syncPermits()
             print("[HoundDog] Permits OK (\(permitCount) records)")
             try await syncLots()
@@ -137,14 +140,18 @@ final class HoundDogSyncService: ObservableObject {
             try await syncEnforcementSettings()
             try await syncRecentTickets()
             await retryPendingTickets()
+            DeviceLogService.shared.log(event: "sync_completed", extra: ["permits": "\(permitCount)", "lots": "\(lotCount)"])
+            await DeviceLogService.shared.flush()
             syncState = .synced
             lastSyncDate = Date()
             NotificationCenter.default.post(name: .init("HoundDogSyncCompleted"), object: nil)
         } catch {
             let msg = error.localizedDescription
             print("[HoundDog] SYNC FAILED: \(msg)")
+            DeviceLogService.shared.log(level: "error", event: "sync_failed", extra: ["error": msg])
             syncState = .error
             lastError = msg
+            await DeviceLogService.shared.flush()
         }
     }
 
@@ -188,6 +195,7 @@ final class HoundDogSyncService: ObservableObject {
             permitCount = db.totalCount()
             lastPermitSync = syncResponse.serverTimestamp
             print("[HoundDog] Full sync: \(count) plate records from \(syncResponse.permits.count) permits")
+            DeviceLogService.shared.log(event: "permits_full_sync", extra: ["plate_records": "\(count)", "permits": "\(syncResponse.permits.count)"])
         } else {
             // Incremental sync: upsert updated permits, delete removed ones
             var upserted = 0
@@ -213,6 +221,7 @@ final class HoundDogSyncService: ObservableObject {
             lastPermitSync = syncResponse.serverTimestamp
             if upserted > 0 || deleted > 0 {
                 print("[HoundDog] Incremental sync: \(upserted) upserted, \(deleted) deleted")
+                DeviceLogService.shared.log(event: "permits_incremental_sync", extra: ["upserted": "\(upserted)", "deleted": "\(deleted)"])
             }
         }
         _ = allPlatesRaw  // suppress unused warning
@@ -420,6 +429,7 @@ final class HoundDogSyncService: ObservableObject {
         let pending = db.pendingTickets()
         guard !pending.isEmpty else { return }
         print("[HoundDog] Retrying \(pending.count) pending ticket(s)...")
+        DeviceLogService.shared.log(event: "ticket_retry_started", extra: ["count": "\(pending.count)"])
         for ticket in pending {
             do {
                 let result = try await uploadTicket(ticket)
@@ -430,6 +440,7 @@ final class HoundDogSyncService: ObservableObject {
                 try? db.saveContext()
             } catch {
                 print("[HoundDog] Retry failed for ticket \(ticket.ticketId): \(error.localizedDescription)")
+                DeviceLogService.shared.log(level: "error", event: "ticket_retry_failed", extra: ["error": error.localizedDescription])
             }
         }
     }

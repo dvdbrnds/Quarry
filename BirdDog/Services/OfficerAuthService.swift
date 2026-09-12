@@ -87,6 +87,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
     }
 
     func logout() {
+        DeviceLogService.shared.log(event: "officer_logout", extra: ["officer": officerEmail])
         officerName = ""
         officerEmail = ""
         officerGroups = []
@@ -281,6 +282,7 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
         guard isAuthorized else {
             loginError = "Access denied — your Okta account is not authorized for BirdDog. Contact your administrator to be added to \(adminGroup) or \(staffGroup)."
+            DeviceLogService.shared.log(level: "warning", event: "officer_login_denied", extra: ["email": email])
             return
         }
 
@@ -288,6 +290,8 @@ final class OfficerAuthService: NSObject, ObservableObject {
         self.officerEmail = email
         self.officerGroups = groups
         self.isLoggedIn = true
+
+        DeviceLogService.shared.log(event: "officer_login", extra: ["officer": email, "groups": groups.joined(separator: ",")])
 
         saveToKeychain(name: name, email: email, groups: groups, expiry: Date().addingTimeInterval(8 * 3600))
 

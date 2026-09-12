@@ -385,6 +385,7 @@ final class PrinterService: ObservableObject {
                 )
                 printerName = label.isEmpty ? (saveId.isEmpty ? "Star Printer" : saveId) : label
                 connectionState = .connected
+                DeviceLogService.shared.log(event: "printer_connected", extra: ["printer": printerName])
 
                 UserDefaults.standard.set(saveId, forKey: Self.savedIdentifierKey)
                 UserDefaults.standard.set(attempt.0.rawValue, forKey: Self.savedInterfaceKey)
@@ -410,6 +411,7 @@ final class PrinterService: ObservableObject {
 
         connectionState = .error
         lastError = friendlyMessage(for: lastFailure)
+        DeviceLogService.shared.log(level: "error", event: "printer_connection_failed", extra: ["error": lastError ?? "unknown"])
         throw lastFailure ?? PrintError.notConnected
     }
     #endif

@@ -38,6 +38,8 @@ extension BirdDogApp {
         GeofenceService.shared.configure(container: container)
         GeofenceService.shared.requestPermissionAndStart()
 
+        DeviceLogService.shared.log(event: "app_launched", extra: ["device": DeviceInfo.summary])
+
         HoundDogSyncService.shared.startIfConfigured()
 
         Task {

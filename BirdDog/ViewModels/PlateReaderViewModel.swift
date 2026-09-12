@@ -604,6 +604,14 @@ final class PlateReaderViewModel: ObservableObject {
 
             triggerFeedback(for: authResult.status)
             persistScanLog()
+
+            DeviceLogService.shared.log(event: "plate_confirmed", extra: [
+                "status": effectiveStatus.label,
+                "match": authResult.matchMethod.rawValue,
+                "camera": camName,
+                "frames": "\(frames)",
+                "lot": geofenceService.currentLotName ?? "",
+            ])
         }
     }
 
