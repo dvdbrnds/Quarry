@@ -1,6 +1,8 @@
 """Structured logging with Axiom shipping."""
+import atexit
 import logging
 import os
+import time
 import structlog
 from axiom_py import Client as AxiomClient
 
@@ -24,7 +26,9 @@ class AxiomHandler(logging.Handler):
         super().__init__()
         self.dataset = dataset
         self._buffer: list[dict] = []
-        self._buffer_limit = 50
+        self._buffer_limit = 10
+        self._last_flush = time.monotonic()
+        self._flush_interval = 5.0  # seconds
 
     def emit(self, record: logging.LogRecord):
         client = get_axiom_client()
@@ -38,7 +42,9 @@ class AxiomHandler(logging.Handler):
                 "logger": record.name,
             }
         self._buffer.append(event)
-        if len(self._buffer) >= self._buffer_limit:
+        now = time.monotonic()
+        if (len(self._buffer) >= self._buffer_limit
+                or now - self._last_flush >= self._flush_interval):
             self.flush()
 
     def flush(self):
@@ -50,6 +56,7 @@ class AxiomHandler(logging.Handler):
         except Exception:
             pass
         self._buffer.clear()
+        self._last_flush = time.monotonic()
 
 
 def setup_logging():
@@ -99,6 +106,7 @@ def setup_logging():
         axiom_handler = AxiomHandler(dataset=settings.axiom_dataset)
         axiom_handler.setFormatter(axiom_formatter)
         root.addHandler(axiom_handler)
+        atexit.register(axiom_handler.flush)
 
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
