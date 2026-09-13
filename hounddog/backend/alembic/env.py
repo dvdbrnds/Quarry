@@ -12,9 +12,16 @@ from app.models import (  # noqa: F401
     EnforcementSettings, AuditLog, LotClosure,
 )
 
+import os
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Allow DB URL override from environment (used by startup migration subprocess)
+db_url = os.environ.get("DATABASE_URL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata
 

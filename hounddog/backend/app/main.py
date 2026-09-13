@@ -281,7 +281,27 @@ async def lifespan(app: FastAPI):
                 raise
             await asyncio.sleep(3)
 
-    # Schema migrations for columns added after initial table creation
+    # Run Alembic migrations via subprocess (can't use alembic.command inside async context)
+    try:
+        import subprocess, os
+        backend_dir = os.path.dirname(os.path.dirname(__file__))
+        alembic_ini = os.path.join(backend_dir, "alembic.ini")
+        if os.path.exists(alembic_ini):
+            db_url = str(engine.url)
+            result = subprocess.run(
+                ["python", "-m", "alembic", "-x", f"dburl={db_url}", "upgrade", "head"],
+                cwd=backend_dir,
+                capture_output=True, text=True, timeout=60,
+                env={**os.environ, "DATABASE_URL": db_url},
+            )
+            if result.returncode == 0:
+                logger.info("Alembic migrations applied successfully.")
+            else:
+                logger.warning("Alembic upgrade failed (rc=%d): %s", result.returncode, result.stderr[:500])
+    except Exception as e:
+        logger.warning("Alembic migration skipped: %s", e)
+
+    # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         try:
@@ -935,6 +955,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ",
             # Committee votes: track when a vote was changed
             "ALTER TABLE committee_votes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+            # Widen columns that overflow (matching Alembic 0008 + 0018)
+            "ALTER TABLE permits ALTER COLUMN lot_assignment TYPE VARCHAR(512)",
+            "ALTER TABLE tickets ALTER COLUMN permit_number TYPE VARCHAR(256)",
             ]
             for migration in migrations:
                 try:
