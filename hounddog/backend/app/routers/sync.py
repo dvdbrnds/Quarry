@@ -663,6 +663,11 @@ async def _upload_ticket_impl(
         if not permit_lot_zone:
             permit_lot_zone = permit.lot_assignment
 
+    # Truncate permit_number to fit DB column (256 chars) — visitor permits
+    # can have long custom-field strings flowing through student_id.
+    if permit_number and len(permit_number) > 256:
+        permit_number = permit_number[:256]
+
     from ..services.ticket_numbering import next_ticket_number
     ticket_kwargs: dict = dict(
         ticket_number=await next_ticket_number(db),

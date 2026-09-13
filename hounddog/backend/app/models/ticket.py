@@ -35,7 +35,7 @@ class Ticket(Base):
     officer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     officer_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     owner_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    permit_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    permit_number: Mapped[str | None] = mapped_column(String(256), nullable=True)
     permit_type_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
     permit_lot_zone: Mapped[str | None] = mapped_column(String(256), nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
