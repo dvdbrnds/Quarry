@@ -109,21 +109,54 @@ async def list_tickets(
     return TicketList(items=items, total=total, page=page, page_size=page_size)
 
 
-async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime) -> dict:
-    """Compute full stats for a single officer email. Shared by my-stats and officer-report."""
+def _resolve_range(range_key: str, now: datetime) -> datetime | None:
+    """Return the cutoff datetime for a given range key, or None for all-time."""
+    if range_key == "24h":
+        return now - timedelta(hours=24)
+    if range_key == "7d":
+        return (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if range_key == "30d":
+        return (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if range_key == "90d":
+        return (now - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if range_key == "ytd":
+        return now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return None  # "all"
+
+
+def _timeline_days(cutoff: datetime | None, now: datetime) -> int:
+    """Number of day-buckets for the daily activity timeline."""
+    if cutoff is None:
+        # All-time: show last 90 days of timeline
+        return 90
+    delta = (now - cutoff).days
+    return max(delta, 1)
+
+
+async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime, cutoff: datetime | None = None) -> dict:
+    """Compute full stats for a single officer email. Shared by my-stats and officer-report.
+
+    When *cutoff* is set, all aggregate queries are scoped to tickets issued on or after that datetime.
+    """
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    thirty_days_ago = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # Base filters
     base = select(func.count()).where(Ticket.officer_email == email)
-    all_time = (await db.execute(base)).scalar() or 0
+    scoped = base.where(Ticket.issued_at >= cutoff) if cutoff else base
+
+    range_total = (await db.execute(scoped)).scalar() or 0
     this_week = (await db.execute(base.where(Ticket.issued_at >= week_start))).scalar() or 0
     this_month = (await db.execute(base.where(Ticket.issued_at >= month_start))).scalar() or 0
+
+    time_filter = [Ticket.officer_email == email]
+    if cutoff:
+        time_filter.append(Ticket.issued_at >= cutoff)
 
     # By violation
     by_violation_rows = (await db.execute(
         select(Ticket.violation_type, func.count().label("cnt"))
-        .where(Ticket.officer_email == email)
+        .where(*time_filter)
         .group_by(Ticket.violation_type).order_by(func.count().desc())
     )).all()
 
@@ -139,34 +172,36 @@ async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime) 
     # By status
     by_status = [{"status": r[0], "count": r[1]} for r in (await db.execute(
         select(Ticket.status, func.count().label("cnt"))
-        .where(Ticket.officer_email == email)
+        .where(*time_filter)
         .group_by(Ticket.status).order_by(func.count().desc())
     )).all()]
 
-    # Daily activity (last 30 days)
+    # Daily activity timeline
+    timeline_days = _timeline_days(cutoff, now)
+    timeline_start = (now - timedelta(days=timeline_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     daily_q = (
         select(cast(Ticket.issued_at, Date).label("day"), func.count().label("cnt"))
-        .where(Ticket.officer_email == email, Ticket.issued_at >= thirty_days_ago)
+        .where(Ticket.officer_email == email, Ticket.issued_at >= timeline_start)
         .group_by("day").order_by("day")
     )
     daily_rows = (await db.execute(daily_q)).all()
     daily_map = {str(r[0]): r[1] for r in daily_rows}
     daily_activity = []
-    for i in range(30):
-        d = (thirty_days_ago + timedelta(days=i)).strftime("%Y-%m-%d")
+    for i in range(timeline_days):
+        d = (timeline_start + timedelta(days=i)).strftime("%Y-%m-%d")
         daily_activity.append({"date": d, "count": daily_map.get(d, 0)})
 
     # By lot
     by_lot = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(
         select(Ticket.lot, func.count().label("cnt"))
-        .where(Ticket.officer_email == email)
+        .where(*time_filter)
         .group_by(Ticket.lot).order_by(func.count().desc())
     )).all()]
 
     # By hour
     by_hour_rows = (await db.execute(
         select(func.extract("hour", Ticket.issued_at).label("hr"), func.count().label("cnt"))
-        .where(Ticket.officer_email == email)
+        .where(*time_filter)
         .group_by("hr").order_by("hr")
     )).all()
     hour_map = {int(r[0]): r[1] for r in by_hour_rows}
@@ -176,23 +211,23 @@ async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime) 
     status_counts = {s["status"]: s["count"] for s in by_status}
     voided = status_counts.get("voided", 0)
     appealed = status_counts.get("appealed", 0)
-    void_rate = round((voided / all_time) * 100, 1) if all_time else 0
-    appeal_rate = round((appealed / all_time) * 100, 1) if all_time else 0
+    void_rate = round((voided / range_total) * 100, 1) if range_total else 0
+    appeal_rate = round((appealed / range_total) * 100, 1) if range_total else 0
 
     # Revenue
     total_fines = float((await db.execute(
         select(func.coalesce(func.sum(Ticket.fine_amount), 0))
-        .where(Ticket.officer_email == email)
+        .where(*time_filter)
     )).scalar() or 0)
     paid_fines = float((await db.execute(
         select(func.coalesce(func.sum(Ticket.fine_amount), 0))
-        .where(Ticket.officer_email == email, Ticket.status == "paid")
+        .where(*time_filter, Ticket.status == "paid")
     )).scalar() or 0)
 
     return {
         "this_week": this_week,
         "this_month": this_month,
-        "all_time": all_time,
+        "all_time": range_total,
         "by_violation": by_violation,
         "by_status": by_status,
         "daily_activity": daily_activity,
@@ -210,12 +245,17 @@ async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime) 
 async def my_ticket_stats(
     user: OktaUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    range: str = Query("all", regex="^(24h|7d|30d|90d|ytd|all)$"),
 ):
     """Officer performance stats for the logged-in user."""
     now = datetime.now(timezone.utc)
-    stats = await _officer_stats_for_email(user.email, db, now)
+    cutoff = _resolve_range(range, now)
+    stats = await _officer_stats_for_email(user.email, db, now, cutoff)
 
-    total_all = (await db.execute(select(func.count()).select_from(Ticket))).scalar() or 0
+    total_q = select(func.count()).select_from(Ticket)
+    if cutoff:
+        total_q = total_q.where(Ticket.issued_at >= cutoff)
+    total_all = (await db.execute(total_q)).scalar() or 0
     stats["global_share"] = round((stats["all_time"] / total_all) * 100, 1) if total_all else 0
     stats["total_all"] = total_all
     return stats
@@ -225,17 +265,24 @@ async def my_ticket_stats(
 async def officer_report(
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
+    range: str = Query("all", regex="^(24h|7d|30d|90d|ytd|all)$"),
 ):
     """Admin-only: performance stats for every officer."""
     now = datetime.now(timezone.utc)
-    thirty_days_ago = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = _resolve_range(range, now)
 
-    total_all = (await db.execute(select(func.count()).select_from(Ticket))).scalar() or 0
+    total_q = select(func.count()).select_from(Ticket)
+    if cutoff:
+        total_q = total_q.where(Ticket.issued_at >= cutoff)
+    total_all = (await db.execute(total_q)).scalar() or 0
 
-    # Get all officer emails
+    # Time filter helper (list of WHERE clauses applied to team-wide queries)
+    team_filters = [Ticket.issued_at >= cutoff] if cutoff else []
+
+    # Get all officer emails (within range)
     officer_emails_q = (
         select(Ticket.officer_email)
-        .where(Ticket.officer_email.isnot(None))
+        .where(Ticket.officer_email.isnot(None), *team_filters)
         .group_by(Ticket.officer_email)
     )
     officer_emails = [r[0] for r in (await db.execute(officer_emails_q)).all()]
@@ -243,7 +290,7 @@ async def officer_report(
     # Build per-officer stats using the shared helper
     officers = []
     for email in officer_emails:
-        stats = await _officer_stats_for_email(email, db, now)
+        stats = await _officer_stats_for_email(email, db, now, cutoff)
         officer_name_row = (await db.execute(
             select(Ticket.officer_name).where(Ticket.officer_email == email, Ticket.officer_name.isnot(None))
             .order_by(Ticket.issued_at.desc()).limit(1)
@@ -255,27 +302,31 @@ async def officer_report(
 
     officers.sort(key=lambda o: o["all_time"], reverse=True)
 
-    # Team-wide daily totals (last 30 days)
+    # Team-wide daily totals
+    timeline_days = _timeline_days(cutoff, now)
+    timeline_start = (now - timedelta(days=timeline_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     daily_total_rows = (await db.execute(
         select(cast(Ticket.issued_at, Date).label("day"), func.count().label("cnt"))
-        .where(Ticket.issued_at >= thirty_days_ago)
+        .where(Ticket.issued_at >= timeline_start)
         .group_by("day").order_by("day")
     )).all()
     daily_total_map = {str(r[0]): r[1] for r in daily_total_rows}
     daily_total = []
-    for i in range(30):
-        d = (thirty_days_ago + timedelta(days=i)).strftime("%Y-%m-%d")
+    for i in range(timeline_days):
+        d = (timeline_start + timedelta(days=i)).strftime("%Y-%m-%d")
         daily_total.append({"date": d, "count": daily_total_map.get(d, 0)})
 
     # Team-wide lot breakdown
     by_lot_total = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(
         select(Ticket.lot, func.count().label("cnt"))
+        .where(*team_filters)
         .group_by(Ticket.lot).order_by(func.count().desc())
     )).all()]
 
     # Team-wide hour breakdown
     by_hour_total_rows = (await db.execute(
         select(func.extract("hour", Ticket.issued_at).label("hr"), func.count().label("cnt"))
+        .where(*team_filters)
         .group_by("hr").order_by("hr")
     )).all()
     hour_map = {int(r[0]): r[1] for r in by_hour_total_rows}
@@ -284,6 +335,7 @@ async def officer_report(
     # Team-wide violation type breakdown with per-officer detail
     viol_total_q = (
         select(Ticket.violation_type, func.count().label("cnt"))
+        .where(*team_filters)
         .group_by(Ticket.violation_type).order_by(func.count().desc())
     )
     viol_total_rows = (await db.execute(viol_total_q)).all()
@@ -295,10 +347,10 @@ async def officer_report(
         )
         viol_label_map = {r[0]: r[1] for r in vt_r.all()}
 
-    # Per-officer counts for each violation type
+    # Per-officer counts for each violation type (within range)
     viol_officer_q = (
         select(Ticket.violation_type, Ticket.officer_email, func.count().label("cnt"))
-        .where(Ticket.officer_email.isnot(None))
+        .where(Ticket.officer_email.isnot(None), *team_filters)
         .group_by(Ticket.violation_type, Ticket.officer_email)
     )
     viol_officer_rows = (await db.execute(viol_officer_q)).all()
@@ -326,15 +378,15 @@ async def officer_report(
         for r in viol_total_rows
     ]
 
-    # Team-wide revenue
+    # Team-wide revenue (within range)
     total_revenue = float((await db.execute(
-        select(func.coalesce(func.sum(Ticket.fine_amount), 0))
+        select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(*team_filters)
     )).scalar() or 0)
     paid_revenue = float((await db.execute(
-        select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(Ticket.status == "paid")
+        select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(*team_filters, Ticket.status == "paid")
     )).scalar() or 0)
 
-    # Team-wide week/month
+    # Team-wide week/month (always absolute, not range-scoped)
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     team_this_week = (await db.execute(select(func.count()).where(Ticket.issued_at >= week_start))).scalar() or 0

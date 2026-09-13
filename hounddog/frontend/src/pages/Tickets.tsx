@@ -301,8 +301,8 @@ function OfficerStats() {
         </Card>
       </div>
 
-      {/* Row 2 — 30-day timeline */}
-      <Card size="small" title="30-Day Activity" className="shadow-sm">
+      {/* Row 2 — activity timeline */}
+      <Card size="small" title="Recent Activity" className="shadow-sm">
         {stats.daily_activity.length > 0 ? <DailyTimeline data={stats.daily_activity} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />}
       </Card>
 
@@ -391,22 +391,35 @@ function CompareGroupedBars({ label, compared, accessor, colors, displayName }: 
   );
 }
 
+const RANGE_OPTIONS = [
+  { value: "24h", label: "Last 24 Hours" },
+  { value: "7d", label: "Last 7 Days" },
+  { value: "30d", label: "Last 30 Days" },
+  { value: "90d", label: "Last 90 Days" },
+  { value: "ytd", label: "Year to Date" },
+  { value: "all", label: "All Time" },
+];
+
 function OfficerReport() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState("all");
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [selectedOfficer, setSelectedOfficer] = useState<OfficerRow | null>(null);
   const [selectedViolation, setSelectedViolation] = useState<ViolationDetail | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
-        const res = await fetch("/api/tickets/officer-report", { headers: await authHeaders() });
-        if (res.ok) setData(await res.json());
+        const res = await fetch(`/api/tickets/officer-report?range=${range}`, { headers: await authHeaders() });
+        if (res.ok && !cancelled) setData(await res.json());
       } catch { /* ignore */ }
-      finally { setLoading(false); }
+      finally { if (!cancelled) setLoading(false); }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [range]);
 
   if (loading) return <div className="text-center py-12"><Spin size="large" /><p className="mt-3 text-gray-500">Loading officer data...</p></div>;
   if (!data || data.officers.length === 0) return <Empty description="No officer data available" className="py-12" />;
@@ -422,11 +435,22 @@ function OfficerReport() {
   const displayName = (o: OfficerRow) => o.officer_name || o.officer_email.split("@")[0];
   const COMPARE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 
+  const rangeLabel = RANGE_OPTIONS.find(r => r.value === range)?.label ?? "All Time";
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-1">Officer Performance Report</h2>
-        <p className="text-sm text-gray-500">{officers.length} officer{officers.length !== 1 ? "s" : ""} &middot; {data.total_all} total citations</p>
+      <div className="flex items-start justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Officer Performance Report</h2>
+          <p className="text-sm text-gray-500">{officers.length} officer{officers.length !== 1 ? "s" : ""} &middot; {data.total_all} total citations{range !== "all" ? ` (${rangeLabel.toLowerCase()})` : ""}</p>
+        </div>
+        <Select
+          value={range}
+          onChange={setRange}
+          options={RANGE_OPTIONS}
+          style={{ width: 170 }}
+          size="middle"
+        />
       </div>
 
       {/* Section 1 — Team overview cards */}
@@ -451,8 +475,8 @@ function OfficerReport() {
         </Card>
       </div>
 
-      {/* Section 2 — 30-day team timeline */}
-      <Card size="small" title="30-Day Team Activity" className="shadow-sm">
+      {/* Section 2 — team timeline */}
+      <Card size="small" title={`${rangeLabel} Team Activity`} className="shadow-sm">
         <DailyTimeline data={data.daily_total} height={140} />
       </Card>
 
@@ -668,9 +692,9 @@ function OfficerReport() {
             </table>
           </div>
 
-          {/* 30-day timeline overlay */}
+          {/* Timeline overlay */}
           <div className="mb-6">
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">30-Day Activity</h4>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Activity</h4>
             <div style={{ height: 120 }} className="relative">
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
                 {compared.map((o, ci) => {
@@ -806,8 +830,8 @@ function OfficerDetail({ officer: o, totalAll }: { officer: OfficerRow; totalAll
         </Card>
       </div>
 
-      {/* 30-day timeline */}
-      <Card size="small" title="30-Day Activity" className="shadow-sm">
+      {/* Activity timeline */}
+      <Card size="small" title="Activity" className="shadow-sm">
         {o.daily_activity?.length ? <DailyTimeline data={o.daily_activity} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />}
       </Card>
 
