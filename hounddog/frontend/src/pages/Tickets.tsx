@@ -413,7 +413,7 @@ function OfficerReport() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/tickets/officer-report?range=${range}`, { headers: await authHeaders() });
+        const res = await fetch(`/api/tickets/officer-report?time_range=${range}`, { headers: await authHeaders() });
         if (res.ok && !cancelled) setData(await res.json());
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
