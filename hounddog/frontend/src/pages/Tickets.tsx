@@ -146,64 +146,93 @@ function fmtWeekday(iso: string) {
   return d.toLocaleDateString("en-US", { weekday: "short" });
 }
 
-function DailyTimeline({ data, height = 140, color = "#3b82f6" }: { data: { date: string; count: number }[]; height?: number; color?: string }) {
+function DailyTimeline({ data, height = 160, color = "#3b82f6" }: { data: { date: string; count: number }[]; height?: number; color?: string }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const max = Math.max(...data.map(d => d.count), 1);
   const total = data.reduce((s, d) => s + d.count, 0);
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * 100;
-    const y = 100 - (d.count / max) * 100;
-    return { x, y, ...d };
-  });
-  const polyline = points.map(p => `${p.x},${p.y}`).join(" ");
-  const areaPath = `M ${points[0].x},100 ` + points.map(p => `L ${p.x},${p.y}`).join(" ") + ` L ${points[points.length - 1].x},100 Z`;
+  const avg = data.length ? Math.round(total / data.length) : 0;
 
-  const labelInterval = data.length <= 14 ? 2 : data.length <= 21 ? 3 : 5;
+  // Decide label interval based on data length
+  const labelInterval = data.length <= 7 ? 1 : data.length <= 14 ? 2 : data.length <= 31 ? 5 : 7;
+
+  // Determine weekend days for subtle shading
+  const isWeekend = (dateStr: string) => { const d = new Date(dateStr + "T12:00:00"); return d.getDay() === 0 || d.getDay() === 6; };
 
   return (
-    <div style={{ height: height + 28 }} className="relative">
-      <div style={{ height }} className="relative"
-        onMouseLeave={() => setHoverIdx(null)}
-      >
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-          <path d={areaPath} fill={color} opacity="0.15" />
-          <polyline points={polyline} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-          {points.map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r={hoverIdx === i ? "2.5" : "1.2"} fill={color} vectorEffect="non-scaling-stroke" />
-          ))}
-        </svg>
-        {/* Invisible hover zones */}
-        <div className="absolute inset-0 flex">
-          {points.map((p, i) => (
-            <div key={i} className="flex-1 h-full" onMouseEnter={() => setHoverIdx(i)} />
-          ))}
+    <div className="relative" onMouseLeave={() => setHoverIdx(null)}>
+      {/* Y-axis guide lines */}
+      <div style={{ height }} className="relative">
+        {[0.25, 0.5, 0.75, 1].map(pct => (
+          <div key={pct} className="absolute w-full border-t border-gray-100" style={{ bottom: `${pct * 100}%` }}>
+            <span className="absolute -top-2.5 -left-0.5 text-[9px] text-gray-300 tabular-nums">{Math.round(max * pct)}</span>
+          </div>
+        ))}
+        {/* Average line */}
+        {avg > 0 && (
+          <div
+            className="absolute w-full border-t border-dashed border-blue-300/50"
+            style={{ bottom: `${(avg / max) * 100}%` }}
+          >
+            <span className="absolute -top-2.5 right-0 text-[9px] text-blue-400 font-medium">avg {avg}</span>
+          </div>
+        )}
+        {/* Bars */}
+        <div className="absolute inset-0 flex items-end" style={{ paddingLeft: 4, paddingRight: 4 }}>
+          {data.map((d, i) => {
+            const barH = max > 0 ? (d.count / max) * 100 : 0;
+            const isHovered = hoverIdx === i;
+            const weekend = isWeekend(d.date);
+            return (
+              <div
+                key={i}
+                className="flex-1 flex flex-col items-center justify-end h-full relative"
+                style={{ padding: "0 1px" }}
+                onMouseEnter={() => setHoverIdx(i)}
+              >
+                {weekend && <div className="absolute inset-0 bg-gray-50 rounded-sm" />}
+                <div
+                  className="w-full rounded-t-sm transition-all duration-150 relative z-10"
+                  style={{
+                    height: `${Math.max(barH, d.count > 0 ? 2 : 0)}%`,
+                    backgroundColor: isHovered ? color : d.count === 0 ? "transparent" : color,
+                    opacity: isHovered ? 1 : d.count === 0 ? 0 : 0.6,
+                    minHeight: d.count > 0 ? 2 : 0,
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
         {/* Hover tooltip */}
-        {hoverIdx !== null && points[hoverIdx] && (
+        {hoverIdx !== null && data[hoverIdx] && (
           <div
-            className="absolute z-10 bg-gray-800 text-white text-xs rounded px-2 py-1.5 pointer-events-none whitespace-nowrap shadow-lg"
-            style={{ left: `${points[hoverIdx].x}%`, bottom: `${100 - points[hoverIdx].y + 8}%`, transform: "translateX(-50%)" }}
+            className="absolute z-20 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 pointer-events-none whitespace-nowrap shadow-lg"
+            style={{
+              left: `${((hoverIdx + 0.5) / data.length) * 100}%`,
+              bottom: `${Math.min((data[hoverIdx].count / max) * 100 + 8, 95)}%`,
+              transform: "translateX(-50%)",
+            }}
           >
-            <div className="font-semibold">{fmtWeekday(points[hoverIdx].date)}, {fmtShortDate(points[hoverIdx].date)}</div>
-            <div>{points[hoverIdx].count} citation{points[hoverIdx].count !== 1 ? "s" : ""}</div>
+            <div className="font-semibold">{fmtWeekday(data[hoverIdx].date)}, {fmtShortDate(data[hoverIdx].date)}</div>
+            <div className="text-blue-300">{data[hoverIdx].count} citation{data[hoverIdx].count !== 1 ? "s" : ""}</div>
           </div>
         )}
       </div>
-      {/* Date labels along bottom */}
-      <div className="relative h-5 mt-1">
+      {/* Date labels */}
+      <div className="flex mt-1.5" style={{ paddingLeft: 4, paddingRight: 4 }}>
         {data.map((d, i) => (
-          i % labelInterval === 0 || i === data.length - 1 ? (
-            <span
-              key={i}
-              className="absolute text-[9px] text-gray-400 -translate-x-1/2"
-              style={{ left: `${(i / (data.length - 1)) * 100}%` }}
-            >
-              {fmtShortDate(d.date)}
-            </span>
-          ) : null
+          <div key={i} className="flex-1 text-center">
+            {(i % labelInterval === 0 || i === data.length - 1) ? (
+              <span className="text-[9px] text-gray-400 tabular-nums">{fmtShortDate(d.date)}</span>
+            ) : null}
+          </div>
         ))}
       </div>
-      <div className="text-[10px] text-gray-400 text-right mt-0.5">{total} total over 30 days</div>
+      {/* Summary */}
+      <div className="flex items-center justify-between mt-1 px-1">
+        <span className="text-[10px] text-gray-400">{data.length} days &middot; avg {avg}/day</span>
+        <span className="text-[10px] font-medium text-gray-500">{total} total</span>
+      </div>
     </div>
   );
 }
