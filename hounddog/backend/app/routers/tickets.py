@@ -276,15 +276,11 @@ async def officer_report(
         total_q = total_q.where(Ticket.issued_at >= cutoff)
     total_all = (await db.execute(total_q)).scalar() or 0
 
-    # Time filter helper (list of WHERE clauses applied to team-wide queries)
-    team_filters = [Ticket.issued_at >= cutoff] if cutoff else []
-
     # Get all officer emails (within range)
-    officer_emails_q = (
-        select(Ticket.officer_email)
-        .where(Ticket.officer_email.isnot(None), *team_filters)
-        .group_by(Ticket.officer_email)
-    )
+    officer_emails_q = select(Ticket.officer_email).where(Ticket.officer_email.isnot(None))
+    if cutoff:
+        officer_emails_q = officer_emails_q.where(Ticket.issued_at >= cutoff)
+    officer_emails_q = officer_emails_q.group_by(Ticket.officer_email)
     officer_emails = [r[0] for r in (await db.execute(officer_emails_q)).all()]
 
     # Build per-officer stats using the shared helper
@@ -317,27 +313,26 @@ async def officer_report(
         daily_total.append({"date": d, "count": daily_total_map.get(d, 0)})
 
     # Team-wide lot breakdown
-    by_lot_total = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(
-        select(Ticket.lot, func.count().label("cnt"))
-        .where(*team_filters)
-        .group_by(Ticket.lot).order_by(func.count().desc())
-    )).all()]
+    lot_q = select(Ticket.lot, func.count().label("cnt"))
+    if cutoff:
+        lot_q = lot_q.where(Ticket.issued_at >= cutoff)
+    lot_q = lot_q.group_by(Ticket.lot).order_by(func.count().desc())
+    by_lot_total = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(lot_q)).all()]
 
     # Team-wide hour breakdown
-    by_hour_total_rows = (await db.execute(
-        select(func.extract("hour", Ticket.issued_at).label("hr"), func.count().label("cnt"))
-        .where(*team_filters)
-        .group_by("hr").order_by("hr")
-    )).all()
+    hour_q = select(func.extract("hour", Ticket.issued_at).label("hr"), func.count().label("cnt"))
+    if cutoff:
+        hour_q = hour_q.where(Ticket.issued_at >= cutoff)
+    hour_q = hour_q.group_by("hr").order_by("hr")
+    by_hour_total_rows = (await db.execute(hour_q)).all()
     hour_map = {int(r[0]): r[1] for r in by_hour_total_rows}
     by_hour_total = [{"hour": h, "count": hour_map.get(h, 0)} for h in range(24)]
 
     # Team-wide violation type breakdown with per-officer detail
-    viol_total_q = (
-        select(Ticket.violation_type, func.count().label("cnt"))
-        .where(*team_filters)
-        .group_by(Ticket.violation_type).order_by(func.count().desc())
-    )
+    viol_total_q = select(Ticket.violation_type, func.count().label("cnt"))
+    if cutoff:
+        viol_total_q = viol_total_q.where(Ticket.issued_at >= cutoff)
+    viol_total_q = viol_total_q.group_by(Ticket.violation_type).order_by(func.count().desc())
     viol_total_rows = (await db.execute(viol_total_q)).all()
     viol_codes = [r[0] for r in viol_total_rows]
     viol_label_map: dict[str, str] = {}
@@ -348,11 +343,10 @@ async def officer_report(
         viol_label_map = {r[0]: r[1] for r in vt_r.all()}
 
     # Per-officer counts for each violation type (within range)
-    viol_officer_q = (
-        select(Ticket.violation_type, Ticket.officer_email, func.count().label("cnt"))
-        .where(Ticket.officer_email.isnot(None), *team_filters)
-        .group_by(Ticket.violation_type, Ticket.officer_email)
-    )
+    viol_officer_q = select(Ticket.violation_type, Ticket.officer_email, func.count().label("cnt")).where(Ticket.officer_email.isnot(None))
+    if cutoff:
+        viol_officer_q = viol_officer_q.where(Ticket.issued_at >= cutoff)
+    viol_officer_q = viol_officer_q.group_by(Ticket.violation_type, Ticket.officer_email)
     viol_officer_rows = (await db.execute(viol_officer_q)).all()
     viol_officer_map: dict[str, list] = {}
     for vtype, email, cnt in viol_officer_rows:
@@ -379,12 +373,13 @@ async def officer_report(
     ]
 
     # Team-wide revenue (within range)
-    total_revenue = float((await db.execute(
-        select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(*team_filters)
-    )).scalar() or 0)
-    paid_revenue = float((await db.execute(
-        select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(*team_filters, Ticket.status == "paid")
-    )).scalar() or 0)
+    rev_q = select(func.coalesce(func.sum(Ticket.fine_amount), 0))
+    paid_q = select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(Ticket.status == "paid")
+    if cutoff:
+        rev_q = rev_q.where(Ticket.issued_at >= cutoff)
+        paid_q = paid_q.where(Ticket.issued_at >= cutoff)
+    total_revenue = float((await db.execute(rev_q)).scalar() or 0)
+    paid_revenue = float((await db.execute(paid_q)).scalar() or 0)
 
     # Team-wide week/month (always absolute, not range-scoped)
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
