@@ -245,11 +245,11 @@ async def _officer_stats_for_email(email: str, db: AsyncSession, now: datetime, 
 async def my_ticket_stats(
     user: OktaUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    time_range: str = Query("all", alias="range", pattern="^(24h|7d|30d|90d|ytd|all)$"),
+    range: str = Query("all"),  # noqa: A002
 ):
     """Officer performance stats for the logged-in user."""
     now = datetime.now(timezone.utc)
-    cutoff = _resolve_range(time_range, now)
+    cutoff = _resolve_range(range, now)
     stats = await _officer_stats_for_email(user.email, db, now, cutoff)
 
     total_q = select(func.count()).select_from(Ticket)
@@ -265,11 +265,11 @@ async def my_ticket_stats(
 async def officer_report(
     db: AsyncSession = Depends(get_db),
     _admin: OktaUser = Depends(require_admin()),
-    time_range: str = Query("all", alias="range", pattern="^(24h|7d|30d|90d|ytd|all)$"),
+    range: str = Query("all"),  # noqa: A002
 ):
     """Admin-only: performance stats for every officer."""
     now = datetime.now(timezone.utc)
-    cutoff = _resolve_range(time_range, now)
+    cutoff = _resolve_range(range, now)
 
     total_q = select(func.count()).select_from(Ticket)
     if cutoff:
