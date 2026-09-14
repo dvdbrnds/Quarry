@@ -950,6 +950,14 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS committee_notes TEXT",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_by VARCHAR(256)",
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS notification_email VARCHAR(256)",
+            # Backfill notification_email from linked permits for older tickets
+            """UPDATE tickets t
+               SET notification_email = p.email
+               FROM permits p
+               WHERE t.permit_id = p.id
+               AND t.notification_email IS NULL
+               AND p.email IS NOT NULL AND p.email != ''""",
             # Committee votes: track when a vote was changed
             "ALTER TABLE committee_votes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
             # Widen columns that overflow (matching Alembic 0008 + 0018)

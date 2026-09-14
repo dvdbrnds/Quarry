@@ -138,24 +138,36 @@ async def my_tickets(
 ):
     email = user.email.lower()
 
+    # Collect plates from all permits linked to this email
     permits_q = await db.execute(
-        select(Permit.plates).where(
+        select(Permit.id, Permit.plates).where(
             func.lower(Permit.email) == email,
             Permit.deleted_at.is_(None),
         )
     )
     all_plates: set[str] = set()
-    for (plates,) in permits_q.all():
-        if plates:
-            for p in plates:
+    permit_ids: list = []
+    for row in permits_q.all():
+        permit_ids.append(row[0])
+        if row[1]:
+            for p in row[1]:
                 all_plates.add(p.upper().replace(" ", ""))
 
-    conditions = [func.lower(Ticket.dispute_email) == email]
+    # Match tickets by any of:
+    # 1. dispute_email (student filed a dispute from pay page)
+    # 2. notification_email (citation notification was sent to this email)
+    # 3. plates from permits linked to this email
+    # 4. permit_id linked to one of the student's permits
+    conditions = [
+        func.lower(Ticket.dispute_email) == email,
+        func.lower(Ticket.notification_email) == email,
+    ]
     if all_plates:
-        normalized_plates = list(all_plates)
         conditions.append(
-            func.upper(func.replace(Ticket.plate, " ", "")).in_(normalized_plates)
+            func.upper(func.replace(Ticket.plate, " ", "")).in_(list(all_plates))
         )
+    if permit_ids:
+        conditions.append(Ticket.permit_id.in_(permit_ids))
 
     tickets_q = await db.execute(
         select(Ticket)

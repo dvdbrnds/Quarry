@@ -424,6 +424,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
             )
             permit = permit_result.scalar()
             if permit and getattr(permit, "email", None):
+                ticket.notification_email = permit.email
                 vtype_label = ticket.violation_type or "Parking Violation"
                 if ticket.violation_type:
                     vt_row = await db.execute(
@@ -444,6 +445,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                     issued_at=to_local(ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if ticket.issued_at else "",
                     ticket_id=ticket.ticket_number or str(ticket.id),
                 )
+                await db.flush()
     except Exception as e:
         import logging
         logging.getLogger("quarry.tickets").warning("Citation email failed (non-fatal): %s", e)

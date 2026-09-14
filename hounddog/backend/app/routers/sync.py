@@ -785,6 +785,11 @@ async def _upload_ticket_impl(
         import logging
         logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
 
+    # Persist notification_email on the ticket for student lookup
+    if notification_email:
+        new_ticket.notification_email = notification_email
+        await db.flush()
+
     try:
         if permit and getattr(permit, 'student_id', None):
             from ..services.escalation import check_and_escalate
