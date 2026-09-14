@@ -7,6 +7,41 @@ export interface AuthUser {
   groups: string[];
 }
 
+// ── Global 401 interceptor ──────────────────────────────────────────
+// Wraps window.fetch so any API call that gets a 401 will silently
+// attempt a token refresh + retry.  If that also fails the user is
+// redirected to the Okta login page automatically.
+let _redirectingToLogin = false;
+const _originalFetch = window.fetch.bind(window);
+
+window.fetch = async function patchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await _originalFetch(input, init);
+
+  // Only intercept 401s on our own authenticated API routes
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+  if (res.status !== 401 || !url.includes("/api/")) return res;
+  if (url.includes("/api/auth/config/public")) return res;
+  if (_redirectingToLogin || !oktaAuth) return res;
+
+  // Try a silent token renewal
+  try {
+    await oktaAuth.tokenManager.renew("accessToken");
+    const newToken = await getAccessToken();
+    if (newToken) {
+      const retryHeaders = new Headers(init?.headers);
+      retryHeaders.set("Authorization", `Bearer ${newToken}`);
+      const retryRes = await _originalFetch(input, { ...init, headers: retryHeaders });
+      if (retryRes.status !== 401) return retryRes;
+    }
+  } catch { /* renewal failed */ }
+
+  // Token is truly expired — redirect to login
+  _redirectingToLogin = true;
+  sessionStorage.setItem("quarry_return_path", window.location.pathname);
+  login().catch(() => { window.location.href = "/"; });
+  return res;
+} as typeof window.fetch;
+
 export interface AppConfig {
   okta_domain: string;
   okta_client_id: string;
@@ -43,6 +78,7 @@ export async function initAuth(): Promise<OktaAuth | null> {
     postLogoutRedirectUri: window.location.origin,
     scopes: ["openid", "email", "profile", "groups"],
     pkce: true,
+    tokenManager: { autoRenew: true, expireEarlySeconds: 120 },
   });
 
   return oktaAuth;
@@ -94,7 +130,18 @@ export async function logout(): Promise<void> {
 export async function getAccessToken(): Promise<string | null> {
   if (!oktaAuth) return null;
   const tokenManager = oktaAuth.tokenManager;
-  const accessToken = await tokenManager.get("accessToken");
+  let accessToken = await tokenManager.get("accessToken");
+
+  // If the token is expired or about to expire, try to renew it silently
+  if (accessToken && oktaAuth.tokenManager.hasExpired(accessToken)) {
+    try {
+      accessToken = await tokenManager.renew("accessToken");
+    } catch {
+      // Renewal failed — token is dead
+      return null;
+    }
+  }
+
   if (!accessToken) return null;
   return (accessToken as { accessToken: string }).accessToken;
 }
