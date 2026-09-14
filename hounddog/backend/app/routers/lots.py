@@ -46,8 +46,8 @@ COMMUTER_EVENING_SCHEDULE = [
                 "start": "06:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": ["faculty_staff", "student_guest"],
-                "label": "Faculty/Staff Only (Weekday Daytime)",
+                "allowed_permit_types": ["faculty_staff", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"],
+                "label": "Faculty/Staff + Visitors (Weekday Daytime)",
             },
             {
                 "start": "16:00",

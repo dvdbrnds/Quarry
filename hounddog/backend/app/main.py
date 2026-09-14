@@ -682,9 +682,9 @@ async def lifespan(app: FastAPI):
             """UPDATE parking_lots
                SET access_schedule = REPLACE(access_schedule::text, '"07:00"', '"06:00"')::jsonb
                WHERE designation_code = 'FSC' AND access_schedule IS NOT NULL AND access_schedule::text LIKE '%07:00%'""",
-            # Allow ALL permit holders in FSC lots after hours (empty allowed_permit_types = unrestricted)
+            # FSC schedule: Faculty/Staff + Visitors during day, all permit holders after hours
             """UPDATE parking_lots
-               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"06:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["faculty_staff","student_guest"],"label":"Faculty/Staff Only (Weekday Daytime)"},{"start":"16:00","end":"06:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"06:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["faculty_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff"],"label":"Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"06:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
                WHERE designation_code = 'FSC'""",
             """CREATE TABLE IF NOT EXISTS app_config (
                 key VARCHAR(128) PRIMARY KEY,
