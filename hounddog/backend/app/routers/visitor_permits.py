@@ -510,6 +510,11 @@ async def resend_sponsor_email(
     if not approval:
         raise HTTPException(404, "No approval token found for this permit")
 
+    # Always refresh the token expiry so the resent link actually works
+    approval.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    approval.used_at = None  # Clear in case it was partially used
+    await db.flush()
+
     sent = await _send_sponsor_approval_email(
         sponsor_email=approval.sponsor_email,
         sponsor_name=approval.sponsor_name,
@@ -524,7 +529,7 @@ async def resend_sponsor_email(
         instructor_name=_extract_metadata(permit, "instructor_name"),
     )
     if sent:
-        return {"status": "sent", "message": f"Approval email resent to {approval.sponsor_email}"}
+        return {"status": "sent", "message": f"Approval email resent to {approval.sponsor_email} (link refreshed for 7 days)"}
     raise HTTPException(500, f"Failed to send email to {approval.sponsor_email} — check server logs")
 
 
@@ -894,7 +899,7 @@ async def _create_visitor(data: VisitorPermitCreate, plate: str, db: AsyncSessio
         permit_id=permit.id,
         sponsor_email=data.sponsor_email.strip(),
         sponsor_name=data.sponsor_name.strip(),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=90),
     )
     db.add(approval)
     await db.flush()
@@ -949,8 +954,14 @@ async def _get_valid_token(token: str, db: AsyncSession, check_used: bool) -> Vi
     if check_used and approval.used_at:
         raise HTTPException(400, "This approval link has already been used")
 
+    # Allow approval if the permit is still pending, even if token expiry passed
     if approval.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(400, "This approval link has expired")
+        permit = await db.get(Permit, approval.permit_id)
+        if not permit or permit.status != "pending_approval":
+            raise HTTPException(400, "This approval link has expired")
+        # Token expired but permit is still waiting — extend and allow
+        approval.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        await db.flush()
 
     return approval
 
