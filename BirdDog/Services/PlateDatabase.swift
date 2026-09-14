@@ -93,7 +93,7 @@ final class PlateDatabase {
         var inserted = 0
         var skippedEmpty = 0
         var skippedDuplicate = 0
-        var seenPlates = Set<String>()
+        var seenPlates: [String: PermitRecord] = [:]
 
         for permit in payload.permits {
             let normalized = permit.plateNormalized.trimmingCharacters(in: .whitespaces)
@@ -101,11 +101,26 @@ final class PlateDatabase {
                 skippedEmpty += 1
                 continue
             }
-            if seenPlates.contains(normalized) {
+
+            let entryHC = permit.hcStatus ?? "none"
+            let entryIsHC = entryHC == "temporary" || entryHC == "permanent"
+
+            if let existing = seenPlates[normalized] {
+                // Duplicate plate — merge HC status: if either permit has HC, keep it
+                if entryIsHC && existing.hcStatus == "none" {
+                    existing.hcStatus = entryHC
+                    existing.hcExpiry = permit.parsedHcExpiry
+                }
+                // Merge lot zones so the combined record covers all lots
+                if !permit.lotZone.isEmpty {
+                    let existingZones = existing.lotZone
+                    if !existingZones.contains(permit.lotZone) {
+                        existing.lotZone = existingZones.isEmpty ? permit.lotZone : "\(existingZones), \(permit.lotZone)"
+                    }
+                }
                 skippedDuplicate += 1
                 continue
             }
-            seenPlates.insert(normalized)
 
             let record = PermitRecord(
                 plateNormalized: normalized,
@@ -119,10 +134,11 @@ final class PlateDatabase {
                 vehicleDescription: permit.vehicleDescription,
                 issuedDate: permit.parsedIssuedDate,
                 expirationDate: permit.parsedExpirationDate,
-                hcStatus: permit.hcStatus ?? "none",
+                hcStatus: entryHC,
                 hcExpiry: permit.parsedHcExpiry
             )
             context.insert(record)
+            seenPlates[normalized] = record
             inserted += 1
         }
         try context.save()
@@ -130,7 +146,7 @@ final class PlateDatabase {
         recordsByLengthCache.removeAll()
 
         if skippedEmpty > 0 || skippedDuplicate > 0 {
-            print("Import: \(inserted) inserted, \(skippedEmpty) empty plates skipped, \(skippedDuplicate) duplicates skipped")
+            print("Import: \(inserted) inserted, \(skippedEmpty) empty plates skipped, \(skippedDuplicate) duplicates merged")
         }
 
         return SeedResult(inserted: inserted, skippedEmpty: skippedEmpty, skippedDuplicate: skippedDuplicate)
@@ -309,13 +325,22 @@ final class PlateDatabase {
             existing.permitNumber = entry.permitNumber
             existing.permitType = entry.permitType
             existing.permitStatus = entry.permitStatus
-            existing.lotZone = entry.lotZone
             existing.vehicleDescription = entry.vehicleDescription
             existing.issuedDate = entry.parsedIssuedDate
             existing.expirationDate = entry.parsedExpirationDate
             existing.beaconId = entry.beaconId
-            existing.hcStatus = entry.hcStatus ?? "none"
-            existing.hcExpiry = entry.parsedHcExpiry
+            // Merge HC: only overwrite if the incoming entry has HC,
+            // or if neither has HC. Never downgrade HC to "none".
+            let incomingHC = entry.hcStatus ?? "none"
+            let incomingIsHC = incomingHC == "temporary" || incomingHC == "permanent"
+            if incomingIsHC || existing.hcStatus == "none" {
+                existing.hcStatus = incomingHC
+                existing.hcExpiry = entry.parsedHcExpiry
+            }
+            // Merge lot zones
+            if !entry.lotZone.isEmpty && !existing.lotZone.contains(entry.lotZone) {
+                existing.lotZone = existing.lotZone.isEmpty ? entry.lotZone : "\(existing.lotZone), \(entry.lotZone)"
+            }
             existing.importedAt = Date()
         } else {
             let record = PermitRecord(
