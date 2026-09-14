@@ -247,15 +247,30 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let context = CIContext(options: [.useSoftwareRenderer: false])
         guard let rawCG = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
-        let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
-            ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
-            : 90)
+        let degrees: Int
+        if isUsingExternalCamera {
+            degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
+        } else {
+            switch cachedOrientation {
+            case .up:    degrees = 0
+            case .right: degrees = 90
+            case .down:  degrees = 180
+            case .left:  degrees = 270
+            default:     degrees = 90
+            }
+        }
+        let rotatedImage = Self.rotateImage(rawCG, degrees: degrees)
 
-        let targetSize = CGSize(width: 640, height: 480)
+        let maxDim: CGFloat = 1280
+        let scale = min(maxDim / rotatedImage.size.width, maxDim / rotatedImage.size.height, 1.0)
+        let targetSize = CGSize(
+            width: rotatedImage.size.width * scale,
+            height: rotatedImage.size.height * scale
+        )
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         let resized = renderer.image { _ in rotatedImage.draw(in: CGRect(origin: .zero, size: targetSize)) }
 
-        guard let jpegData = resized.jpegData(compressionQuality: 0.6) else { return nil }
+        guard let jpegData = resized.jpegData(compressionQuality: 0.75) else { return nil }
 
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("violation_photos", isDirectory: true)
