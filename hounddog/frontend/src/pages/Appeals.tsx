@@ -268,25 +268,11 @@ export default function Appeals() {
                 <div className="text-center">
                   <p className="text-base text-gray-600">No citations on file</p>
                   <p className="text-sm text-gray-500">
-                    No citations are linked to your account yet. If you received a citation,
-                    enter your license plate below to find it.
+                    No citations are linked to your account yet. Use the lookup below to find citations by license plate.
                   </p>
                 </div>
               }
             />
-            <div className="flex gap-2 justify-center mt-4">
-              <Input
-                placeholder="License plate"
-                value={plateLookup}
-                onChange={e => setPlateLookup(e.target.value)}
-                onPressEnter={handlePlateLookup}
-                className="font-mono"
-                style={{ maxWidth: 220 }}
-              />
-              <Button type="primary" onClick={handlePlateLookup} loading={plateLookupLoading}>
-                Look Up
-              </Button>
-            </div>
           </Card>
         )}
 
@@ -357,6 +343,31 @@ export default function Appeals() {
               </Card>
             ))}
           </div>
+        )}
+
+        {/* Plate lookup for students — always visible */}
+        {mode === "student" && authState === "ready" && !loading && (
+          <Card size="small" className="mt-4">
+            <div className="text-sm font-medium mb-1">
+              {tickets.length === 0 ? "Look up a citation" : "Don't see a citation?"}
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Enter your license plate number to find citations linked to your vehicle.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="License plate"
+                value={plateLookup}
+                onChange={e => setPlateLookup(e.target.value)}
+                onPressEnter={handlePlateLookup}
+                className="font-mono"
+                style={{ maxWidth: 220 }}
+              />
+              <Button type="primary" onClick={handlePlateLookup} loading={plateLookupLoading}>
+                Look Up
+              </Button>
+            </div>
+          </Card>
         )}
 
         <div className="text-center text-xs text-gray-400 mt-10">

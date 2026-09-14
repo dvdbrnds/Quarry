@@ -192,17 +192,21 @@ async def claim_plate_tickets(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    """Let a student claim tickets by entering their plate number.
+    """Let a student claim tickets by entering their plate or ticket number.
     Links matching tickets to their email for future automatic lookup."""
     email = user.email.lower()
     normalized = data.plate.upper().replace(" ", "").strip()
     if not normalized:
-        raise HTTPException(400, "Please enter a license plate")
+        raise HTTPException(400, "Please enter a license plate or ticket number")
 
+    # Search by plate OR ticket number so students can enter either
     tickets_q = await db.execute(
         select(Ticket)
         .where(
-            func.upper(func.replace(Ticket.plate, " ", "")) == normalized,
+            or_(
+                func.upper(func.replace(Ticket.plate, " ", "")) == normalized,
+                func.upper(Ticket.ticket_number) == normalized,
+            )
         )
         .order_by(Ticket.issued_at.desc())
     )
