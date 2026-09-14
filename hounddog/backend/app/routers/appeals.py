@@ -182,6 +182,46 @@ async def my_tickets(
     return MyTicketsResponse(tickets=summaries, appeal_window_days=appeal_window_days)
 
 
+class PlateClaimRequest(BaseModel):
+    plate: str
+
+
+@router.post("/claim-plate", response_model=MyTicketsResponse)
+async def claim_plate_tickets(
+    data: PlateClaimRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Let a student claim tickets by entering their plate number.
+    Links matching tickets to their email for future automatic lookup."""
+    email = user.email.lower()
+    normalized = data.plate.upper().replace(" ", "").strip()
+    if not normalized:
+        raise HTTPException(400, "Please enter a license plate")
+
+    tickets_q = await db.execute(
+        select(Ticket)
+        .where(
+            func.upper(func.replace(Ticket.plate, " ", "")) == normalized,
+        )
+        .order_by(Ticket.issued_at.desc())
+    )
+    tickets = tickets_q.scalars().all()
+
+    # Link unlinked tickets to this student's email so they show up automatically next time
+    linked = 0
+    for t in tickets:
+        if not t.notification_email:
+            t.notification_email = email
+            linked += 1
+    if linked > 0:
+        await db.flush()
+
+    appeal_window_days = await _get_appeal_window(db)
+    summaries = [_ticket_to_summary(t, appeal_window_days) for t in tickets]
+    return MyTicketsResponse(tickets=summaries, appeal_window_days=appeal_window_days)
+
+
 @router.post("/submit", response_model=AppealResult)
 async def submit_appeal(
     data: AppealSubmit,

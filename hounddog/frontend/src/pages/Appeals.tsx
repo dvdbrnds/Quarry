@@ -43,6 +43,10 @@ export default function Appeals() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
 
+  // Student plate lookup state
+  const [plateLookup, setPlateLookup] = useState("");
+  const [plateLookupLoading, setPlateLookupLoading] = useState(false);
+
   // Check for direct ticket link (e.g., /appeals?ticket=uuid)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -124,6 +128,29 @@ export default function Appeals() {
     } finally {
       setLookupLoading(false);
     }
+  }
+
+  async function handlePlateLookup() {
+    const val = plateLookup.trim();
+    if (!val) return;
+    setPlateLookupLoading(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch("/api/appeals/claim-plate", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ plate: val }),
+      });
+      if (!res.ok) throw new Error("Lookup failed");
+      const data = await res.json();
+      if (data.tickets.length > 0) {
+        message.success(`Found ${data.tickets.length} citation${data.tickets.length > 1 ? "s" : ""}`);
+        loadTickets();
+      } else {
+        message.info("No citations found for that plate.");
+      }
+    } catch { message.error("Lookup failed. Please try again."); }
+    finally { setPlateLookupLoading(false); }
   }
 
   function statusTag(t: TicketSummary) {
@@ -241,12 +268,25 @@ export default function Appeals() {
                 <div className="text-center">
                   <p className="text-base text-gray-600">No citations on file</p>
                   <p className="text-sm text-gray-500">
-                    This page displays your citation history and the status of any appeals.
-                    You currently have no citations associated with your account.
+                    No citations are linked to your account yet. If you received a citation,
+                    enter your license plate below to find it.
                   </p>
                 </div>
               }
             />
+            <div className="flex gap-2 justify-center mt-4">
+              <Input
+                placeholder="License plate"
+                value={plateLookup}
+                onChange={e => setPlateLookup(e.target.value)}
+                onPressEnter={handlePlateLookup}
+                className="font-mono"
+                style={{ maxWidth: 220 }}
+              />
+              <Button type="primary" onClick={handlePlateLookup} loading={plateLookupLoading}>
+                Look Up
+              </Button>
+            </div>
           </Card>
         )}
 
