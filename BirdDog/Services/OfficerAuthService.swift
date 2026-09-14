@@ -81,7 +81,10 @@ final class OfficerAuthService: NSObject, ObservableObject {
         }
 
         session.presentationContextProvider = self
-        session.prefersEphemeralWebBrowserSession = true
+        // Use the shared Safari session so Duo Universal Prompt redirects
+        // complete correctly. Ephemeral sessions block Duo's form-POST
+        // redirect back to Okta, causing an infinite "Logging you in…" hang.
+        session.prefersEphemeralWebBrowserSession = false
         self.webAuthSession = session
         session.start()
     }
