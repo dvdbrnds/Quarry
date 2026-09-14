@@ -304,6 +304,8 @@ async def lifespan(app: FastAPI):
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
+        # Set a lock timeout so DDL statements fail fast instead of deadlocking
+        await conn.execute(text("SET lock_timeout = '5s'"))
         try:
             migrations = [
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
@@ -960,9 +962,25 @@ async def lifespan(app: FastAPI):
                AND p.email IS NOT NULL AND p.email != ''""",
             # Committee votes: track when a vote was changed
             "ALTER TABLE committee_votes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
-            # Widen columns that overflow (matching Alembic 0008 + 0018)
-            "ALTER TABLE permits ALTER COLUMN lot_assignment TYPE VARCHAR(512)",
-            "ALTER TABLE tickets ALTER COLUMN permit_number TYPE VARCHAR(256)",
+            # Widen columns only if still narrow (avoids AccessExclusiveLock on every restart)
+            """DO $$ BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='permits' AND column_name='lot_assignment'
+                    AND character_maximum_length IS NOT NULL AND character_maximum_length < 512
+                ) THEN
+                    ALTER TABLE permits ALTER COLUMN lot_assignment TYPE VARCHAR(512);
+                END IF;
+            END $$""",
+            """DO $$ BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='tickets' AND column_name='permit_number'
+                    AND character_maximum_length IS NOT NULL AND character_maximum_length < 256
+                ) THEN
+                    ALTER TABLE tickets ALTER COLUMN permit_number TYPE VARCHAR(256);
+                END IF;
+            END $$""",
             ]
             for migration in migrations:
                 try:
