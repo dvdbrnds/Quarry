@@ -130,6 +130,36 @@ export default function Appeals() {
     }
   }
 
+  async function handleGuestLookup() {
+    const val = lookupId.trim();
+    if (!val) return;
+    setLookupLoading(true);
+    setLookupError("");
+    setTickets([]);
+    try {
+      const res = await fetch("/api/appeals/guest-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: val }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.detail || "Lookup failed");
+      }
+      const data = await res.json();
+      if (data.tickets.length > 0) {
+        setTickets(data.tickets);
+        setAppealWindowDays(data.appeal_window_days);
+      } else {
+        setLookupError("No citations found. Please check your entry and try again.");
+      }
+    } catch (e: any) {
+      setLookupError(e.message || "Lookup failed. Please try again.");
+    } finally {
+      setLookupLoading(false);
+    }
+  }
+
   async function handlePlateLookup() {
     const val = plateLookup.trim();
     if (!val) return;
@@ -230,23 +260,23 @@ export default function Appeals() {
         {mode === "guest" && tickets.length === 0 && (
           <Card>
             <p className="text-sm text-gray-600 mb-4">
-              Enter the ticket ID from your citation notice, email, or the QR code on your ticket.
+              Enter your license plate, citation number, or ticket ID from your notice to find your citation(s).
             </p>
             <div className="flex gap-2">
               <Input
-                placeholder="Ticket ID"
+                placeholder="License plate, citation #, or ticket ID"
                 value={lookupId}
                 onChange={(e) => setLookupId(e.target.value)}
-                onPressEnter={() => lookupTicket()}
+                onPressEnter={() => handleGuestLookup()}
                 className="font-mono"
               />
-              <Button type="primary" onClick={() => lookupTicket()} loading={lookupLoading}>
+              <Button type="primary" onClick={() => handleGuestLookup()} loading={lookupLoading}>
                 Look Up
               </Button>
             </div>
             {lookupError && <Alert type="error" message={lookupError} className="mt-3" showIcon />}
             <p className="text-xs text-gray-400 mt-4 mb-0">
-              Don't have your ticket ID? Contact the parking office for assistance.
+              Don't have this information? Contact the parking office for assistance.
             </p>
             <Button type="link" size="small" className="px-0 mt-2" onClick={() => { setMode("choose"); setLookupError(""); }}>
               &larr; Back
@@ -383,7 +413,7 @@ export default function Appeals() {
         onSuccess={() => {
           setAppealTicket(null);
           if (mode === "student") loadTickets();
-          else if (mode === "guest" && lookupId) lookupTicket();
+          else if (mode === "guest" && lookupId) handleGuestLookup();
         }}
       />
       <PublicFooter />

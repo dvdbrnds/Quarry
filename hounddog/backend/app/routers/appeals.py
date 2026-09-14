@@ -269,6 +269,46 @@ async def public_lookup(
     return PublicLookupResponse(ticket=summary, appeal_window_days=appeal_window_days)
 
 
+class GuestLookupRequest(BaseModel):
+    query: str
+
+
+@public_router.post("/guest-lookup")
+async def guest_lookup(
+    data: GuestLookupRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint — look up tickets by plate, ticket number, or ticket ID.
+    No auth required. Returns matching tickets for pay/appeal."""
+    val = data.query.strip()
+    if not val:
+        raise HTTPException(400, "Please enter a license plate, ticket number, or ticket ID")
+
+    normalized = val.upper().replace(" ", "")
+    conditions = [
+        func.upper(func.replace(Ticket.plate, " ", "")) == normalized,
+        func.upper(Ticket.ticket_number) == normalized,
+    ]
+
+    # Also try as UUID (ticket ID from email/QR)
+    try:
+        tid = uuid.UUID(val)
+        conditions.append(Ticket.id == tid)
+    except ValueError:
+        pass
+
+    tickets_q = await db.execute(
+        select(Ticket)
+        .where(or_(*conditions))
+        .order_by(Ticket.issued_at.desc())
+    )
+    tickets = tickets_q.scalars().all()
+
+    appeal_window_days = await _get_appeal_window(db)
+    summaries = [_ticket_to_summary(t, appeal_window_days) for t in tickets]
+    return MyTicketsResponse(tickets=summaries, appeal_window_days=appeal_window_days)
+
+
 @public_router.post("/public-submit", response_model=AppealResult)
 async def public_submit_appeal(
     data: PublicAppealSubmit,
