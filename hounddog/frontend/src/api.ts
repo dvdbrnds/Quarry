@@ -654,6 +654,8 @@ export const api = {
     history: (id: string) => request<any>(`/permits/${id}/history`),
     renew: (id: string) =>
       request<Permit>(`/permits/${id}/renew`, { method: "POST" }),
+    extend: (id: string) =>
+      request<Permit>(`/permits/${id}/extend`, { method: "POST" }),
     duplicates: () => request<any[]>("/permits/duplicates"),
     lottery: {
       run: (permitTypeId: string, force = false) =>

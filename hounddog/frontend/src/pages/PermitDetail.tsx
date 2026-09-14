@@ -43,6 +43,16 @@ export default function PermitDetail() {
     });
   }
 
+  function handleExtend() {
+    if (!id) return;
+    modal.confirm({
+      title: "Extend permit by 7 days?",
+      content: "This will add 7 days to the permit's expiration date. If the permit is already expired, the extension starts from today.",
+      okText: "Extend 7 Days",
+      onOk: async () => { await api.permits.extend(id); message.success("Permit extended by 7 days"); load(); },
+    });
+  }
+
   if (loading || !data) return <div className="flex justify-center py-12"><Spin size="large" /></div>;
 
   const p = data.permit;
@@ -164,6 +174,9 @@ export default function PermitDetail() {
             <Button onClick={() => navigate(`/permits?edit=${id}`)}>Edit</Button>
             {(p.status === "revoked" || p.status === "suspended" || p.status === "expired") && (
               <Button onClick={handleReactivate}>Reactivate</Button>
+            )}
+            {(p.status === "expired" || p.status === "active") && (
+              <Button onClick={handleExtend}>Extend 7 Days</Button>
             )}
             {(p.status === "expired" || p.status === "active") && (
               <Button type="primary" onClick={handleRenew}>Renew</Button>

@@ -1327,6 +1327,29 @@ async def renew_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     return renewed
 
 
+@router.post("/{permit_id}/extend", response_model=PermitRead)
+async def extend_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Extend a permit's end_date by 7 days. Used by dispatchers for short grace extensions."""
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    base = permit.end_date or today_local()
+    # If the permit already expired, extend from today instead of the past date
+    if base < today_local():
+        base = today_local()
+    permit.end_date = base + timedelta(days=7)
+
+    # Reactivate expired permits so the extension is usable
+    if permit.status == "expired":
+        permit.status = "active"
+
+    await db.flush()
+    await db.refresh(permit)
+    await _notify_permit_change("extended", 1)
+    return permit
+
+
 @router.get("/{permit_id}/history")
 async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from ..models.lottery_v2 import LotteryV2Application
