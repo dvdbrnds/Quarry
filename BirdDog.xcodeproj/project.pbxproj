@@ -16,6 +16,7 @@
 		1E92882A49F81E47B67DE436 /* TicketReceiptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4F388DD2760B3DE754574DE /* TicketReceiptBuilder.swift */; };
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
 		2638EBC5A646B587254FEA54 /* LotMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE136126A91BF1E0AF61ED15 /* LotMatchingTests.swift */; };
+		27894500DEAD0001DEADBEEF /* DeviceLogService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27894500DEAD0002DEADBEEF /* DeviceLogService.swift */; };
 		2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */; };
 		28BAF0B4445935525197A945 /* PrinterSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */; };
 		2C22866D94921A7E0FC7625C /* PlateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */; };
@@ -102,6 +103,7 @@
 		4D7C0C46C8B3FE577F9B161A /* LotManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LotManagementView.swift; sourceTree = "<group>"; };
 		5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatePatternMatcher.swift; sourceTree = "<group>"; };
 		56771E1D5749AF106C7BF205 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		27894500DEAD0002DEADBEEF /* DeviceLogService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogService.swift; sourceTree = "<group>"; };
 		61E99F5B120D7A9429AD4428 /* HoundDogSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoundDogSyncService.swift; sourceTree = "<group>"; };
 		64F1DC96A5E06BEC2AAB023A /* BirdDogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDogApp.swift; sourceTree = "<group>"; };
 		6B998945CBE0A6AA9B29E85F /* OfficerAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficerAuthService.swift; sourceTree = "<group>"; };
@@ -191,6 +193,7 @@
 				4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */,
 				19EEEB4BA36CBBFEA0F0E4EE /* CalendarStore.swift */,
 				737FD3F7D372AFD77737EE09 /* CameraService.swift */,
+				27894500DEAD0002DEADBEEF /* DeviceLogService.swift */,
 				72F5636944CED0E09729E861 /* DataProvider.swift */,
 				F3A6EF72A87EC98B04A49AE5 /* EnforcementSettingsStore.swift */,
 				2E381758AC904764909D151F /* GeofenceService.swift */,
@@ -448,6 +451,7 @@
 				08974B307700E90A8928F832 /* DataProvider.swift in Sources */,
 				B5898175F50570E6F68AAF6F /* DatabaseManagementView.swift in Sources */,
 				7D6CBDAF9A159BEB7438FE8E /* DeviceInfo.swift in Sources */,
+				27894500DEAD0001DEADBEEF /* DeviceLogService.swift in Sources */,
 				A8F9198C4F341CF90FAB9CE5 /* EnforcementSettingsStore.swift in Sources */,
 				ABBFF69314885E0DBFB6FD9C /* GeofenceService.swift in Sources */,
 				2789451B9E4DCFF0B3778BF8 /* HoundDogSyncService.swift in Sources */,
