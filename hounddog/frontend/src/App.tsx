@@ -20,6 +20,7 @@ import AlertUnsubscribe from "./pages/AlertUnsubscribe";
 import SignagePlayer from "./pages/SignagePlayer";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
+import StudentCitations from "./pages/StudentCitations";
 import StaffPermits from "./pages/StaffPermits";
 import SponsorDashboard from "./pages/SponsorDashboard";
 import LotteryApplyV2 from "./pages/LotteryApplyV2";
@@ -276,6 +277,7 @@ function StudentShell({ user }: { user: AuthUser }) {
           )}
         </div>
         <NavItem to="/student/permits">My Permits</NavItem>
+        <NavItem to="/student/citations">My Citations</NavItem>
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-bone/70">{user.email}</span>
@@ -293,6 +295,7 @@ function StudentShell({ user }: { user: AuthUser }) {
         <Routes>
           <Route path="/" element={<Navigate to="/student/permits" replace />} />
           <Route path="/student/permits" element={<StudentPermits />} />
+          <Route path="/student/citations" element={<StudentCitations />} />
         </Routes>
       </main>
     </div>
