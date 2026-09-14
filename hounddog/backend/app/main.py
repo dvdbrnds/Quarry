@@ -984,12 +984,15 @@ async def lifespan(app: FastAPI):
             ]
             for migration in migrations:
                 try:
+                    await conn.execute(text("SAVEPOINT sp_mig"))
                     await conn.execute(text(migration))
+                    await conn.execute(text("RELEASE SAVEPOINT sp_mig"))
                 except Exception as e:
+                    await conn.execute(text("ROLLBACK TO SAVEPOINT sp_mig"))
                     err_str = str(e).lower()
                     # Lock timeout / deadlock = table is busy; migration is idempotent, skip and retry next restart
-                    if "locknotavailable" in err_str or "lock timeout" in err_str or "deadlock" in err_str:
-                        logger.warning(f"Migration skipped (lock timeout, will retry): {migration[:80]}...")
+                    if "locknotavailable" in err_str or "lock timeout" in err_str or "deadlock" in err_str or "infailedsql" in err_str:
+                        logger.warning(f"Migration skipped (lock contention, will retry): {migration[:80]}...")
                         continue
                     logger.error(f"Migration failed: {migration[:80]}... -> {e}")
                     raise
