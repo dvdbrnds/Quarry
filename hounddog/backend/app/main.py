@@ -986,6 +986,11 @@ async def lifespan(app: FastAPI):
                 try:
                     await conn.execute(text(migration))
                 except Exception as e:
+                    err_str = str(e).lower()
+                    # Lock timeout = table is busy; migration is idempotent, skip and retry next restart
+                    if "locknotavailable" in err_str or "lock timeout" in err_str:
+                        logger.warning(f"Migration skipped (lock timeout, will retry): {migration[:80]}...")
+                        continue
                     logger.error(f"Migration failed: {migration[:80]}... -> {e}")
                     raise
         finally:
