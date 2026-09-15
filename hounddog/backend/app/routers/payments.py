@@ -56,6 +56,29 @@ from ..schemas.payment import (
 
 router = APIRouter()
 
+
+async def _check_existing_permit(
+    db: AsyncSession, email: str, permit_type: PermitType
+) -> str | None:
+    """Return a description of an existing active permit for this student, or None.
+
+    Checks across ALL permit types (not just the requested one) so a student
+    can't hold two different permits simultaneously, unless the type explicitly
+    allows multiples (e.g. faculty_staff).
+    """
+    result = await db.execute(
+        select(Permit).where(
+            func.lower(Permit.email) == email.strip().lower(),
+            Permit.status == "active",
+            Permit.deleted_at.is_(None),
+        ).limit(1)
+    )
+    existing = result.scalar()
+    if existing:
+        return f"{existing.permit_type} – {existing.name or existing.email}"
+    return None
+
+
 PERMIT_PAYMENT_TYPES = {
     "permit_purchase",
     "lottery_permit",
@@ -354,6 +377,16 @@ async def purchase_permit(
     if permit_type.requires_lottery:
         raise HTTPException(400, "Lottery permits cannot be purchased directly")
 
+    # Block duplicate permits — student can only hold one active permit at a time
+    if data.email and not permit_type.allow_multiple:
+        existing_permit = await _check_existing_permit(db, data.email, permit_type)
+        if existing_permit:
+            raise HTTPException(
+                409,
+                f"You already have an active parking permit ({existing_permit}). "
+                "Only one permit per student is allowed.",
+            )
+
     # Check capacity
     active_count_result = await db.execute(
         select(func.count()).select_from(Permit).where(
@@ -448,6 +481,16 @@ async def standalone_permit_purchase(
         raise HTTPException(400, "This permit type is not available for online purchase")
     if permit_type.requires_lottery:
         raise HTTPException(400, "This permit type requires a lottery application")
+
+    # Block duplicate permits — student can only hold one active permit at a time
+    if not permit_type.allow_multiple:
+        existing_permit = await _check_existing_permit(db, data.email, permit_type)
+        if existing_permit:
+            raise HTTPException(
+                409,
+                f"You already have an active parking permit ({existing_permit}). "
+                "Only one permit per student is allowed.",
+            )
 
     from ..models.lottery_v2 import LotteryV2Application
     active_count_result = await db.execute(
@@ -772,10 +815,24 @@ async def _handle_permit_purchase(session: dict, metadata: dict, db: AsyncSessio
 
     lot_assignment = metadata.get("lot_assignment") or ""
     permit_type_id = metadata.get("permit_type_id")
+    pt = None
     if not lot_assignment and permit_type_id:
         pt = await db.get(PermitType, uuid.UUID(permit_type_id))
         if pt and pt.lot_assignments:
             lot_assignment = ", ".join(pt.lot_assignments)
+    elif permit_type_id:
+        pt = await db.get(PermitType, uuid.UUID(permit_type_id))
+
+    # Duplicate permit guard
+    if email and pt and not pt.allow_multiple:
+        dup = await _check_existing_permit(db, email, pt)
+        if dup:
+            logger.warning(
+                "DUPLICATE PERMIT BLOCKED at webhook (ticket-purchase): %s already has '%s'. "
+                "Refund required for payment %s.",
+                email, dup, stripe_pi,
+            )
+            return False
 
     new_permit = Permit(
         permit_number=await next_permit_number(db),
@@ -845,10 +902,20 @@ async def _handle_lottery_permit(session: dict, metadata: dict, db: AsyncSession
 
     lot_assignment = metadata.get("lot_assignment") or ""
     permit_type_id = metadata.get("permit_type_id")
+    pt = None
     if not lot_assignment and permit_type_id:
         pt = await db.get(PT, uuid.UUID(permit_type_id))
         if pt and pt.lot_assignments:
             lot_assignment = ", ".join(pt.lot_assignments)
+    elif permit_type_id:
+        pt = await db.get(PT, uuid.UUID(permit_type_id))
+
+    # Duplicate permit guard
+    if email and pt and not pt.allow_multiple:
+        dup = await _check_existing_permit(db, email, pt)
+        if dup:
+            logger.warning("DUPLICATE PERMIT BLOCKED (lottery v1): %s already has '%s'.", email, dup)
+            return False
 
     new_permit = Permit(
         permit_number=await next_permit_number(db),
@@ -973,6 +1040,14 @@ async def _handle_lottery_v2_permit(session: dict, metadata: dict, db: AsyncSess
             )
             return False
 
+    # Duplicate permit guard
+    effective_email = email or app.student_email or ""
+    if effective_email and guard_pt and not guard_pt.allow_multiple:
+        dup = await _check_existing_permit(db, effective_email, guard_pt)
+        if dup:
+            logger.warning("DUPLICATE PERMIT BLOCKED (lottery v2): %s already has '%s'.", effective_email, dup)
+            return False
+
     new_permit = Permit(
         permit_number=await next_permit_number(db),
         name=student_name or app.student_name,
@@ -1054,6 +1129,18 @@ async def _handle_standalone_permit_purchase(session: dict, metadata: dict, db: 
                 "CAPACITY BREACH BLOCKED: %s at %d/%d active permits. "
                 "Student %s payment succeeded but permit not issued — refund required.",
                 pt.code, active_count, pt.max_capacity, email,
+            )
+            return False
+
+    # Final duplicate permit guard — prevent issuing a second permit even if
+    # checkout was initiated before the first one completed
+    if email and pt and not pt.allow_multiple:
+        dup = await _check_existing_permit(db, email, pt)
+        if dup:
+            logger.warning(
+                "DUPLICATE PERMIT BLOCKED at webhook: %s already has '%s'. "
+                "Payment by %s succeeded but second permit not issued — refund required.",
+                email, dup, email,
             )
             return False
 

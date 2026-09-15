@@ -353,15 +353,32 @@ async def submit_application(
         )
 
     if not pt.allow_multiple:
-        existing = await db.execute(
+        # Check for existing application for the same type
+        existing_app = await db.execute(
             select(PermitApplication).where(
                 PermitApplication.student_sub == user.sub,
                 PermitApplication.permit_type_id == pt.id,
                 PermitApplication.status.notin_(["expired", "declined"]),
             )
         )
-        if existing.scalar():
+        if existing_app.scalar():
             raise HTTPException(409, "You already have an active application for this permit type")
+
+        # Check for any active permit across ALL types (one permit per student)
+        existing_permit = await db.execute(
+            select(Permit).where(
+                func.lower(Permit.email) == (user.email or "").strip().lower(),
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            ).limit(1)
+        )
+        if existing_permit.scalar():
+            raise HTTPException(
+                409,
+                "You already have an active parking permit. "
+                "Only one permit per student is allowed. "
+                "Contact the parking office if you need to change your permit type.",
+            )
 
     citation_result = await db.execute(
         text("""
@@ -725,16 +742,21 @@ async def direct_purchase(
         )
 
     if not pt.allow_multiple:
+        # Check across ALL permit types — one permit per student
         existing = await db.execute(
             select(Permit).where(
-                Permit.permit_type == pt.code,
+                func.lower(Permit.email) == (user.email or "").strip().lower(),
                 Permit.status == "active",
                 Permit.deleted_at.is_(None),
-                Permit.email == user.email,
-            )
+            ).limit(1)
         )
         if existing.scalar():
-            raise HTTPException(409, "You already have an active permit of this type")
+            raise HTTPException(
+                409,
+                "You already have an active parking permit. "
+                "Only one permit per student is allowed. "
+                "Contact the parking office if you need to change your permit type.",
+            )
 
     citation_result = await db.execute(
         text("""
