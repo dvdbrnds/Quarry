@@ -616,6 +616,77 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
     }
 
 
+@router.get("/duplicates")
+async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
+    """Return students holding multiple active permits (by email and/or shared plate)."""
+    result = await db.execute(
+        select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
+    )
+    active = result.scalars().all()
+
+    def _permit_dict(p: Permit) -> dict:
+        return {
+            "id": str(p.id),
+            "permit_number": p.permit_number,
+            "name": p.name,
+            "email": p.email,
+            "student_id": p.student_id,
+            "plates": p.plates,
+            "lot_assignment": p.lot_assignment,
+            "permit_type": p.permit_type,
+            "start_date": p.start_date.isoformat() if p.start_date else None,
+            "end_date": p.end_date.isoformat() if p.end_date else None,
+            "status": p.status,
+        }
+
+    # --- By email: same person holding multiple active permits ---
+    email_map: dict[str, list[Permit]] = {}
+    for p in active:
+        if p.email:
+            key = p.email.strip().lower()
+            email_map.setdefault(key, []).append(p)
+
+    by_email = []
+    for email, permits in sorted(email_map.items()):
+        if len(permits) < 2:
+            continue
+        by_email.append({
+            "email": email,
+            "count": len(permits),
+            "permits": [_permit_dict(p) for p in permits],
+        })
+
+    # --- By plate: different people sharing a plate ---
+    plate_map: dict[str, list[Permit]] = {}
+    for p in active:
+        for plate in p.plates:
+            key = plate.upper().strip()
+            if key:
+                plate_map.setdefault(key, []).append(p)
+
+    by_plate = []
+    seen_ids: set = set()
+    for plate, permits_for_plate in plate_map.items():
+        if len(permits_for_plate) < 2:
+            continue
+        ids = tuple(sorted(str(p.id) for p in permits_for_plate))
+        if ids in seen_ids:
+            continue
+        seen_ids.add(ids)
+        by_plate.append({
+            "shared_plate": plate,
+            "permits": [_permit_dict(p) for p in permits_for_plate],
+        })
+
+    return {
+        "by_email": by_email,
+        "by_email_total": len(by_email),
+        "by_plate": by_plate,
+        "by_plate_total": len(by_plate),
+        "total_active_permits": len(active),
+    }
+
+
 @router.get("/{permit_id}", response_model=PermitRead)
 async def get_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     permit = await db.get(Permit, permit_id)
@@ -1767,77 +1838,6 @@ async def export_permit_emails_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=permit-emails-{status}.csv"},
     )
-
-
-@router.get("/duplicates")
-async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
-    """Return students holding multiple active permits (by email and/or shared plate)."""
-    result = await db.execute(
-        select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
-    )
-    active = result.scalars().all()
-
-    def _permit_dict(p: Permit) -> dict:
-        return {
-            "id": str(p.id),
-            "permit_number": p.permit_number,
-            "name": p.name,
-            "email": p.email,
-            "student_id": p.student_id,
-            "plates": p.plates,
-            "lot_assignment": p.lot_assignment,
-            "permit_type": p.permit_type,
-            "start_date": p.start_date.isoformat() if p.start_date else None,
-            "end_date": p.end_date.isoformat() if p.end_date else None,
-            "status": p.status,
-        }
-
-    # --- By email: same person holding multiple active permits ---
-    email_map: dict[str, list[Permit]] = {}
-    for p in active:
-        if p.email:
-            key = p.email.strip().lower()
-            email_map.setdefault(key, []).append(p)
-
-    by_email = []
-    for email, permits in sorted(email_map.items()):
-        if len(permits) < 2:
-            continue
-        by_email.append({
-            "email": email,
-            "count": len(permits),
-            "permits": [_permit_dict(p) for p in permits],
-        })
-
-    # --- By plate: different people sharing a plate ---
-    plate_map: dict[str, list[Permit]] = {}
-    for p in active:
-        for plate in p.plates:
-            key = plate.upper().strip()
-            if key:
-                plate_map.setdefault(key, []).append(p)
-
-    by_plate = []
-    seen_ids: set = set()
-    for plate, permits_for_plate in plate_map.items():
-        if len(permits_for_plate) < 2:
-            continue
-        ids = tuple(sorted(str(p.id) for p in permits_for_plate))
-        if ids in seen_ids:
-            continue
-        seen_ids.add(ids)
-        by_plate.append({
-            "shared_plate": plate,
-            "permits": [_permit_dict(p) for p in permits_for_plate],
-        })
-
-    return {
-        "by_email": by_email,
-        "by_email_total": len(by_email),
-        "by_plate": by_plate,
-        "by_plate_total": len(by_plate),
-        "total_active_permits": len(active),
-    }
 
 
 async def _notify_permit_change(action: str, count: int):
