@@ -80,15 +80,25 @@ def _normalize_plate(raw: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", raw.upper().strip())
 
 
-def _parse_date(val: str | None) -> date | None:
-    if not val:
+def _parse_date(val) -> date | None:
+    if val is None:
         return None
-    val = val.strip()
-    if not val:
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    val = str(val).strip()
+    val = val.strip(",").strip()
+    if not val or val in ("-", "N/A", "n/a"):
         return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y-%m-%dT%H:%M:%S"):
+    # Take only the first value if comma-separated
+    if "," in val:
+        val = val.split(",")[0].strip()
+    # Strip fractional seconds (e.g. ".03", ".953") before parsing
+    cleaned = re.sub(r"\.\d+$", "", val)
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y %H%M", "%m/%d/%Y"):
         try:
-            return datetime.strptime(val, fmt).date()
+            return datetime.strptime(cleaned, fmt).date()
         except ValueError:
             continue
     return None
@@ -387,8 +397,8 @@ async def import_xlsx(
         else:
             status = "active"
 
-        record_date = _parse_date(str(rec.get("record_date", "")))
-        exp_date = _parse_date(str(rec.get("expiration_date", "")))
+        record_date = _parse_date(rec.get("record_date"))
+        exp_date = _parse_date(rec.get("expiration_date"))
 
         existing = (
             await db.execute(
