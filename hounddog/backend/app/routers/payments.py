@@ -151,8 +151,8 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
     ticket = await db.get(Ticket, data.ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    if ticket.status in ("paid", "voided", "resolved_permit"):
-        raise HTTPException(400, f"Ticket is already {ticket.status}")
+    if ticket.status in ("paid", "voided", "resolved_permit", "warning"):
+        raise HTTPException(400, f"Ticket is already {ticket.status}" if ticket.status != "warning" else "Warnings do not require payment")
 
     fine_cents = int(ticket.fine_amount * 100)
 

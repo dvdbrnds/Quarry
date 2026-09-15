@@ -44,6 +44,8 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
     - issued   → overdue   after payment_due_days from issued_at
     - overdue  → escalated after another payment_due_days (2× total)
 
+    Warnings ($0 fine) are never escalated — they stay as-is.
+
     Returns (overdue_count, escalated_count).
     """
     settings_result = await db.execute(
@@ -56,10 +58,24 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
     overdue_cutoff = now - timedelta(days=due_days)
     escalated_cutoff = now - timedelta(days=due_days * 2)
 
-    # issued → overdue
+    # Fix any $0 tickets that were incorrectly escalated — revert to "warning"
+    fix_result = await db.execute(
+        select(Ticket).where(
+            Ticket.fine_amount <= 0,
+            Ticket.status.in_(["issued", "overdue", "escalated"]),
+        )
+    )
+    fixed_tickets = fix_result.scalars().all()
+    for t in fixed_tickets:
+        t.status = "warning"
+    if fixed_tickets:
+        logger.info("Reverted %d $0 tickets back to warning status", len(fixed_tickets))
+
+    # issued → overdue (only tickets with a fine > $0)
     issued_result = await db.execute(
         select(Ticket).where(
             Ticket.status == "issued",
+            Ticket.fine_amount > 0,
             Ticket.issued_at <= overdue_cutoff,
         )
     )
@@ -68,10 +84,11 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
         t.status = "overdue"
     overdue_count = len(issued_tickets)
 
-    # overdue → escalated
+    # overdue → escalated (only tickets with a fine > $0)
     overdue_result = await db.execute(
         select(Ticket).where(
             Ticket.status == "overdue",
+            Ticket.fine_amount > 0,
             Ticket.issued_at <= escalated_cutoff,
         )
     )
@@ -80,12 +97,13 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
         t.status = "escalated"
     escalated_count = len(overdue_tickets)
 
-    if overdue_count or escalated_count:
+    if overdue_count or escalated_count or fixed_tickets:
         await db.flush()
         logger.info(
-            "Ticket escalation: %d issued→overdue, %d overdue→escalated",
+            "Ticket escalation: %d issued→overdue, %d overdue→escalated, %d $0→warning",
             overdue_count,
             escalated_count,
+            len(fixed_tickets),
         )
 
     return overdue_count, escalated_count
@@ -104,6 +122,7 @@ async def compute_hold(db: AsyncSession, permit: Permit) -> tuple[bool, Decimal]
         .where(
             Ticket.plate == func.any_(permit.plates),
             Ticket.status.in_(["issued", "overdue"]),
+            Ticket.fine_amount > 0,
         )
     )
     row = unpaid_result.one()
