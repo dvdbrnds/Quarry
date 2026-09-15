@@ -81,9 +81,11 @@ export default function PermitDetail() {
 
   function handleSendPayment() {
     if (!id) return;
+    const price = data?.permit_type_price ? `$${Number(data.permit_type_price).toFixed(2)}` : "the permit price";
+    const label = data?.permit_type_label || data?.permit?.permit_type || "permit";
     modal.confirm({
       title: "Send payment link?",
-      content: `A new Stripe checkout link will be created and emailed to the permit holder (${data?.permit?.email || "N/A"}).`,
+      content: `A Stripe checkout link for ${price} (${label}) will be created and emailed to ${data?.permit?.email || "N/A"}.`,
       okText: "Send Payment Link",
       onOk: async () => {
         setSendPayLoading(true);

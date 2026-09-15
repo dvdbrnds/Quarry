@@ -1776,8 +1776,16 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
     )
     permit_notes = notes_result.scalars().all()
 
+    pt = (await db.execute(
+        select(PermitType).where(PermitType.code == permit.permit_type)
+    )).scalar_one_or_none()
+    permit_type_price = str(pt.price) if pt else "0.00"
+    permit_type_label = pt.label if pt else permit.permit_type
+
     return {
         "permit": permit,
+        "permit_type_price": permit_type_price,
+        "permit_type_label": permit_type_label,
         "has_hold": has_hold,
         "unpaid_amount": str(unpaid_amount),
         "tickets": [
