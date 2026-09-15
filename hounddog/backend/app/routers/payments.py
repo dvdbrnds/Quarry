@@ -1417,7 +1417,7 @@ async def stripe_backfill_emails(
 
 @router.post("/reconcile-permits")
 async def reconcile_permits(
-    lookback_hours: int = Query(48, ge=1, le=168),
+    lookback_hours: int = Query(72, ge=1, le=720),
     user: OktaUser = Depends(require_admin()),
 ):
     """Manually trigger Stripe permit reconciliation.

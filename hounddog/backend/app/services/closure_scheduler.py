@@ -581,7 +581,7 @@ async def _run_loop():
             _reconciler_tick_count = 0
             try:
                 from .stripe_reconciler import reconcile_stripe_permits
-                result = await reconcile_stripe_permits(lookback_hours=24)
+                result = await reconcile_stripe_permits(lookback_hours=72)
                 if result.get("fulfilled", 0) > 0:
                     logger.info("Stripe reconciler: %s", result)
             except Exception as e:
