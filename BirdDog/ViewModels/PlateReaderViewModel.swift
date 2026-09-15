@@ -236,18 +236,15 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     /// Check if a plate has been ticketed — either locally on this device or by another officer (via server sync).
+    /// Blocks re-ticketing regardless of lot to prevent duplicate citations on residents/moved vehicles.
     private func isPlateTicketed(_ normalizedPlate: String, currentLot: String?) -> (ticketed: Bool, lot: String) {
         // Check local tickets first (this device)
         if let ticketedLot = ticketedPlates[normalizedPlate] {
-            let lotName = currentLot ?? ""
-            let isTicketedHere = ticketedLot.isEmpty || lotName.isEmpty || ticketedLot == lotName
-            if isTicketedHere { return (true, ticketedLot) }
+            return (true, ticketedLot)
         }
         // Check server-synced tickets (other devices)
         if let ticketedLot = HoundDogSyncService.shared.recentlyTicketedPlates[normalizedPlate] {
-            let lotName = currentLot ?? ""
-            let isTicketedHere = ticketedLot.isEmpty || lotName.isEmpty || ticketedLot == lotName
-            if isTicketedHere { return (true, ticketedLot) }
+            return (true, ticketedLot)
         }
         return (false, "")
     }
