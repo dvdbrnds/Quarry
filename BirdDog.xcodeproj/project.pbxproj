@@ -31,6 +31,7 @@
 		5135431D6E3C1699932EB217 /* ParkingSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4A9CB54550F11B2D4CFAE0 /* ParkingSpot.swift */; };
 		54734886A4A778FD39AFBF5A /* StarIO10 in Frameworks */ = {isa = PBXBuildFile; productRef = 15E4ED9D9BBFC376D8D8C23B /* StarIO10 */; };
 		58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B823FB184EA9720E86DF1E /* PermitRecord.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* LegacyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978869706162 /* LegacyRecord.swift */; };
 		5994879595E847E9856A1071 /* LogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDAF99197F0B8306C7230405 /* LogExporter.swift */; };
 		5B1EB054A758DA6ECE742D69 /* TicketIssuanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */; };
 		64981CA33F907E9364BD1333 /* PlateRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */; };
@@ -115,6 +116,7 @@
 		83A916BDEBE42D9A33EF954B /* BirdDogTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BirdDogTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		84E2BB6E0E4BD21F5C82C1F6 /* PlateRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognitionService.swift; sourceTree = "<group>"; };
 		85B823FB184EA9720E86DF1E /* PermitRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermitRecord.swift; sourceTree = "<group>"; };
+		F1E2D3C4B5A6978869706162 /* LegacyRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyRecord.swift; sourceTree = "<group>"; };
 		85D44D4501BFAAD1E6E7C23E /* DatabaseManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManagementView.swift; sourceTree = "<group>"; };
 		8E3E09DFE576A65B9E6C3329 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateReaderViewModel.swift; sourceTree = "<group>"; };
@@ -167,6 +169,7 @@
 		23F7BA4979B2D798151C9E32 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F1E2D3C4B5A6978869706162 /* LegacyRecord.swift */,
 				2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */,
 				CC4A9CB54550F11B2D4CFAE0 /* ParkingSpot.swift */,
 				AC36C6EC35A89BFF0795C212 /* PendingTicket.swift */,
@@ -466,6 +469,7 @@
 				5135431D6E3C1699932EB217 /* ParkingSpot.swift in Sources */,
 				F2FFFCDEA3C2B1552698D46A /* PendingTicket.swift in Sources */,
 				58408E7E0A9B1ADFF24163FE /* PermitRecord.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* LegacyRecord.swift in Sources */,
 				7E54DDC36088581D5B32D589 /* PlateAuthService.swift in Sources */,
 				89573E25424443EE0021E077 /* PlateCorrectionView.swift in Sources */,
 				804F3E3D558F634FC371174B /* PlateDatabase.swift in Sources */,
