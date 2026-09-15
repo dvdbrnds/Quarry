@@ -972,6 +972,9 @@ async def lifespan(app: FastAPI):
             # Committee votes: track when a vote was changed
             "ALTER TABLE committee_votes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
             # Widen columns only if still narrow (avoids AccessExclusiveLock on every restart)
+            # Temp lot assignment fields
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS original_lot_assignment VARCHAR(512)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS temp_lot_expires_at TIMESTAMPTZ",
             """DO $$ BEGIN
                 IF EXISTS (
                     SELECT 1 FROM information_schema.columns
@@ -1012,6 +1015,26 @@ async def lifespan(app: FastAPI):
                 pass
 
     logger.info("Schema migrations applied.")
+
+    # Auto-revert expired temporary lot assignments
+    try:
+        from .database import async_session as _temp_session
+        async with _temp_session() as _ts:
+            result = await _ts.execute(text("""
+                UPDATE permits
+                SET lot_assignment = original_lot_assignment,
+                    original_lot_assignment = NULL,
+                    temp_lot_expires_at = NULL
+                WHERE temp_lot_expires_at IS NOT NULL
+                  AND temp_lot_expires_at < NOW()
+                  AND original_lot_assignment IS NOT NULL
+            """))
+            reverted = result.rowcount
+            await _ts.commit()
+            if reverted:
+                logger.info("Auto-reverted %d expired temp lot assignments.", reverted)
+    except Exception as exc:
+        logger.warning("Temp lot auto-revert failed (non-fatal): %s", exc)
 
     from .services.alert_dispatcher import init_channels
     init_channels()

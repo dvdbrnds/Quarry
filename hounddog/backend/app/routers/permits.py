@@ -1392,6 +1392,189 @@ async def extend_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     return permit
 
 
+class TempLotRequest(BaseModel):
+    lots: list[str]
+    expires_at: str
+    reason: str = ""
+
+
+@router.post("/{permit_id}/temp-lots")
+async def assign_temp_lots(
+    permit_id: uuid.UUID,
+    data: TempLotRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Temporarily override a permit's lot assignment with new lots and an expiry."""
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    if not data.lots:
+        raise HTTPException(400, "At least one lot is required")
+
+    from datetime import datetime as dt
+    try:
+        expires = dt.fromisoformat(data.expires_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(400, "Invalid expires_at datetime")
+
+    if expires <= dt.now(timezone.utc):
+        raise HTTPException(400, "Expiry must be in the future")
+
+    # Save the original lot assignment (only if not already in a temp assignment)
+    if not permit.original_lot_assignment:
+        permit.original_lot_assignment = permit.lot_assignment
+
+    permit.lot_assignment = ", ".join(data.lots)
+    permit.temp_lot_expires_at = expires
+
+    await db.flush()
+    await db.refresh(permit)
+
+    structlog.get_logger("quarry.permits").info(
+        "[TempLots] Permit %s: temp lots=%s expires=%s by %s reason=%s",
+        permit.id, data.lots, expires, user.email, data.reason,
+    )
+
+    return {
+        "id": str(permit.id),
+        "lot_assignment": permit.lot_assignment,
+        "original_lot_assignment": permit.original_lot_assignment,
+        "temp_lot_expires_at": permit.temp_lot_expires_at.isoformat() if permit.temp_lot_expires_at else None,
+    }
+
+
+@router.post("/{permit_id}/revert-lots")
+async def revert_temp_lots(
+    permit_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Revert a temporary lot assignment back to the original."""
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    if not permit.original_lot_assignment:
+        raise HTTPException(400, "No temporary lot assignment to revert")
+
+    permit.lot_assignment = permit.original_lot_assignment
+    permit.original_lot_assignment = None
+    permit.temp_lot_expires_at = None
+
+    await db.flush()
+    await db.refresh(permit)
+
+    structlog.get_logger("quarry.permits").info("[TempLots] Permit %s: reverted to original lots by %s", permit.id, user.email)
+
+    return {
+        "id": str(permit.id),
+        "lot_assignment": permit.lot_assignment,
+    }
+
+
+@router.post("/{permit_id}/send-payment")
+async def send_payment_link(
+    permit_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Create a new Stripe checkout session for an unpaid permit and email the payment link."""
+    from ..models.permit_type import PermitType
+
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    if not permit.email:
+        raise HTTPException(400, "Permit has no email — cannot send payment link")
+
+    pt = (await db.execute(
+        select(PermitType).where(PermitType.code == permit.permit_type)
+    )).scalar_one_or_none()
+    if not pt:
+        raise HTTPException(400, f"Unknown permit type: {permit.permit_type}")
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+    plate_str = ", ".join(permit.plates) if permit.plates else "N/A"
+    permit_number = permit.permit_number or ""
+    price = pt.price
+
+    session = stripe.checkout.Session.create(
+        customer_email=permit.email,
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"{pt.label} Parking Permit",
+                    "description": f"Permit #{permit_number} | Plate: {plate_str}",
+                },
+                "unit_amount": int(price * 100),
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": "PARK PERMIT",
+            "metadata": {
+                "type": "admin_permit_charge",
+                "revenue_category": "parking_permits",
+                "department": "parking_services",
+                "permit_type_code": pt.code,
+                "permit_type_label": pt.label,
+                "permit_id": str(permit.id),
+                "permit_number": permit_number,
+                "plate": plate_str,
+                "institution": settings.school_name or "moravian",
+            },
+        },
+        success_url=f"{base_url}/parking?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}/parking?payment=cancelled",
+        metadata={
+            "type": "admin_permit_charge",
+            "permit_id": str(permit.id),
+            "permit_type_code": pt.code,
+            "permit_type_label": pt.label,
+            "permit_number": permit_number,
+        },
+    )
+
+    permit.stripe_session_id = session.id
+    await db.flush()
+
+    amount_display = f"${price:.2f}"
+    try:
+        from ..services.email import send_payment_link_email
+        await send_payment_link_email(
+            recipient_email=permit.email,
+            recipient_name=permit.name,
+            permit_type_label=pt.label,
+            permit_number=permit_number,
+            amount_display=amount_display,
+            checkout_url=session.url,
+        )
+    except Exception as exc:
+        structlog.get_logger("quarry.permits").warning("Payment link email failed: %s", exc)
+
+    structlog.get_logger("quarry.permits").info(
+        "[SendPayment] Permit %s: new Stripe session created by %s, link sent to %s",
+        permit.id, user.email, permit.email,
+    )
+
+    return {
+        "checkout_url": session.url,
+        "amount": amount_display,
+        "email": permit.email,
+    }
+
+
 @router.get("/{permit_id}/history")
 async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from ..models.lottery_v2 import LotteryV2Application

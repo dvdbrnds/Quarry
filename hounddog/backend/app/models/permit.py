@@ -51,3 +51,5 @@ class Permit(Base):
     vehicle_description: Mapped[str | None] = mapped_column(String(256), nullable=True)
     tag_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tag_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    original_lot_assignment: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    temp_lot_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

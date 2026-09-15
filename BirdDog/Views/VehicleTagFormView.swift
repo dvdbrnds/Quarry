@@ -24,6 +24,12 @@ struct VehicleTagFormView: View {
     @State private var submitted = false
     @State private var errorMessage: String?
 
+    // Student search
+    @State private var studentSearch = ""
+    @State private var studentResults: [HoundDogSyncService.StudentSearchResult] = []
+    @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
+
     private let sources = [
         ("officer", "Officer Observation"),
         ("JNET", "JNET"),
@@ -84,6 +90,62 @@ struct VehicleTagFormView: View {
             }
 
             Section("Student (if identified)") {
+                TextField("Search by name, email, or ID…", text: $studentSearch)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: studentSearch) { _, newVal in
+                        searchTask?.cancel()
+                        let trimmed = newVal.trimmingCharacters(in: .whitespaces)
+                        guard trimmed.count >= 2 else {
+                            studentResults = []
+                            return
+                        }
+                        searchTask = Task {
+                            isSearching = true
+                            defer { isSearching = false }
+                            try? await Task.sleep(for: .milliseconds(300))
+                            guard !Task.isCancelled else { return }
+                            let results = (try? await HoundDogSyncService.shared.searchStudents(query: trimmed)) ?? []
+                            guard !Task.isCancelled else { return }
+                            await MainActor.run { studentResults = results }
+                        }
+                    }
+
+                if isSearching {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Searching…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                ForEach(studentResults) { result in
+                    Button {
+                        studentName = result.name
+                        studentEmail = result.email
+                        studentSearch = ""
+                        studentResults = []
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(result.name)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                            HStack(spacing: 8) {
+                                Text(result.email)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !result.plates.isEmpty {
+                                    Text(result.plates.joined(separator: ", "))
+                                        .font(.caption)
+                                        .foregroundStyle(.cyan)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 TextField("Student name", text: $studentName)
                     .textInputAutocapitalization(.words)
                 TextField("Student email", text: $studentEmail)

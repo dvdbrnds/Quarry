@@ -356,15 +356,17 @@ export default function Appeals() {
                     {(() => {
                       const isPaid = ["paid", "voided", "resolved_permit"].includes(t.status) || t.appeal_decision === "approved";
                       const isPending = t.appeal_decision === "pending";
-                      if (isPaid || isPending) return null;
+                      const showAppeal = !isPaid && !isPending && t.can_appeal;
+                      const showPay = !isPaid && t.status !== "warning";
+                      if (!showAppeal && !showPay) return null;
                       return (
                         <div className="flex gap-2 mt-2">
-                          {t.can_appeal && (
+                          {showAppeal && (
                             <Button size="small" onClick={() => setAppealTicket(t)}>
                               Appeal
                             </Button>
                           )}
-                          {t.status !== "warning" && (
+                          {showPay && (
                             <Button type="primary" size="small" href={`/pay/${t.id}`}>
                               Pay
                             </Button>

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, Lot } from "../api";
 import { fmtDateTimeCompact } from "../dateUtils";
-import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline } from "antd";
+import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline, Modal, Select, DatePicker, Input } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
 
 interface PermitHistory {
   permit: any; has_hold: boolean; unpaid_amount: string;
@@ -17,6 +18,17 @@ export default function PermitDetail() {
   const [data, setData] = useState<PermitHistory | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Temp lot assignment state
+  const [tempLotOpen, setTempLotOpen] = useState(false);
+  const [tempLotLots, setTempLotLots] = useState<string[]>([]);
+  const [tempLotExpiry, setTempLotExpiry] = useState<dayjs.Dayjs | null>(null);
+  const [tempLotReason, setTempLotReason] = useState("");
+  const [tempLotLoading, setTempLotLoading] = useState(false);
+  const [lots, setLots] = useState<Lot[]>([]);
+
+  // Send payment state
+  const [sendPayLoading, setSendPayLoading] = useState(false);
+
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -24,6 +36,64 @@ export default function PermitDetail() {
   }, [id, navigate]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.lots.list().then(setLots).catch(() => {}); }, []);
+
+  async function handleTempLotSubmit() {
+    if (!id || !tempLotExpiry || tempLotLots.length === 0) return;
+    setTempLotLoading(true);
+    try {
+      await api.permits.tempLots(id, {
+        lots: tempLotLots,
+        expires_at: tempLotExpiry.toISOString(),
+        reason: tempLotReason,
+      });
+      message.success("Temporary lot access assigned");
+      setTempLotOpen(false);
+      setTempLotLots([]);
+      setTempLotExpiry(null);
+      setTempLotReason("");
+      load();
+    } catch (e: any) {
+      message.error(e.message || "Failed to assign temp lots");
+    } finally {
+      setTempLotLoading(false);
+    }
+  }
+
+  function handleRevertLots() {
+    if (!id) return;
+    modal.confirm({
+      title: "Revert temporary lot access?",
+      content: "This will restore the permit's original lot assignment.",
+      okText: "Revert",
+      onOk: async () => {
+        await api.permits.revertLots(id);
+        message.success("Lot assignment reverted to original");
+        load();
+      },
+    });
+  }
+
+  function handleSendPayment() {
+    if (!id) return;
+    modal.confirm({
+      title: "Send payment link?",
+      content: `A new Stripe checkout link will be created and emailed to the permit holder (${data?.permit?.email || "N/A"}).`,
+      okText: "Send Payment Link",
+      onOk: async () => {
+        setSendPayLoading(true);
+        try {
+          const res = await api.permits.sendPayment(id);
+          message.success(`Payment link sent to ${res.email} (${res.amount})`);
+          load();
+        } catch (e: any) {
+          message.error(e.message || "Failed to send payment link");
+        } finally {
+          setSendPayLoading(false);
+        }
+      },
+    });
+  }
 
   function handleRenew() {
     if (!id) return;
@@ -170,13 +240,17 @@ export default function PermitDetail() {
             </Space>
             <div className="mt-4 flex gap-4 text-sm"><span>Start: {p.start_date || "—"}</span><span>End: {p.end_date || "No expiry"}</span></div>
           </div>
-          <Space>
+          <Space wrap>
             <Button onClick={() => navigate(`/permits?edit=${id}`)}>Edit</Button>
             {(p.status === "revoked" || p.status === "suspended" || p.status === "expired") && (
               <Button onClick={handleReactivate}>Reactivate</Button>
             )}
             {(p.status === "expired" || p.status === "active") && (
               <Button onClick={handleExtend}>Extend 7 Days</Button>
+            )}
+            <Button onClick={() => setTempLotOpen(true)}>Temp Lot Access</Button>
+            {p.email && (
+              <Button onClick={handleSendPayment} loading={sendPayLoading}>Send Payment Link</Button>
             )}
             {(p.status === "expired" || p.status === "active") && (
               <Button type="primary" onClick={handleRenew}>Renew</Button>
@@ -185,7 +259,67 @@ export default function PermitDetail() {
         </div>
       </Card>
 
+      {p.original_lot_assignment && p.temp_lot_expires_at && (
+        <Alert
+          type="info"
+          className="mb-6"
+          showIcon
+          message="Temporary Lot Access Active"
+          description={
+            <div className="flex items-center justify-between">
+              <span>
+                Original lots: <strong>{p.original_lot_assignment}</strong> · Temp lots: <strong>{p.lot_assignment}</strong> · Expires: <strong>{new Date(p.temp_lot_expires_at).toLocaleString()}</strong>
+              </span>
+              <Button size="small" danger onClick={handleRevertLots}>Revert Now</Button>
+            </div>
+          }
+        />
+      )}
+
       <Card styles={{ body: { padding: 0 } }}><Tabs items={tabItems} className="px-4" /></Card>
+
+      <Modal
+        open={tempLotOpen}
+        title="Temporary Lot Access"
+        okText="Assign"
+        onCancel={() => setTempLotOpen(false)}
+        onOk={handleTempLotSubmit}
+        confirmLoading={tempLotLoading}
+        okButtonProps={{ disabled: tempLotLots.length === 0 || !tempLotExpiry }}
+      >
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="block text-sm font-medium mb-1">Lots</label>
+            <Select
+              mode="multiple"
+              placeholder="Select lots"
+              value={tempLotLots}
+              onChange={setTempLotLots}
+              className="w-full"
+              options={lots.map(l => ({ label: l.name, value: l.name }))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Expires At</label>
+            <DatePicker
+              showTime
+              className="w-full"
+              value={tempLotExpiry}
+              onChange={setTempLotExpiry}
+              disabledDate={d => d.isBefore(dayjs(), "day")}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Reason (optional)</label>
+            <Input.TextArea
+              rows={2}
+              placeholder="e.g. Lot closed for event, construction, etc."
+              value={tempLotReason}
+              onChange={e => setTempLotReason(e.target.value)}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

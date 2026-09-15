@@ -124,14 +124,17 @@ export default function StudentCitations() {
             <div className="text-lg font-bold" style={{ color: isPaid ? "#999" : brand.primaryColor }}>
               ${Number(t.fine_amount).toFixed(2)}
             </div>
-            {!isPaid && t.status !== "appealed" && t.appeal_decision !== "pending" && (
-              <div className="flex gap-2">
-                {t.can_appeal && (
-                  <Button size="small" onClick={() => setAppealTicket(t)}>Appeal</Button>
-                )}
-                <Button type="primary" size="small" href={`/pay/${t.id}`}>Pay</Button>
-              </div>
-            )}
+            {(() => {
+              const showAppeal = !isPaid && t.appeal_decision !== "pending" && t.can_appeal;
+              const showPay = !isPaid && t.status !== "warning";
+              if (!showAppeal && !showPay) return null;
+              return (
+                <div className="flex gap-2">
+                  {showAppeal && <Button size="small" onClick={() => setAppealTicket(t)}>Appeal</Button>}
+                  {showPay && <Button type="primary" size="small" href={`/pay/${t.id}`}>Pay</Button>}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </Card>

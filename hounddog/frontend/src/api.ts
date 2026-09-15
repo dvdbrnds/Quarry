@@ -65,6 +65,8 @@ export interface Permit {
   vehicle_description: string | null;
   tag_notes: string | null;
   tag_source: string | null;
+  original_lot_assignment: string | null;
+  temp_lot_expires_at: string | null;
   active_ticket_count: number;
 }
 
@@ -657,6 +659,18 @@ export const api = {
     extend: (id: string) =>
       request<Permit>(`/permits/${id}/extend`, { method: "POST" }),
     duplicates: () => request<any[]>("/permits/duplicates"),
+    tempLots: (id: string, data: { lots: string[]; expires_at: string; reason?: string }) =>
+      request<{ id: string; lot_assignment: string; original_lot_assignment: string | null; temp_lot_expires_at: string | null }>(
+        `/permits/${id}/temp-lots`, { method: "POST", body: JSON.stringify(data) }
+      ),
+    revertLots: (id: string) =>
+      request<{ id: string; lot_assignment: string }>(
+        `/permits/${id}/revert-lots`, { method: "POST" }
+      ),
+    sendPayment: (id: string) =>
+      request<{ checkout_url: string; amount: string; email: string }>(
+        `/permits/${id}/send-payment`, { method: "POST" }
+      ),
     lottery: {
       run: (permitTypeId: string, force = false) =>
         request<LotteryRunResult>(`/permits/types/${permitTypeId}/run-lottery?force=${force}`, {

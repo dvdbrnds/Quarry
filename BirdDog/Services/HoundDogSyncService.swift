@@ -682,6 +682,37 @@ final class HoundDogSyncService: ObservableObject {
         return result
     }
 
+    // MARK: - Student Search
+
+    struct StudentSearchResult: Decodable, Identifiable {
+        let name: String
+        let email: String
+        let student_id: String
+        let permit_type: String
+        let plates: [String]
+
+        var id: String { email }
+    }
+
+    func searchStudents(query: String) async throws -> [StudentSearchResult] {
+        let settings = AppSettings.shared
+        guard !settings.houndDogURL.isEmpty else { return [] }
+
+        var components = URLComponents(string: "\(settings.houndDogURL)/api/sync/student-search")!
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        guard let url = components.url else { return [] }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return []
+        }
+
+        return (try? JSONDecoder().decode([StudentSearchResult].self, from: data)) ?? []
+    }
+
     // MARK: - Types
 
     enum SyncError: LocalizedError {

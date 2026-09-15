@@ -988,3 +988,50 @@ async def list_plate_corrections(
         )
         for r in rows
     ]
+
+
+class StudentSearchResult(BaseModel):
+    name: str
+    email: str
+    student_id: str
+    permit_type: str
+    plates: list[str]
+
+
+@router.get("/student-search", response_model=list[StudentSearchResult])
+async def student_search(
+    q: str = Query(..., min_length=2),
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search permit holders by name, email, or student ID for officer tag forms."""
+    term = f"%{q.strip()}%"
+    result = await db.execute(
+        select(Permit).where(
+            Permit.deleted_at.is_(None),
+            Permit.is_tag_only.is_(False),
+            or_(
+                Permit.name.ilike(term),
+                Permit.email.ilike(term),
+                Permit.student_id.ilike(term),
+                func.array_to_string(Permit.plates, ",").ilike(term),
+            ),
+        ).order_by(Permit.name).limit(10)
+    )
+    permits = result.scalars().all()
+
+    seen: set[str] = set()
+    results: list[StudentSearchResult] = []
+    for p in permits:
+        key = (p.email or "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(StudentSearchResult(
+            name=p.name,
+            email=p.email or "",
+            student_id=p.student_id or "",
+            permit_type=p.permit_type,
+            plates=p.plates or [],
+        ))
+    return results
