@@ -639,9 +639,12 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
             "status": p.status,
         }
 
+    # Exclude faculty_staff — they have allow_multiple=true by design
+    non_fs = [p for p in active if p.permit_type != "faculty_staff"]
+
     # --- By email: same person holding multiple active permits ---
     email_map: dict[str, list[Permit]] = {}
-    for p in active:
+    for p in non_fs:
         if p.email:
             key = p.email.strip().lower()
             email_map.setdefault(key, []).append(p)
@@ -658,7 +661,7 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
 
     # --- By plate: different people sharing a plate ---
     plate_map: dict[str, list[Permit]] = {}
-    for p in active:
+    for p in non_fs:
         for plate in p.plates:
             key = plate.upper().strip()
             if key:
