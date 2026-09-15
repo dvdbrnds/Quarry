@@ -197,6 +197,9 @@ export default function LotteryV2Manager() {
   const [deskFilter, setDeskFilter] = useState<DeskFilter>("all");
   const [deskTier, setDeskTier] = useState<string | null>(null);
   const [caseApp, setCaseApp] = useState<Application | null>(null);
+  const [withdrawTarget, setWithdrawTarget] = useState<Application | null>(null);
+  const [withdrawNotify, setWithdrawNotify] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState("");
   const [recoverOpen, setRecoverOpen] = useState(false);
   const [recoverEmail, setRecoverEmail] = useState("");
   const [recoverResults, setRecoverResults] = useState<Application[] | null>(null);
@@ -2369,34 +2372,7 @@ export default function LotteryV2Manager() {
                 <Button
                   danger
                   disabled={busy}
-                  onClick={() => {
-                    modal.confirm({
-                      title: `Withdraw ${caseApp.student_name} from the waitlist?`,
-                      content: "This removes their application. They can re-apply afterward (e.g. with a corrected housing status).",
-                      okText: "Withdraw",
-                      okButtonProps: { danger: true },
-                      onOk: async () => {
-                        setBusy(true);
-                        try {
-                          const res = await fetch(`/api/lottery-v2/applications/${caseApp.id}/remove`, {
-                            method: "POST",
-                            headers: await authHeaders(),
-                          });
-                          if (!res.ok) {
-                            const err = await res.json().catch(() => ({}));
-                            throw new Error(err.detail || "Withdraw failed");
-                          }
-                          message.success(`${caseApp.student_name} withdrawn from waitlist`);
-                          setCaseApp(null);
-                          if (activeId) loadDetail(activeId);
-                        } catch (e: any) {
-                          message.error(e.message);
-                        } finally {
-                          setBusy(false);
-                        }
-                      },
-                    });
-                  }}
+                  onClick={() => setWithdrawTarget(caseApp)}
                 >
                   Withdraw
                 </Button>
@@ -2441,6 +2417,62 @@ export default function LotteryV2Manager() {
           </div>
         )}
       </Drawer>
+
+      <Modal
+        title={withdrawTarget ? `Withdraw ${withdrawTarget.student_name}?` : "Withdraw"}
+        open={!!withdrawTarget}
+        onCancel={() => { setWithdrawTarget(null); setWithdrawNotify(false); setWithdrawReason(""); }}
+        okText="Withdraw"
+        okButtonProps={{ danger: true, loading: busy }}
+        onOk={async () => {
+          if (!withdrawTarget) return;
+          setBusy(true);
+          try {
+            const res = await fetch(`/api/lottery-v2/applications/${withdrawTarget.id}/remove`, {
+              method: "POST",
+              headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+              body: JSON.stringify({ notify: withdrawNotify, reason: withdrawReason }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.detail || "Withdraw failed");
+            }
+            message.success(`${withdrawTarget.student_name} withdrawn${withdrawNotify ? " (notified)" : ""}`);
+            setWithdrawTarget(null);
+            setWithdrawNotify(false);
+            setWithdrawReason("");
+            setCaseApp(null);
+            if (activeId) loadDetail(activeId);
+          } catch (e: any) {
+            message.error(e.message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        destroyOnClose
+      >
+        <p className="text-sm text-gray-600 mb-4">
+          This removes their application. They can re-apply afterward (e.g. with a corrected housing status).
+        </p>
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={withdrawNotify}
+              onChange={e => setWithdrawNotify(e.target.checked)}
+            />
+            <span className="text-sm">Notify student via email</span>
+          </label>
+          {withdrawNotify && (
+            <Input.TextArea
+              placeholder="Reason (optional — included in email)"
+              value={withdrawReason}
+              onChange={e => setWithdrawReason(e.target.value)}
+              rows={2}
+            />
+          )}
+        </div>
+      </Modal>
 
       <Modal
         title={selectTarget ? `Manually select ${selectTarget.student_name}` : "Manual select"}

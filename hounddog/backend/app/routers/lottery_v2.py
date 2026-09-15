@@ -1351,13 +1351,19 @@ async def admin_restore_waitlist(
     return await _app_to_read(db, app)
 
 
+class WithdrawRequest(BaseModel):
+    notify: bool = False
+    reason: str = ""
+
+
 @router.post("/applications/{application_id}/remove")
 async def admin_delete_application(
     application_id: uuid.UUID,
+    data: WithdrawRequest | None = None,
     db: AsyncSession = Depends(get_db),
     admin: OktaUser = Depends(require_admin()),
 ):
-    """Permanently delete a duplicate application."""
+    """Withdraw/delete an application. Optionally notify the student."""
     app = await db.get(LotteryV2Application, application_id)
     if not app:
         raise HTTPException(404, "Application not found")
@@ -1365,15 +1371,45 @@ async def admin_delete_application(
     email = app.student_email
     name = app.student_name
     status = app.status
-    tier = app.assigned_permit_type_id
+
+    opts = data or WithdrawRequest()
 
     await db.delete(app)
     await db.flush()
 
     logger.info(
-        "Admin %s deleted application %s (%s / %s / was %s)",
-        admin.email or admin.sub, application_id, name, email, status,
+        "Admin %s withdrew application %s (%s / %s / was %s, notify=%s)",
+        admin.email or admin.sub, application_id, name, email, status, opts.notify,
     )
+
+    if opts.notify and email:
+        try:
+            from ..services.email import send_email
+            reason_html = f"<p><strong>Reason:</strong> {opts.reason}</p>" if opts.reason else ""
+            body_text = (
+                f"Hi {name or 'Student'},\n\n"
+                f"Your parking lottery application has been withdrawn by the parking office."
+                f"{(' Reason: ' + opts.reason) if opts.reason else ''}\n\n"
+                f"If you believe this is an error or have questions, please contact the "
+                f"parking office.\n\n"
+                f"— {settings.school_name or 'Moravian University'} Parking"
+            )
+            body_html = (
+                f"<p>Hi {name or 'Student'},</p>"
+                f"<p>Your parking lottery application has been withdrawn by the parking office.</p>"
+                f"{reason_html}"
+                f"<p>If you believe this is an error or have questions, please contact the parking office.</p>"
+                f"<p>— {settings.school_name or 'Moravian University'} Parking</p>"
+            )
+            await send_email(
+                to=[email],
+                subject="Parking Lottery — Application Withdrawn",
+                body_html=body_html,
+                body_text=body_text,
+            )
+        except Exception as e:
+            logger.warning("Failed to send withdraw notification to %s: %s", email, e)
+
     return {"deleted": True, "id": str(application_id), "name": name, "email": email}
 
 
