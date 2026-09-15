@@ -272,38 +272,6 @@ async def live_status(
     }
 
 
-@router.get("/duplicates")
-async def list_duplicates(db: AsyncSession = Depends(get_db)):
-    """Find all active permits that share a plate with another active permit."""
-    result = await db.execute(
-        select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
-    )
-    all_permits = result.scalars().all()
-
-    plate_map: dict[str, list] = {}
-    for p in all_permits:
-        for plate in p.plates:
-            plate_map.setdefault(plate.upper(), []).append(p)
-
-    duplicates = []
-    seen_ids = set()
-    for plate, permits in plate_map.items():
-        if len(permits) > 1:
-            for p in permits:
-                if p.id not in seen_ids:
-                    seen_ids.add(p.id)
-                    duplicates.append({
-                        "id": str(p.id),
-                        "permit_number": p.permit_number,
-                        "name": p.name,
-                        "plates": p.plates,
-                        "conflicting_plate": plate,
-                        "lot_assignment": p.lot_assignment,
-                        "permit_type": p.permit_type,
-                    })
-    return duplicates
-
-
 @router.get("", response_model=PermitList)
 async def list_permits(
     page: int = Query(1, ge=1),
@@ -1803,20 +1771,53 @@ async def export_permit_emails_csv(
 
 @router.get("/duplicates")
 async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
-    """Return groups of active permits that share at least one plate."""
+    """Return students holding multiple active permits (by email and/or shared plate)."""
     result = await db.execute(
         select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
     )
     active = result.scalars().all()
 
+    def _permit_dict(p: Permit) -> dict:
+        return {
+            "id": str(p.id),
+            "permit_number": p.permit_number,
+            "name": p.name,
+            "email": p.email,
+            "student_id": p.student_id,
+            "plates": p.plates,
+            "lot_assignment": p.lot_assignment,
+            "permit_type": p.permit_type,
+            "start_date": p.start_date.isoformat() if p.start_date else None,
+            "end_date": p.end_date.isoformat() if p.end_date else None,
+            "status": p.status,
+        }
+
+    # --- By email: same person holding multiple active permits ---
+    email_map: dict[str, list[Permit]] = {}
+    for p in active:
+        if p.email:
+            key = p.email.strip().lower()
+            email_map.setdefault(key, []).append(p)
+
+    by_email = []
+    for email, permits in sorted(email_map.items()):
+        if len(permits) < 2:
+            continue
+        by_email.append({
+            "email": email,
+            "count": len(permits),
+            "permits": [_permit_dict(p) for p in permits],
+        })
+
+    # --- By plate: different people sharing a plate ---
     plate_map: dict[str, list[Permit]] = {}
-    for permit in active:
-        for plate in permit.plates:
+    for p in active:
+        for plate in p.plates:
             key = plate.upper().strip()
             if key:
-                plate_map.setdefault(key, []).append(permit)
+                plate_map.setdefault(key, []).append(p)
 
-    groups: list[dict] = []
+    by_plate = []
     seen_ids: set = set()
     for plate, permits_for_plate in plate_map.items():
         if len(permits_for_plate) < 2:
@@ -1825,24 +1826,18 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
         if ids in seen_ids:
             continue
         seen_ids.add(ids)
-        groups.append({
+        by_plate.append({
             "shared_plate": plate,
-            "permits": [
-                {
-                    "id": str(p.id),
-                    "permit_number": p.permit_number,
-                    "name": p.name,
-                    "student_id": p.student_id,
-                    "plates": p.plates,
-                    "lot_assignment": p.lot_assignment,
-                    "permit_type": p.permit_type,
-                    "status": p.status,
-                }
-                for p in permits_for_plate
-            ],
+            "permits": [_permit_dict(p) for p in permits_for_plate],
         })
 
-    return {"duplicate_groups": groups, "total": len(groups)}
+    return {
+        "by_email": by_email,
+        "by_email_total": len(by_email),
+        "by_plate": by_plate,
+        "by_plate_total": len(by_plate),
+        "total_active_permits": len(active),
+    }
 
 
 async def _notify_permit_change(action: str, count: int):

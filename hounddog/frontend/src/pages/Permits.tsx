@@ -818,9 +818,13 @@ export default function Permits() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState("");
   const [loading, setLoading] = useState(true);
-  const [duplicateGroups, setDuplicateGroups] = useState<Array<{
+  const [dupByEmail, setDupByEmail] = useState<Array<{
+    email: string; count: number;
+    permits: Array<{ id: string; permit_number: string; name: string; email: string; plates: string[]; lot_assignment: string; permit_type: string; start_date: string; end_date: string }>;
+  }>>([]);
+  const [dupByPlate, setDupByPlate] = useState<Array<{
     shared_plate: string;
-    permits: Array<{ id: string; name: string; student_id: string; lot_assignment: string; permit_type: string }>;
+    permits: Array<{ id: string; permit_number: string; name: string; email: string; plates: string[]; lot_assignment: string; permit_type: string; start_date: string; end_date: string }>;
   }>>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Permit | null>(null);
@@ -855,7 +859,7 @@ export default function Permits() {
         api.permits.stats(),
         fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
         api.lots.list(),
-        fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { duplicate_groups: [] }),
+        fetch("/api/permits/duplicates", { headers: await authHeaders() }).then(r => r.ok ? r.json() : { by_email: [], by_plate: [] }),
         api.permits.companies().catch(() => [] as Array<{ id: string; label: string; type: string }>),
       ]);
       setStats(s);
@@ -866,7 +870,8 @@ export default function Permits() {
         lot_assignments: Array.isArray(pt.lot_assignments) ? pt.lot_assignments : [],
       })));
       setLots(lotsRes.map((l: any) => ({ id: l.id, name: l.name })));
-      setDuplicateGroups(dupRes.duplicate_groups ?? []);
+      setDupByEmail(dupRes.by_email ?? []);
+      setDupByPlate(dupRes.by_plate ?? []);
       setCompanies(compRes);
     } catch { /* silently fail */ }
   }, []);
@@ -1015,28 +1020,53 @@ export default function Permits() {
                   </div>
                 )}
 
-                {duplicateGroups.length > 0 && (
+                {(dupByEmail.length > 0 || dupByPlate.length > 0) && (
                   <Alert
                     type="warning"
                     className="mb-4"
                     showIcon
-                    message={`${duplicateGroups.length} duplicate plate conflict${duplicateGroups.length > 1 ? "s" : ""} detected`}
+                    message={`${dupByEmail.length} student${dupByEmail.length !== 1 ? "s" : ""} with multiple permits · ${dupByPlate.length} shared plate conflict${dupByPlate.length !== 1 ? "s" : ""}`}
                     description={showDuplicates ? (
-                      <div className="mt-2 space-y-3">
-                        {duplicateGroups.map(group => (
-                          <Card size="small" key={group.shared_plate}>
-                            <div className="text-xs font-mono font-bold text-amber-800 mb-2">Shared plate: {group.shared_plate}</div>
-                            {group.permits.map(p => (
-                              <div key={p.id} className="flex items-center gap-3 text-xs">
-                                <span className="font-medium">{p.name}</span>
-                                {p.student_id && <span className="text-ink-mute">{p.student_id}</span>}
-                                <span className="text-ink-mute">{p.lot_assignment}</span>
-                                <span className="text-ink-mute capitalize">{p.permit_type}</span>
-                                <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
-                              </div>
+                      <div className="mt-2 space-y-4">
+                        {dupByEmail.length > 0 && (
+                          <>
+                            <div className="text-xs font-bold text-red-700 uppercase tracking-wide">Students with Multiple Active Permits</div>
+                            {dupByEmail.map(group => (
+                              <Card size="small" key={group.email} className="border-l-4 border-l-red-400">
+                                <div className="text-xs font-bold text-red-800 mb-2">{group.email} — {group.count} permits</div>
+                                {group.permits.map(p => (
+                                  <div key={p.id} className="flex items-center gap-3 text-xs mb-1">
+                                    <span className="font-mono">{p.permit_number || "—"}</span>
+                                    <span className="font-medium">{p.name}</span>
+                                    <span className="capitalize text-ink-mute">{p.permit_type.replace(/_/g, " ")}</span>
+                                    <span className="text-ink-mute">{p.lot_assignment}</span>
+                                    <span className="font-mono text-ink-mute">{(p.plates || []).join(", ")}</span>
+                                    <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
+                                  </div>
+                                ))}
+                              </Card>
                             ))}
-                          </Card>
-                        ))}
+                          </>
+                        )}
+                        {dupByPlate.length > 0 && (
+                          <>
+                            <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mt-2">Shared Plate Conflicts</div>
+                            {dupByPlate.map(group => (
+                              <Card size="small" key={group.shared_plate} className="border-l-4 border-l-amber-400">
+                                <div className="text-xs font-mono font-bold text-amber-800 mb-2">Plate: {group.shared_plate}</div>
+                                {group.permits.map(p => (
+                                  <div key={p.id} className="flex items-center gap-3 text-xs mb-1">
+                                    <span className="font-mono">{p.permit_number || "—"}</span>
+                                    <span className="font-medium">{p.name}</span>
+                                    <span className="text-ink-mute">{p.email}</span>
+                                    <span className="capitalize text-ink-mute">{p.permit_type.replace(/_/g, " ")}</span>
+                                    <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
+                                  </div>
+                                ))}
+                              </Card>
+                            ))}
+                          </>
+                        )}
                       </div>
                     ) : undefined}
                     action={<Button size="small" type="text" onClick={() => setShowDuplicates(!showDuplicates)}>{showDuplicates ? "Hide" : "Review"}</Button>}
