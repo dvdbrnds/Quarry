@@ -308,6 +308,30 @@ function VisitorFlow() {
             )}
 
             <div className={`space-y-6 ${showMap ? "lg:col-span-1" : "max-w-2xl mx-auto w-full"}`}>
+              <Card
+                className="border-2 mb-4"
+                style={{ borderColor: brand.primaryColor, background: `${brand.primaryColor}08` }}
+              >
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <div className="flex-1">
+                    <div className="font-bold text-base" style={{ color: brand.primaryColor }}>
+                      🎓 Moravian Student with a Guest?
+                    </div>
+                    <div className="text-sm text-ink-mute mt-1">
+                      Overnight guest registration is on your Student Parking page — not here. Log in and use "Register a Guest" from your parking dashboard.
+                    </div>
+                  </div>
+                  <Button
+                    type="primary"
+                    size="large"
+                    href="/parking"
+                    style={{ background: brand.primaryColor, borderColor: brand.primaryColor, whiteSpace: "nowrap" }}
+                  >
+                    Go to Student Parking →
+                  </Button>
+                </div>
+              </Card>
+
               {done && result ? (
                 <ConfirmationCard result={result} onStartOver={startOver} />
               ) : (
