@@ -677,9 +677,9 @@ export const api = {
       request<{ id: string; lot_assignment: string }>(
         `/permits/${id}/revert-lots`, { method: "POST" }
       ),
-    sendPayment: (id: string) =>
+    sendPayment: (id: string, amount?: number) =>
       request<{ checkout_url: string; amount: string; email: string }>(
-        `/permits/${id}/send-payment`, { method: "POST" }
+        `/permits/${id}/send-payment`, { method: "POST", body: JSON.stringify(amount != null ? { amount } : {}) }
       ),
     notes: (id: string) => request<PermitNote[]>(`/permits/${id}/notes`),
     addNote: (id: string, note: string) =>

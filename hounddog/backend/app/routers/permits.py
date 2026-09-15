@@ -1550,14 +1550,20 @@ async def add_note(
     )
 
 
+class SendPaymentRequest(BaseModel):
+    amount: float | None = None  # custom override; None = use remaining balance
+
+
 @router.post("/{permit_id}/send-payment")
 async def send_payment_link(
     permit_id: uuid.UUID,
+    body: SendPaymentRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(require_office()),
 ):
     """Create a new Stripe checkout session for an unpaid permit and email the payment link."""
     from ..models.permit_type import PermitType
+    from ..models.payment import Payment
 
     permit = await db.get(Permit, permit_id)
     if not permit or permit.deleted_at:
@@ -1581,7 +1587,31 @@ async def send_payment_link(
     base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
     plate_str = ", ".join(permit.plates) if permit.plates else "N/A"
     permit_number = permit.permit_number or ""
-    price = pt.price
+
+    if body and body.amount is not None:
+        price = Decimal(str(body.amount))
+    else:
+        # Calculate remaining balance: permit type price minus payments already made
+        permit_payment_types = (
+            "permit_purchase", "lottery_permit", "lottery_v2_permit",
+            "standalone_permit_purchase", "direct_permit_purchase",
+            "admin_permit_charge",
+        )
+        paid_filter = or_(
+            Payment.payer_email == permit.email,
+            Payment.plate.in_(permit.plates),
+        ) if permit.email else Payment.plate.in_(permit.plates)
+        paid_result = await db.execute(
+            select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                Payment.payment_type.in_(permit_payment_types),
+                paid_filter,
+            )
+        )
+        amount_paid = Decimal(str(paid_result.scalar() or 0))
+        price = max(Decimal("0.00"), pt.price - amount_paid)
+
+    if price <= 0:
+        raise HTTPException(400, "No balance remaining — nothing to charge")
 
     session = stripe.checkout.Session.create(
         customer_email=permit.email,
@@ -1779,13 +1809,22 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
     pt = (await db.execute(
         select(PermitType).where(PermitType.code == permit.permit_type)
     )).scalar_one_or_none()
-    permit_type_price = str(pt.price) if pt else "0.00"
+    permit_type_price = pt.price if pt else Decimal("0.00")
     permit_type_label = pt.label if pt else permit.permit_type
+
+    # Sum payments already made toward this permit
+    permit_payments = [
+        p for p in payments
+        if p.payment_type in permit_payment_types
+    ]
+    amount_paid = sum(p.amount for p in permit_payments)
 
     return {
         "permit": permit,
-        "permit_type_price": permit_type_price,
+        "permit_type_price": str(permit_type_price),
         "permit_type_label": permit_type_label,
+        "amount_paid": str(amount_paid),
+        "remaining_balance": str(max(Decimal("0.00"), permit_type_price - amount_paid)),
         "has_hold": has_hold,
         "unpaid_amount": str(unpaid_amount),
         "tickets": [

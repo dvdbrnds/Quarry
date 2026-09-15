@@ -29,6 +29,8 @@ export default function PermitDetail() {
 
   // Send payment state
   const [sendPayLoading, setSendPayLoading] = useState(false);
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState<string>("");
 
   // Notes state
   const [newNote, setNewNote] = useState("");
@@ -79,27 +81,31 @@ export default function PermitDetail() {
     });
   }
 
-  function handleSendPayment() {
+  function openPayModal() {
+    if (!data) return;
+    setPayAmount(data.remaining_balance ? Number(data.remaining_balance).toFixed(2) : "0.00");
+    setPayModalOpen(true);
+  }
+
+  async function handleSendPayment() {
     if (!id) return;
-    const price = data?.permit_type_price ? `$${Number(data.permit_type_price).toFixed(2)}` : "the permit price";
-    const label = data?.permit_type_label || data?.permit?.permit_type || "permit";
-    modal.confirm({
-      title: "Send payment link?",
-      content: `A Stripe checkout link for ${price} (${label}) will be created and emailed to ${data?.permit?.email || "N/A"}.`,
-      okText: "Send Payment Link",
-      onOk: async () => {
-        setSendPayLoading(true);
-        try {
-          const res = await api.permits.sendPayment(id);
-          message.success(`Payment link sent to ${res.email} (${res.amount})`);
-          load();
-        } catch (e: any) {
-          message.error(e.message || "Failed to send payment link");
-        } finally {
-          setSendPayLoading(false);
-        }
-      },
-    });
+    setSendPayLoading(true);
+    try {
+      const amt = parseFloat(payAmount);
+      if (isNaN(amt) || amt <= 0) {
+        message.error("Please enter a valid amount");
+        setSendPayLoading(false);
+        return;
+      }
+      const res = await api.permits.sendPayment(id, amt);
+      message.success(`Payment link sent to ${res.email} (${res.amount})`);
+      setPayModalOpen(false);
+      load();
+    } catch (e: any) {
+      message.error(e.message || "Failed to send payment link");
+    } finally {
+      setSendPayLoading(false);
+    }
   }
 
   async function handleAddNote() {
@@ -306,7 +312,7 @@ export default function PermitDetail() {
             )}
             <Button onClick={() => setTempLotOpen(true)}>Temp Lot Access</Button>
             {p.email && (
-              <Button onClick={handleSendPayment} loading={sendPayLoading}>Send Payment Link</Button>
+              <Button onClick={openPayModal} loading={sendPayLoading}>Send Payment Link</Button>
             )}
             {(p.status === "expired" || p.status === "active") && (
               <Button type="primary" onClick={handleRenew}>Renew</Button>
@@ -375,6 +381,45 @@ export default function PermitDetail() {
             />
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={payModalOpen}
+        title="Send Payment Link"
+        okText="Send Payment Link"
+        onCancel={() => setPayModalOpen(false)}
+        onOk={handleSendPayment}
+        confirmLoading={sendPayLoading}
+        okButtonProps={{ disabled: !payAmount || parseFloat(payAmount) <= 0 }}
+      >
+        {data && (
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><span className="text-ink-mute">Permit Type:</span> <span className="capitalize">{data.permit_type_label || data.permit?.permit_type}</span></div>
+              <div><span className="text-ink-mute">Full Price:</span> ${Number(data.permit_type_price || 0).toFixed(2)}</div>
+              <div><span className="text-ink-mute">Amount Paid:</span> ${Number(data.amount_paid || 0).toFixed(2)}</div>
+              <div><span className="text-ink-mute font-semibold">Remaining:</span> <span className="font-semibold">${Number(data.remaining_balance || 0).toFixed(2)}</span></div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Amount to Charge</label>
+              <Input
+                prefix="$"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={payAmount}
+                onChange={e => setPayAmount(e.target.value)}
+                placeholder="0.00"
+              />
+              <div className="text-xs text-ink-mute mt-1">
+                Defaults to the remaining balance. Override to charge a different amount.
+              </div>
+            </div>
+            <div className="text-sm text-ink-mute">
+              A Stripe checkout link will be emailed to <strong>{data.permit?.email}</strong>.
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
