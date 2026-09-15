@@ -705,6 +705,8 @@ async def lifespan(app: FastAPI):
             """UPDATE parking_lots
                SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Residents + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
                WHERE designation_code IN ('RS', 'PR')""",
+            # Restrict student_guest permits to Lot X only (was incorrectly set to all commuter lots)
+            """UPDATE permit_types SET lot_assignments = '{X}' WHERE code = 'student_guest'""",
             """CREATE TABLE IF NOT EXISTS app_config (
                 key VARCHAR(128) PRIMARY KEY,
                 value JSONB NOT NULL DEFAULT '{}',
@@ -1239,7 +1241,7 @@ async def lifespan(app: FastAPI):
                     code="student_guest", label="Student Guest",
                     eligible="Overnight guests of resident students", price=Decimal("0"),
                     max_capacity=0, valid_days=3,
-                    lot_assignments=["X", "A", "F", "H", "M", "N", "O", "R", "S", "U"],
+                    lot_assignments=["X"],
                     is_purchasable_online=False, sort_order=12,
                 ))
                 await session.commit()

@@ -163,7 +163,7 @@ async def register_guest(
             select(PermitType).where(PermitType.code == "student_guest")
         )
         guest_pt = pt_result.scalars().first()
-        lot_assignment = ", ".join(guest_pt.lot_assignments) if guest_pt and guest_pt.lot_assignments else "X, A, F, H, M, N, O, R, S, U"
+        lot_assignment = ", ".join(guest_pt.lot_assignments) if guest_pt and guest_pt.lot_assignments else "X"
 
         from ..services.permit_numbering import next_permit_number
         guest_permit = Permit(
