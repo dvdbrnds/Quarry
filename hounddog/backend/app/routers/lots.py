@@ -67,6 +67,92 @@ COMMUTER_EVENING_SCHEDULE = [
     }
 ]
 
+# Commuter lots: commuter + faculty/staff + visitors during the day,
+# ALL permit holders (including residents) after hours and weekends
+COMMUTER_LOT_SCHEDULE = [
+    {
+        "season": "year_round",
+        "label": "Year-Round",
+        "rules": [
+            {
+                "start": "06:00",
+                "end": "16:00",
+                "days": ["mon", "tue", "wed", "thu", "fri"],
+                "allowed_permit_types": [
+                    "commuter_undergrad", "commuter_grad", "premium_commuter",
+                    "faculty_staff",
+                    "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff",
+                    "student_guest",
+                ],
+                "label": "Commuter + Faculty/Staff + Visitors (Weekday Daytime)",
+            },
+            {
+                "start": "16:00",
+                "end": "06:00",
+                "days": ["mon", "tue", "wed", "thu", "fri"],
+                "allowed_permit_types": [],
+                "label": "All Permit Holders (Evenings & Overnight)",
+            },
+            {
+                "start": "00:00",
+                "end": "23:59",
+                "days": ["sat", "sun"],
+                "allowed_permit_types": [],
+                "label": "All Permit Holders (Weekends)",
+            },
+        ],
+    }
+]
+
+# Resident lots: residents + faculty/staff during the day,
+# ALL permit holders (including commuters) after hours and weekends
+RESIDENT_LOT_SCHEDULE = [
+    {
+        "season": "year_round",
+        "label": "Year-Round",
+        "rules": [
+            {
+                "start": "06:00",
+                "end": "16:00",
+                "days": ["mon", "tue", "wed", "thu", "fri"],
+                "allowed_permit_types": [
+                    "north_premium_resident", "north_guaranteed_resident",
+                    "steel_field_resident",
+                    "south_premium_resident", "south_guaranteed_resident",
+                    "south_standalone",
+                    "faculty_staff",
+                    "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff",
+                    "student_guest",
+                ],
+                "label": "Residents + Faculty/Staff + Visitors (Weekday Daytime)",
+            },
+            {
+                "start": "16:00",
+                "end": "06:00",
+                "days": ["mon", "tue", "wed", "thu", "fri"],
+                "allowed_permit_types": [],
+                "label": "All Permit Holders (Evenings & Overnight)",
+            },
+            {
+                "start": "00:00",
+                "end": "23:59",
+                "days": ["sat", "sun"],
+                "allowed_permit_types": [],
+                "label": "All Permit Holders (Weekends)",
+            },
+        ],
+    }
+]
+
+# Maps designation codes to their auto-applied schedules
+DESIGNATION_SCHEDULES = {
+    "FSC": COMMUTER_EVENING_SCHEDULE,
+    "C": COMMUTER_LOT_SCHEDULE,
+    "PC": COMMUTER_LOT_SCHEDULE,
+    "RS": RESIDENT_LOT_SCHEDULE,
+    "PR": RESIDENT_LOT_SCHEDULE,
+}
+
 
 
 @router.get("", response_model=list[LotRead])
@@ -98,12 +184,11 @@ async def create_lot(
         await db.delete(old)
     await db.flush()
 
-    if data.designation_code == "FSC":
-        access_schedule = COMMUTER_EVENING_SCHEDULE
-        designation_label = "Faculty/Staff + Commuter (time-split)"
+    auto_schedule = DESIGNATION_SCHEDULES.get(data.designation_code)
+    if auto_schedule:
+        access_schedule = auto_schedule
     else:
         access_schedule = [s.model_dump() for s in data.access_schedule]
-        designation_label = data.designation_label
 
     lot = ParkingLot(
         name=data.name,
@@ -111,7 +196,7 @@ async def create_lot(
         total_spaces=data.total_spaces,
         handicap_spaces=data.handicap_spaces,
         designation_code=data.designation_code,
-        designation_label=designation_label,
+        designation_label=data.designation_label,
         access_schedule=access_schedule,
         is_snow_lot=data.is_snow_lot,
         has_sheepdog=data.has_sheepdog,
@@ -257,13 +342,15 @@ async def update_lot(
         lot.handicap_spaces = data.handicap_spaces
     if data.designation_code is not None:
         lot.designation_code = data.designation_code
-    if data.designation_label is not None:
-        lot.designation_label = data.designation_label
-    if data.designation_code == "FSC":
-        lot.designation_label = "Faculty/Staff + Commuter (time-split)"
-        lot.access_schedule = COMMUTER_EVENING_SCHEDULE
+        auto_schedule = DESIGNATION_SCHEDULES.get(data.designation_code)
+        if auto_schedule:
+            lot.access_schedule = auto_schedule
+        elif data.access_schedule is not None:
+            lot.access_schedule = [s.model_dump() for s in data.access_schedule]
     elif data.access_schedule is not None:
         lot.access_schedule = [s.model_dump() for s in data.access_schedule]
+    if data.designation_label is not None:
+        lot.designation_label = data.designation_label
     if data.is_snow_lot is not None:
         lot.is_snow_lot = data.is_snow_lot
     if data.has_sheepdog is not None:

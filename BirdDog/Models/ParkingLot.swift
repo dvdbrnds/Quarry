@@ -56,6 +56,17 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
         return cal
     }()
 
+    /// Check if `timeStr` falls within a rule's start/end range, handling midnight crossover.
+    private static func timeInRange(_ timeStr: String, start: String, end: String) -> Bool {
+        if start <= end {
+            // Normal range (e.g. 06:00–16:00)
+            return timeStr >= start && timeStr < end
+        } else {
+            // Midnight-crossing range (e.g. 16:00–06:00)
+            return timeStr >= start || timeStr < end
+        }
+    }
+
     func isPermitTypeAllowed(_ permitType: String, at date: Date = Date()) -> Bool {
         guard !accessSchedule.isEmpty else { return true }
 
@@ -70,7 +81,7 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
         for season in accessSchedule {
             for rule in season.rules {
                 guard rule.days.contains(dayAbbrev) else { continue }
-                guard timeStr >= rule.start && timeStr < rule.end else { continue }
+                guard Self.timeInRange(timeStr, start: rule.start, end: rule.end) else { continue }
                 if rule.allowedPermitTypes.isEmpty { return true }
                 if rule.allowedPermitTypes.contains(permitType) { return true }
                 return false
@@ -94,7 +105,7 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
 
         for season in accessSchedule {
             for rule in season.rules {
-                if rule.days.contains(dayAbbrev) && timeStr >= rule.start && timeStr < rule.end {
+                if rule.days.contains(dayAbbrev) && Self.timeInRange(timeStr, start: rule.start, end: rule.end) {
                     return true
                 }
             }
