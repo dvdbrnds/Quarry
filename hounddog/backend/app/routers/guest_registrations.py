@@ -166,6 +166,9 @@ async def register_guest(
         lot_assignment = ", ".join(guest_pt.lot_assignments) if guest_pt and guest_pt.lot_assignments else "X"
 
         from ..services.permit_numbering import next_permit_number
+        # end_date is set to the day after check_out so the permit covers
+        # the full last overnight. BirdDog enforces the actual 7am expiry
+        # for student_guest permits on this date.
         guest_permit = Permit(
             permit_number=await next_permit_number(db),
             name=f"Guest of {host_name} — {data.guest_name.strip()}",
@@ -174,7 +177,7 @@ async def register_guest(
             lot_assignment=lot_assignment,
             permit_type="student_guest",
             start_date=data.check_in,
-            end_date=data.check_out,
+            end_date=data.check_out + timedelta(days=1),
             status="active",
         )
         db.add(guest_permit)
@@ -218,7 +221,7 @@ async def cancel_guest(
                 Permit.status == "active",
                 Permit.plates.contains([plate_upper]),
                 Permit.start_date == reg.check_in,
-                Permit.end_date == reg.check_out,
+                Permit.end_date.in_([reg.check_out, reg.check_out + timedelta(days=1)]),
             )
         )
         guest_permit = permit_result.scalars().first()

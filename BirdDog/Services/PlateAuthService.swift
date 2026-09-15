@@ -145,9 +145,18 @@ final class PlateAuthService: PlateCheckable {
             return .expired(permit: info)
         }
 
-        // Past end date
-        if let expiration = record.expirationDate, expiration < Self.easternCalendar.startOfDay(for: now) {
-            return .expired(permit: info)
+        // Past end date — guest permits expire at 7am on their end date
+        if let expiration = record.expirationDate {
+            if record.permitType.lowercased() == "student_guest" {
+                let calendar = Self.easternCalendar
+                var sevenAM = calendar.startOfDay(for: expiration)
+                sevenAM = calendar.date(byAdding: .hour, value: 7, to: sevenAM)!
+                if now >= sevenAM {
+                    return .expired(permit: info)
+                }
+            } else if expiration < Self.easternCalendar.startOfDay(for: now) {
+                return .expired(permit: info)
+            }
         }
 
         // Lot access: check zone match, diversions, and time-of-day schedule
