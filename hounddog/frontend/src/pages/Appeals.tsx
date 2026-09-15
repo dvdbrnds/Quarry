@@ -64,7 +64,7 @@ export default function Appeals() {
       await initAuth();
       const authed = await isAuthenticated();
       if (!authed) {
-        sessionStorage.setItem("quarry_return_path", "/appeals");
+        sessionStorage.setItem("quarry_return_path", "/citations");
         await login();
         return;
       }
@@ -198,10 +198,10 @@ export default function Appeals() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <PublicPageNav subtitle="Citation Appeals" />
+      <PublicPageNav subtitle="My Citations" />
       <div className="max-w-2xl mx-auto px-4 pt-8 pb-16">
         <h1 className="text-2xl font-bold mb-2" style={{ color: brand.primaryColor }}>
-          Citation Appeals
+          My Citations
         </h1>
 
         <div className="mb-6 p-4 rounded-lg border-l-4" style={{ borderColor: brand.primaryColor, background: `${brand.primaryColor}08` }}>
@@ -216,13 +216,13 @@ export default function Appeals() {
           </p>
         </div>
 
-        {/* Mode selection — shown when not yet chosen */}
+        {/* Mode selection � shown when not yet chosen */}
         {mode === "choose" && (
           <div className="space-y-4">
             <Card hoverable onClick={handleStudentLogin} className="cursor-pointer">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl" style={{ background: `${brand.primaryColor}15`, color: brand.primaryColor }}>
-                  🎓
+                  ??
                 </div>
                 <div>
                   <div className="font-semibold text-base">Moravian Student, Staff, or Faculty</div>
@@ -233,7 +233,7 @@ export default function Appeals() {
             <Card hoverable onClick={() => setMode("guest")} className="cursor-pointer">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl" style={{ background: `${brand.primaryColor}15`, color: brand.primaryColor }}>
-                  🚗
+                  ??
                 </div>
                 <div>
                   <div className="font-semibold text-base">Community Member or Visitor</div>
@@ -353,19 +353,28 @@ export default function Appeals() {
                     <div className="text-lg font-bold" style={{ color: t.status === "warning" ? "#ea580c" : brand.primaryColor }}>
                       {t.status === "warning" ? "Warning" : `$${Number(t.fine_amount).toFixed(2)}`}
                     </div>
-                    {t.can_appeal && (
-                      <Button
-                        type="primary"
-                        size="small"
-                        className="mt-2"
-                        onClick={() => setAppealTicket(t)}
-                      >
-                        Appeal
-                      </Button>
-                    )}
-                    {!t.can_appeal && !t.appeal_decision && (t.status === "issued" || t.status === "warning") && (
-                      <div className="text-xs text-gray-400 mt-2">
-                        Window closed
+                    {(() => {
+                      const isPaid = ["paid", "voided", "resolved_permit"].includes(t.status) || t.appeal_decision === "approved";
+                      const isPending = t.appeal_decision === "pending";
+                      if (isPaid || isPending) return null;
+                      return (
+                        <div className="flex gap-2 mt-2">
+                          {t.can_appeal && (
+                            <Button size="small" onClick={() => setAppealTicket(t)}>
+                              Appeal
+                            </Button>
+                          )}
+                          {t.status !== "warning" && (
+                            <Button type="primary" size="small" href={`/pay/${t.id}`}>
+                              Pay
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {!t.can_appeal && !t.appeal_decision && (t.status === "issued" || t.status === "overdue") && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        Appeal window closed
                       </div>
                     )}
                   </div>
@@ -375,7 +384,7 @@ export default function Appeals() {
           </div>
         )}
 
-        {/* Plate lookup for students — always visible */}
+        {/* Plate lookup for students � always visible */}
         {mode === "student" && authState === "ready" && !loading && (
           <Card size="small" className="mt-4">
             <div className="text-sm font-medium mb-1">

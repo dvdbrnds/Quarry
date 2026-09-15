@@ -315,7 +315,7 @@ export default function App() {
   const isSponsorRoute = location.pathname === "/sponsor";
   const isParkingMapRoute = location.pathname === "/parking-map";
   const isVisitorRoute = location.pathname.startsWith("/visitor");
-  const isAppealsRoute = location.pathname === "/appeals";
+  const isAppealsRoute = location.pathname === "/appeals" || location.pathname === "/citations";
   const isAppealsCommitteeRoute = location.pathname === "/appeals-committee";
   const isVehicleApproveRoute = location.pathname.startsWith("/vehicle-approve");
   const isRootRoute = location.pathname === "/";
@@ -427,7 +427,8 @@ export default function App() {
   if (isAppealsRoute) {
     return (
       <Routes>
-        <Route path="/appeals" element={<Appeals />} />
+        <Route path="/citations" element={<Appeals />} />
+        <Route path="/appeals" element={<Navigate to="/citations" replace />} />
       </Routes>
     );
   }

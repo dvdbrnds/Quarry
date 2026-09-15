@@ -1288,7 +1288,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
           </div>
           <div className="flex items-center gap-4">
             <a
-              href="/appeals"
+              href="/citations"
               className="text-xs font-medium px-3 py-1 rounded"
               style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}
             >
