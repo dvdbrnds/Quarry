@@ -43,7 +43,7 @@ COMMUTER_EVENING_SCHEDULE = [
         "label": "Year-Round",
         "rules": [
             {
-                "start": "06:00",
+                "start": "07:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": ["faculty_staff", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"],
@@ -51,7 +51,7 @@ COMMUTER_EVENING_SCHEDULE = [
             },
             {
                 "start": "16:00",
-                "end": "06:00",
+                "end": "07:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [],
                 "label": "All Permit Holders (Evenings & Overnight)",
@@ -75,7 +75,7 @@ COMMUTER_LOT_SCHEDULE = [
         "label": "Year-Round",
         "rules": [
             {
-                "start": "06:00",
+                "start": "07:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [
@@ -88,7 +88,7 @@ COMMUTER_LOT_SCHEDULE = [
             },
             {
                 "start": "16:00",
-                "end": "06:00",
+                "end": "07:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [],
                 "label": "All Permit Holders (Evenings & Overnight)",
@@ -112,7 +112,7 @@ RESIDENT_LOT_SCHEDULE = [
         "label": "Year-Round",
         "rules": [
             {
-                "start": "06:00",
+                "start": "07:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [
@@ -128,7 +128,7 @@ RESIDENT_LOT_SCHEDULE = [
             },
             {
                 "start": "16:00",
-                "end": "06:00",
+                "end": "07:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [],
                 "label": "All Permit Holders (Evenings & Overnight)",
