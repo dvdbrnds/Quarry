@@ -165,7 +165,7 @@ struct ScanLogView: View {
                 Button {
                     issue(entry)
                 } label: {
-                    Label("Add", systemImage: "plus.circle.fill")
+                    Label("Cite", systemImage: "doc.badge.plus")
                         .font(.caption.bold())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
