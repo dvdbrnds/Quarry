@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, OktaUser
+from ..auth.okta import get_current_user, get_current_user_or_impersonated, OktaUser
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
 from ..models.permit import Permit
@@ -134,7 +134,7 @@ async def _validate_and_appeal(ticket: "Ticket", explanation: str, appeal_window
 @router.get("/my-tickets", response_model=MyTicketsResponse)
 async def my_tickets(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     email = user.email.lower()
 
@@ -190,7 +190,7 @@ class PlateClaimRequest(BaseModel):
 async def claim_plate_tickets(
     data: PlateClaimRequest,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Let a student claim tickets by entering their plate or ticket number.
     Links matching tickets to their email for future automatic lookup."""
@@ -230,7 +230,7 @@ async def claim_plate_tickets(
 async def submit_appeal(
     data: AppealSubmit,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     ticket = await db.get(Ticket, data.ticket_id)
     if not ticket:

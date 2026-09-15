@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { authHeaders } from "../auth";
+import { authHeadersAs, getImpersonateEmail } from "../auth";
 import { Button, Card, Empty, Form, Input, Modal, Spin, Tag, App, Alert } from "antd";
 import { useBranding } from "../useBranding";
 
@@ -32,9 +32,11 @@ export default function StudentCitations() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState<TicketSummary[] | null>(null);
 
+  const impersonateEmail = getImpersonateEmail();
+
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/appeals/my-tickets", { headers: await authHeaders() });
+      const res = await fetch("/api/appeals/my-tickets", { headers: await authHeadersAs(impersonateEmail) });
       if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
       setTickets(data.tickets);
@@ -54,7 +56,7 @@ export default function StudentCitations() {
     setLookupLoading(true);
     setLookupResult(null);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(impersonateEmail);
       const res = await fetch("/api/appeals/claim-plate", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
@@ -216,7 +218,7 @@ function AppealModal({ ticket, onClose, onSuccess }: {
     try {
       const res = await fetch("/api/appeals/submit", {
         method: "POST",
-        headers: await authHeaders(),
+        headers: await authHeadersAs(getImpersonateEmail()),
         body: JSON.stringify({ ticket_id: ticket.id, explanation: values.explanation }),
       });
       if (!res.ok) {
