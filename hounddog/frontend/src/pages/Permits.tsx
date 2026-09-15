@@ -474,6 +474,7 @@ function PermitForm({
                   student_id: values.student_id,
                   email: values.email || null,
                   phone: values.phone,
+                  home_address: values.home_address || null,
                   permit_type: values.permit_type,
                   lot_assignment: lotAssignment,
                   beacon_id: values.beacon_id || null,
@@ -498,6 +499,7 @@ function PermitForm({
                   student_id: values.student_id,
                   email: values.email || null,
                   phone: values.phone,
+                  home_address: values.home_address || null,
                   beacon_id: values.beacon_id || null,
                   status: values.status || "active",
                   start_date: values.start_date?.format("YYYY-MM-DD") || undefined,
@@ -552,6 +554,7 @@ function PermitForm({
           student_id: values.student_id,
           email: values.email || null,
           phone: values.phone,
+          home_address: values.home_address || null,
           beacon_id: values.beacon_id || null,
           lot_assignment: lotAssignment,
           permit_type: values.permit_type,
@@ -685,6 +688,9 @@ function PermitForm({
           </Form.Item>
           <Form.Item name="phone" label="Phone" rules={[{ required: true, message: "Phone is required" }]}>
             <Input placeholder="+1 (555) 123-4567" />
+          </Form.Item>
+          <Form.Item name="home_address" label="Home Address">
+            <Input placeholder="123 Main St, Bethlehem, PA 18018" />
           </Form.Item>
           <Form.Item name="hc_status" label="HC Designation">
             <Select options={[
@@ -1279,6 +1285,7 @@ export default function Permits() {
               vehicle_color: values.tag_vehicle_color || null,
               tag_source: values.tag_source || null,
               tag_notes: values.tag_notes || null,
+              home_address: values.tag_home_address || null,
             });
             message.success("Vehicle tag created");
             setTagModalOpen(false);
@@ -1319,6 +1326,9 @@ export default function Permits() {
               <Input placeholder="(555) 123-4567" />
             </Form.Item>
           </div>
+          <Form.Item name="tag_home_address" label="Home Address">
+            <Input placeholder="123 Main St, Bethlehem, PA 18018" />
+          </Form.Item>
           <div className="grid grid-cols-4 gap-2">
             <Form.Item name="tag_vehicle_year" label="Year">
               <Input placeholder="2024" maxLength={4} />

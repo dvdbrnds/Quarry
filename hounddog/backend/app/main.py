@@ -975,6 +975,17 @@ async def lifespan(app: FastAPI):
             # Temp lot assignment fields
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS original_lot_assignment VARCHAR(512)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS temp_lot_expires_at TIMESTAMPTZ",
+            # Home address on permits
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS home_address VARCHAR(512)",
+            # Permit notes (timestamped, author-tracked)
+            """CREATE TABLE IF NOT EXISTS permit_notes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                permit_id UUID NOT NULL REFERENCES permits(id),
+                note TEXT NOT NULL,
+                created_by VARCHAR(256) NOT NULL DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_permit_notes_permit ON permit_notes(permit_id)",
             """DO $$ BEGIN
                 IF EXISTS (
                     SELECT 1 FROM information_schema.columns

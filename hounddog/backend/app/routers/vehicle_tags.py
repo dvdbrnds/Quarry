@@ -26,6 +26,7 @@ class VehicleTagCreate(BaseModel):
     plate_state: str = ""
     email: str | None = None
     phone: str = ""
+    home_address: str | None = None
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     vehicle_color: str | None = None
@@ -40,6 +41,7 @@ class VehicleTagUpdate(BaseModel):
     plate_state: str | None = None
     email: str | None = None
     phone: str | None = None
+    home_address: str | None = None
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     vehicle_color: str | None = None
@@ -55,6 +57,7 @@ class VehicleTagRead(BaseModel):
     plates: list[str]
     email: str | None
     phone: str
+    home_address: str | None
     vehicle_make: str | None
     vehicle_model: str | None
     vehicle_color: str | None
@@ -116,6 +119,7 @@ async def list_vehicle_tags(
             plates=t.plates,
             email=t.email,
             phone=t.phone or "",
+            home_address=t.home_address,
             vehicle_make=t.vehicle_make,
             vehicle_model=t.vehicle_model,
             vehicle_color=t.vehicle_color,
@@ -147,6 +151,7 @@ async def create_vehicle_tag(
         plates=[p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates],
         email=data.email,
         phone=data.phone,
+        home_address=data.home_address,
         permit_type="vehicle_tag",
         status="active",
         lot_assignment="",
@@ -168,6 +173,7 @@ async def create_vehicle_tag(
         plates=tag.plates,
         email=tag.email,
         phone=tag.phone or "",
+        home_address=tag.home_address,
         vehicle_make=tag.vehicle_make,
         vehicle_model=tag.vehicle_model,
         vehicle_color=tag.vehicle_color,
@@ -199,6 +205,8 @@ async def update_vehicle_tag(
         tag.email = data.email
     if data.phone is not None:
         tag.phone = data.phone
+    if data.home_address is not None:
+        tag.home_address = data.home_address
     if data.vehicle_make is not None:
         tag.vehicle_make = data.vehicle_make
     if data.vehicle_model is not None:
@@ -223,6 +231,7 @@ async def update_vehicle_tag(
         plates=tag.plates,
         email=tag.email,
         phone=tag.phone or "",
+        home_address=tag.home_address,
         vehicle_make=tag.vehicle_make,
         vehicle_model=tag.vehicle_model,
         vehicle_color=tag.vehicle_color,

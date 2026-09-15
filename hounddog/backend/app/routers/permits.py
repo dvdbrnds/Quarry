@@ -1474,6 +1474,82 @@ async def revert_temp_lots(
     }
 
 
+# ── Permit / Tag Notes ─────────────────────────────────────────────
+
+class NoteCreate(BaseModel):
+    note: str
+
+
+class NoteRead(BaseModel):
+    id: str
+    note: str
+    created_by: str
+    created_at: str
+
+
+@router.get("/{permit_id}/notes")
+async def list_notes(
+    permit_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all notes for a permit or tag, newest first."""
+    from ..models.permit_note import PermitNote
+
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    result = await db.execute(
+        select(PermitNote)
+        .where(PermitNote.permit_id == permit_id)
+        .order_by(PermitNote.created_at.desc())
+    )
+    notes = result.scalars().all()
+    return [
+        NoteRead(
+            id=str(n.id),
+            note=n.note,
+            created_by=n.created_by,
+            created_at=n.created_at.isoformat(),
+        )
+        for n in notes
+    ]
+
+
+@router.post("/{permit_id}/notes", response_model=NoteRead, status_code=201)
+async def add_note(
+    permit_id: uuid.UUID,
+    data: NoteCreate,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Add a timestamped note to a permit or tag."""
+    from ..models.permit_note import PermitNote
+
+    permit = await db.get(Permit, permit_id)
+    if not permit or permit.deleted_at:
+        raise HTTPException(404, "Permit not found")
+
+    if not data.note.strip():
+        raise HTTPException(400, "Note cannot be empty")
+
+    note = PermitNote(
+        permit_id=permit_id,
+        note=data.note.strip(),
+        created_by=user.email,
+    )
+    db.add(note)
+    await db.flush()
+    await db.refresh(note)
+
+    return NoteRead(
+        id=str(note.id),
+        note=note.note,
+        created_by=note.created_by,
+        created_at=note.created_at.isoformat(),
+    )
+
+
 @router.post("/{permit_id}/send-payment")
 async def send_payment_link(
     permit_id: uuid.UUID,
@@ -1694,6 +1770,12 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
     duplicates = await find_duplicates(db, permit.plates, exclude_id=permit.id)
 
+    from ..models.permit_note import PermitNote
+    notes_result = await db.execute(
+        select(PermitNote).where(PermitNote.permit_id == permit.id).order_by(PermitNote.created_at.desc())
+    )
+    permit_notes = notes_result.scalars().all()
+
     return {
         "permit": permit,
         "has_hold": has_hold,
@@ -1739,6 +1821,15 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
             for p in prior_permits
         ],
         "duplicates": duplicates,
+        "notes": [
+            {
+                "id": str(n.id),
+                "note": n.note,
+                "created_by": n.created_by,
+                "created_at": n.created_at.isoformat(),
+            }
+            for n in permit_notes
+        ],
     }
 
 

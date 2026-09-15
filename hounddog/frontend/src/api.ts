@@ -67,7 +67,15 @@ export interface Permit {
   tag_source: string | null;
   original_lot_assignment: string | null;
   temp_lot_expires_at: string | null;
+  home_address: string | null;
   active_ticket_count: number;
+}
+
+export interface PermitNote {
+  id: string;
+  note: string;
+  created_by: string;
+  created_at: string;
 }
 
 export interface MessageTemplate {
@@ -579,6 +587,7 @@ export interface VehicleTag {
   plates: string[];
   email: string | null;
   phone: string;
+  home_address: string | null;
   vehicle_make: string | null;
   vehicle_model: string | null;
   vehicle_color: string | null;
@@ -601,6 +610,7 @@ export interface VehicleTagCreate {
   plate_state?: string;
   email?: string | null;
   phone?: string;
+  home_address?: string | null;
   vehicle_make?: string | null;
   vehicle_model?: string | null;
   vehicle_color?: string | null;
@@ -671,6 +681,9 @@ export const api = {
       request<{ checkout_url: string; amount: string; email: string }>(
         `/permits/${id}/send-payment`, { method: "POST" }
       ),
+    notes: (id: string) => request<PermitNote[]>(`/permits/${id}/notes`),
+    addNote: (id: string, note: string) =>
+      request<PermitNote>(`/permits/${id}/notes`, { method: "POST", body: JSON.stringify({ note }) }),
     lottery: {
       run: (permitTypeId: string, force = false) =>
         request<LotteryRunResult>(`/permits/types/${permitTypeId}/run-lottery?force=${force}`, {

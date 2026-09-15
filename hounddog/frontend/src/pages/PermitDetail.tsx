@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api, Lot } from "../api";
+import { api, Lot, PermitNote } from "../api";
 import { fmtDateTimeCompact } from "../dateUtils";
 import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline, Modal, Select, DatePicker, Input } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -9,6 +9,7 @@ import dayjs from "dayjs";
 interface PermitHistory {
   permit: any; has_hold: boolean; unpaid_amount: string;
   tickets: any[]; payments: any[]; audit_log: any[]; prior_permits: any[]; duplicates: any[];
+  notes: PermitNote[];
 }
 
 export default function PermitDetail() {
@@ -28,6 +29,10 @@ export default function PermitDetail() {
 
   // Send payment state
   const [sendPayLoading, setSendPayLoading] = useState(false);
+
+  // Notes state
+  const [newNote, setNewNote] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -93,6 +98,21 @@ export default function PermitDetail() {
         }
       },
     });
+  }
+
+  async function handleAddNote() {
+    if (!id || !newNote.trim()) return;
+    setAddingNote(true);
+    try {
+      await api.permits.addNote(id, newNote.trim());
+      setNewNote("");
+      message.success("Note added");
+      load();
+    } catch (e: any) {
+      message.error(e.message || "Failed to add note");
+    } finally {
+      setAddingNote(false);
+    }
   }
 
   function handleRenew() {
@@ -211,6 +231,39 @@ export default function PermitDetail() {
         </div>
       ),
     },
+    {
+      key: "notes", label: <>Notes{(data.notes?.length || 0) > 0 && <Tag className="ml-1">{data.notes.length}</Tag>}</>,
+      children: (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Input.TextArea
+              rows={2}
+              placeholder="Add a note…"
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleAddNote(); } }}
+            />
+            <Button type="primary" onClick={handleAddNote} loading={addingNote} disabled={!newNote.trim()}>
+              Add
+            </Button>
+          </div>
+          {(!data.notes || data.notes.length === 0) ? (
+            <Empty description="No notes yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <div className="space-y-3">
+              {data.notes.map((n: any) => (
+                <Card key={n.id} size="small">
+                  <div className="text-sm whitespace-pre-wrap">{n.note}</div>
+                  <div className="text-xs text-ink-mute mt-2">
+                    {n.created_by} &middot; {fmtDateTimeCompact(n.created_at)}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -232,6 +285,7 @@ export default function PermitDetail() {
               <div className="col-span-2"><span className="text-ink-mute">Lot:</span> {p.lot_assignment}</div>
               <div><span className="text-ink-mute">Email:</span> {p.email || <span className="text-ink-mute italic">No email</span>}</div>
               <div><span className="text-ink-mute">Phone:</span> {p.phone || "—"}</div>
+              {p.home_address && <div className="col-span-2"><span className="text-ink-mute">Address:</span> {p.home_address}</div>}
             </div>
             <Space className="mt-3">
               <Tag color={p.status === "active" ? "green" : p.status === "expired" || p.status === "renewed" ? "default" : "red"}>{p.status}</Tag>

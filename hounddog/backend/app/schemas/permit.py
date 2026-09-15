@@ -31,6 +31,7 @@ class PermitBase(BaseModel):
     vehicle_description: str | None = None
     tag_notes: str | None = None
     tag_source: str | None = None
+    home_address: str | None = None
 
 
 class PermitCreate(PermitBase):
@@ -61,6 +62,7 @@ class PermitUpdate(BaseModel):
     vehicle_description: str | None = None
     tag_notes: str | None = None
     tag_source: str | None = None
+    home_address: str | None = None
 
 
 class PermitRead(PermitBase):
