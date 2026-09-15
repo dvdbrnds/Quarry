@@ -941,6 +941,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [bulkVoiding, setBulkVoiding] = useState(false);
   const [legacyRecord, setLegacyRecord] = useState<import("../api").LegacyRecord | null>(null);
   const [legacyImporting, setLegacyImporting] = useState(false);
+  const [sortBy, setSortBy] = useState<string>("issued_at");
+  const [sortOrder, setSortOrder] = useState<string>("descend");
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -977,6 +979,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       if (dateFrom) qs.set("date_from", dateFrom);
       if (dateTo) qs.set("date_to", dateTo);
       if (officerEmail) qs.set("officer_email", officerEmail);
+      if (sortBy) qs.set("sort_by", sortBy);
+      if (sortOrder) qs.set("sort_order", sortOrder);
       const res = await fetch(`/api/tickets?${qs}`, { headers: await authHeaders() });
       if (res.ok) {
         const data = await res.json();
@@ -988,7 +992,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, officerEmail, message]);
+  }, [page, search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, officerEmail, sortBy, sortOrder, message]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1244,20 +1248,24 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     });
   }
 
+  const sortedColumn = (key: string) => sortBy === key ? (sortOrder as "ascend" | "descend") : undefined;
+
   const columns: ColumnsType<Ticket> = [
     {
       title: "Ticket #",
       dataIndex: "ticket_number",
       key: "ticket_number",
       width: 120,
-      sorter: (a, b) => (a.ticket_number || "").localeCompare(b.ticket_number || ""),
+      sorter: true,
+      sortOrder: sortedColumn("ticket_number"),
       render: (num: string | null) => <span className="font-mono text-brand-primary font-medium">{num || "—"}</span>,
     },
     {
       title: "Plate",
       dataIndex: "plate",
       key: "plate",
-      sorter: (a, b) => (a.plate || "").localeCompare(b.plate || ""),
+      sorter: true,
+      sortOrder: sortedColumn("plate"),
       render: (plate: string, t: Ticket) => (
         <span>
           <span className="font-mono">{plate}</span>
@@ -1272,19 +1280,22 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       dataIndex: "owner_name",
       key: "owner_name",
       ellipsis: true,
-      sorter: (a, b) => (a.owner_name || "").localeCompare(b.owner_name || ""),
+      sorter: true,
+      sortOrder: sortedColumn("owner_name"),
       render: (name: string | null) => name || <span className="text-gray-400">—</span>,
     },
     {
       title: "Location",
-      key: "location",
-      sorter: (a, b) => (a.lot || "").localeCompare(b.lot || ""),
+      key: "lot",
+      sorter: true,
+      sortOrder: sortedColumn("lot"),
       render: (_, t) => t.ticket_category === "moving" ? (t.location_text || "—") : t.lot,
     },
     {
       title: "Violation",
-      key: "violation",
-      sorter: (a, b) => (a.violation_type || "").localeCompare(b.violation_type || ""),
+      key: "violation_type",
+      sorter: true,
+      sortOrder: sortedColumn("violation_type"),
       render: (_, t) => (
         <Space wrap>
           <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
@@ -1298,15 +1309,17 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     {
       title: "Fine",
       dataIndex: "fine_amount",
-      key: "fine",
-      sorter: (a, b) => Number(a.fine_amount) - Number(b.fine_amount),
+      key: "fine_amount",
+      sorter: true,
+      sortOrder: sortedColumn("fine_amount"),
       render: (amt: string) => `$${Number(amt).toFixed(2)}`,
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      sorter: (a, b) => (a.status || "").localeCompare(b.status || ""),
+      sorter: true,
+      sortOrder: sortedColumn("status"),
       render: (status: string) => (
         <Tag color={STATUS_COLORS[status] || "default"}>
           {status.replace("_", " ")}
@@ -1315,9 +1328,10 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     },
     {
       title: "Officer",
-      key: "officer",
+      key: "officer_name",
       width: 140,
-      sorter: (a, b) => (a.officer_name || a.officer_email || "").localeCompare(b.officer_name || b.officer_email || ""),
+      sorter: true,
+      sortOrder: sortedColumn("officer_name"),
       render: (_: unknown, t: Ticket) => (
         <span className="text-xs text-gray-500">{t.officer_name || t.officer_email || t.officer_id || "—"}</span>
       ),
@@ -1326,8 +1340,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Issued",
       dataIndex: "issued_at",
       key: "issued_at",
-      sorter: (a, b) => new Date(a.issued_at).getTime() - new Date(b.issued_at).getTime(),
-      defaultSortOrder: "descend",
+      sorter: true,
+      sortOrder: sortedColumn("issued_at"),
       render: (d: string) => fmtDateTimeCompact(d),
     },
     ...(isAdmin ? [{
@@ -1537,11 +1551,23 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           }),
         } : undefined}
         onRow={(t) => ({ onClick: () => setSelected(t), className: "cursor-pointer" })}
+        onChange={(_pagination, _filters, sorter) => {
+          if (!Array.isArray(sorter) && sorter.columnKey) {
+            const newSortBy = String(sorter.columnKey);
+            const newSortOrder = sorter.order || "descend";
+            if (newSortBy !== sortBy || newSortOrder !== sortOrder) {
+              setSortBy(newSortBy);
+              setSortOrder(newSortOrder);
+              setPage(1);
+              return;
+            }
+          }
+          if (_pagination.current) setPage(_pagination.current);
+        }}
         pagination={{
           current: page,
           total,
           pageSize: 50,
-          onChange: setPage,
           showSizeChanger: false,
           showTotal: (t) => `${t} tickets`,
         }}

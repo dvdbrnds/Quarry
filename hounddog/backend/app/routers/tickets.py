@@ -52,6 +52,8 @@ async def list_tickets(
     officer_email: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    sort_by: str | None = Query(None),
+    sort_order: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _office: OktaUser = Depends(require_office()),
 ):
@@ -97,9 +99,24 @@ async def list_tickets(
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
 
+    # Server-side sorting
+    TICKET_SORT_FIELDS = {
+        "ticket_number": Ticket.ticket_number,
+        "plate": Ticket.plate,
+        "owner_name": Ticket.owner_name,
+        "lot": Ticket.lot,
+        "violation_type": Ticket.violation_type,
+        "fine_amount": Ticket.fine_amount,
+        "status": Ticket.status,
+        "officer_name": Ticket.officer_name,
+        "issued_at": Ticket.issued_at,
+    }
+    sort_col = TICKET_SORT_FIELDS.get(sort_by or "", Ticket.issued_at)
+    order_clause = sort_col.asc() if sort_order == "ascend" else sort_col.desc()
+
     items = (
         await db.execute(
-            query.order_by(Ticket.issued_at.desc())
+            query.order_by(order_clause)
             .options(defer(Ticket.photo_data))
             .offset((page - 1) * page_size)
             .limit(page_size)
