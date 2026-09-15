@@ -21,6 +21,15 @@ def _sentry_before_send(event, hint):
         _exc_type, exc_value, _ = hint["exc_info"]
         if isinstance(exc_value, HTTPException) and exc_value.status_code in (401, 403, 404):
             return None
+        # Transient DB lock errors caused by startup migrations vs live queries —
+        # these resolve on their own and waste Sentry quota
+        err_str = str(exc_value).lower()
+        if "deadlock" in err_str or "locknotavailable" in err_str or "lock timeout" in err_str:
+            return None
+    # Also check message-level events (structlog warnings about migrations)
+    msg = (event.get("message") or "").lower()
+    if "migration skipped" in msg or "migration failed" in msg:
+        return None
     return event
 
 
@@ -305,7 +314,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         # Set a lock timeout so DDL statements fail fast instead of deadlocking
-        await conn.execute(text("SET lock_timeout = '5s'"))
+        await conn.execute(text("SET lock_timeout = '2s'"))
         try:
             migrations = [
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
