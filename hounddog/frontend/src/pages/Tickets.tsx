@@ -1240,12 +1240,14 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       dataIndex: "ticket_number",
       key: "ticket_number",
       width: 120,
+      sorter: (a, b) => (a.ticket_number || "").localeCompare(b.ticket_number || ""),
       render: (num: string | null) => <span className="font-mono text-brand-primary font-medium">{num || "—"}</span>,
     },
     {
       title: "Plate",
       dataIndex: "plate",
       key: "plate",
+      sorter: (a, b) => (a.plate || "").localeCompare(b.plate || ""),
       render: (plate: string, t: Ticket) => (
         <span>
           <span className="font-mono">{plate}</span>
@@ -1260,16 +1262,19 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       dataIndex: "owner_name",
       key: "owner_name",
       ellipsis: true,
+      sorter: (a, b) => (a.owner_name || "").localeCompare(b.owner_name || ""),
       render: (name: string | null) => name || <span className="text-gray-400">—</span>,
     },
     {
       title: "Location",
       key: "location",
+      sorter: (a, b) => (a.lot || "").localeCompare(b.lot || ""),
       render: (_, t) => t.ticket_category === "moving" ? (t.location_text || "—") : t.lot,
     },
     {
       title: "Violation",
       key: "violation",
+      sorter: (a, b) => (a.violation_type || "").localeCompare(b.violation_type || ""),
       render: (_, t) => (
         <Space wrap>
           <span className="capitalize">{t.violation_type.replace(/_/g, " ")}</span>
@@ -1284,12 +1289,14 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Fine",
       dataIndex: "fine_amount",
       key: "fine",
+      sorter: (a, b) => Number(a.fine_amount) - Number(b.fine_amount),
       render: (amt: string) => `$${Number(amt).toFixed(2)}`,
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      sorter: (a, b) => (a.status || "").localeCompare(b.status || ""),
       render: (status: string) => (
         <Tag color={STATUS_COLORS[status] || "default"}>
           {status.replace("_", " ")}
@@ -1300,6 +1307,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Officer",
       key: "officer",
       width: 140,
+      sorter: (a, b) => (a.officer_name || a.officer_email || "").localeCompare(b.officer_name || b.officer_email || ""),
       render: (_: unknown, t: Ticket) => (
         <span className="text-xs text-gray-500">{t.officer_name || t.officer_email || t.officer_id || "—"}</span>
       ),
@@ -1308,6 +1316,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Issued",
       dataIndex: "issued_at",
       key: "issued_at",
+      sorter: (a, b) => new Date(a.issued_at).getTime() - new Date(b.issued_at).getTime(),
+      defaultSortOrder: "descend",
       render: (d: string) => fmtDateTimeCompact(d),
     },
     ...(isAdmin ? [{
