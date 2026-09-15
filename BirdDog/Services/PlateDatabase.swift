@@ -28,14 +28,14 @@ final class PlateDatabase {
 
     nonisolated static func createContainer() -> ModelContainer {
         do {
-            let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
+            let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self, LegacyRecord.self])
             let config = ModelConfiguration(schema: schema)
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
             print("Database init failed, deleting corrupt store and retrying: \(error)")
             deleteStoreFiles()
             do {
-                let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self])
+                let schema = Schema([PermitRecord.self, ParkingLotRecord.self, ParkingSpotRecord.self, PendingTicket.self, LegacyRecord.self])
                 let config = ModelConfiguration(schema: schema)
                 return try ModelContainer(for: schema, configurations: [config])
             } catch {
@@ -465,6 +465,82 @@ final class PlateDatabase {
             }
         }
         return (try? context.fetch(descriptor)) ?? []
+    }
+
+    // MARK: - Legacy Records
+
+    func legacyLookup(normalizedPlate: String) -> LegacyRecord? {
+        let plate = normalizedPlate
+        var descriptor = FetchDescriptor<LegacyRecord>(
+            predicate: #Predicate<LegacyRecord> { record in
+                record.plateNormalized == plate
+            }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    func seedLegacyRecords(_ records: [LegacySyncEntry]) throws {
+        try context.delete(model: LegacyRecord.self)
+        for entry in records {
+            let plate = entry.plateNormalized.trimmingCharacters(in: .whitespaces)
+            guard !plate.isEmpty else { continue }
+            let record = LegacyRecord(
+                plateNormalized: plate,
+                plateState: entry.plateState,
+                ownerName: entry.ownerName,
+                permitNumber: entry.permitNumber,
+                permitType: entry.permitType,
+                permitStatus: entry.permitStatus,
+                lotZone: entry.lotZone,
+                vehicleDescription: entry.vehicleDescription,
+                source: entry.source
+            )
+            context.insert(record)
+        }
+        try context.save()
+    }
+
+    func legacyCount() -> Int {
+        (try? context.fetchCount(FetchDescriptor<LegacyRecord>())) ?? 0
+    }
+}
+
+struct LegacySyncEntry: Decodable {
+    let id: String
+    let plateNormalized: String
+    let plateState: String
+    let ownerName: String
+    let permitNumber: String
+    let permitType: String
+    let permitStatus: String
+    let lotZone: String
+    let vehicleDescription: String
+    let source: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case plateNormalized = "plate_normalized"
+        case plateState = "plate_state"
+        case ownerName = "owner_name"
+        case permitNumber = "permit_number"
+        case permitType = "permit_type"
+        case permitStatus = "permit_status"
+        case lotZone = "lot_zone"
+        case vehicleDescription = "vehicle_description"
+        case source
+    }
+}
+
+struct LegacySyncResponse: Decodable {
+    let records: [LegacySyncEntry]
+    let serverTimestamp: Date
+    let fullSync: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case records
+        case serverTimestamp = "server_timestamp"
+        case fullSync = "full_sync"
     }
 }
 

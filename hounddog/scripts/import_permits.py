@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Import parking permits from xlsx files into the Quarry database.
+"""Import legacy Omnigo parking permits from xlsx files into the legacy_records table.
 
 Reads both the historical and recent xlsx exports, deduplicates by plate
-(newer record wins), and inserts into the running Postgres via the API.
+(newer record wins), and inserts into the running Postgres via the legacy API.
 """
 
 import sys
@@ -122,7 +122,7 @@ def merge_records(old_records: list[dict], new_records: list[dict]) -> list[dict
 
 
 def to_api_payload(records: list[dict]) -> list[dict]:
-    permits = []
+    legacy_records = []
     for rec in records:
         plate = normalize_plate(rec.get("plate", ""))
         if not plate:
@@ -140,20 +140,26 @@ def to_api_payload(records: list[dict]) -> list[dict]:
         year = str(rec.get("vehicle_year", "")).strip()
         vehicle_desc = " ".join(p for p in [color, year, make, model] if p and p != "UNKNOWN")
 
-        permits.append({
+        legacy_records.append({
             "plate_normalized": plate,
+            "plate_raw": str(rec.get("plate", "")).strip(),
             "plate_state": str(rec.get("plate_state", "")).strip() or "PA",
             "owner_name": owner,
             "permit_number": str(rec.get("permit_number", "")).strip(),
             "permit_type": map_permit_type(rec.get("contact_type", "")),
             "permit_status": map_status(rec.get("status", "")),
             "lot_zone": clean_location(rec.get("location", "")),
+            "vehicle_color": color,
+            "vehicle_make": make,
+            "vehicle_model": model,
+            "vehicle_year": year,
             "vehicle_description": vehicle_desc,
-            "issued_date": parse_date(rec.get("record_date")),
+            "record_date": parse_date(rec.get("record_date")),
             "expiration_date": parse_date(rec.get("expiration_date")),
+            "source": "omnigo",
         })
 
-    return permits
+    return legacy_records
 
 
 def main():
@@ -174,21 +180,21 @@ def main():
     merged = merge_records(old_records, new_records)
     print(f"  → {len(merged)} unique permits")
 
-    permits = to_api_payload(merged)
-    print(f"  → {len(permits)} with valid plates")
+    records = to_api_payload(merged)
+    print(f"  → {len(records)} with valid plates")
 
     BATCH_SIZE = 500
     total_inserted = 0
     total_updated = 0
     total_skipped = 0
 
-    for i in range(0, len(permits), BATCH_SIZE):
-        batch = permits[i : i + BATCH_SIZE]
-        print(f"  Importing batch {i // BATCH_SIZE + 1} ({len(batch)} permits)...")
+    for i in range(0, len(records), BATCH_SIZE):
+        batch = records[i : i + BATCH_SIZE]
+        print(f"  Importing batch {i // BATCH_SIZE + 1} ({len(batch)} records)...")
 
         resp = httpx.post(
-            f"{API_BASE}/api/permits/import",
-            json={"permits": batch},
+            f"{API_BASE}/api/legacy/import",
+            json={"records": batch},
             timeout=120,
         )
 

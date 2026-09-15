@@ -22,6 +22,9 @@ export default function DataManagement() {
   const [clearing, setClearing] = useState(false);
   const [canClearPermits, setCanClearPermits] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const legacyFileRef = useRef<HTMLInputElement>(null);
+  const [legacyCount, setLegacyCount] = useState<number | null>(null);
+  const [legacyUploading, setLegacyUploading] = useState(false);
 
   // Scheduled backup state
   const [schedule, setSchedule] = useState<BackupSchedule | null>(null);
@@ -118,6 +121,7 @@ export default function DataManagement() {
   }, []);
 
   useEffect(() => { load(); loadSchedule(); loadHistory(); }, [load, loadSchedule, loadHistory]);
+  useEffect(() => { api.legacy.count().then(r => setLegacyCount(r.count)).catch(() => {}); }, []);
 
   useEffect(() => {
     fetchCurrentUser().then((user) => {
@@ -734,6 +738,52 @@ export default function DataManagement() {
           />
         </Card>
       </div>
+
+      <Card
+        title={
+          <Space>
+            <DatabaseOutlined />
+            <span>Legacy Omnigo Data</span>
+            {legacyCount != null && <Tag color="orange">{legacyCount.toLocaleString()} records</Tag>}
+          </Space>
+        }
+        size="small"
+        className="mb-4"
+      >
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-500">
+            Import historical Omnigo parking permit data (.xlsx). Plates in this dataset will appear as flags on tickets and in BirdDog.
+          </div>
+          <input
+            ref={legacyFileRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setLegacyUploading(true);
+              try {
+                const result = await api.legacy.importXlsx(file);
+                message.success(`Legacy import: ${result.inserted} inserted, ${result.updated} updated, ${result.skipped} skipped`);
+                api.legacy.count().then(r => setLegacyCount(r.count)).catch(() => {});
+              } catch (err: any) {
+                message.error(err?.message || "Legacy import failed");
+              } finally {
+                setLegacyUploading(false);
+                if (legacyFileRef.current) legacyFileRef.current.value = "";
+              }
+            }}
+          />
+          <Button
+            icon={<UploadOutlined />}
+            loading={legacyUploading}
+            onClick={() => legacyFileRef.current?.click()}
+          >
+            Upload Omnigo XLSX
+          </Button>
+        </div>
+      </Card>
 
       <Card title="Current Database Contents" size="small">
         <Table

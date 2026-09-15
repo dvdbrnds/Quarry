@@ -157,6 +157,23 @@ struct ScanLogView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+
+                if let legacy = entry.legacyInfo {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 9))
+                        Text("LEGACY")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("· \(legacy.ownerName)")
+                            .font(.system(size: 9))
+                            .lineLimit(1)
+                        if !legacy.permitType.isEmpty {
+                            Text("· \(legacy.permitType.capitalized)")
+                                .font(.system(size: 9))
+                        }
+                    }
+                    .foregroundStyle(.orange)
+                }
             }
 
             Spacer()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api, Lot, PermitNote } from "../api";
+import { api, Lot, PermitNote, LegacyRecord } from "../api";
 import { fmtDateTimeCompact } from "../dateUtils";
 import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline, Modal, Select, DatePicker, Input } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -36,6 +36,10 @@ export default function PermitDetail() {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
 
+  // Legacy Omnigo record state
+  const [legacyRecord, setLegacyRecord] = useState<LegacyRecord | null>(null);
+  const [legacyImporting, setLegacyImporting] = useState(false);
+
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -44,6 +48,17 @@ export default function PermitDetail() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.lots.list().then(setLots).catch(() => {}); }, []);
+
+  useEffect(() => {
+    if (!data?.permit?.plates?.length) { setLegacyRecord(null); return; }
+    let cancelled = false;
+    Promise.all(data.permit.plates.map((plate: string) => api.legacy.lookup(plate)))
+      .then((results) => {
+        if (!cancelled) setLegacyRecord(results.find((r) => r != null) ?? null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [data?.permit?.id]);
 
   async function handleTempLotSubmit() {
     if (!id || !tempLotExpiry || tempLotLots.length === 0) return;
@@ -299,6 +314,7 @@ export default function PermitDetail() {
               <Tag color={p.status === "active" ? "green" : p.status === "expired" || p.status === "renewed" ? "default" : "red"}>{p.status}</Tag>
               {data.has_hold && <Tag color="red">HOLD — ${data.unpaid_amount} unpaid</Tag>}
               {data.duplicates.length > 0 && <Tag color="orange">DUPLICATE PLATE</Tag>}
+              {legacyRecord && <Tag color="orange">LEGACY RECORD</Tag>}
             </Space>
             <div className="mt-4 flex gap-4 text-sm"><span>Start: {p.start_date || "—"}</span><span>End: {p.end_date || "No expiry"}</span></div>
           </div>
@@ -336,6 +352,50 @@ export default function PermitDetail() {
             </div>
           }
         />
+      )}
+
+      {legacyRecord && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Tag color="orange">LEGACY</Tag>
+              <span className="font-medium text-amber-800">Omnigo Record Found for {legacyRecord.plate_normalized}</span>
+            </div>
+            {!legacyRecord.imported_at ? (
+              <Button
+                size="small"
+                type="primary"
+                loading={legacyImporting}
+                onClick={async () => {
+                  setLegacyImporting(true);
+                  try {
+                    await api.legacy.importTag(legacyRecord.id);
+                    message.success("Imported as vehicle tag");
+                    setLegacyRecord({ ...legacyRecord, imported_at: new Date().toISOString() });
+                  } catch (e: any) {
+                    message.error(e?.message || "Import failed");
+                  } finally {
+                    setLegacyImporting(false);
+                  }
+                }}
+              >Import as Vehicle Tag</Button>
+            ) : (
+              <Tag color="green">Already Imported</Tag>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1 text-sm">
+            <div><span className="text-amber-600">Owner:</span> {legacyRecord.owner_name}</div>
+            <div><span className="text-amber-600">Permit #:</span> {legacyRecord.permit_number || "—"}</div>
+            <div><span className="text-amber-600">Type:</span> <span className="capitalize">{legacyRecord.permit_type}</span></div>
+            <div><span className="text-amber-600">Lot/Zone:</span> {legacyRecord.lot_zone || "—"}</div>
+            {legacyRecord.vehicle_description && (
+              <div className="col-span-2"><span className="text-amber-600">Vehicle:</span> {legacyRecord.vehicle_description}</div>
+            )}
+            {legacyRecord.record_date && (
+              <div><span className="text-amber-600">Recorded:</span> {legacyRecord.record_date}</div>
+            )}
+          </div>
+        </div>
       )}
 
       <Card styles={{ body: { padding: 0 } }}><Tabs items={tabItems} className="px-4" /></Card>

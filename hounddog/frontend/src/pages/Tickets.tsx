@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
+import { api, LegacyRecord } from "../api";
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 
@@ -938,6 +939,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [loading, setLoading] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [bulkVoiding, setBulkVoiding] = useState(false);
+  const [legacyRecord, setLegacyRecord] = useState<import("../api").LegacyRecord | null>(null);
+  const [legacyImporting, setLegacyImporting] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -988,6 +991,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }, [page, search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, officerEmail, message]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!selected?.plate) { setLegacyRecord(null); return; }
+    let cancelled = false;
+    api.legacy.lookup(selected.plate).then((r) => { if (!cancelled) setLegacyRecord(r); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selected?.id]);
 
   function handlePrintTicket(ticket: Ticket) {
     const photoUrl = ticket.photo_url
@@ -1620,6 +1630,54 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 </Descriptions.Item>
               )}
             </Descriptions>
+
+            {legacyRecord && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Tag color="orange">LEGACY</Tag>
+                    <span className="font-medium text-amber-800">Omnigo Record Found</span>
+                  </div>
+                  {!legacyRecord.imported_at && (
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={legacyImporting}
+                      onClick={async () => {
+                        setLegacyImporting(true);
+                        try {
+                          await api.legacy.importTag(legacyRecord.id);
+                          message.success("Imported as vehicle tag");
+                          setLegacyRecord({ ...legacyRecord, imported_at: new Date().toISOString() });
+                        } catch (e: any) {
+                          message.error(e?.message || "Import failed");
+                        } finally {
+                          setLegacyImporting(false);
+                        }
+                      }}
+                    >Import as Vehicle Tag</Button>
+                  )}
+                  {legacyRecord.imported_at && (
+                    <Tag color="green">Already Imported</Tag>
+                  )}
+                </div>
+                <Descriptions size="small" column={2} bordered>
+                  <Descriptions.Item label="Owner">{legacyRecord.owner_name}</Descriptions.Item>
+                  <Descriptions.Item label="Permit #">{legacyRecord.permit_number || "—"}</Descriptions.Item>
+                  <Descriptions.Item label="Type"><span className="capitalize">{legacyRecord.permit_type}</span></Descriptions.Item>
+                  <Descriptions.Item label="Lot/Zone">{legacyRecord.lot_zone || "—"}</Descriptions.Item>
+                  {legacyRecord.vehicle_description && (
+                    <Descriptions.Item label="Vehicle" span={2}>{legacyRecord.vehicle_description}</Descriptions.Item>
+                  )}
+                  {legacyRecord.record_date && (
+                    <Descriptions.Item label="Record Date">{legacyRecord.record_date}</Descriptions.Item>
+                  )}
+                  {legacyRecord.expiration_date && (
+                    <Descriptions.Item label="Expiry">{legacyRecord.expiration_date}</Descriptions.Item>
+                  )}
+                </Descriptions>
+              </div>
+            )}
 
             <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-1">
               <div className="font-medium text-gray-600 mb-1">Audit Trail</div>

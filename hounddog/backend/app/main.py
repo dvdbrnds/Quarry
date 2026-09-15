@@ -79,6 +79,7 @@ from .routers import (
     violation_types,
     visitor_permits,
     device_logs,
+    legacy,
 )
 from .middleware.audit import AuditMiddleware
 
@@ -1014,6 +1015,30 @@ async def lifespan(app: FastAPI):
                     ALTER TABLE tickets ALTER COLUMN permit_number TYPE VARCHAR(256);
                 END IF;
             END $$""",
+            # Legacy Omnigo records for plate history lookup
+            """CREATE TABLE IF NOT EXISTS legacy_records (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                plate_normalized VARCHAR(32) NOT NULL,
+                plate_raw VARCHAR(32) DEFAULT '',
+                plate_state VARCHAR(8) DEFAULT '',
+                owner_name VARCHAR(256) DEFAULT '',
+                permit_number VARCHAR(64) DEFAULT '',
+                permit_type VARCHAR(64) DEFAULT '',
+                permit_status VARCHAR(32) DEFAULT '',
+                lot_zone VARCHAR(256) DEFAULT '',
+                vehicle_color VARCHAR(64) DEFAULT '',
+                vehicle_make VARCHAR(64) DEFAULT '',
+                vehicle_model VARCHAR(64) DEFAULT '',
+                vehicle_year VARCHAR(8) DEFAULT '',
+                vehicle_description VARCHAR(256) DEFAULT '',
+                record_date DATE,
+                expiration_date DATE,
+                source VARCHAR(64) DEFAULT 'omnigo',
+                imported_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT uq_legacy_plate UNIQUE (plate_normalized)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_legacy_records_plate ON legacy_records(plate_normalized)",
             ]
             for migration in migrations:
                 try:
@@ -1593,6 +1618,7 @@ app.include_router(vehicle_requests.admin_router, tags=["vehicle-requests"])
 app.include_router(vehicle_requests.public_router, tags=["vehicle-requests-public"])
 app.include_router(vehicle_tags.router, prefix="/api/vehicle-tags", tags=["vehicle-tags"])
 app.include_router(device_logs.router, prefix="/api/device-logs", tags=["device-logs"])
+app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

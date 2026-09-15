@@ -139,6 +139,7 @@ final class HoundDogSyncService: ObservableObject {
             try await syncCalendar()
             try await syncEnforcementSettings()
             try await syncRecentTickets()
+            try await syncLegacyRecords()
             await retryPendingTickets()
             DeviceLogService.shared.log(event: "sync_completed", extra: ["permits": "\(permitCount)", "lots": "\(lotCount)"])
             await DeviceLogService.shared.flush()
@@ -308,6 +309,25 @@ final class HoundDogSyncService: ObservableObject {
         }
         recentlyTicketedPlates = map
         print("[HoundDog] Recent tickets: \(map.count) plates ticketed in last 24h")
+    }
+
+    // MARK: - Legacy Records
+
+    private func syncLegacyRecords() async throws {
+        let settings = AppSettings.shared
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/legacy-records") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        let syncResponse = try Self.jsonDecoder.decode(LegacySyncResponse.self, from: data)
+        let db = PlateDatabase.shared
+        try db.seedLegacyRecords(syncResponse.records)
+        let count = db.legacyCount()
+        print("[HoundDog] Legacy records synced: \(count) records")
+        DeviceLogService.shared.log(event: "legacy_sync", extra: ["count": "\(count)"])
     }
 
     // MARK: - Violation Types

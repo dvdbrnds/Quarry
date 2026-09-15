@@ -286,6 +286,17 @@ final class PlateReaderViewModel: ObservableObject {
         let ticketCheck = isPlateTicketed(normalized, currentLot: currentLot)
         let effectiveStatus: PlateStatus = ticketCheck.ticketed ? .ticketed : authResult.status
 
+        var legacyInfo: LegacyPlateInfo?
+        if PlateDatabase.isReady, let legacy = PlateDatabase.shared.legacyLookup(normalizedPlate: normalized) {
+            legacyInfo = LegacyPlateInfo(
+                ownerName: legacy.ownerName,
+                permitType: legacy.permitType,
+                lotZone: legacy.lotZone,
+                vehicleDescription: legacy.vehicleDescription,
+                source: legacy.source
+            )
+        }
+
         let entry = ScannedPlate(
             text: normalized,
             timestamp: now,
@@ -294,7 +305,8 @@ final class PlateReaderViewModel: ObservableObject {
             authStatus: effectiveStatus,
             matchMethod: authResult.matchMethod,
             matchedPlate: authResult.matchedPlate,
-            cameraName: source
+            cameraName: source,
+            legacyInfo: legacyInfo
         )
 
         // Remove the old misread entry if present
@@ -583,6 +595,18 @@ final class PlateReaderViewModel: ObservableObject {
                 diagPath = cameraService.captureDiagnosticSnapshot(plateText: consensusText)
             }
 
+            // Check legacy Omnigo dataset for historical info
+            var legacyInfo: LegacyPlateInfo?
+            if PlateDatabase.isReady, let legacy = PlateDatabase.shared.legacyLookup(normalizedPlate: normalizedPlate) {
+                legacyInfo = LegacyPlateInfo(
+                    ownerName: legacy.ownerName,
+                    permitType: legacy.permitType,
+                    lotZone: legacy.lotZone,
+                    vehicleDescription: legacy.vehicleDescription,
+                    source: legacy.source
+                )
+            }
+
             scanLog.insert(
                 ScannedPlate(
                     text: consensusText,
@@ -594,7 +618,8 @@ final class PlateReaderViewModel: ObservableObject {
                     matchedPlate: authResult.matchedPlate,
                     cameraName: camName,
                     detectionLatency: latency,
-                    diagnosticImagePath: diagPath
+                    diagnosticImagePath: diagPath,
+                    legacyInfo: legacyInfo
                 ),
                 at: 0
             )

@@ -619,6 +619,28 @@ export interface VehicleTagCreate {
   tag_source?: string | null;
 }
 
+export interface LegacyRecord {
+  id: string;
+  plate_normalized: string;
+  plate_raw: string;
+  plate_state: string;
+  owner_name: string;
+  permit_number: string;
+  permit_type: string;
+  permit_status: string;
+  lot_zone: string;
+  vehicle_color: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_year: string;
+  vehicle_description: string;
+  record_date: string | null;
+  expiration_date: string | null;
+  source: string;
+  imported_at: string | null;
+  created_at: string;
+}
+
 export const api = {
   academicCalendar: {
     list: () => request<AcademicSeason[]>("/academic-calendar"),
@@ -1026,5 +1048,26 @@ export const api = {
       request<{ id: string; permit_number: string; permit_type: string; lot_assignment: string; name: string; status: string }>(
         `/vehicle-tags/${id}/convert`, { method: "POST", body: JSON.stringify(data) }
       ),
+  },
+  legacy: {
+    lookup: (plate: string) =>
+      request<LegacyRecord | null>(`/legacy/lookup?plate=${encodeURIComponent(plate)}`),
+    importTag: (id: string) =>
+      request<{ tag_id: string; plate: string }>(`/legacy/${id}/import-tag`, { method: "POST" }),
+    count: () =>
+      request<{ count: number }>("/legacy/count"),
+    importXlsx: async (file: File) => {
+      const { getAccessToken } = await import("./auth");
+      const token = await getAccessToken();
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${BASE}/legacy/import-xlsx`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{ inserted: number; updated: number; skipped: number }>;
+    },
   },
 };

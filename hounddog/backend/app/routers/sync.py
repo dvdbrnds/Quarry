@@ -476,6 +476,59 @@ async def sync_recent_tickets(
     )
 
 
+# ── Legacy Omnigo records sync ───────────────────────────────────────────────
+
+
+class SyncLegacyEntry(BaseModel):
+    id: str
+    plate_normalized: str
+    plate_state: str = ""
+    owner_name: str = ""
+    permit_number: str = ""
+    permit_type: str = ""
+    permit_status: str = ""
+    lot_zone: str = ""
+    vehicle_description: str = ""
+    source: str = "omnigo"
+
+
+class SyncLegacyResponse(BaseModel):
+    records: list[SyncLegacyEntry]
+    server_timestamp: datetime
+    full_sync: bool
+
+
+@router.get("/legacy-records", response_model=SyncLegacyResponse)
+async def sync_legacy_records(
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all legacy Omnigo records so BirdDog can flag plates with history."""
+    from ..models.legacy_record import LegacyRecord
+
+    result = await db.execute(select(LegacyRecord).order_by(LegacyRecord.plate_normalized))
+    records = result.scalars().all()
+    return SyncLegacyResponse(
+        records=[
+            SyncLegacyEntry(
+                id=str(r.id),
+                plate_normalized=r.plate_normalized,
+                plate_state=r.plate_state or "",
+                owner_name=r.owner_name or "",
+                permit_number=r.permit_number or "",
+                permit_type=r.permit_type or "",
+                permit_status=r.permit_status or "",
+                lot_zone=r.lot_zone or "",
+                vehicle_description=r.vehicle_description or "",
+                source=r.source or "omnigo",
+            )
+            for r in records
+        ],
+        server_timestamp=datetime.now(timezone.utc),
+        full_sync=True,
+    )
+
+
 @router.post("/tickets", status_code=202)
 async def upload_ticket(
     ticket: TicketUpload,

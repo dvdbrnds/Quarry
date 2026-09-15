@@ -27,6 +27,8 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
     /// Path to JPEG snapshot captured at the moment of plate confirmation
     /// (only populated when Diagnostic Captures is enabled in settings).
     var diagnosticImagePath: String?
+    /// Legacy Omnigo record info, if this plate has history in the legacy dataset.
+    var legacyInfo: LegacyPlateInfo?
 
     init(
         text: String,
@@ -40,7 +42,8 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         detectionLatency: TimeInterval = 0,
         violationPhotoPath: String? = nil,
         ticketedInLot: String? = nil,
-        diagnosticImagePath: String? = nil
+        diagnosticImagePath: String? = nil,
+        legacyInfo: LegacyPlateInfo? = nil
     ) {
         self.id = UUID()
         self.text = text
@@ -55,7 +58,16 @@ struct ScannedPlate: Identifiable, Sendable, Codable {
         self.violationPhotoPath = violationPhotoPath
         self.ticketedInLot = ticketedInLot
         self.diagnosticImagePath = diagnosticImagePath
+        self.legacyInfo = legacyInfo
     }
+}
+
+struct LegacyPlateInfo: Sendable, Codable, Equatable {
+    let ownerName: String
+    let permitType: String
+    let lotZone: String
+    let vehicleDescription: String
+    let source: String
 }
 
 struct DiagnosticEntry: Sendable, Codable {
