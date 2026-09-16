@@ -1,4 +1,4 @@
-# App Store Review Notes — BirdDog v2.1.0
+# App Store Review Notes — BirdDog v2.2.0
 
 Paste the following into the **Review Notes** field in App Store Connect when submitting:
 
@@ -22,9 +22,9 @@ The Bluetooth connection is used exclusively for communicating with these therma
 
 ## Submission Checklist
 
-- [ ] Version: 2.1.0
+- [ ] Version: 2.2.0
 - [ ] Bundle ID: edu.moravian.birddog
-- [ ] Build number: increment if resubmitting (currently 3)
+- [ ] Build number: increment if resubmitting (currently 1)
 - [ ] Review notes: paste the above
 - [ ] Screenshots: updated if UI changed
 - [ ] Privacy policy URL: confirm it's current

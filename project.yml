@@ -47,8 +47,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.birddog
-        MARKETING_VERSION: "2.1.0"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: P6D8DZ6BZ7
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
