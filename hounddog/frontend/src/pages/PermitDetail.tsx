@@ -39,7 +39,7 @@ export default function PermitDetail() {
 
   // Permit type selector for temp assignment
   const [tempPermitType, setTempPermitType] = useState<string>("");
-  const [permitTypes, setPermitTypes] = useState<{ code: string; label: string }[]>([]);
+  const [permitTypes, setPermitTypes] = useState<{ code: string; label: string; lot_assignments: string[] }[]>([]);
 
   // Legacy Omnigo record state
   const [legacyRecord, setLegacyRecord] = useState<LegacyRecord | null>(null);
@@ -61,7 +61,7 @@ export default function PermitDetail() {
         ]);
         setLots(lotsData);
         if (Array.isArray(ptRes)) {
-          setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label || pt.code })));
+          setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label || pt.code, lot_assignments: pt.lot_assignments || [] })));
         }
       } catch (e) {
         console.error("Failed to load lots/permit types", e);
@@ -79,6 +79,14 @@ export default function PermitDetail() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [data?.permit?.id]);
+
+  function handleTempPermitTypeChange(code: string) {
+    setTempPermitType(code);
+    const pt = permitTypes.find(p => p.code === code);
+    if (pt && pt.lot_assignments.length > 0) {
+      setTempLotLots(pt.lot_assignments);
+    }
+  }
 
   async function handleTempLotSubmit() {
     if (!id || !tempLotExpiry || tempLotLots.length === 0) return;
@@ -438,7 +446,7 @@ export default function PermitDetail() {
             <Select
               placeholder="Keep current type"
               value={tempPermitType || undefined}
-              onChange={setTempPermitType}
+              onChange={handleTempPermitTypeChange}
               allowClear
               className="w-full"
               options={permitTypes.map(pt => ({ label: pt.label, value: pt.code }))}

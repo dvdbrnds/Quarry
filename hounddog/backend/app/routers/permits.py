@@ -1411,8 +1411,18 @@ async def assign_temp_lots(
     if not permit or permit.deleted_at:
         raise HTTPException(404, "Permit not found")
 
-    if not data.lots:
-        raise HTTPException(400, "At least one lot is required")
+    # Auto-fill lots from permit type if none provided
+    lots = data.lots
+    if not lots and data.permit_type:
+        from ..models.permit_type import PermitType as PermitTypeModel
+        pt = (await db.execute(
+            select(PermitTypeModel).where(PermitTypeModel.code == data.permit_type)
+        )).scalar_one_or_none()
+        if pt and pt.lot_assignments:
+            lots = list(pt.lot_assignments)
+
+    if not lots:
+        raise HTTPException(400, "At least one lot is required (or select a permit type with lot assignments)")
 
     from datetime import datetime as dt
     try:
@@ -1427,7 +1437,7 @@ async def assign_temp_lots(
     if not permit.original_lot_assignment:
         permit.original_lot_assignment = permit.lot_assignment
 
-    permit.lot_assignment = ", ".join(data.lots)
+    permit.lot_assignment = ", ".join(lots)
     permit.temp_lot_expires_at = expires
 
     # Optionally override the permit type for the temp assignment
@@ -1441,7 +1451,7 @@ async def assign_temp_lots(
 
     structlog.get_logger("quarry.permits").info(
         "[TempLots] Permit %s: temp lots=%s type=%s expires=%s by %s reason=%s",
-        permit.id, data.lots, data.permit_type or "(unchanged)", expires, user.email, data.reason,
+        permit.id, lots, data.permit_type or "(unchanged)", expires, user.email, data.reason,
     )
 
     return {
