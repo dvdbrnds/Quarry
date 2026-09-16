@@ -1039,6 +1039,7 @@ async def lifespan(app: FastAPI):
                 CONSTRAINT uq_legacy_plate UNIQUE (plate_normalized)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_legacy_records_plate ON legacy_records(plate_normalized)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS original_permit_type VARCHAR(64)",
             ]
             for migration in migrations:
                 try:
@@ -1070,6 +1071,8 @@ async def lifespan(app: FastAPI):
                 UPDATE permits
                 SET lot_assignment = original_lot_assignment,
                     original_lot_assignment = NULL,
+                    permit_type = COALESCE(original_permit_type, permit_type),
+                    original_permit_type = NULL,
                     temp_lot_expires_at = NULL
                 WHERE temp_lot_expires_at IS NOT NULL
                   AND temp_lot_expires_at < NOW()

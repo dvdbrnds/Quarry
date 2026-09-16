@@ -1396,6 +1396,7 @@ class TempLotRequest(BaseModel):
     lots: list[str]
     expires_at: str
     reason: str = ""
+    permit_type: str | None = None
 
 
 @router.post("/{permit_id}/temp-lots")
@@ -1429,18 +1430,26 @@ async def assign_temp_lots(
     permit.lot_assignment = ", ".join(data.lots)
     permit.temp_lot_expires_at = expires
 
+    # Optionally override the permit type for the temp assignment
+    if data.permit_type and data.permit_type != permit.permit_type:
+        if not permit.original_permit_type:
+            permit.original_permit_type = permit.permit_type
+        permit.permit_type = data.permit_type
+
     await db.flush()
     await db.refresh(permit)
 
     structlog.get_logger("quarry.permits").info(
-        "[TempLots] Permit %s: temp lots=%s expires=%s by %s reason=%s",
-        permit.id, data.lots, expires, user.email, data.reason,
+        "[TempLots] Permit %s: temp lots=%s type=%s expires=%s by %s reason=%s",
+        permit.id, data.lots, data.permit_type or "(unchanged)", expires, user.email, data.reason,
     )
 
     return {
         "id": str(permit.id),
         "lot_assignment": permit.lot_assignment,
         "original_lot_assignment": permit.original_lot_assignment,
+        "permit_type": permit.permit_type,
+        "original_permit_type": permit.original_permit_type,
         "temp_lot_expires_at": permit.temp_lot_expires_at.isoformat() if permit.temp_lot_expires_at else None,
     }
 
@@ -1463,14 +1472,20 @@ async def revert_temp_lots(
     permit.original_lot_assignment = None
     permit.temp_lot_expires_at = None
 
+    # Restore original permit type if it was overridden
+    if permit.original_permit_type:
+        permit.permit_type = permit.original_permit_type
+        permit.original_permit_type = None
+
     await db.flush()
     await db.refresh(permit)
 
-    structlog.get_logger("quarry.permits").info("[TempLots] Permit %s: reverted to original lots by %s", permit.id, user.email)
+    structlog.get_logger("quarry.permits").info("[TempLots] Permit %s: reverted to original lots/type by %s", permit.id, user.email)
 
     return {
         "id": str(permit.id),
         "lot_assignment": permit.lot_assignment,
+        "permit_type": permit.permit_type,
     }
 
 

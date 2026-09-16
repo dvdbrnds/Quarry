@@ -691,8 +691,8 @@ export const api = {
     extend: (id: string) =>
       request<Permit>(`/permits/${id}/extend`, { method: "POST" }),
     duplicates: () => request<any[]>("/permits/duplicates"),
-    tempLots: (id: string, data: { lots: string[]; expires_at: string; reason?: string }) =>
-      request<{ id: string; lot_assignment: string; original_lot_assignment: string | null; temp_lot_expires_at: string | null }>(
+    tempLots: (id: string, data: { lots: string[]; expires_at: string; reason?: string; permit_type?: string }) =>
+      request<{ id: string; lot_assignment: string; original_lot_assignment: string | null; temp_lot_expires_at: string | null; permit_type?: string }>(
         `/permits/${id}/temp-lots`, { method: "POST", body: JSON.stringify(data) }
       ),
     revertLots: (id: string) =>

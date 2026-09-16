@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, Lot, PermitNote, LegacyRecord } from "../api";
+import { authHeaders } from "../auth";
 import { fmtDateTimeCompact } from "../dateUtils";
 import { Button, Card, Tag, Table, Tabs, Statistic, Spin, Empty, Alert, Space, App, Timeline, Modal, Select, DatePicker, Input } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -36,6 +37,10 @@ export default function PermitDetail() {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
 
+  // Permit type selector for temp assignment
+  const [tempPermitType, setTempPermitType] = useState<string>("");
+  const [permitTypes, setPermitTypes] = useState<{ code: string; label: string }[]>([]);
+
   // Legacy Omnigo record state
   const [legacyRecord, setLegacyRecord] = useState<LegacyRecord | null>(null);
   const [legacyImporting, setLegacyImporting] = useState(false);
@@ -47,7 +52,22 @@ export default function PermitDetail() {
   }, [id, navigate]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { api.lots.list().then(setLots).catch(() => {}); }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [lotsData, ptRes] = await Promise.all([
+          api.lots.list(),
+          fetch("/api/permit-types", { headers: await authHeaders() }).then(r => r.json()),
+        ]);
+        setLots(lotsData);
+        if (Array.isArray(ptRes)) {
+          setPermitTypes(ptRes.map((pt: any) => ({ code: pt.code, label: pt.label || pt.code })));
+        }
+      } catch (e) {
+        console.error("Failed to load lots/permit types", e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!data?.permit?.plates?.length) { setLegacyRecord(null); return; }
@@ -68,12 +88,14 @@ export default function PermitDetail() {
         lots: tempLotLots,
         expires_at: tempLotExpiry.toISOString(),
         reason: tempLotReason,
+        permit_type: tempPermitType || undefined,
       });
-      message.success("Temporary lot access assigned");
+      message.success("Temporary access assigned");
       setTempLotOpen(false);
       setTempLotLots([]);
       setTempLotExpiry(null);
       setTempLotReason("");
+      setTempPermitType("");
       load();
     } catch (e: any) {
       message.error(e.message || "Failed to assign temp lots");
@@ -342,10 +364,11 @@ export default function PermitDetail() {
           type="info"
           className="mb-6"
           showIcon
-          message="Temporary Lot Access Active"
+          message="Temporary Permit Assignment Active"
           description={
             <div className="flex items-center justify-between">
               <span>
+                {p.original_permit_type && <><strong className="capitalize">{p.original_permit_type.replace(/_/g, " ")}</strong> → <strong className="capitalize">{p.permit_type.replace(/_/g, " ")}</strong> · </>}
                 Original lots: <strong>{p.original_lot_assignment}</strong> · Temp lots: <strong>{p.lot_assignment}</strong> · Expires: <strong>{new Date(p.temp_lot_expires_at).toLocaleString()}</strong>
               </span>
               <Button size="small" danger onClick={handleRevertLots}>Revert Now</Button>
@@ -402,7 +425,7 @@ export default function PermitDetail() {
 
       <Modal
         open={tempLotOpen}
-        title="Temporary Lot Access"
+        title="Temporary Permit Assignment"
         okText="Assign"
         onCancel={() => setTempLotOpen(false)}
         onOk={handleTempLotSubmit}
@@ -411,6 +434,17 @@ export default function PermitDetail() {
       >
         <div className="space-y-4 py-2">
           <div>
+            <label className="block text-sm font-medium mb-1">Permit Type (optional — leave blank to keep current)</label>
+            <Select
+              placeholder="Keep current type"
+              value={tempPermitType || undefined}
+              onChange={setTempPermitType}
+              allowClear
+              className="w-full"
+              options={permitTypes.map(pt => ({ label: pt.label, value: pt.code }))}
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium mb-1">Lots</label>
             <Select
               mode="multiple"
@@ -418,6 +452,7 @@ export default function PermitDetail() {
               value={tempLotLots}
               onChange={setTempLotLots}
               className="w-full"
+              showSearch
               options={lots.map(l => ({ label: l.name, value: l.name }))}
             />
           </div>
