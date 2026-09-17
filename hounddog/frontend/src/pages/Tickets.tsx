@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fmtDateTimeCompact, fmtDateTime } from "../dateUtils";
-import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs, Card, Statistic, Progress, Spin, Tooltip, DatePicker } from "antd";
+import { Table, Input, Select, Tag, Button, Modal, Descriptions, Space, App, Image, Empty, Popconfirm, Tabs, Card, Statistic, Progress, Spin, Tooltip, DatePicker, Form } from "antd";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
@@ -941,6 +941,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [bulkVoiding, setBulkVoiding] = useState(false);
   const [legacyRecord, setLegacyRecord] = useState<import("../api").LegacyRecord | null>(null);
   const [legacyImporting, setLegacyImporting] = useState(false);
+  const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [tagForm] = Form.useForm();
+  const [tagSaving, setTagSaving] = useState(false);
   const [sortBy, setSortBy] = useState<string>("issued_at");
   const [sortOrder, setSortOrder] = useState<string>("descend");
 
@@ -1603,6 +1606,18 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 </Button>
               </>
             )}
+            {isAdmin && selected && (
+              <Button size="small" onClick={() => {
+                tagForm.setFieldsValue({
+                  tag_name: selected.owner_name || "",
+                  tag_plates: selected.plate || "",
+                  tag_vehicle_description: selected.vehicle_description || "",
+                  tag_source: "citation",
+                  tag_notes: `From ${selected.ticket_number || "citation"} in Lot ${selected.lot || "?"}`,
+                });
+                setTagModalOpen(true);
+              }}>🏷️ Add Tag</Button>
+            )}
             {isAdmin && selected && !["paid", "voided"].includes(selected.status) && (
               <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
             )}
@@ -1838,6 +1853,102 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             />
           </div>
         )}
+      </Modal>
+
+      {/* Add Vehicle Tag modal — pre-populated from selected ticket */}
+      <Modal
+        title="🏷️ Add Vehicle Tag"
+        open={tagModalOpen}
+        onCancel={() => { setTagModalOpen(false); tagForm.resetFields(); }}
+        confirmLoading={tagSaving}
+        onOk={async () => {
+          try {
+            const values = await tagForm.validateFields();
+            setTagSaving(true);
+            await api.vehicleTags.create({
+              name: values.tag_name,
+              plates: values.tag_plates.split(/[,\n]/).map((p: string) => p.trim()).filter(Boolean),
+              plate_state: (values.tag_plate_state || "").toUpperCase().trim(),
+              email: values.tag_email || null,
+              phone: values.tag_phone || "",
+              student_name: values.tag_student_name || null,
+              vehicle_year: values.tag_vehicle_year || null,
+              vehicle_make: values.tag_vehicle_make || null,
+              vehicle_model: values.tag_vehicle_model || null,
+              vehicle_color: values.tag_vehicle_color || null,
+              tag_source: values.tag_source || null,
+              tag_notes: values.tag_notes || null,
+              home_address: values.tag_home_address || null,
+            });
+            message.success("Vehicle tag created");
+            setTagModalOpen(false);
+            tagForm.resetFields();
+          } catch (err: any) {
+            if (err?.errorFields) return;
+            message.error(err?.message || "Failed to create tag");
+          } finally {
+            setTagSaving(false);
+          }
+        }}
+        okText="Create Tag"
+        width={520}
+      >
+        <Form form={tagForm} layout="vertical" className="mt-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="tag_name" label="Registered Owner" rules={[{ required: true, message: "Required" }]}>
+              <Input placeholder="John Doe Sr." />
+            </Form.Item>
+            <Form.Item name="tag_student_name" label="Student Name" help="If different from owner">
+              <Input placeholder="Jane Doe" />
+            </Form.Item>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Form.Item name="tag_plates" label="License Plate(s)" className="col-span-2" rules={[{ required: true, message: "Required" }]}
+              help="Separate multiple plates with commas">
+              <Input placeholder="ABC1234" className="font-mono" />
+            </Form.Item>
+            <Form.Item name="tag_plate_state" label="Plate State">
+              <Input placeholder="PA" maxLength={2} style={{ textTransform: "uppercase" }} />
+            </Form.Item>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="tag_email" label="Student Email">
+              <Input placeholder="student@moravian.edu" />
+            </Form.Item>
+            <Form.Item name="tag_phone" label="Phone">
+              <Input placeholder="(555) 123-4567" />
+            </Form.Item>
+          </div>
+          <Form.Item name="tag_home_address" label="Home Address">
+            <Input placeholder="123 Main St, Bethlehem, PA 18018" />
+          </Form.Item>
+          <div className="grid grid-cols-4 gap-2">
+            <Form.Item name="tag_vehicle_year" label="Year">
+              <Input placeholder="2024" maxLength={4} />
+            </Form.Item>
+            <Form.Item name="tag_vehicle_make" label="Make">
+              <Input placeholder="Toyota" />
+            </Form.Item>
+            <Form.Item name="tag_vehicle_model" label="Model">
+              <Input placeholder="Camry" />
+            </Form.Item>
+            <Form.Item name="tag_vehicle_color" label="Color">
+              <Input placeholder="White" />
+            </Form.Item>
+          </div>
+          <Form.Item name="tag_source" label="Source">
+            <Select placeholder="How was this vehicle identified?" options={[
+              { value: "JNET", label: "JNET" },
+              { value: "CLEAN", label: "CLEAN" },
+              { value: "citation", label: "From Citation" },
+              { value: "manual", label: "Manual Entry" },
+              { value: "other", label: "Other" },
+            ]} />
+          </Form.Item>
+          <Form.Item name="tag_notes" label="Notes">
+            <Input.TextArea rows={2} placeholder="JNET/CLEAN results, officer observations…" />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );
