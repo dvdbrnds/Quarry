@@ -169,9 +169,11 @@ final class HoundDogSyncService: ObservableObject {
             try await syncViolationTypes()
             try await syncCalendar()
             try await syncEnforcementSettings()
-            try await syncRecentTickets()
             try await syncLegacyRecords()
             await retryPendingTickets()
+            // Sync recent tickets AFTER uploading pending tickets so other
+            // devices see this device's freshly uploaded tickets immediately
+            try await syncRecentTickets()
             DeviceLogService.shared.log(event: "sync_completed", extra: ["permits": "\(permitCount)", "lots": "\(lotCount)"])
             await DeviceLogService.shared.flush()
             syncState = .synced
@@ -489,6 +491,9 @@ final class HoundDogSyncService: ObservableObject {
                 ticket.fineAmount = result.fineAmount
                 ticket.offenseNumber = result.offenseNumber
                 try? db.saveContext()
+                // Immediately mark plate as ticketed so all devices see it
+                let normalized = ticket.plate.uppercased().trimmingCharacters(in: .whitespaces)
+                recentlyTicketedPlates[normalized] = ticket.lot
             } catch {
                 print("[HoundDog] Retry failed for ticket \(ticket.ticketId): \(error.localizedDescription)")
                 DeviceLogService.shared.log(level: "error", event: "ticket_retry_failed", extra: ["error": error.localizedDescription])
