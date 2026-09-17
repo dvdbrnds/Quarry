@@ -1284,12 +1284,24 @@ def remaining_term_ok(end: date) -> bool:
     return end > today_local()
 
 
-@router.delete("/{permit_id}", status_code=410)
-async def delete_permit(permit_id: uuid.UUID):
-    raise HTTPException(
-        410,
-        "Direct delete is disabled. Use POST /api/permits/{id}/cancel.",
+@router.delete("/{permit_id}")
+async def delete_permit(
+    permit_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Soft-delete (purge) a permit — hides it from all queries and sync."""
+    permit = await db.get(Permit, permit_id)
+    if not permit:
+        raise HTTPException(404, "Permit not found")
+    if permit.deleted_at:
+        return {"status": "already_deleted", "id": str(permit_id)}
+    permit.deleted_at = datetime.now(timezone.utc)
+    await db.flush()
+    structlog.get_logger("quarry.permits").info(
+        "Permit %s purged by %s", permit_id, user.email,
     )
+    return {"status": "deleted", "id": str(permit_id)}
 
 
 class BulkStatusRequest(BaseModel):
