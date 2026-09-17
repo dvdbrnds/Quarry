@@ -182,7 +182,15 @@ async def sync_permits(
     else:
         query = query.where(Permit.deleted_at.is_(None))
 
-    permits = (await db.execute(query.order_by(Permit.updated_at))).scalars().all()
+    # Order so cancelled/expired permits come first — when BirdDog merges
+    # duplicate plates, active permits will overwrite inactive ones.
+    from sqlalchemy import case as sa_case
+    status_order = sa_case(
+        (Permit.status == "active", 1),
+        (Permit.status == "pending_payment", 1),
+        else_=0,
+    )
+    permits = (await db.execute(query.order_by(status_order, Permit.updated_at))).scalars().all()
 
     return SyncPermitsResponse(
         permits=permits,

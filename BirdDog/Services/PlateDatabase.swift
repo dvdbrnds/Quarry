@@ -106,17 +106,43 @@ final class PlateDatabase {
             let entryIsHC = entryHC == "temporary" || entryHC == "permanent"
 
             if let existing = seenPlates[normalized] {
-                // Duplicate plate — merge HC status: if either permit has HC, keep it
+                let activeStatuses: Set<String> = ["active", "valid"]
+                let existingIsActive = activeStatuses.contains(existing.permitStatus.lowercased())
+                let incomingIsActive = activeStatuses.contains(permit.permitStatus.lowercased())
+
+                if !existingIsActive && incomingIsActive {
+                    // Incoming permit is active but existing is not — replace with incoming,
+                    // keeping merged data from the old record
+                    existing.permitNumber = permit.permitNumber
+                    existing.permitType = permit.permitType
+                    existing.permitStatus = permit.permitStatus
+                    existing.issuedDate = permit.parsedIssuedDate
+                    existing.expirationDate = permit.parsedExpirationDate
+                    existing.ownerName = permit.ownerName
+                    existing.vehicleDescription = permit.vehicleDescription
+                    // Merge lot zones from both permits
+                    if !permit.lotZone.isEmpty {
+                        let existingZones = existing.lotZone
+                        if existingZones.isEmpty {
+                            existing.lotZone = permit.lotZone
+                        } else if !existingZones.contains(permit.lotZone) {
+                            existing.lotZone = "\(permit.lotZone), \(existingZones)"
+                        }
+                    }
+                } else {
+                    // Existing is active (or both inactive) — just merge lot zones
+                    if !permit.lotZone.isEmpty {
+                        let existingZones = existing.lotZone
+                        if !existingZones.contains(permit.lotZone) {
+                            existing.lotZone = existingZones.isEmpty ? permit.lotZone : "\(existingZones), \(permit.lotZone)"
+                        }
+                    }
+                }
+
+                // Merge HC status: if either permit has HC, keep it
                 if entryIsHC && existing.hcStatus == "none" {
                     existing.hcStatus = entryHC
                     existing.hcExpiry = permit.parsedHcExpiry
-                }
-                // Merge lot zones so the combined record covers all lots
-                if !permit.lotZone.isEmpty {
-                    let existingZones = existing.lotZone
-                    if !existingZones.contains(permit.lotZone) {
-                        existing.lotZone = existingZones.isEmpty ? permit.lotZone : "\(existingZones), \(permit.lotZone)"
-                    }
                 }
                 skippedDuplicate += 1
                 continue
