@@ -1581,10 +1581,23 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         open={!!selected}
         onCancel={() => setSelected(null)}
         title={
-          <Space>
-            {selected?.ticket_number || (selected?.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail")}
-            {selected?.ticket_category === "moving" && <Tag color="red">Moving Violation</Tag>}
-          </Space>
+          <div className="flex items-center justify-between pr-8">
+            <Space>
+              {selected?.ticket_number || (selected?.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail")}
+              {selected?.ticket_category === "moving" && <Tag color="red">Moving Violation</Tag>}
+            </Space>
+            {isAdmin && selected && (
+              <Button size="small" onClick={() => {
+                tagForm.setFieldsValue({
+                  tag_name: selected.owner_name || "",
+                  tag_plates: selected.plate || "",
+                  tag_source: "citation",
+                  tag_notes: `From ${selected.ticket_number || "citation"} in Lot ${selected.lot || "?"}`,
+                });
+                setTagModalOpen(true);
+              }}>🏷️ Add Tag</Button>
+            )}
+          </div>
         }
         footer={
           <div className="flex flex-wrap items-center gap-2">
@@ -1605,18 +1618,6 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   Escalate
                 </Button>
               </>
-            )}
-            {isAdmin && selected && (
-              <Button size="small" onClick={() => {
-                tagForm.setFieldsValue({
-                  tag_name: selected.owner_name || "",
-                  tag_plates: selected.plate || "",
-                  tag_vehicle_description: selected.vehicle_description || "",
-                  tag_source: "citation",
-                  tag_notes: `From ${selected.ticket_number || "citation"} in Lot ${selected.lot || "?"}`,
-                });
-                setTagModalOpen(true);
-              }}>🏷️ Add Tag</Button>
             )}
             {isAdmin && selected && !["paid", "voided"].includes(selected.status) && (
               <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
