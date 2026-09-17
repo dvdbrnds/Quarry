@@ -1306,8 +1306,8 @@ export default function Permits() {
           <p className="text-xs text-gray-500 mb-4">
             Register a known vehicle without a permit. Use JNET/CLEAN data to identify the owner.
           </p>
-          <Form.Item name="tag_name" label="Owner Name" rules={[{ required: true, message: "Required" }]}>
-            <Input placeholder="John Doe" />
+          <Form.Item name="tag_name" label="Student / Owner Name" rules={[{ required: true, message: "Required" }]}>
+            <Input placeholder="Jane Doe" />
           </Form.Item>
           <div className="grid grid-cols-3 gap-3">
             <Form.Item name="tag_plates" label="License Plate(s)" className="col-span-2" rules={[{ required: true, message: "Required" }]}
