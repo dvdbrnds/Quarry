@@ -1041,6 +1041,11 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_legacy_records_plate ON legacy_records(plate_normalized)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS original_permit_type VARCHAR(64)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS student_name VARCHAR(256)",
+            # Ensure designation codes are set so access schedules apply correctly
+            "UPDATE parking_lots SET designation_code = 'RS' WHERE name IN ('B', 'C', 'D', 'G', 'P', 'T', 'Q') AND (designation_code IS NULL OR designation_code = '')",
+            "UPDATE parking_lots SET designation_code = 'PR' WHERE name IN ('I', 'Z') AND (designation_code IS NULL OR designation_code = '')",
+            "UPDATE parking_lots SET designation_code = 'FSC' WHERE name IN ('A', 'F', 'H', 'J', 'M', 'N', 'O', 'R', 'S', 'W') AND (designation_code IS NULL OR designation_code = '')",
+            "UPDATE parking_lots SET designation_code = 'C' WHERE name IN ('U', 'X') AND (designation_code IS NULL OR designation_code = '')",
             ]
             for migration in migrations:
                 try:

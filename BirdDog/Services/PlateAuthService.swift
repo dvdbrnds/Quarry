@@ -159,6 +159,12 @@ final class PlateAuthService: PlateCheckable {
             }
         }
 
+        // Visitors are allowed in any lot — they don't know campus lot rules
+        let visitorTypes: Set<String> = ["visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"]
+        if visitorTypes.contains(record.permitType.lowercased()) {
+            return .authorized(permit: info)
+        }
+
         // Lot access: check zone match, diversions, and time-of-day schedule
         if let currentLot {
             let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot })
