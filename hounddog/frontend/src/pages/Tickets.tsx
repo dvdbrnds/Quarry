@@ -1586,7 +1586,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               {selected?.ticket_number || (selected?.ticket_category === "moving" ? "Citation Detail" : "Ticket Detail")}
               {selected?.ticket_category === "moving" && <Tag color="red">Moving Violation</Tag>}
             </Space>
-            {isAdmin && selected && (
+            {isOffice && selected && (
               <Button size="small" onClick={() => {
                 tagForm.setFieldsValue({
                   tag_name: selected.owner_name || "",
