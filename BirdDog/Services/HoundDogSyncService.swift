@@ -37,6 +37,37 @@ final class HoundDogSyncService: ObservableObject {
     }()
     private static let isoFormatter = ISO8601DateFormatter()
 
+    /// Max dimension for upload photos and target max file size (~2MB).
+    /// Photos from the camera pipeline are already 1280px but photos from
+    /// the photo picker or external camera may be full resolution.
+    private static let uploadMaxDimension: CGFloat = 1920
+    private static let uploadJPEGQuality: CGFloat = 0.70
+    private static let uploadMaxBytes = 2 * 1024 * 1024 // 2 MB
+
+    static func compressPhotoForUpload(path: String) -> Data? {
+        guard let original = UIImage(contentsOfFile: path) else {
+            return try? Data(contentsOf: URL(fileURLWithPath: path))
+        }
+        let size = original.size
+        let scale = min(uploadMaxDimension / max(size.width, size.height), 1.0)
+        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in original.draw(in: CGRect(origin: .zero, size: targetSize)) }
+
+        // Try at preferred quality first; step down if still too large
+        if let data = resized.jpegData(compressionQuality: uploadJPEGQuality), data.count <= uploadMaxBytes {
+            return data
+        }
+        // Reduce quality until under limit
+        for q in stride(from: 0.5, through: 0.2, by: -0.1) {
+            if let data = resized.jpegData(compressionQuality: q), data.count <= uploadMaxBytes {
+                return data
+            }
+        }
+        // Last resort: lowest quality
+        return resized.jpegData(compressionQuality: 0.1)
+    }
+
     private var syncTimer: Timer?
     private let monitor = NWPathMonitor()
     private var isConnected = false
@@ -506,14 +537,14 @@ final class HoundDogSyncService: ObservableObject {
         ]
 
         if let photoPath = ticket.photoPath,
-           let imageData = try? Data(contentsOf: URL(fileURLWithPath: photoPath)) {
+           let imageData = Self.compressPhotoForUpload(path: photoPath) {
             body["photo_base64"] = imageData.base64EncodedString()
         }
 
         if !ticket.additionalPhotoPaths.isEmpty {
             var extras: [String] = []
             for path in ticket.additionalPhotoPaths {
-                if let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                if let data = Self.compressPhotoForUpload(path: path) {
                     extras.append(data.base64EncodedString())
                 }
             }
