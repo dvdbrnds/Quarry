@@ -588,6 +588,7 @@ export interface VehicleTag {
   email: string | null;
   phone: string;
   home_address: string | null;
+  student_name: string | null;
   vehicle_make: string | null;
   vehicle_model: string | null;
   vehicle_color: string | null;
@@ -611,6 +612,7 @@ export interface VehicleTagCreate {
   email?: string | null;
   phone?: string;
   home_address?: string | null;
+  student_name?: string | null;
   vehicle_make?: string | null;
   vehicle_model?: string | null;
   vehicle_color?: string | null;

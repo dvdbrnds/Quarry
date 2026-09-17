@@ -1040,6 +1040,7 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS idx_legacy_records_plate ON legacy_records(plate_normalized)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS original_permit_type VARCHAR(64)",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS student_name VARCHAR(256)",
             ]
             for migration in migrations:
                 try:

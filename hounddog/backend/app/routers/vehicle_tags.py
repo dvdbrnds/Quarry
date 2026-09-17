@@ -27,6 +27,7 @@ class VehicleTagCreate(BaseModel):
     email: str | None = None
     phone: str = ""
     home_address: str | None = None
+    student_name: str | None = None
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     vehicle_color: str | None = None
@@ -42,6 +43,7 @@ class VehicleTagUpdate(BaseModel):
     email: str | None = None
     phone: str | None = None
     home_address: str | None = None
+    student_name: str | None = None
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     vehicle_color: str | None = None
@@ -58,6 +60,7 @@ class VehicleTagRead(BaseModel):
     email: str | None
     phone: str
     home_address: str | None
+    student_name: str | None = None
     vehicle_make: str | None
     vehicle_model: str | None
     vehicle_color: str | None
@@ -152,6 +155,7 @@ async def create_vehicle_tag(
         email=data.email,
         phone=data.phone,
         home_address=data.home_address,
+        student_name=data.student_name,
         permit_type="vehicle_tag",
         status="active",
         lot_assignment="",
@@ -207,6 +211,8 @@ async def update_vehicle_tag(
         tag.phone = data.phone
     if data.home_address is not None:
         tag.home_address = data.home_address
+    if data.student_name is not None:
+        tag.student_name = data.student_name
     if data.vehicle_make is not None:
         tag.vehicle_make = data.vehicle_make
     if data.vehicle_model is not None:

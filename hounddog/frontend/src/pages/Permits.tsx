@@ -1279,6 +1279,7 @@ export default function Permits() {
               plate_state: (values.tag_plate_state || "").toUpperCase().trim(),
               email: values.tag_email || null,
               phone: values.tag_phone || "",
+              student_name: values.tag_student_name || null,
               vehicle_year: values.tag_vehicle_year || null,
               vehicle_make: values.tag_vehicle_make || null,
               vehicle_model: values.tag_vehicle_model || null,
@@ -1306,9 +1307,14 @@ export default function Permits() {
           <p className="text-xs text-gray-500 mb-4">
             Register a known vehicle without a permit. Use JNET/CLEAN data to identify the owner.
           </p>
-          <Form.Item name="tag_name" label="Student / Owner Name" rules={[{ required: true, message: "Required" }]}>
-            <Input placeholder="Jane Doe" />
-          </Form.Item>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item name="tag_name" label="Registered Owner" rules={[{ required: true, message: "Required" }]}>
+              <Input placeholder="John Doe Sr." />
+            </Form.Item>
+            <Form.Item name="tag_student_name" label="Student Name" help="If different from owner">
+              <Input placeholder="Jane Doe" />
+            </Form.Item>
+          </div>
           <div className="grid grid-cols-3 gap-3">
             <Form.Item name="tag_plates" label="License Plate(s)" className="col-span-2" rules={[{ required: true, message: "Required" }]}
               help="Separate multiple plates with commas">
