@@ -16,8 +16,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, get_current_user, require_office
 from ..database import get_db
 from ..models.permit import Permit
+from ..models.ticket import Ticket
+
+import structlog
+
+logger = structlog.get_logger("quarry.vehicle_tags")
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+async def _sync_tag_to_tickets(db: AsyncSession, tag: Permit):
+    """Propagate tag owner info to all tickets matching any of the tag's plates."""
+    if not tag.plates:
+        return 0
+    normalized = [p.upper().replace(" ", "").replace("-", "") for p in tag.plates]
+    tickets = (await db.execute(
+        select(Ticket).where(Ticket.plate.in_(normalized))
+    )).scalars().all()
+    updated = 0
+    for t in tickets:
+        changed = False
+        if tag.name and t.owner_name != tag.name:
+            t.owner_name = tag.name
+            changed = True
+        if tag.email and not t.notification_email:
+            t.notification_email = tag.email
+            changed = True
+        if changed:
+            updated += 1
+    if updated:
+        await db.flush()
+        logger.info("Synced tag %s to %d ticket(s)", tag.id, updated)
+    return updated
 
 
 class VehicleTagCreate(BaseModel):
@@ -171,6 +201,9 @@ async def create_vehicle_tag(
     await db.flush()
     await db.refresh(tag)
 
+    # Propagate owner info to all tickets with this plate
+    await _sync_tag_to_tickets(db, tag)
+
     return VehicleTagRead(
         id=tag.id,
         name=tag.name,
@@ -178,6 +211,7 @@ async def create_vehicle_tag(
         email=tag.email,
         phone=tag.phone or "",
         home_address=tag.home_address,
+        student_name=tag.student_name,
         vehicle_make=tag.vehicle_make,
         vehicle_model=tag.vehicle_model,
         vehicle_color=tag.vehicle_color,
@@ -231,6 +265,9 @@ async def update_vehicle_tag(
     await db.flush()
     await db.refresh(tag)
 
+    # Propagate updated owner info to all tickets with this plate
+    await _sync_tag_to_tickets(db, tag)
+
     return VehicleTagRead(
         id=tag.id,
         name=tag.name,
@@ -238,6 +275,7 @@ async def update_vehicle_tag(
         email=tag.email,
         phone=tag.phone or "",
         home_address=tag.home_address,
+        student_name=tag.student_name,
         vehicle_make=tag.vehicle_make,
         vehicle_model=tag.vehicle_model,
         vehicle_color=tag.vehicle_color,

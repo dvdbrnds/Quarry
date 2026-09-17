@@ -687,13 +687,39 @@ async def update_ticket(
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updated_fields = data.model_dump(exclude_unset=True)
+    for field, value in updated_fields.items():
         if field == "status" and value not in VALID_STATUSES:
             raise HTTPException(400, f"Invalid status: {value}")
         setattr(ticket, field, value)
 
     await db.flush()
     await db.refresh(ticket)
+
+    # If owner info changed, propagate to the vehicle tag and other tickets on same plate
+    if "owner_name" in updated_fields and ticket.owner_name:
+        plate_norm = ticket.plate.upper().replace(" ", "").replace("-", "")
+        # Update the associated tag
+        tag_result = await db.execute(
+            select(Permit).where(
+                Permit.is_tag_only.is_(True),
+                Permit.deleted_at.is_(None),
+                Permit.plates.any(plate_norm),
+            )
+        )
+        tag = tag_result.scalar_one_or_none()
+        if tag:
+            tag.name = ticket.owner_name
+            if ticket.notification_email and not tag.email:
+                tag.email = ticket.notification_email
+            await db.flush()
+        # Update other tickets with the same plate
+        await db.execute(
+            Ticket.__table__.update()
+            .where(Ticket.plate == ticket.plate, Ticket.id != ticket.id)
+            .values(owner_name=ticket.owner_name)
+        )
+        await db.flush()
 
     return ticket
 
