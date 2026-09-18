@@ -38,6 +38,6 @@ class SignageChannel(AlertChannel):
         try:
             from ...routers.signage import broadcast_to_screens
             await broadcast_to_screens("alert_clear", {"id": str(alert.id)})
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass

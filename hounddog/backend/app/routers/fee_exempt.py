@@ -580,7 +580,7 @@ async def send_balance_payment(
             amount_display=f"${balance:.2f}",
             checkout_url=session.url,
         )
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.exception("Failed to send balance-due email to %s", app.student_email)
 
@@ -834,7 +834,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
                     if refunds.data:
                         permit.refund_id = refunds.data[0].id
                         already_refunded = True
-            except Exception:
+            except Exception as e:
                 sentry_sdk.capture_exception(e)
                 pass
 

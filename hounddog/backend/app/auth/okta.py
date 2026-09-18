@@ -289,7 +289,7 @@ async def get_current_user(request: Request) -> OktaUser:
         try:
             import sentry_sdk
             sentry_sdk.set_user({"id": user.sub, "role": user.role})
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
         return user

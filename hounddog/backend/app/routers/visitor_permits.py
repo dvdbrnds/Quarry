@@ -1001,7 +1001,7 @@ async def _notify_permit_change(action: str, count: int):
     try:
         from ..services.apns import send_permit_push
         await send_permit_push(action, count)
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("APNs push notification failed")
@@ -1024,7 +1024,7 @@ async def _send_visitor_confirmation(permit: Permit):
             start_date=start_str,
             end_date=end_str,
         )
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Visitor confirmation email failed")
@@ -1060,7 +1060,7 @@ async def _send_sponsor_approval_email(
             student_name=student_name,
             instructor_name=instructor_name,
         )
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Sponsor approval email failed")

@@ -79,7 +79,7 @@ class AxiomRequestLogger:
                                 payload_b64 += "=" * padding
                                 payload = json.loads(base64.urlsafe_b64decode(payload_b64))
                                 user_email = payload.get("email") or payload.get("sub")
-                            except Exception:
+                            except Exception as e:
                                 pass  # intentional: non-JWT tokens are normal
                         break
 
@@ -114,5 +114,5 @@ class AxiomRequestLogger:
                         },
                         timeout=2.0,
                     )
-            except Exception:
+            except Exception as e:
                 pass  # intentional: logging must never break the app

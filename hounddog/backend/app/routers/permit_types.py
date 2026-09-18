@@ -430,7 +430,7 @@ async def run_lottery(
                 body_html=body_html,
                 body_text=body_text,
             )
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             logger.error("Failed to notify waitlisted applicant %s", app.id, exc_info=True)
 
@@ -534,7 +534,7 @@ async def advance_waitlist(
                         new_position=app.waitlist_position,
                         total_waitlisted=total_wl,
                     )
-                except Exception:
+                except Exception as e:
                     sentry_sdk.capture_exception(e)
                     logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)
 

@@ -1479,7 +1479,7 @@ async def admin_add_to_waitlist(
                             class_year = int(cy)
                         except (ValueError, TypeError):
                             pass
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
 

@@ -1178,6 +1178,6 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
                     new_position=app.waitlist_position,
                     total_waitlisted=total_wl,
                 )
-            except Exception:
+            except Exception as e:
                 sentry_sdk.capture_exception(e)
                 _logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)

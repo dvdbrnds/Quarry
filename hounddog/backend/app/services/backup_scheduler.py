@@ -160,7 +160,7 @@ def _read_schedule_from_disk() -> dict:
     if SCHEDULE_FILE.exists():
         try:
             return json.loads(SCHEDULE_FILE.read_text())
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
     return {"enabled": False}
@@ -335,7 +335,7 @@ async def list_persisted_backups() -> list[dict]:
                 "source": "disk",
                 "created_at": datetime.utcfromtimestamp(stat.st_mtime).replace(tzinfo=timezone.utc).isoformat(),
             })
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
     return history

@@ -259,7 +259,7 @@ def _read_schedule() -> dict:
     if SCHEDULE_FILE.exists():
         try:
             return json.loads(SCHEDULE_FILE.read_text())
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
     return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
@@ -327,7 +327,7 @@ async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db))
         data = body.model_dump()
         try:
             existing = await _read_schedule_db(db)
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             existing = {}
         data["last_run"] = existing.get("last_run")

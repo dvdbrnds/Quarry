@@ -939,7 +939,7 @@ async def reassign_permit(
                 amount_display=f"${diff:.2f}",
                 checkout_url=session.url,
             )
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
 
@@ -1124,7 +1124,7 @@ async def _permit_payment_info(
                 elif getattr(pi, "amount", None):
                     amount_paid = amount_paid or (Decimal(str(pi.amount)) / 100)
                     refundable = amount_paid
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
 

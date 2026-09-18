@@ -89,7 +89,7 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
                         role = "student"
                     elif sis.employee:
                         role = "staff"
-            except Exception:
+            except Exception as e:
                 sentry_sdk.capture_exception(e)
                 logger.debug("SIS lookup failed during auth for %s", user.email)
 

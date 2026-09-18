@@ -1396,7 +1396,7 @@ async def stripe_backfill_emails(
                         if not email and ticket.dispute_email:
                             email = ticket.dispute_email
                             source = "ticket.dispute_email"
-                except Exception:
+                except Exception as e:
                     sentry_sdk.capture_exception(e)
                     pass
 
@@ -2152,7 +2152,7 @@ def _fetch_stripe_fee(payment_intent_id: str) -> tuple[int, int]:
         )
         bt = pi.latest_charge.balance_transaction
         return bt.fee, bt.net
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         return 0, 0
 
@@ -2468,7 +2468,7 @@ async def bulk_refund_execute(
                                 Decimal("0.00"),
                                 (cache_row.amount or Decimal("0")) - live_left,
                             )
-                        except Exception:
+                        except Exception as e:
                             sentry_sdk.capture_exception(e)
                             cache_row.amount_refunded = (
                                 (cache_row.amount_refunded or Decimal("0")) + refunded_now
@@ -2503,7 +2503,7 @@ async def bulk_refund_execute(
                     sentry_sdk.capture_exception(e)
                     try:
                         await db.rollback()
-                    except Exception:
+                    except Exception as e:
                         pass
                     failed += 1
                     payload.update({

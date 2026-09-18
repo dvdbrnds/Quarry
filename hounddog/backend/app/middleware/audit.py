@@ -215,7 +215,7 @@ async def _identify_user(headers: list[tuple[bytes, bytes]]) -> tuple[str, str]:
             email = payload.get("email") or payload.get("sub") or "unknown"
             sub = payload.get("sub", "")
             return email, sub
-        except Exception:
+        except Exception as e:
             sentry_sdk.capture_exception(e)
             pass
 
@@ -227,7 +227,7 @@ async def _identify_user(headers: list[tuple[bytes, bytes]]) -> tuple[str, str]:
             row = result.first()
             if row:
                 return f"device:{row[0]}", f"device:{row[1]}"
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         pass
 

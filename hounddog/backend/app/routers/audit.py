@@ -152,7 +152,7 @@ async def audit_diagnostic(
     try:
         row = await db.execute(text("SELECT count(*) FROM audit_log"))
         results["steps"]["total_rows_after"] = row.scalar()
-    except Exception:
+    except Exception as e:
         sentry_sdk.capture_exception(e)
         pass
 

@@ -53,7 +53,7 @@ class AxiomHandler(logging.Handler):
             return
         try:
             client.ingest_events(self.dataset, self._buffer)
-        except Exception:
+        except Exception as e:
             pass
         self._buffer.clear()
         self._last_flush = time.monotonic()

@@ -134,7 +134,7 @@ async def ticket_creation_test(
         steps["ticket_insert_traceback"] = traceback.format_exc()
         try:
             await db.rollback()
-        except Exception:
+        except Exception as e:
             pass
 
     # Step 6: Check public_url and list actual tickets
