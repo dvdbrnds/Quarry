@@ -1,6 +1,7 @@
 """Okta OIDC token verification for the dashboard."""
 
 import logging
+import sentry_sdk
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
 import httpx
