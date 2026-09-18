@@ -79,6 +79,6 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>SENTRY_DSN</key>
-	<string>$(SENTRY_DSN)</string>
+	<string>https://39ea80c1bf211e27ef8ed4ac5805d668@o4511224468275200.ingest.us.sentry.io/4511877191827456</string>
 </dict>
 </plist>
