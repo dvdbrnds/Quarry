@@ -339,10 +339,9 @@ async def import_xlsx(
         "Owner": "owner",
     }
 
-    inserted = 0
-    updated = 0
+    # Parse all rows first (CPU-only, no DB)
+    parsed: list[dict] = []
     skipped = 0
-
     for row in rows[1:]:
         raw = dict(zip(headers, row))
         rec = {}
@@ -357,7 +356,6 @@ async def import_xlsx(
             skipped += 1
             continue
 
-        # Build fields
         owner = str(rec.get("owner", "")).strip()
         if not owner:
             first = str(rec.get("first_name", "")).strip()
@@ -370,7 +368,6 @@ async def import_xlsx(
         year = str(rec.get("vehicle_year", "")).strip()
         vehicle_desc = " ".join(p for p in [color, year, make, model] if p and p != "UNKNOWN")
 
-        # Clean location
         loc = str(rec.get("location", "")).strip()
         for prefix in ("_PARKING LOTS : ", "_PARKING LOTS", "PARKING LOTS : ", "PARKING LOTS"):
             if loc.upper().startswith(prefix):
@@ -378,7 +375,6 @@ async def import_xlsx(
                 break
         loc = loc or "GENERAL"
 
-        # Map contact type to permit type
         ct = str(rec.get("contact_type", "")).strip().lower()
         if "faculty" in ct or "staff" in ct:
             permit_type = "faculty"
@@ -387,7 +383,6 @@ async def import_xlsx(
         else:
             permit_type = "student"
 
-        # Map status
         raw_status = str(rec.get("status", "")).strip().lower()
         if raw_status in ("valid", "active"):
             status = "active"
@@ -398,52 +393,86 @@ async def import_xlsx(
         else:
             status = "active"
 
-        record_date = _parse_date(rec.get("record_date"))
-        exp_date = _parse_date(rec.get("expiration_date"))
+        parsed.append({
+            "plate": plate,
+            "plate_raw": plate_raw,
+            "plate_state": str(rec.get("plate_state", "")).strip() or "PA",
+            "owner": owner,
+            "permit_number": str(rec.get("permit_number", "")).strip(),
+            "permit_type": permit_type,
+            "status": status,
+            "loc": loc,
+            "color": color,
+            "make": make,
+            "model": model,
+            "year": year,
+            "vehicle_desc": vehicle_desc,
+            "record_date": _parse_date(rec.get("record_date")),
+            "exp_date": _parse_date(rec.get("expiration_date")),
+        })
 
-        existing = (
-            await db.execute(
-                select(LegacyRecord).where(LegacyRecord.plate_normalized == plate)
-            )
-        ).scalar_one_or_none()
+    # De-duplicate by plate (last occurrence wins, matching original behavior)
+    by_plate: dict[str, dict] = {}
+    for p in parsed:
+        by_plate[p["plate"]] = p
 
+    # Load all existing records in one query
+    all_plates = list(by_plate.keys())
+    existing_map: dict[str, LegacyRecord] = {}
+    BATCH = 500
+    for i in range(0, len(all_plates), BATCH):
+        chunk = all_plates[i : i + BATCH]
+        result = await db.execute(
+            select(LegacyRecord).where(LegacyRecord.plate_normalized.in_(chunk))
+        )
+        for rec in result.scalars():
+            existing_map[rec.plate_normalized] = rec
+
+    inserted = 0
+    updated = 0
+    for plate, p in by_plate.items():
+        existing = existing_map.get(plate)
         if existing:
-            existing.plate_raw = plate_raw or existing.plate_raw
-            existing.plate_state = str(rec.get("plate_state", "")).strip() or existing.plate_state
-            existing.owner_name = owner or existing.owner_name
-            existing.permit_number = str(rec.get("permit_number", "")).strip() or existing.permit_number
-            existing.permit_type = permit_type
-            existing.permit_status = status
-            existing.lot_zone = loc
-            existing.vehicle_color = color or existing.vehicle_color
-            existing.vehicle_make = make or existing.vehicle_make
-            existing.vehicle_model = model or existing.vehicle_model
-            existing.vehicle_year = year or existing.vehicle_year
-            existing.vehicle_description = vehicle_desc or existing.vehicle_description
-            existing.record_date = record_date or existing.record_date
-            existing.expiration_date = exp_date or existing.expiration_date
+            existing.plate_raw = p["plate_raw"] or existing.plate_raw
+            existing.plate_state = p["plate_state"] or existing.plate_state
+            existing.owner_name = p["owner"] or existing.owner_name
+            existing.permit_number = p["permit_number"] or existing.permit_number
+            existing.permit_type = p["permit_type"]
+            existing.permit_status = p["status"]
+            existing.lot_zone = p["loc"]
+            existing.vehicle_color = p["color"] or existing.vehicle_color
+            existing.vehicle_make = p["make"] or existing.vehicle_make
+            existing.vehicle_model = p["model"] or existing.vehicle_model
+            existing.vehicle_year = p["year"] or existing.vehicle_year
+            existing.vehicle_description = p["vehicle_desc"] or existing.vehicle_description
+            existing.record_date = p["record_date"] or existing.record_date
+            existing.expiration_date = p["exp_date"] or existing.expiration_date
             updated += 1
         else:
             record = LegacyRecord(
                 plate_normalized=plate,
-                plate_raw=plate_raw,
-                plate_state=str(rec.get("plate_state", "")).strip() or "PA",
-                owner_name=owner,
-                permit_number=str(rec.get("permit_number", "")).strip(),
-                permit_type=permit_type,
-                permit_status=status,
-                lot_zone=loc,
-                vehicle_color=color,
-                vehicle_make=make,
-                vehicle_model=model,
-                vehicle_year=year,
-                vehicle_description=vehicle_desc,
-                record_date=record_date,
-                expiration_date=exp_date,
+                plate_raw=p["plate_raw"],
+                plate_state=p["plate_state"],
+                owner_name=p["owner"],
+                permit_number=p["permit_number"],
+                permit_type=p["permit_type"],
+                permit_status=p["status"],
+                lot_zone=p["loc"],
+                vehicle_color=p["color"],
+                vehicle_make=p["make"],
+                vehicle_model=p["model"],
+                vehicle_year=p["year"],
+                vehicle_description=p["vehicle_desc"],
+                record_date=p["record_date"],
+                expiration_date=p["exp_date"],
                 source="omnigo",
             )
             db.add(record)
             inserted += 1
+
+        # Flush in batches to avoid huge memory buildup
+        if (inserted + updated) % 500 == 0:
+            await db.flush()
 
     await db.commit()
     logger.info("legacy_xlsx_import", inserted=inserted, updated=updated, skipped=skipped)

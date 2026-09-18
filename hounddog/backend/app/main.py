@@ -321,7 +321,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         # Set a lock timeout so DDL statements fail fast instead of deadlocking
-        await conn.execute(text("SET lock_timeout = '2s'"))
+        await conn.execute(text("SET lock_timeout = '10s'"))
         try:
             migrations = [
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
