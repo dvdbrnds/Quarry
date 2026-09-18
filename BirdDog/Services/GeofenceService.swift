@@ -15,12 +15,13 @@ final class GeofenceService: NSObject, ObservableObject {
 
     private let locationManager = CLLocationManager()
     private var container: ModelContainer?
+    private var refreshTimer: Timer?
 
     override init() {
         super.init()
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 5
-        locationManager.activityType = .automotiveNavigation
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager.distanceFilter = kCLDistanceFilterNone
+        locationManager.activityType = .otherNavigation
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.delegate = self
     }
@@ -38,6 +39,7 @@ final class GeofenceService: NSObject, ObservableObject {
         switch status {
         case .authorizedWhenInUse, .authorizedAlways:
             locationManager.startUpdatingLocation()
+            startRefreshTimer()
         case .notDetermined:
             locationManager.requestWhenInUseAuthorization()
         default:
@@ -47,6 +49,24 @@ final class GeofenceService: NSObject, ObservableObject {
 
     func stop() {
         locationManager.stopUpdatingLocation()
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    /// Force a location re-read every 15 seconds even when stationary.
+    /// iOS throttles CLLocationManager when the device hasn't moved,
+    /// which causes the "lot not updating" issue officers report.
+    private func startRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if let loc = self.locationManager.location {
+                    self.currentLocation = loc
+                    self.updateCurrentLot()
+                }
+            }
+        }
     }
 
     // MARK: - Lot Data
@@ -213,6 +233,7 @@ extension GeofenceService: CLLocationManagerDelegate {
             switch status {
             case .authorizedWhenInUse, .authorizedAlways:
                 manager.startUpdatingLocation()
+                self.startRefreshTimer()
             default:
                 break
             }
