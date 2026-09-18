@@ -868,10 +868,8 @@ export default function Permits() {
         ? "types"
         : location.hash === "#live"
           ? "live"
-          : location.hash === "#fee-exempt"
-            ? "fee-exempt"
-            : location.hash === "#absn" || location.hash === "#discounts"
-              ? "discounts"
+          : location.hash === "#fee-exempt" || location.hash === "#absn" || location.hash === "#discounts"
+            ? "discounts"
             : (location.hash === "#vouchers" || location.hash === "#coupons") && vouchersEnabled
               ? "vouchers"
               : location.hash === "#guests"
@@ -1286,14 +1284,14 @@ export default function Permits() {
             children: <LotteryV2Manager />,
           },
           {
-            key: "fee-exempt",
-            label: "RA Roster",
-            children: <FeeExemptRoster />,
-          },
-          {
             key: "discounts",
-            label: "ABSN Discount",
-            children: <DiscountRoster />,
+            label: "Discounts",
+            children: (
+              <div className="space-y-8">
+                <FeeExemptRoster />
+                <DiscountRoster />
+              </div>
+            ),
           },
           ...(vouchersEnabled ? [{
             key: "vouchers",
@@ -1332,8 +1330,7 @@ export default function Permits() {
             key === "permits" ? ""
             : key === "lottery" ? "#lottery"
             : key === "live" ? "#live"
-            : key === "fee-exempt" ? "#fee-exempt"
-            : key === "discounts" ? "#absn"
+            : key === "discounts" ? "#discounts"
             : key === "vouchers" ? "#vouchers"
             : key === "guests" ? "#guests"
             : key === "visitor-presets" ? "#visitor-presets"
