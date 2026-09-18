@@ -18,11 +18,17 @@ async def _get_jwks() -> dict:
         return _jwks_cache
     if not settings.okta_domain:
         return {}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"https://{settings.okta_domain}/oauth2/default/v1/keys")
-        resp.raise_for_status()
-        _jwks_cache = resp.json()
-        return _jwks_cache
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"https://{settings.okta_domain}/oauth2/default/v1/keys")
+            resp.raise_for_status()
+            _jwks_cache = resp.json()
+            return _jwks_cache
+    except (httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
+        if _jwks_cache:
+            log.warning("Okta JWKS fetch timed out, using cached keys: %s", exc)
+            return _jwks_cache
+        raise HTTPException(status_code=503, detail="Auth service temporarily unavailable")
 
 
 async def _fetch_userinfo(access_token: str) -> dict:

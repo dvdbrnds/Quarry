@@ -55,9 +55,17 @@ def _parse_row(row: dict, id_num: str) -> StudentParkingData:
     )
 
 
+def _is_numeric_id(id_num: str) -> bool:
+    """Return True if id_num is a valid integer the stored proc can accept."""
+    return id_num.strip().isdigit()
+
+
 async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
     """Call Mor_CUS_ParkingData for a single student ID."""
     if not settings.sis_mssql_host or not settings.sis_mssql_password:
+        return None
+    if not _is_numeric_id(id_num):
+        logger.debug("SIS lookup skipped — non-numeric id_num: %s", id_num)
         return None
     import pymssql  # type: ignore
     try:
@@ -112,7 +120,7 @@ async def lookup_batch_by_moravian_ids(id_nums: list[str]) -> dict[str, StudentP
     """
     if not settings.sis_mssql_host or not settings.sis_mssql_password:
         return {}
-    unique = list({n for n in id_nums if n and n.strip()})
+    unique = list({n for n in id_nums if n and n.strip() and _is_numeric_id(n)})
     if not unique:
         return {}
     return await asyncio.to_thread(_sis_batch_query, unique)

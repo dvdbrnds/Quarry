@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.api_key import get_device
@@ -199,7 +200,13 @@ async def sync_permits(
         (Permit.status == "pending_payment", 1),
         else_=0,
     )
-    permits = (await db.execute(query.order_by(status_order, Permit.updated_at))).scalars().all()
+    # Disable autoflush to prevent collisions with deploy-time DDL locks (QUARRY-1T)
+    prev_autoflush = db.autoflush
+    db.autoflush = False
+    try:
+        permits = (await db.execute(query.order_by(status_order, Permit.updated_at))).scalars().all()
+    finally:
+        db.autoflush = prev_autoflush
 
     return SyncPermitsResponse(
         permits=permits,
@@ -779,7 +786,27 @@ async def _upload_ticket_impl(
         ticket_kwargs["id"] = ticket.client_ticket_id
     new_ticket = Ticket(**ticket_kwargs)
     db.add(new_ticket)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # BirdDog retried after a timeout — ticket already exists (QUARRY-J).
+        await db.rollback()
+        if ticket.client_ticket_id:
+            existing = (await db.execute(
+                select(Ticket).where(Ticket.id == ticket.client_ticket_id)
+            )).scalar()
+            if existing:
+                pay_url = f"{settings.student_facing_url}/pay?ticket={existing.id}" if settings.student_facing_url else ""
+                return TicketUploadResponse(
+                    status="duplicate",
+                    ticket_id=existing.id,
+                    payment_url=pay_url,
+                    fine_amount=existing.fine_amount or Decimal("0"),
+                    offense_number=existing.offense_number or 1,
+                    notification_sent=False,
+                    notification_email=None,
+                )
+        raise
     await db.refresh(new_ticket)
 
     if photo_data:
@@ -828,34 +855,42 @@ async def _upload_ticket_impl(
         )
         recipient_email = plate_email_result.scalar()
 
-    try:
-        if recipient_email:
-            vtype_label = primary_code or "Parking Violation"
-            if primary_code:
-                vt_row = await db.execute(
-                    select(ViolationType.label).where(ViolationType.code == primary_code)
-                )
-                vt_label_row = vt_row.scalar()
-                if vt_label_row:
-                    vtype_label = vt_label_row
-            email_ok = await send_citation_email(
-                recipient_email=recipient_email,
-                plate=new_ticket.plate,
-                lot=new_ticket.lot or "",
-                violation_label=vtype_label,
-                fine_amount=str(fine_amount),
-                payment_url=payment_url,
-                officer_name=new_ticket.officer_name,
-                issued_at=to_local(new_ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if new_ticket.issued_at else "",
-                ticket_id=str(new_ticket.id),
+    if recipient_email:
+        vtype_label = primary_code or "Parking Violation"
+        if primary_code:
+            vt_row = await db.execute(
+                select(ViolationType.label).where(ViolationType.code == primary_code)
             )
-            if email_ok:
-                notification_sent = True
-                notification_email = recipient_email
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        import logging
-        logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
+            vt_label_row = vt_row.scalar()
+            if vt_label_row:
+                vtype_label = vt_label_row
+
+        # Fire-and-forget: send citation email in a background task so
+        # BirdDog gets its response immediately (QUARRY-P, QUARRY-2).
+        import asyncio as _asyncio
+
+        async def _send_citation_bg():
+            try:
+                ok = await send_citation_email(
+                    recipient_email=recipient_email,
+                    plate=new_ticket.plate,
+                    lot=new_ticket.lot or "",
+                    violation_label=vtype_label,
+                    fine_amount=str(fine_amount),
+                    payment_url=payment_url,
+                    officer_name=new_ticket.officer_name,
+                    issued_at=to_local(new_ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if new_ticket.issued_at else "",
+                    ticket_id=str(new_ticket.id),
+                )
+                if ok:
+                    logger.info("Citation email sent for ticket %s", new_ticket.id)
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                logger.warning("Citation email failed (non-fatal): %s", e)
+
+        _asyncio.create_task(_send_citation_bg())
+        notification_sent = True
+        notification_email = recipient_email
 
     # Persist notification_email on the ticket for student lookup
     if notification_email:

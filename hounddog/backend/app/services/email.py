@@ -1,5 +1,6 @@
 """Shared async SMTP email service with branded templates."""
 
+import asyncio
 import logging
 import sentry_sdk
 from email.mime.multipart import MIMEMultipart
@@ -190,29 +191,36 @@ async def send_email(
         msg.attach(MIMEText(body_text, "plain"))
     msg.attach(MIMEText(body_html, "html"))
 
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.smtp_host,
-            port=settings.smtp_port,
-            username=settings.smtp_user or None,
-            password=settings.smtp_password or None,
-            use_tls=settings.smtp_use_tls,
-            start_tls=not settings.smtp_use_tls,
-            timeout=10,
-        )
-        logger.info("Email sent to %d recipients: %s", len(to), subject)
-        from .notification_health import stats
-        for r in to:
-            stats.record_email_success(r, subject)
-        return True
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.error("Email send failed to %s: %s", ", ".join(to), e, exc_info=True)
-        from .notification_health import stats
-        for r in to:
-            stats.record_email_failure(r, subject, str(e))
-        return False
+    last_err: Exception | None = None
+    for attempt in range(2):  # 1 initial + 1 retry
+        try:
+            await aiosmtplib.send(
+                msg,
+                hostname=settings.smtp_host,
+                port=settings.smtp_port,
+                username=settings.smtp_user or None,
+                password=settings.smtp_password or None,
+                use_tls=settings.smtp_use_tls,
+                start_tls=not settings.smtp_use_tls,
+                timeout=10,
+            )
+            logger.info("Email sent to %d recipients: %s", len(to), subject)
+            from .notification_health import stats
+            for r in to:
+                stats.record_email_success(r, subject)
+            return True
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                logger.warning("Email send attempt 1 failed, retrying in 2s: %s", e)
+                await asyncio.sleep(2)
+            else:
+                sentry_sdk.capture_exception(e)
+                logger.error("Email send failed to %s: %s", ", ".join(to), e, exc_info=True)
+    from .notification_health import stats
+    for r in to:
+        stats.record_email_failure(r, subject, str(last_err))
+    return False
 
 
 async def send_lot_closure_notification(

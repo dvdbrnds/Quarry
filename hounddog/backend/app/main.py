@@ -22,7 +22,12 @@ def _sentry_before_send(event, hint):
         if isinstance(exc_value, HTTPException) and exc_value.status_code in (401, 403, 404):
             return None
         # Transient DB lock errors caused by startup migrations vs live queries —
-        # these resolve on their own and waste Sentry quota
+        # these resolve on their own and waste Sentry quota.
+        # Check both the exception type name and string representation to catch
+        # unhandled exceptions that bypass message-level filters (QUARRY-1V, QUARRY-1W).
+        exc_type_name = _exc_type.__name__ if _exc_type else ""
+        if exc_type_name in ("DeadlockDetectedError", "LockNotAvailable"):
+            return None
         err_str = str(exc_value).lower()
         if "deadlock" in err_str or "locknotavailable" in err_str or "lock timeout" in err_str:
             return None
