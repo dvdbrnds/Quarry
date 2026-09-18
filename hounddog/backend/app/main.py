@@ -1075,9 +1075,21 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET designation_code = 'PR' WHERE name IN ('I', 'Z') AND (designation_code IS NULL OR designation_code = '')",
             "UPDATE parking_lots SET designation_code = 'FSC' WHERE name IN ('A', 'F', 'H', 'J', 'M', 'N', 'O', 'R', 'S', 'W') AND (designation_code IS NULL OR designation_code = '')",
             "UPDATE parking_lots SET designation_code = 'C' WHERE name IN ('U', 'X') AND (designation_code IS NULL OR designation_code = '')",
-            # Widen legacy_records columns for comma-separated values from Omnigo
-            "ALTER TABLE legacy_records ALTER COLUMN plate_state TYPE VARCHAR(32)",
-            "ALTER TABLE legacy_records ALTER COLUMN vehicle_year TYPE VARCHAR(32)",
+            # Convert all legacy_records VARCHAR columns to TEXT to handle messy Omnigo data
+            "ALTER TABLE legacy_records ALTER COLUMN plate_normalized TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN plate_raw TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN plate_state TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN owner_name TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN permit_number TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN permit_type TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN permit_status TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN lot_zone TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN vehicle_color TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN vehicle_make TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN vehicle_model TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN vehicle_year TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN vehicle_description TYPE TEXT",
+            "ALTER TABLE legacy_records ALTER COLUMN source TYPE TEXT",
             ]
             for migration in migrations:
                 try:
