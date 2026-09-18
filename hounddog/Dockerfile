@@ -41,7 +41,7 @@ RUN mkdir -p /app/uploads && \
 
 EXPOSE 3200
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=5 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
     CMD curl -f http://127.0.0.1:8000/health || exit 1
 
 USER appuser
