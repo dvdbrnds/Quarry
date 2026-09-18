@@ -67,6 +67,7 @@
 		C9EBF0B61774CA98FC48D0A8 /* PrinterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202AE0BF116E09C116BC4500 /* PrinterService.swift */; };
 		CB788B8CC3A34FFD09927784 /* PlatePatternMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5365BCC3F91A2D8B662D5113 /* PlatePatternMatcher.swift */; };
 		CEE21C7F7045AC79C0DC5543 /* PlateOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E9661AB839788CDAD5D5B /* PlateOverlayView.swift */; };
+		D47C8C6D9CB18C6D18A62283 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 1F6D7BBDD61E266A8B78828B /* Sentry */; };
 		E249B6B7FB80BC51565CC840 /* APP_STORE_REVIEW_NOTES.md in Resources */ = {isa = PBXBuildFile; fileRef = 7327FBC7D39DA888973428AA /* APP_STORE_REVIEW_NOTES.md */; };
 		E6763C74F1B8C205F45C7B0A /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4AF74171AF0E60170025D06 /* ExternalAccessory.framework */; };
 		E6F98CDCDF0DA7626162271B /* DiagnosticCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1224AF2816186DF1A8565C9F /* DiagnosticCaptureView.swift */; };
@@ -161,6 +162,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				54734886A4A778FD39AFBF5A /* StarIO10 in Frameworks */,
+				D47C8C6D9CB18C6D18A62283 /* Sentry in Frameworks */,
 				E6763C74F1B8C205F45C7B0A /* ExternalAccessory.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -348,6 +350,7 @@
 			name = BirdDog;
 			packageProductDependencies = (
 				15E4ED9D9BBFC376D8D8C23B /* StarIO10 */,
+				1F6D7BBDD61E266A8B78828B /* Sentry */,
 			);
 			productName = BirdDog;
 			productReference = 9C892FB471FBA100CC681F7F /* BirdDog.app */;
@@ -400,6 +403,7 @@
 			mainGroup = 9AA81D669EBA9A7845728796;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				C62761D2184BB54799C89E96 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				D495A05CE3E47522B6B88684 /* XCRemoteSwiftPackageReference "StarXpand-SDK-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -755,6 +759,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C62761D2184BB54799C89E96 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
 		D495A05CE3E47522B6B88684 /* XCRemoteSwiftPackageReference "StarXpand-SDK-iOS" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/star-micronics/StarXpand-SDK-iOS";
@@ -770,6 +782,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D495A05CE3E47522B6B88684 /* XCRemoteSwiftPackageReference "StarXpand-SDK-iOS" */;
 			productName = StarIO10;
+		};
+		1F6D7BBDD61E266A8B78828B /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C62761D2184BB54799C89E96 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
