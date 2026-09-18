@@ -772,6 +772,87 @@ function PermitForm({
   );
 }
 
+function HCReport() {
+  const { message } = App.useApp();
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/permits/hc-report", {
+        headers: { Authorization: `Bearer ${await (await import("../auth")).getAccessToken()}` },
+      });
+      if (!res.ok) throw new Error("Failed to load");
+      setData(await res.json());
+    } catch {
+      message.error("Failed to load HC report");
+    } finally {
+      setLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const columns: ColumnsType<any> = [
+    {
+      title: "Name", dataIndex: "name", key: "name",
+      render: (name: string, r: any) => (
+        <a href={`/permits/${r.id}`} target="_blank" rel="noreferrer">{name || "—"}</a>
+      ),
+    },
+    { title: "Email", dataIndex: "email", key: "email" },
+    {
+      title: "Plate(s)", dataIndex: "plates", key: "plates",
+      render: (plates: string[]) => plates?.map((p: string) => <Tag key={p} className="font-mono">{p}</Tag>) || "—",
+    },
+    { title: "Permit #", dataIndex: "permit_number", key: "permit_number", render: (v: string) => v || "—" },
+    { title: "Type", dataIndex: "permit_type", key: "permit_type", render: (v: string) => <span className="capitalize">{(v || "").replace(/_/g, " ")}</span> },
+    {
+      title: "HC Designation", dataIndex: "hc_status", key: "hc_status",
+      render: (status: string) => (
+        <Tag color={status === "permanent" ? "blue" : "orange"}>
+          ♿ {status === "permanent" ? "Permanent" : "Temporary"}
+        </Tag>
+      ),
+    },
+    {
+      title: "HC Expiry", dataIndex: "hc_expiry", key: "hc_expiry",
+      render: (v: string | null, r: any) => {
+        if (r.hc_status !== "temporary") return "—";
+        if (!v) return <Tag color="red">No expiry set</Tag>;
+        const isExpired = dayjs(v).isBefore(dayjs());
+        return <span style={{ color: isExpired ? "red" : undefined, fontWeight: isExpired ? 600 : undefined }}>{dayjs(v).format("MMM D, YYYY")}{isExpired ? " (EXPIRED)" : ""}</span>;
+      },
+    },
+    { title: "Status", dataIndex: "status", key: "status", render: (v: string) => <Tag color={v === "active" ? "green" : "default"}>{v}</Tag> },
+  ];
+
+  const permanent = data.filter((d) => d.hc_status === "permanent");
+  const temporary = data.filter((d) => d.hc_status === "temporary");
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">♿ HC Accommodations</h2>
+        <Space>
+          <Tag color="blue">Permanent: {permanent.length}</Tag>
+          <Tag color="orange">Temporary: {temporary.length}</Tag>
+          <Button onClick={load} loading={loading}>Refresh</Button>
+        </Space>
+      </div>
+      <Table
+        dataSource={data}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        size="small"
+        pagination={{ pageSize: 50 }}
+      />
+    </div>
+  );
+}
+
 export default function Permits() {
   const { modal, message } = App.useApp();
   const navigate = useNavigate();
@@ -1230,6 +1311,11 @@ export default function Permits() {
             children: <VehicleRequests />,
           },
           {
+            key: "hc",
+            label: "♿ HC Accommodations",
+            children: <HCReport />,
+          },
+          {
             key: "live",
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
@@ -1252,6 +1338,7 @@ export default function Permits() {
             : key === "guests" ? "#guests"
             : key === "visitor-presets" ? "#visitor-presets"
             : key === "vehicle-requests" ? "#vehicle-requests"
+            : key === "hc" ? "#hc"
             : "#types";
           window.history.replaceState(null, "", `${window.location.pathname}${hash}`);
         }}

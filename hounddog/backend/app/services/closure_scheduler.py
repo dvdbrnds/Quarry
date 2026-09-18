@@ -594,6 +594,42 @@ async def _run_loop():
                 except Exception:
                     pass
 
+        # Auto-expire temporary HC designations and revert expired temp lot assignments
+        try:
+            async with async_session() as db:
+                async with db.begin():
+                    from sqlalchemy import text
+                    # Temp HC auto-expiry
+                    hc_result = await db.execute(text("""
+                        UPDATE permits
+                        SET hc_status = 'none', hc_expiry = NULL
+                        WHERE hc_status = 'temporary'
+                          AND hc_expiry IS NOT NULL
+                          AND hc_expiry < CURRENT_DATE
+                    """))
+                    if hc_result.rowcount:
+                        logger.info("Auto-expired %d temporary HC designations.", hc_result.rowcount)
+                    # Temp lot auto-revert
+                    lot_result = await db.execute(text("""
+                        UPDATE permits
+                        SET lot_assignment = original_lot_assignment,
+                            original_lot_assignment = NULL,
+                            permit_type = COALESCE(original_permit_type, permit_type),
+                            original_permit_type = NULL,
+                            temp_lot_expires_at = NULL
+                        WHERE temp_lot_expires_at IS NOT NULL
+                          AND temp_lot_expires_at < NOW()
+                          AND original_lot_assignment IS NOT NULL
+                    """))
+                    if lot_result.rowcount:
+                        logger.info("Auto-reverted %d expired temp lot assignments.", lot_result.rowcount)
+        except Exception as e:
+            logger.error("Scheduler tick (HC/temp-lot expiry) failed: %s", e, exc_info=True)
+            try:
+                import sentry_sdk; sentry_sdk.capture_exception(e)
+            except Exception:
+                pass
+
         await asyncio.sleep(60)
 
 

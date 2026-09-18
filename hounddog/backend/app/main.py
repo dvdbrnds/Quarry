@@ -1137,6 +1137,25 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Temp lot auto-revert failed (non-fatal): %s", exc)
 
+    # Auto-expire temporary HC designations
+    try:
+        from .database import async_session as _hc_session
+        async with _hc_session() as _hcs:
+            result = await _hcs.execute(text("""
+                UPDATE permits
+                SET hc_status = 'none',
+                    hc_expiry = NULL
+                WHERE hc_status = 'temporary'
+                  AND hc_expiry IS NOT NULL
+                  AND hc_expiry < CURRENT_DATE
+            """))
+            expired_hc = result.rowcount
+            await _hcs.commit()
+            if expired_hc:
+                logger.info("Auto-expired %d temporary HC designations.", expired_hc)
+    except Exception as exc:
+        logger.warning("HC auto-expire failed (non-fatal): %s", exc)
+
     from .services.alert_dispatcher import init_channels
     init_channels()
 

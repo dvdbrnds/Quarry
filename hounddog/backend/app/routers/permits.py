@@ -47,6 +47,36 @@ from ..services.lot_assignment import effective_lot_assignment, permit_lot_match
 
 router = SafeRouter(dependencies=[Depends(require_office())])
 
+
+@router.get("/hc-report")
+async def hc_report(
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_office()),
+):
+    """Return all permits with an active HC designation (permanent or temporary)."""
+    result = await db.execute(
+        select(Permit).where(
+            Permit.hc_status.in_(["permanent", "temporary"]),
+            Permit.deleted_at.is_(None),
+        ).order_by(Permit.hc_status, Permit.name)
+    )
+    permits = result.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "email": p.email,
+            "plates": p.plates,
+            "permit_number": p.permit_number,
+            "permit_type": p.permit_type,
+            "hc_status": p.hc_status,
+            "hc_expiry": p.hc_expiry.isoformat() if p.hc_expiry else None,
+            "status": p.status,
+        }
+        for p in permits
+    ]
+
+
 SORTABLE_FIELDS = {
     "permit_number": Permit.permit_number,
     "name": Permit.name,
