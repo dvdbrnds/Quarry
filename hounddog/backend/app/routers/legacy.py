@@ -308,6 +308,16 @@ async def import_xlsx(
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(require_admin),
 ):
+    import sentry_sdk
+    try:
+        return await _do_import_xlsx(file, db)
+    except Exception as e:
+        logger.error("XLSX import failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        raise
+
+
+async def _do_import_xlsx(file: UploadFile, db: AsyncSession):
     import openpyxl
 
     content = await file.read()
