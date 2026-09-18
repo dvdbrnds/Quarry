@@ -14,6 +14,7 @@ from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
 from ..models.payment import Payment
 from ..models.permit import Permit
+from ..models.legacy_record import LegacyRecord
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
 from ..services.timeutils import campus_tz, today_local, to_local
@@ -125,7 +126,25 @@ async def list_tickets(
         )
     ).scalars().all()
 
-    return TicketList(items=items, total=total, page=page, page_size=page_size)
+    # Batch-check which plates have legacy Omnigo records
+    plates = list({t.plate.upper().replace(" ", "").replace("-", "") for t in items if t.plate})
+    legacy_plates: set[str] = set()
+    if plates:
+        legacy_result = await db.execute(
+            select(LegacyRecord.plate_normalized).where(
+                LegacyRecord.plate_normalized.in_(plates)
+            )
+        )
+        legacy_plates = {r[0] for r in legacy_result}
+
+    enriched = []
+    for t in items:
+        d = TicketRead.model_validate(t).model_dump()
+        norm = t.plate.upper().replace(" ", "").replace("-", "") if t.plate else ""
+        d["has_legacy"] = norm in legacy_plates
+        enriched.append(d)
+
+    return {"items": enriched, "total": total, "page": page, "page_size": page_size}
 
 
 def _resolve_range(range_key: str, now: datetime) -> datetime | None:

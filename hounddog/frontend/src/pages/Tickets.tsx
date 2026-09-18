@@ -57,6 +57,7 @@ interface Ticket {
   updated_at: string;
   mailed_at: string | null;
   mailed_address: string | null;
+  has_legacy?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1272,6 +1273,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       render: (plate: string, t: Ticket) => (
         <span>
           <span className="font-mono">{plate}</span>
+          {t.has_legacy && (
+            <Tag color="orange" className="ml-1" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>LEGACY</Tag>
+          )}
           {t.ocr_original_plate && (
             <Tag color="volcano" className="ml-1" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>corrected</Tag>
           )}
