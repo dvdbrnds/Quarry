@@ -319,7 +319,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 28
+    SCHEMA_VERSION = 29
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1075,6 +1075,9 @@ async def lifespan(app: FastAPI):
             "UPDATE parking_lots SET designation_code = 'PR' WHERE name IN ('I', 'Z') AND (designation_code IS NULL OR designation_code = '')",
             "UPDATE parking_lots SET designation_code = 'FSC' WHERE name IN ('A', 'F', 'H', 'J', 'M', 'N', 'O', 'R', 'S', 'W') AND (designation_code IS NULL OR designation_code = '')",
             "UPDATE parking_lots SET designation_code = 'C' WHERE name IN ('U', 'X') AND (designation_code IS NULL OR designation_code = '')",
+            # Widen legacy_records columns for comma-separated values from Omnigo
+            "ALTER TABLE legacy_records ALTER COLUMN plate_state TYPE VARCHAR(32)",
+            "ALTER TABLE legacy_records ALTER COLUMN vehicle_year TYPE VARCHAR(32)",
             ]
             for migration in migrations:
                 try:
