@@ -44,7 +44,7 @@ public_router = SafeRouter()
 VALID_STATUSES = {"issued", "warning", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
 
 
-@router.get("", response_model=TicketList)
+@router.get("")
 async def list_tickets(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
