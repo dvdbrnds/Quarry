@@ -318,11 +318,34 @@ async def lifespan(app: FastAPI):
         logger.warning("Alembic migration skipped: %s", e)
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
+    # Bump SCHEMA_VERSION whenever you add/change a migration below.
+    SCHEMA_VERSION = 28
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
-        # Set a lock timeout so DDL statements fail fast instead of deadlocking
-        await conn.execute(text("SET lock_timeout = '10s'"))
-        try:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS _schema_version (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                version INTEGER NOT NULL DEFAULT 0,
+                applied_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT single_row CHECK (id = 1)
+            )
+        """))
+        await conn.execute(text("""
+            INSERT INTO _schema_version (id, version) VALUES (1, 0)
+            ON CONFLICT (id) DO NOTHING
+        """))
+        row = await conn.execute(text("SELECT version FROM _schema_version WHERE id = 1"))
+        current_version = row.scalar() or 0
+        if current_version >= SCHEMA_VERSION:
+            logger.info("Schema already at version %d, skipping %d migrations.", current_version, SCHEMA_VERSION)
+            try:
+                await conn.execute(text("SELECT pg_advisory_unlock(42)"))
+            except Exception:
+                pass
+        else:
+            logger.info("Schema at version %d, applying migrations up to %d...", current_version, SCHEMA_VERSION)
+            # Set a lock timeout so DDL statements fail fast instead of deadlocking
+            await conn.execute(text("SET lock_timeout = '10s'"))
             migrations = [
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS push_token VARCHAR(256)",
             # Lot closure extra recipients
@@ -1067,13 +1090,15 @@ async def lifespan(app: FastAPI):
                         continue
                     logger.error(f"Migration failed: {migration[:80]}... -> {e}")
                     raise
-        finally:
+            # All migrations succeeded — stamp the version
+            await conn.execute(text(
+                f"UPDATE _schema_version SET version = {SCHEMA_VERSION}, applied_at = now() WHERE id = 1"
+            ))
+            logger.info("Schema migrations applied, now at version %d.", SCHEMA_VERSION)
             try:
                 await conn.execute(text("SELECT pg_advisory_unlock(42)"))
             except Exception:
                 pass
-
-    logger.info("Schema migrations applied.")
 
     # Auto-revert expired temporary lot assignments
     try:
