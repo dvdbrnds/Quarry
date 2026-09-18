@@ -8,6 +8,7 @@ Both endpoints require admin role.
 """
 
 import io
+import sentry_sdk
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from ..utils.safe_router import SafeRouter
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text, inspect as sa_inspect
@@ -27,7 +29,7 @@ from ..database import get_db, engine
 
 logger = logging.getLogger("quarry.backup")
 
-router = APIRouter(dependencies=[Depends(require_admin())])
+router = SafeRouter(dependencies=[Depends(require_admin())])
 
 SKIP_TABLES = {"alembic_version", "backup_snapshots"}
 
@@ -158,6 +160,7 @@ async def restore_backup(
             restored[tbl_name] = len(rows)
 
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.exception("Restore failed")
         raise HTTPException(500, f"Restore failed: {e}")
 
@@ -257,6 +260,7 @@ def _read_schedule() -> dict:
         try:
             return json.loads(SCHEDULE_FILE.read_text())
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
     return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
 
@@ -278,6 +282,7 @@ async def _read_schedule_db(db: AsyncSession) -> dict:
             if row:
                 return row if isinstance(row, dict) else json.loads(row)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to read schedule from DB: %s", e)
     return {"enabled": False, "frequency": "daily", "time": "02:00", "retention_days": 30}
 
@@ -296,6 +301,7 @@ async def _write_schedule_db(db: AsyncSession, data: dict):
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to write schedule to disk (DB persisted): %s", e)
 
 
@@ -322,6 +328,7 @@ async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db))
         try:
             existing = await _read_schedule_db(db)
         except Exception:
+            sentry_sdk.capture_exception(e)
             existing = {}
         data["last_run"] = existing.get("last_run")
         data["last_drive_upload"] = existing.get("last_drive_upload")
@@ -335,6 +342,7 @@ async def set_schedule(body: BackupSchedule, db: AsyncSession = Depends(get_db))
         await db.flush()
         return data
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.exception("Failed to set backup schedule")
         raise HTTPException(500, f"Failed to save schedule: {type(e).__name__}: {e}")
 
@@ -357,6 +365,7 @@ async def run_backup_now(db: AsyncSession = Depends(get_db)):
     try:
         filename = await create_backup_now(source="manual")
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.exception("Manual backup failed")
         raise HTTPException(500, f"Backup failed: {e}")
 
@@ -385,6 +394,7 @@ async def run_backup_now(db: AsyncSession = Depends(get_db)):
                     await _write_schedule_db(db, schedule)
                     await db.flush()
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Drive upload after run-now failed: %s", e)
 
     return {

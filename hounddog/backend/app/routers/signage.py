@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from ..utils.safe_router import SafeRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -18,8 +19,8 @@ from ..models.signage_screen import SignageScreen
 
 logger = logging.getLogger("quarry.signage")
 
-admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
-public_router = APIRouter()
+admin_router = SafeRouter(dependencies=[Depends(require_role("admin"))])
+public_router = SafeRouter()
 
 
 # --- Schemas ---

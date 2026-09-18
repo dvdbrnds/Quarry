@@ -1,10 +1,12 @@
 import logging
+import sentry_sdk
 import random
 import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +36,7 @@ from ..schemas.permit_type import (
     PermitTypeWithCount,
 )
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[PermitTypeWithCount])
@@ -233,6 +235,7 @@ async def import_permit_types(
                 db.add(ptype)
                 created += 1
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             errors.append(f"Error processing '{row.code}': {e}")
 
     await db.flush()
@@ -428,6 +431,7 @@ async def run_lottery(
                 body_text=body_text,
             )
         except Exception:
+            sentry_sdk.capture_exception(e)
             logger.error("Failed to notify waitlisted applicant %s", app.id, exc_info=True)
 
     return LotteryResult(
@@ -531,6 +535,7 @@ async def advance_waitlist(
                         total_waitlisted=total_wl,
                     )
                 except Exception:
+                    sentry_sdk.capture_exception(e)
                     logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)
 
     return {"expired": len(expired), "advanced": advanced}

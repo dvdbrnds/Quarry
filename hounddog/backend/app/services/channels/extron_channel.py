@@ -9,6 +9,7 @@ Config: EXTRON_ROOM_AGENT_URL
 """
 
 import logging
+import sentry_sdk
 
 import httpx
 
@@ -53,6 +54,7 @@ class ExtronChannel(AlertChannel):
                 resp.raise_for_status()
             return ChannelResult(channel=self.name, sent=1)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Extron Room Agent POST failed: %s", e)
             return ChannelResult(channel=self.name, failed=1, error=str(e))
 
@@ -74,4 +76,5 @@ class ExtronChannel(AlertChannel):
                 resp = await client.post(url, json=payload)
                 resp.raise_for_status()
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Extron Room Agent clear failed: %s", e)

@@ -1,11 +1,13 @@
 """Admin endpoints for managing the fee-exempt roster."""
 
 import io
+import sentry_sdk
 import logging
 import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +27,7 @@ from ..services.roster_permit_status import (
 
 logger = logging.getLogger("quarry.fee_exempt")
 
-router = APIRouter(dependencies=[Depends(require_office())])
+router = SafeRouter(dependencies=[Depends(require_office())])
 
 
 class RosterEntry(BaseModel):
@@ -177,6 +179,7 @@ async def upload_roster(
                 row_dict = dict(zip(headers, row_cells))
                 rows.append(row_dict)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             raise HTTPException(400, f"Failed to parse Excel file: {e}")
     elif filename.endswith(".csv"):
         import csv
@@ -259,7 +262,7 @@ class RosterUpdateRequest(BaseModel):
     reason: str | None = None
 
 
-@router.patch("/roster/{entry_id}", response_model=RosterEntry)
+@router.put("/roster/{entry_id}", response_model=RosterEntry)
 async def update_roster_entry(
     entry_id: uuid.UUID,
     data: RosterUpdateRequest,
@@ -578,6 +581,7 @@ async def send_balance_payment(
             checkout_url=session.url,
         )
     except Exception:
+        sentry_sdk.capture_exception(e)
         logger.exception("Failed to send balance-due email to %s", app.student_email)
 
     return {
@@ -831,6 +835,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
                         permit.refund_id = refunds.data[0].id
                         already_refunded = True
             except Exception:
+                sentry_sdk.capture_exception(e)
                 pass
 
         rows.append(RefundDueRow(

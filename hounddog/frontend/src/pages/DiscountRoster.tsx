@@ -144,7 +144,7 @@ export default function DiscountRoster() {
     if (!editingId) return;
     try {
       const res = await fetch(`/api/admin/discounts/roster/${editingId}`, {
-        method: "PATCH",
+        method: "PUT",
         headers: await authHeaders(),
         body: JSON.stringify(editValues),
       });

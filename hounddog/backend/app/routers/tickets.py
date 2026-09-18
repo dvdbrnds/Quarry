@@ -1,7 +1,9 @@
 import uuid
+import sentry_sdk
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func, or_, cast, Date, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -35,8 +37,8 @@ from ..schemas.ticket import (
     VoidRequest,
 )
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
-public_router = APIRouter()
+router = SafeRouter(dependencies=[Depends(get_current_user)])
+public_router = SafeRouter()
 
 VALID_STATUSES = {"issued", "warning", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
 
@@ -464,6 +466,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                 )
                 await db.flush()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.tickets").warning("Citation email failed (non-fatal): %s", e)
 
@@ -486,6 +489,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                     student_email=getattr(esc_permit, 'email', None),
                 )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.tickets").warning("Escalation check failed (non-fatal): %s", e)
 

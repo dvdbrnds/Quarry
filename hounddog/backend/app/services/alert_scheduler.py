@@ -7,6 +7,7 @@ Runs inside the existing closure_scheduler loop every 60s.
 """
 
 import logging
+import sentry_sdk
 from datetime import datetime, timedelta, timezone
 
 from dateutil.relativedelta import relativedelta
@@ -79,6 +80,7 @@ async def process_scheduled_alerts():
                         )
 
                 except Exception as e:
+                    sentry_sdk.capture_exception(e)
                     logger.error("Failed to dispatch scheduled alert %s: %s", alert.id, e, exc_info=True)
                     alert.status = "failed"
 

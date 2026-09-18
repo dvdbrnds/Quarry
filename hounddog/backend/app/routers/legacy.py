@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 import structlog
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,7 @@ from ..models.permit import Permit
 
 logger = structlog.get_logger("quarry")
 
-router = APIRouter()
+router = SafeRouter()
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

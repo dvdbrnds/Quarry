@@ -6,6 +6,7 @@ Each running scenario is tracked by task_id so admins can monitor and abort.
 """
 
 import asyncio
+import sentry_sdk
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -97,6 +98,7 @@ def run_scenario(scenario, started_by: str) -> str:
         except asyncio.CancelledError:
             logger.info("Scenario %s was aborted", task_id)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Scenario %s failed: %s", task_id, e, exc_info=True)
         finally:
             _running.pop(task_id, None)

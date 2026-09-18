@@ -2,6 +2,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +17,7 @@ from ..schemas.academic_season import (
 )
 from ..services.timeutils import today_local
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[AcademicSeasonRead])

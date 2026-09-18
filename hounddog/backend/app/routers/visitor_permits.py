@@ -1,11 +1,13 @@
 """Public visitor/vendor parking permit portal — no authentication required."""
 
 import re
+import sentry_sdk
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +31,7 @@ def _preset_logo_url(preset: "VisitorPreset") -> str:
     return f"/api/visitor/permits/presets/{preset.id}/logo" if preset.logo_data else ""
 
 
-router = APIRouter()
+router = SafeRouter()
 
 
 # ── Request / Response schemas ──
@@ -434,6 +436,7 @@ async def create_visitor_permit(data: VisitorPermitCreate, db: AsyncSession = De
     except HTTPException:
         raise
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Permit creation failed")
         raise HTTPException(500, f"Permit creation error: {type(e).__name__}: {e}")
@@ -597,7 +600,7 @@ class SponsorPermitEdit(BaseModel):
     remove: bool = False
 
 
-@router.patch("/sponsor/permit/{token}")
+@router.put("/sponsor/permit/{token}")
 async def sponsor_edit_permit(
     token: str,
     body: SponsorPermitEdit,
@@ -999,6 +1002,7 @@ async def _notify_permit_change(action: str, count: int):
         from ..services.apns import send_permit_push
         await send_permit_push(action, count)
     except Exception:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("APNs push notification failed")
 
@@ -1021,6 +1025,7 @@ async def _send_visitor_confirmation(permit: Permit):
             end_date=end_str,
         )
     except Exception:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Visitor confirmation email failed")
 
@@ -1056,6 +1061,7 @@ async def _send_sponsor_approval_email(
             instructor_name=instructor_name,
         )
     except Exception:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Sponsor approval email failed")
         return False

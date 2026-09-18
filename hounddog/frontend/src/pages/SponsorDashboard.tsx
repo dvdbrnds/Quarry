@@ -140,7 +140,7 @@ function SponsorPage() {
       const values = form.getFieldsValue();
       const headers = await authHeaders();
       const res = await fetch(`/api/visitor/permits/sponsor/permit/${selected.token}`, {
-        method: "PATCH",
+        method: "PUT",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           name: values.name,

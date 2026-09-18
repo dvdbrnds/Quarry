@@ -1,6 +1,7 @@
 """Student-facing permit application endpoints."""
 
 import logging
+import sentry_sdk
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -19,6 +20,7 @@ def _extract_moravian_id(user) -> str | None:
     return None
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,7 +46,7 @@ from ..schemas.permit_application import (
     VehicleSwapRequest,
 )
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
 RESIDENT_CODES = {
@@ -117,6 +119,7 @@ async def _get_housing_status(user, db: AsyncSession | None = None) -> str | Non
         _logger.warning("SIS returned no data for moravian_id=%s — housing filter skipped", moravian_id)
         return None
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         _logger.warning("SIS housing lookup failed for %s: %s — housing filter skipped", moravian_id, e)
         return None
 
@@ -171,6 +174,7 @@ async def _opt_in_alerts(
             db.add(subscriber)
         await db.flush()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         _logger.warning("Alert opt-in failed (non-fatal): %s", e)
 
 
@@ -1175,4 +1179,5 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
                     total_waitlisted=total_wl,
                 )
             except Exception:
+                sentry_sdk.capture_exception(e)
                 _logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)

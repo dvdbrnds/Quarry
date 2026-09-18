@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quarry Rework Audit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --surface-alt: #f3f1ee;
+  --border: #e2dfd9;
+  --text: #1a1917;
+  --text-muted: #6b6860;
+  --accent: #c44b25;
+  --accent-light: #fef0ec;
+  --severity-critical: #b91c1c;
+  --severity-critical-bg: #fef2f2;
+  --severity-high: #c44b25;
+  --severity-high-bg: #fef0ec;
+  --severity-moderate: #92710a;
+  --severity-moderate-bg: #fefce8;
+  --tag-bg: #eae8e3;
+  --tag-text: #4a4840;
+  --chart-bar: #c44b25;
+  --chart-bar-light: #e8a08c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141311;
+    --surface: #1e1d1a;
+    --surface-alt: #28261f;
+    --border: #3a3831;
+    --text: #e8e6e1;
+    --text-muted: #9a9690;
+    --accent: #e8754f;
+    --accent-light: #2d1a12;
+    --severity-critical: #f87171;
+    --severity-critical-bg: #2a1515;
+    --severity-high: #e8754f;
+    --severity-high-bg: #2d1a12;
+    --severity-moderate: #eab308;
+    --severity-moderate-bg: #2a2510;
+    --tag-bg: #33312a;
+    --tag-text: #b5b0a8;
+    --chart-bar: #e8754f;
+    --chart-bar-light: #6b3a28;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #141311;
+  --surface: #1e1d1a;
+  --surface-alt: #28261f;
+  --border: #3a3831;
+  --text: #e8e6e1;
+  --text-muted: #9a9690;
+  --accent: #e8754f;
+  --accent-light: #2d1a12;
+  --severity-critical: #f87171;
+  --severity-critical-bg: #2a1515;
+  --severity-high: #e8754f;
+  --severity-high-bg: #2d1a12;
+  --severity-moderate: #eab308;
+  --severity-moderate-bg: #2a2510;
+  --tag-bg: #33312a;
+  --tag-text: #b5b0a8;
+  --chart-bar: #e8754f;
+  --chart-bar-light: #6b3a28;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  padding: 16px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
+}
+
+/* Summary tiles */
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 2.5rem;
+}
+
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.tile-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.tile-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+}
+
+/* Section headings */
+h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+  letter-spacing: -0.01em;
+}
+
+/* Chart */
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 2rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 48px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 600px) {
+  .bar-row { grid-template-columns: 140px 1fr 40px; font-size: 0.78rem; }
+}
+
+.bar-label {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+}
+
+.bar-track {
+  height: 22px;
+  background: var(--surface-alt);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--chart-bar);
+  border-radius: 4px;
+  min-width: 4px;
+  transition: width 0.3s ease;
+}
+
+.bar-count {
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Cluster cards */
+.cluster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 2rem;
+}
+
+.cluster-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  border-left: 4px solid var(--border);
+}
+
+.cluster-card.critical { border-left-color: var(--severity-critical); }
+.cluster-card.high { border-left-color: var(--severity-high); }
+.cluster-card.moderate { border-left-color: var(--severity-moderate); }
+
+.cluster-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.cluster-name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.cluster-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  display: inline-block;
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tag.severity-critical { background: var(--severity-critical-bg); color: var(--severity-critical); }
+.tag.severity-high { background: var(--severity-high-bg); color: var(--severity-high); }
+.tag.severity-moderate { background: var(--severity-moderate-bg); color: var(--severity-moderate); }
+
+.cluster-body {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.cluster-body strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.commit-trail {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  word-break: break-all;
+}
+
+/* Recommendations */
+.rec-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 2rem;
+}
+
+.rec-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+
+.rec-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.rec-body {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.rec-body strong { color: var(--text); font-weight: 500; }
+
+/* Footer */
+.report-footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Quarry Rework Audit</h1>
+<p class="subtitle">Git commit history analysis: Jun 11 – Sep 17, 2026 &middot; 1,077 commits across Hounddog + BirdDog</p>
+
+<div class="summary-row">
+  <div class="tile">
+    <div class="tile-value">~130</div>
+    <div class="tile-label">Rework Commits</div>
+  </div>
+  <div class="tile">
+    <div class="tile-value">22</div>
+    <div class="tile-label">Fix Clusters</div>
+  </div>
+  <div class="tile">
+    <div class="tile-value">~85 hrs</div>
+    <div class="tile-label">Estimated Rework</div>
+  </div>
+  <div class="tile">
+    <div class="tile-value">12%</div>
+    <div class="tile-label">Commits That Were Rework</div>
+  </div>
+</div>
+
+<h2>Rework by Cluster (commits)</h2>
+<div class="bar-chart">
+  <div class="bar-row"><span class="bar-label">OCR / exposure / camera</span><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><span class="bar-count">15</span></div>
+  <div class="bar-row"><span class="bar-label">WAF / firewall blocks</span><div class="bar-track"><div class="bar-fill" style="width:67%"></div></div><span class="bar-count">10</span></div>
+  <div class="bar-row"><span class="bar-label">External camera / USB</span><div class="bar-track"><div class="bar-fill" style="width:53%"></div></div><span class="bar-count">8</span></div>
+  <div class="bar-row"><span class="bar-label">After-hours access</span><div class="bar-track"><div class="bar-fill" style="width:53%"></div></div><span class="bar-count">8</span></div>
+  <div class="bar-row"><span class="bar-label">Stripe integration</span><div class="bar-track"><div class="bar-fill" style="width:53%"></div></div><span class="bar-count">8</span></div>
+  <div class="bar-row"><span class="bar-label">Audit trail middleware</span><div class="bar-track"><div class="bar-fill" style="width:47%"></div></div><span class="bar-count">7</span></div>
+  <div class="bar-row"><span class="bar-label">Boot time / startup</span><div class="bar-track"><div class="bar-fill" style="width:47%"></div></div><span class="bar-count">7</span></div>
+  <div class="bar-row"><span class="bar-label">Capacity audit / SIS</span><div class="bar-track"><div class="bar-fill" style="width:47%"></div></div><span class="bar-count">7</span></div>
+  <div class="bar-row"><span class="bar-label">Refund-due matching</span><div class="bar-track"><div class="bar-fill" style="width:47%"></div></div><span class="bar-count">7</span></div>
+  <div class="bar-row"><span class="bar-label">QR scanner camera</span><div class="bar-track"><div class="bar-fill" style="width:40%"></div></div><span class="bar-count">6</span></div>
+  <div class="bar-row"><span class="bar-label">Sponsor permit delete</span><div class="bar-track"><div class="bar-fill" style="width:40%"></div></div><span class="bar-count">6</span></div>
+  <div class="bar-row"><span class="bar-label">Lot map rendering</span><div class="bar-track"><div class="bar-fill" style="width:40%"></div></div><span class="bar-count">6</span></div>
+  <div class="bar-row"><span class="bar-label">Freshmen exclusion</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Image rotation</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Scheduled backups</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Program / visitor filter</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Lottery config UI</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Branding storage</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Ticket form / Issue btn</span><div class="bar-track"><div class="bar-fill" style="width:33%"></div></div><span class="bar-count">5</span></div>
+  <div class="bar-row"><span class="bar-label">Calculated capacity</span><div class="bar-track"><div class="bar-fill" style="width:27%"></div></div><span class="bar-count">4</span></div>
+  <div class="bar-row"><span class="bar-label">Startup deadlocks</span><div class="bar-track"><div class="bar-fill" style="width:27%"></div></div><span class="bar-count">4</span></div>
+  <div class="bar-row"><span class="bar-label">Lot normalization</span><div class="bar-track"><div class="bar-fill" style="width:27%"></div></div><span class="bar-count">4</span></div>
+</div>
+
+<h2>Cluster Details</h2>
+<div class="cluster-list">
+
+<div class="cluster-card critical">
+  <div class="cluster-header">
+    <span class="cluster-name">OCR / Exposure / Camera Pipeline</span>
+    <div class="cluster-meta">
+      <span class="tag severity-critical">Critical</span>
+      <span class="tag">~15 commits</span>
+      <span class="tag">~8–10 hrs</span>
+      <span class="tag">BirdDog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    The single largest rework sink. Around Sep 7, a long sequence of commits chased exposure hunting, strobing, menu button conflicts, OCR pipeline starvation, and glare recovery. Each fix introduced a new visual artifact or starved another pipeline stage. <strong>Root cause:</strong> the camera, exposure, OCR, and UI layers are tightly coupled with no abstraction boundary. Changing exposure logic starves OCR frames; pausing scanning breaks the menu button; glare recovery conflicts with manual exposure lock.
+  </div>
+  <div class="commit-trail">547b9f8 → f6cfd60 → a78d127 → ca36a71 (revert) → d515bae → 047adf7 and 10+ surrounding commits</div>
+</div>
+
+<div class="cluster-card critical">
+  <div class="cluster-header">
+    <span class="cluster-name">WAF / Firewall Blocking HTTP Methods</span>
+    <div class="cluster-meta">
+      <span class="tag severity-critical">Critical</span>
+      <span class="tag">~10 commits</span>
+      <span class="tag">~5–6 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Moravian's web application firewall silently blocks HTTP DELETE and PATCH requests. This was discovered and "fixed" at least three separate times across different features: sponsor permit deletion, general delete operations, and field name filtering. Each time, the team went through the same discovery cycle: feature works locally → fails in production → debug → realize it's the WAF → rewrite to use POST or rename fields. <strong>Root cause:</strong> no staging environment behind the production WAF, and no shared documentation of known WAF restrictions.
+  </div>
+  <div class="commit-trail">ee83099 → 9b75606 → 3a9da2f → cc9a98b → 2dba23e → e63807b → 74b63de → 3b586bc → b9848c5 → 3e15473</div>
+</div>
+
+<div class="cluster-card critical">
+  <div class="cluster-header">
+    <span class="cluster-name">External Camera / USB Hub</span>
+    <div class="cluster-meta">
+      <span class="tag severity-critical">Critical</span>
+      <span class="tag">8 commits</span>
+      <span class="tag">~4–5 hrs</span>
+      <span class="tag">BirdDog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Eight commits in one day (Jun 23) trying to get external USB cameras to work reliably through iPad USB hubs. Attempts included: wait at startup, verify device before configuring, route through session rebuild, add frame verification delays, cap resolution for bandwidth, add enumeration delay, fix mirrored preview. <strong>Root cause:</strong> no hardware abstraction layer for camera sources. The camera service assumes a single stable device rather than handling USB hot-plug/reconnect as a first-class state machine.
+  </div>
+  <div class="commit-trail">320d0e1 → a1297fe → 7b9c85a → 1eae6a7 → d88f665 → 0263e4c → 449e759 → 2247b3f</div>
+</div>
+
+<div class="cluster-card high">
+  <div class="cluster-header">
+    <span class="cluster-name">After-Hours Access Logic</span>
+    <div class="cluster-meta">
+      <span class="tag severity-high">High</span>
+      <span class="tag">8 commits</span>
+      <span class="tag">~4–5 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    The "after 4 PM" access rule for certain lot types was reimplemented multiple times. Time windows, lot assignment rules, and access calculation kept getting the edge cases wrong: wrong lots included, wrong hours checked, rules applied to wrong permit types. <strong>Root cause:</strong> time-based access rules are scattered across multiple code paths with no single source of truth, and no unit tests covering boundary conditions (4:00 PM exactly, midnight rollover, timezone handling).
+  </div>
+  <div class="commit-trail">d389c1d → 514a98d → 05c6977 → b95cca3 → db5d74c → c7a3c92 → 5abac80 → a6e3632</div>
+</div>
+
+<div class="cluster-card high">
+  <div class="cluster-header">
+    <span class="cluster-name">Stripe Webhook / Payment Integration</span>
+    <div class="cluster-meta">
+      <span class="tag severity-high">High</span>
+      <span class="tag">8 commits</span>
+      <span class="tag">~5 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Eight commits on Jul 9 alone building and rebuilding the Stripe integration. Webhooks silently dropped payments without metadata, generic "not configured" error messages hid real Stripe errors, <code>dict()</code> crashed on Stripe objects, and the team built three separate diagnostic endpoints before getting visibility into what was happening. <strong>Root cause:</strong> no error surfacing pattern — errors were swallowed silently, forcing blind debugging. No Stripe webhook testing framework.
+  </div>
+  <div class="commit-trail">217534c → 4aa0a2d → 0ff904f → 50c6c9f → 4471742 → 2224a8c → d70badc → b5f71da</div>
+</div>
+
+<div class="cluster-card high">
+  <div class="cluster-header">
+    <span class="cluster-name">Boot Time / Startup Performance</span>
+    <div class="cluster-meta">
+      <span class="tag severity-high">High</span>
+      <span class="tag">7 commits</span>
+      <span class="tag">~4 hrs</span>
+      <span class="tag">BirdDog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    BirdDog startup took 23 seconds. Seven commits on Jul 15 chased it down: move ModelContainer off main thread, parallelize boot, kill camera output on pause, compiler optimization in Debug, defer 4.2MB permit seeding, add/remove timing instrumentation. <strong>Root cause:</strong> all heavy work (database, camera, permit loading) ran synchronously on the main thread with no boot profiling until the problem was acute.
+  </div>
+  <div class="commit-trail">7cbb7cb → b94d35e → a5f6d8b → 52ccbac → 1c33798 → ddd997a → d714233 → 644724a</div>
+</div>
+
+<div class="cluster-card high">
+  <div class="cluster-header">
+    <span class="cluster-name">Audit Trail Middleware</span>
+    <div class="cluster-meta">
+      <span class="tag severity-high">High</span>
+      <span class="tag">7 commits</span>
+      <span class="tag">~4 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Seven commits on Jun 20 building audit logging. User identity extracted in wrong middleware order, audit skipped certain paths, then was changed to log everything unconditionally, then the entire middleware was rewritten as pure ASGI, then a diagnostic endpoint was added, then the schema had a uuid vs str type error causing 500s. <strong>Root cause:</strong> no design spec for the middleware before building; each commit discovered a new architectural assumption that was wrong.
+  </div>
+  <div class="commit-trail">e2a2f68 → 9537497 → 60fed50 → 29e74b5 → 649dabf → 8e6f820 → 964ca1f → 3fbf323 → 8fe613d</div>
+</div>
+
+<div class="cluster-card high">
+  <div class="cluster-header">
+    <span class="cluster-name">Capacity Audit / SIS Enrichment</span>
+    <div class="cluster-meta">
+      <span class="tag severity-high">High</span>
+      <span class="tag">7 commits</span>
+      <span class="tag">~4 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Seven commits oscillating on whether to include SIS data in the capacity audit. Added SIS enrichment → it caused timeouts → removed it → broke asyncio → restored it → wrapped in try/except → try/except was wrong → fixed moravian_id lookup. <strong>Root cause:</strong> external service calls (SIS) in a synchronous request path with no timeout, no circuit breaker, and no async-safe wrapper.
+  </div>
+  <div class="commit-trail">8176a31 → multiple intermediate → e1422e1</div>
+</div>
+
+<div class="cluster-card high">
+  <div class="cluster-header">
+    <span class="cluster-name">Refund-Due Matching</span>
+    <div class="cluster-meta">
+      <span class="tag severity-high">High</span>
+      <span class="tag">7 commits</span>
+      <span class="tag">~4 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Seven commits in a single day trying to match refund records to permits. Started by rewriting from permits, then broadened matching, added debug output, matched by name, added fuzzy matching, then RA pattern matching. Each approach failed on a different edge case in the data. <strong>Root cause:</strong> no canonical identifier linking refund records to permits — forced to match on unstable fields (name, fuzzy text) instead of a foreign key.
+  </div>
+  <div class="commit-trail">7c34c96 → through → 7a29b4a</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Sponsor Permit Deletion</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">6 commits</span>
+      <span class="tag">~3 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Six commits in the same day. Delete button → WAF blocks DELETE → switch to PATCH → WAF blocks field names containing "delete" → rename fields → build dedicated revoke endpoint. This is a sub-cluster of the WAF problem but notable because all six commits happened in one sitting.
+  </div>
+  <div class="commit-trail">267a64a → through → 1b61dba</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Lot Map Rendering</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">6 commits</span>
+      <span class="tag">~3–4 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Six commits on Jul 12 iterating on Google Maps polygon highlighting: hover behavior, zoom/pan side effects, polygon recreation vs setOptions, CSP blocking Google Maps fonts, lot name mismatches on highlight. <strong>Root cause:</strong> Google Maps API behavior wasn't well understood before building, and CSP rules weren't tested against all Google Maps CDN domains.
+  </div>
+  <div class="commit-trail">11a251f → 7fb3a6d → ddc174e → bbfea63 → 4324ab1 → c6be7c9 → e46a9ca → 29d5d29</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Freshmen Exclusion Logic</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">5 commits</span>
+      <span class="tag">~3 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Five commits on Jul 12 changing how freshmen are excluded from the parking lottery: min class year required → allow commuter without restriction → replace with Exclude Freshmen toggle → hardcode exclusion → move to global setting → per-lottery toggle. <strong>Root cause:</strong> business rules weren't finalized before implementation. Each commit was a policy change, not a bug fix — but because there was no spec, each change was a code change.
+  </div>
+  <div class="commit-trail">b7ffe5d → ac470dc → 2c4b456 → 819d094 → 3801fc9 → bfb7db4</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Image Rotation / Orientation</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">5 commits</span>
+      <span class="tag">~3 hrs</span>
+      <span class="tag">BirdDog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Five commits physically rotating pixel buffers, discovering CG rotation direction was wrong, re-rotating. <strong>Root cause:</strong> EXIF orientation metadata wasn't handled correctly from the start, leading to manual pixel buffer rotations that compounded errors.
+  </div>
+  <div class="commit-trail">76ec260 → 3a1486e → ec501fa → 49ba423 → e85a4d6</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Scheduled Backup Failures</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">5 commits</span>
+      <span class="tag">~3 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Five+ commits fixing scheduled backups: 500 errors, SQLAlchemy parameter conflicts, disk filling up, backups not persisting across container redeploys. <strong>Root cause:</strong> backup job ran inside the web process with no isolation, no disk space monitoring, and no awareness of container ephemeral storage.
+  </div>
+  <div class="commit-trail">46569b6 → c95e105 → ea83f18 → 508d0ff → 504fd4b → 2a83b36 → 52b0c14</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Startup Migration Deadlocks</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">4 commits</span>
+      <span class="tag">~2–3 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Four commits fixing deadlocks during startup database migrations: initial deadlock, then lock timeout errors, then DeadlockDetectedError, then savepoints. <strong>Root cause:</strong> migrations run in the app startup path competing with other startup queries for locks, with no proper migration runner or lock ordering.
+  </div>
+  <div class="commit-trail">097d3ae → 76c10cb → 3874816 → 3c7b5a7</div>
+</div>
+
+<div class="cluster-card moderate">
+  <div class="cluster-header">
+    <span class="cluster-name">Branding Settings Storage</span>
+    <div class="cluster-meta">
+      <span class="tag severity-moderate">Moderate</span>
+      <span class="tag">5 commits</span>
+      <span class="tag">~2–3 hrs</span>
+      <span class="tag">Hounddog</span>
+    </div>
+  </div>
+  <div class="cluster-body">
+    Branding settings stored to filesystem → broke on container redeploy → migrated to PostgreSQL → reload logic broken → empty name fallback wrong → upload path broken. <strong>Root cause:</strong> initially stored to disk in a container (ephemeral), then migrated but without considering all the read/write paths.
+  </div>
+  <div class="commit-trail">4ca8d6b → 0932d33 → d72e692 → 01b0bfe → 1995394</div>
+</div>
+
+</div>
+
+<h2>Root Cause Analysis</h2>
+<div class="rec-list">
+
+<div class="rec-item">
+  <div class="rec-title">1. No staging environment matching production infrastructure</div>
+  <div class="rec-body"><strong>Clusters affected:</strong> WAF/firewall (10 commits), CSP fixes (3), Stripe webhooks (8), branding storage (5). The WAF issue alone was rediscovered three separate times because there's no pre-production environment behind Moravian's firewall. Every HTTP method restriction, CSP rule, and webhook failure was found only after deploying to production.</div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">2. Camera/OCR pipeline has no architectural boundaries</div>
+  <div class="rec-body"><strong>Clusters affected:</strong> OCR/exposure (15 commits), external camera (8), QR scanner (6), image rotation (5). The BirdDog camera system treats capture, exposure, OCR, and UI as one monolith. Fixing exposure starves OCR. Pausing OCR breaks the menu button. USB reconnection requires rebuilding the entire session. These 34 commits share one root cause: everything flows through one undifferentiated pipeline.</div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">3. Business rules implemented directly as code without specs</div>
+  <div class="rec-body"><strong>Clusters affected:</strong> After-hours access (8), freshmen exclusion (5), refund matching (7), lottery config (5). When business rules live only in code and there's no written spec, every policy clarification becomes a code change. The freshmen exclusion went through six different implementations in one day because the rule wasn't decided before coding started.</div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">4. Errors silently swallowed throughout the stack</div>
+  <div class="rec-body"><strong>Clusters affected:</strong> Stripe (8), audit trail (7), capacity audit (7), scheduled backups (5). A recurring pattern: something fails silently → add diagnostic endpoint → discover the real error → fix it. At least four clusters started with "surface actual error instead of silently swallowing." Errors should fail loudly by default.</div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">5. No database migration discipline</div>
+  <div class="rec-body"><strong>Clusters affected:</strong> Startup deadlocks (4), lot normalization (4), calculated capacity (4), branding storage (5). Migrations run in the app startup path, race with other queries, and break on container redeploys. There's no proper migration runner (like Alembic) managing ordering, locks, and idempotency.</div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">6. No test coverage for time-based and matching logic</div>
+  <div class="rec-body"><strong>Clusters affected:</strong> After-hours access (8), refund matching (7), program/visitor filter (5), waitlist position (4). These are deterministic, testable functions that got re-fixed because nobody could verify the fix without deploying. A handful of unit tests would have caught every regression in these clusters.</div>
+</div>
+
+</div>
+
+<h2>Refactoring Recommendations</h2>
+<div class="rec-list">
+
+<div class="rec-item">
+  <div class="rec-title">R1. Extract a BirdDog CameraManager protocol with pluggable sources</div>
+  <div class="rec-body">Create an abstraction layer separating camera capture (built-in, USB external, reconnect logic) from the OCR pipeline and the UI. The camera source becomes a state machine with explicit states: <strong>discovering → configuring → streaming → paused → reconnecting</strong>. OCR subscribes to frames without knowing the source. This prevents the cascade where fixing USB reconnection breaks OCR, or pausing OCR breaks the camera. <strong>Estimated savings: prevents ~34 commits of rework patterns from recurring.</strong></div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">R2. Create a WAF compatibility layer and document all restrictions</div>
+  <div class="rec-body">Write a shared <code>WAF_RESTRICTIONS.md</code> documenting every known blocked HTTP method and field name pattern. Build a small middleware or API client wrapper that automatically routes DELETE/PATCH through POST with method override headers, or through dedicated endpoints. Add a CI check that flags any new DELETE or PATCH route. <strong>Estimated savings: prevents 10+ commits from recurring and eliminates the #1 source of production-only failures.</strong></div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">R3. Add Alembic for database migrations</div>
+  <div class="rec-body">Replace startup-path DDL with Alembic migrations that run before the app boots, with proper lock management and idempotency. This eliminates deadlocks during startup, schema drift between deploys, and the "add missing column" pattern that appears in at least 6 commits. <strong>Estimated savings: prevents deadlock/schema clusters (~12 commits).</strong></div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">R4. Extract business rules into a configurable rules engine</div>
+  <div class="rec-body">After-hours access, freshmen exclusion, lot access by permit type, and capacity calculations should all be data-driven rules stored in the database, not hardcoded logic. An admin UI for rules means policy changes don't require code deploys. Define the rule schema: <strong>condition (time window, class year, permit type) → action (allow/deny lot access)</strong>. <strong>Estimated savings: prevents 20+ commits of business-rule churn.</strong></div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">R5. Add a global error handling policy: fail loud by default</div>
+  <div class="rec-body">Audit every <code>try/except: pass</code> and every silent error swallow in the codebase. Replace with structured error logging to Axiom (already planned). Add a FastAPI exception handler that returns full error details in dev/staging and sanitized messages in production. <strong>Estimated savings: eliminates the "add diagnostic endpoint to find the real error" pattern (~15 commits).</strong></div>
+</div>
+
+<div class="rec-item">
+  <div class="rec-title">R6. Write unit tests for the top 5 rework areas</div>
+  <div class="rec-body">Targeted test coverage, not blanket coverage. Focus on: time-window access logic (boundary conditions at 4 PM, midnight, timezone edges), permit matching and normalization (lot codes, refund matching, filter logic), capacity calculations, and the startup migration sequence. This is maybe 200 lines of tests that would have prevented ~30 commits of rework. <strong>Estimated savings: highest ROI of any recommendation.</strong></div>
+</div>
+
+</div>
+
+<div class="report-footer">
+  Generated Sep 18, 2026 &middot; Quarry monorepo: 1,077 commits analyzed (Jun 11 – Sep 17, 2026) &middot; Hounddog (FastAPI + React) + BirdDog (iOS)
+</div>
+
+</div>
+</body>
+</html>

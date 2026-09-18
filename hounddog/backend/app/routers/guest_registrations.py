@@ -4,6 +4,7 @@ import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,7 @@ from ..models.permit import Permit
 
 # ── Student-facing router ────────────────────────────────────────────
 
-student_router = APIRouter(dependencies=[Depends(get_current_user)])
+student_router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 class GuestCreate(BaseModel):
@@ -233,7 +234,7 @@ async def cancel_guest(
 
 # ── Admin router ─────────────────────────────────────────────────────
 
-admin_router = APIRouter(dependencies=[Depends(require_office())])
+admin_router = SafeRouter(dependencies=[Depends(require_office())])
 
 
 @admin_router.get("")

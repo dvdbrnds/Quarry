@@ -1,9 +1,11 @@
 import csv
+import sentry_sdk
 import io
 import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from ..utils.safe_router import SafeRouter
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select, func, or_, cast
 from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
@@ -63,8 +65,8 @@ from ..services.channels import get_registry
 
 logger = logging.getLogger("quarry.alerts")
 
-admin_router = APIRouter(dependencies=[Depends(require_role("admin"))])
-public_router = APIRouter()
+admin_router = SafeRouter(dependencies=[Depends(require_role("admin"))])
+public_router = SafeRouter()
 
 
 # ---------------------------------------------------------------------------
@@ -1459,4 +1461,5 @@ async def trigger_sis_sync():
         from ..services.sis_subscriber_sync import get_sync_status
         return get_sync_status()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         raise HTTPException(500, f"Sync failed: {str(e)}")

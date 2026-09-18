@@ -10,6 +10,7 @@ triggered manually via the admin API.
 """
 
 import logging
+import sentry_sdk
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -143,6 +144,7 @@ async def _fulfill_session(db: AsyncSession, session_data: dict) -> str | None:
                 end_date=new_permit.end_date.strftime("%B %d, %Y"),
             )
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.warning("Permit confirmation email failed for %s: %s", email, e)
 
     return permit_type_code
@@ -262,6 +264,7 @@ async def _fulfill_admin_charge(db: AsyncSession, session_data: dict) -> bool:
                 end_date=permit.end_date.strftime("%B %d, %Y") if permit.end_date else "N/A",
             )
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.warning("Admin charge confirmation email failed for %s: %s", permit.email, e)
 
     return True
@@ -300,6 +303,7 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
             try:
                 page = stripe.checkout.Session.list(**params)
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 errors.append(f"Session.list failed: {e}")
                 break
 
@@ -353,6 +357,7 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                         else:
                             already_fulfilled += 1
                 except Exception as e:
+                    sentry_sdk.capture_exception(e)
                     errors.append(f"Fulfill failed for {sess.id}: {e}")
                     logger.error("Reconcile fulfill error for %s: %s", sess.id, e, exc_info=True)
 

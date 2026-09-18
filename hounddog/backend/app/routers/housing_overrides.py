@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,7 @@ from ..auth.okta import require_office, OktaUser, get_current_user
 from ..database import get_db
 from ..models.housing_override import HousingOverride
 
-router = APIRouter(dependencies=[Depends(require_office())])
+router = SafeRouter(dependencies=[Depends(require_office())])
 
 VALID_STATUSES = {"R", "C", "O"}
 

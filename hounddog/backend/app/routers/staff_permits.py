@@ -4,6 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,7 @@ from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 
 
-router = APIRouter()
+router = SafeRouter()
 
 
 STAFF_PERMIT_CODE = "faculty_staff"

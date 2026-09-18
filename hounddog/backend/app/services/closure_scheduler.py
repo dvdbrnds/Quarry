@@ -261,6 +261,7 @@ async def _auto_send_renewal_emails():
                 )
                 sent += 1
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.error("Auto-renewal email failed for %s: %s", permit.email, e)
 
         if sent:
@@ -292,6 +293,7 @@ async def _auto_draw_deadline():
                 await run_waterfall_draw(db, cycle.id, run_by="auto_draw_deadline")
                 await db.commit()
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.error("Auto-draw deadline failed for cycle %s: %s", cycle.id, e)
                 await db.rollback()
 
@@ -494,6 +496,7 @@ async def _run_loop():
         _check_backup_dir_size()
         logger.info("Startup backup cleanup completed (kept last %d)", MAX_KEEP_COUNT)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("Startup backup cleanup failed: %s", e, exc_info=True)
 
     while True:

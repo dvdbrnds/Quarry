@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,7 @@ from ..database import get_db
 from ..models.appeal_committee import AppealCommitteeMember, CommitteeVote
 from ..models.ticket import Ticket
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 # ---------------------------------------------------------------------------

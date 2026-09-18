@@ -1,6 +1,7 @@
 """Public (no auth) endpoints for students to manage notification preferences."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +11,7 @@ from ..models.permit import Permit
 from ..schemas.messaging import NotificationPreferenceRead, NotificationPreferenceUpdate
 from ..services.email import extract_first_name
 
-router = APIRouter()
+router = SafeRouter()
 
 
 @router.get("/{token}", response_model=NotificationPreferenceRead)

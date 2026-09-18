@@ -2,6 +2,7 @@
 incoming webhook URL."""
 
 import logging
+import sentry_sdk
 
 import httpx
 
@@ -79,5 +80,6 @@ class TeamsChannel(AlertChannel):
                 resp.raise_for_status()
             return ChannelResult(channel=self.name, sent=1)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Teams webhook failed: %s", e)
             return ChannelResult(channel=self.name, failed=1, error=str(e))

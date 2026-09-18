@@ -1,6 +1,7 @@
 import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,8 +12,8 @@ from ..database import get_db
 from ..models.branding_settings import BrandingSettings
 from ..services.email import invalidate_branding_cache
 
-admin_router = APIRouter(dependencies=[Depends(require_admin())])
-public_router = APIRouter()
+admin_router = SafeRouter(dependencies=[Depends(require_admin())])
+public_router = SafeRouter()
 
 _ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
 _MAX_SIZE = 5 * 1024 * 1024

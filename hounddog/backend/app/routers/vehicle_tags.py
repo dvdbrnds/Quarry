@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +23,7 @@ import structlog
 
 logger = structlog.get_logger("quarry.vehicle_tags")
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 async def _sync_tag_to_tickets(db: AsyncSession, tag: Permit):

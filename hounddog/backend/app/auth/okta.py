@@ -37,6 +37,7 @@ async def _fetch_userinfo(access_token: str) -> dict:
                 return resp.json()
             log.warning("Okta userinfo returned status %s", resp.status_code)
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         log.warning("Failed to fetch Okta userinfo: %s", exc)
     return {}
 
@@ -282,6 +283,7 @@ async def get_current_user(request: Request) -> OktaUser:
             import sentry_sdk
             sentry_sdk.set_user({"id": user.sub, "role": user.role})
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
         return user
     except JWTError as e:
@@ -373,6 +375,7 @@ async def get_current_user_or_impersonated(request: Request) -> OktaUser:
                 else:
                     log.warning("Okta user lookup failed for %s: %d", impersonate_email, user_res.status_code)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             log.warning("Okta API call failed during impersonation: %s", e)
 
     # Fallback to DB if Okta didn't return data

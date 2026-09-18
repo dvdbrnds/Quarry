@@ -4,6 +4,7 @@ Checks the manual roster first, then falls back to SIS ResLifeStaff flag.
 """
 
 from __future__ import annotations
+import sentry_sdk
 
 import logging
 from dataclasses import dataclass
@@ -148,7 +149,8 @@ async def lookup_fee_exempt(
                         email=user.email if user else (next(iter(emails)) if emails else ""),
                     )
                     return FeeExemptMatch(entry=synthetic, matched_by="sis_res_life_staff")
-            except Exception:
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.exception("SIS ResLifeStaff lookup failed for %s", sid)
 
     return None

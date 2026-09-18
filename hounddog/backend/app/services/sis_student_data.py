@@ -4,6 +4,7 @@ Uses the Mor_CUS_ParkingData stored procedure via the svc_parking user.
 """
 
 import asyncio
+import sentry_sdk
 import logging
 from dataclasses import dataclass
 
@@ -71,6 +72,7 @@ async def lookup_student_parking_data(id_num: str) -> StudentParkingData | None:
         conn.close()
         return _parse_row(row, id_num) if row else None
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("SIS lookup failed for %s: %s", id_num, e)
         return None
 
@@ -94,9 +96,11 @@ def _sis_batch_query(id_nums: list[str]) -> dict[str, StudentParkingData]:
                     data = _parse_row(row, id_num)
                     results[data.id_num] = data
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.debug("SIS query failed for %s: %s", id_num, e)
         conn.close()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("SIS batch connection failed: %s", e)
     return results
 

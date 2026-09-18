@@ -1,4 +1,5 @@
 import csv
+import sentry_sdk
 import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -6,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 import structlog
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from ..utils.safe_router import SafeRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_, desc, asc, text
@@ -43,7 +45,7 @@ from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 from ..services.lot_assignment import effective_lot_assignment, permit_lot_matches, lot_filter_variants
 
-router = APIRouter(dependencies=[Depends(require_office())])
+router = SafeRouter(dependencies=[Depends(require_office())])
 
 SORTABLE_FIELDS = {
     "permit_number": Permit.permit_number,
@@ -603,7 +605,8 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             amount_display=amount_display,
             checkout_url=session.url,
         )
-    except Exception:
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
         pass  # best-effort, admin sees the URL in the response
 
     return {
@@ -907,6 +910,7 @@ async def reassign_permit(
                 checkout_url=session.url,
             )
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
 
         logger.info(
@@ -977,6 +981,7 @@ async def reassign_permit(
                     new_pt.label, refund_amount, refund.id,
                 )
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.warning("Stripe refund failed for reassignment: %s", e)
                 refund_result["refund_error"] = str(e)
                 refund_result["manual_refund_needed"] = True
@@ -1090,6 +1095,7 @@ async def _permit_payment_info(
                     amount_paid = amount_paid or (Decimal(str(pi.amount)) / 100)
                     refundable = amount_paid
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
 
     return payment, stripe_id, amount_paid, refundable
@@ -1238,6 +1244,7 @@ async def cancel_permit(
                 refund_result["refund_status"] = refund.status
                 permit.refund_id = refund.id
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.warning("Stripe refund failed for cancel %s: %s", permit.id, e)
                 refund_result["refund_error"] = str(e)
                 refund_result["manual_refund_needed"] = True
@@ -1704,6 +1711,7 @@ async def send_payment_link(
             checkout_url=session.url,
         )
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         structlog.get_logger("quarry.permits").warning("Payment link email failed: %s", exc)
 
     structlog.get_logger("quarry.permits").info(

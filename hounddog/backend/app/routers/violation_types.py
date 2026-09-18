@@ -1,6 +1,8 @@
 import uuid
+import sentry_sdk
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +17,7 @@ from ..schemas.violation_type import (
     ViolationTypeUpdate,
 )
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[ViolationTypeRead])
@@ -168,6 +170,7 @@ async def import_violation_types(
                 db.add(vtype)
                 created += 1
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             errors.append(f"Error processing '{row.code}': {e}")
 
     await db.flush()

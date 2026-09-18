@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +14,8 @@ from ..models.permit import Permit
 from ..models.ticket import Ticket
 
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
-public_router = APIRouter()
+router = SafeRouter(dependencies=[Depends(get_current_user)])
+public_router = SafeRouter()
 
 
 class TicketSummary(BaseModel):

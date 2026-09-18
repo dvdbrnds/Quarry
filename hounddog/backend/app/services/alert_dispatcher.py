@@ -5,6 +5,7 @@ block others.
 """
 
 import asyncio
+import sentry_sdk
 import logging
 import uuid as _uuid
 
@@ -125,6 +126,7 @@ async def dispatch_alert(
                 "error": result.error,
             }
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Channel %s failed: %s", channel.name, e, exc_info=True)
             return channel.name, {"sent": 0, "failed": 0, "error": str(e)}
 
@@ -144,6 +146,7 @@ async def dispatch_alert(
         from .desktop_broadcast import broadcast_alert
         await broadcast_alert(alert)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Desktop broadcast failed: %s", e)
 
     return results
@@ -164,6 +167,7 @@ async def clear_alert(alert_id, cleared_by: str, db: AsyncSession) -> AlertLog |
         try:
             await channel.clear(alert)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Channel %s clear failed: %s", channel.name, e)
 
     await db.flush()
@@ -173,6 +177,7 @@ async def clear_alert(alert_id, cleared_by: str, db: AsyncSession) -> AlertLog |
         from .desktop_broadcast import broadcast_clear
         await broadcast_clear(str(alert.id))
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Desktop clear broadcast failed: %s", e)
 
     return alert

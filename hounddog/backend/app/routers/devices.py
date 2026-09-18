@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +11,7 @@ from ..database import get_db
 from ..models.device import Device
 from ..schemas.device import DeviceCreate, DeviceRead
 
-router = APIRouter(dependencies=[Depends(require_office())])
+router = SafeRouter(dependencies=[Depends(require_office())])
 
 
 class DeviceReadWithPairing(DeviceRead):

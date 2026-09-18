@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..models.lot import ParkingLot
 
-router = APIRouter()
+router = SafeRouter()
 
 
 def _lot_to_public(lot: ParkingLot) -> dict:

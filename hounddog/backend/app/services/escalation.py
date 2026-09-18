@@ -7,6 +7,7 @@ Integration points are pluggable:
 - SIS holds: defaults to logging + admin notification (wire up API later)
 """
 import logging
+import sentry_sdk
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -186,6 +187,7 @@ async def _send_maxient_email_referral(
             body_text=body_text,
         )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("Failed to send Maxient referral email: %s", e)
 
 
@@ -259,6 +261,7 @@ async def _notify_student_of_hold(
     try:
         await send_email(to=[student_email], subject=subject, body_html=body_html, body_text=body_text)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("Failed to send hold notification to %s: %s", student_email, e)
 
 
@@ -293,6 +296,7 @@ async def _notify_admin_of_hold(
     try:
         await send_email(to=[admin_email], subject=subject, body_html=body_html, body_text=body_text)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("Failed to send admin hold notification: %s", e)
 
 

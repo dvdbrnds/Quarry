@@ -7,6 +7,7 @@ Every HTTP request is logged unconditionally.
 """
 
 import json
+import sentry_sdk
 import re
 
 import structlog
@@ -186,7 +187,8 @@ async def _resolve_tier_labels(pref_ids: list) -> list[str]:
             ).scalars().all()
             by_id = {str(pt.id): pt.label for pt in rows}
         return [by_id.get(str(p), str(p)[:8]) for p in pref_ids]
-    except Exception:
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.exception("Failed to resolve lottery tier labels for audit")
         return [str(p)[:8] for p in pref_ids]
 
@@ -214,6 +216,7 @@ async def _identify_user(headers: list[tuple[bytes, bytes]]) -> tuple[str, str]:
             sub = payload.get("sub", "")
             return email, sub
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
 
     try:
@@ -225,6 +228,7 @@ async def _identify_user(headers: list[tuple[bytes, bytes]]) -> tuple[str, str]:
             if row:
                 return f"device:{row[0]}", f"device:{row[1]}"
     except Exception:
+        sentry_sdk.capture_exception(e)
         pass
 
     return "anonymous", ""
@@ -238,6 +242,7 @@ async def verify_audit_table():
                 await session.execute(text("SELECT count(*) FROM audit_log"))
         logger.info("Audit log table verified OK")
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("AUDIT LOG TABLE CHECK FAILED: %s", e, exc_info=True)
 
 
@@ -340,5 +345,6 @@ class AuditMiddleware:
                         ip_address=ip_address,
                     ))
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("AUDIT WRITE FAILED for %s %s: %s", method, path, e,
                          exc_info=True)

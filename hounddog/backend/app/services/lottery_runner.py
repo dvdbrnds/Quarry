@@ -6,6 +6,7 @@ Usage:
 """
 
 import hashlib
+import sentry_sdk
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -277,6 +278,7 @@ async def _notify_selected(selected, permit_type, offer_expires):
                 lot_assignments=list(permit_type.get("lot_assignments") or []),
             )
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Failed to notify selected applicant %s: %s", app.id, e)
 
 
@@ -337,6 +339,7 @@ async def _notify_waitlisted(waitlisted, permit_type):
                 body_text=body_text,
             )
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Failed to notify waitlisted applicant %s: %s", app.id, e)
 
 

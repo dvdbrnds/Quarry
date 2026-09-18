@@ -1,9 +1,11 @@
 import secrets
+import sentry_sdk
 import uuid
 import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,9 +21,9 @@ logger = logging.getLogger("quarry.vehicle_requests")
 
 COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
 
-student_router = APIRouter(prefix="/api/student/permits", dependencies=[Depends(get_current_user)])
-admin_router = APIRouter(prefix="/api/admin/vehicle-requests", dependencies=[Depends(require_admin())])
-public_router = APIRouter(prefix="/api/vehicle-requests")
+student_router = SafeRouter(prefix="/api/student/permits", dependencies=[Depends(get_current_user)])
+admin_router = SafeRouter(prefix="/api/admin/vehicle-requests", dependencies=[Depends(require_admin())])
+public_router = SafeRouter(prefix="/api/vehicle-requests")
 
 
 class MultiVehicleSubmit(BaseModel):
@@ -80,6 +82,7 @@ async def _apply_approval(req: VehicleRequest, db: AsyncSession, decided_by: str
             note=None,
         )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to send approval email: %s", e)
 
     logger.info("Vehicle request %s approved by %s — plate %s added to permit %s",
@@ -104,6 +107,7 @@ async def _apply_denial(req: VehicleRequest, db: AsyncSession, decided_by: str, 
             note=req.decision_note,
         )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to send denial email: %s", e)
 
     logger.info("Vehicle request %s denied by %s", req.id, decided_by)
@@ -195,6 +199,7 @@ async def submit_multi_vehicle_request(
                 approval_url=approval_url,
             )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to send vehicle request notification: %s", e)
 
     return {

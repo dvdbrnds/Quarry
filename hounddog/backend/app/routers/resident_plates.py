@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +10,7 @@ from ..database import get_db
 from ..models.resident_plate import ResidentPlate
 from ..schemas.resident_plate import ResidentPlateCreate, ResidentPlateRead
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[ResidentPlateRead])

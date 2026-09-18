@@ -2,6 +2,7 @@
 signage players so they switch to alert-override mode."""
 
 import logging
+import sentry_sdk
 
 from . import AlertChannel, ChannelResult
 
@@ -29,6 +30,7 @@ class SignageChannel(AlertChannel):
             count = await broadcast_to_screens("alert_override", data)
             return ChannelResult(channel=self.name, sent=count)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Signage broadcast failed: %s", e)
             return ChannelResult(channel=self.name, failed=1, error=str(e))
 
@@ -37,4 +39,5 @@ class SignageChannel(AlertChannel):
             from ...routers.signage import broadcast_to_screens
             await broadcast_to_screens("alert_clear", {"id": str(alert.id)})
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass

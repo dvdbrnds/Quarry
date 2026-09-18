@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tactical Dev Playbook</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-alt: #efeee9;
+  --border: #dddbd4;
+  --text: #1c1b18;
+  --text-muted: #6e6b62;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --green: #15803d;
+  --green-bg: #f0fdf4;
+  --amber: #92400e;
+  --amber-bg: #fffbeb;
+  --red: #b91c1c;
+  --red-bg: #fef2f2;
+  --purple: #7c3aed;
+  --purple-bg: #f5f3ff;
+  --code-bg: #1e1e1e;
+  --code-text: #d4d4d4;
+  --code-comment: #6a9955;
+  --code-keyword: #569cd6;
+  --code-string: #ce9178;
+  --code-func: #dcdcaa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131210;
+    --surface: #1c1b18;
+    --surface-alt: #262520;
+    --border: #383630;
+    --text: #e5e3dd;
+    --text-muted: #9a9790;
+    --accent: #60a5fa;
+    --accent-bg: #172030;
+    --green: #4ade80;
+    --green-bg: #0f2418;
+    --amber: #fbbf24;
+    --amber-bg: #271e0a;
+    --red: #f87171;
+    --red-bg: #2a1515;
+    --purple: #a78bfa;
+    --purple-bg: #1e152e;
+    --code-bg: #111111;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #131210;
+  --surface: #1c1b18;
+  --surface-alt: #262520;
+  --border: #383630;
+  --text: #e5e3dd;
+  --text-muted: #9a9790;
+  --accent: #60a5fa;
+  --accent-bg: #172030;
+  --green: #4ade80;
+  --green-bg: #0f2418;
+  --amber: #fbbf24;
+  --amber-bg: #271e0a;
+  --red: #f87171;
+  --red-bg: #2a1515;
+  --purple: #a78bfa;
+  --purple-bg: #1e152e;
+  --code-bg: #111111;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  padding: 16px;
+}
+
+.container { max-width: 820px; margin: 0 auto; }
+
+h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.15rem; }
+.subtitle { color: var(--text-muted); font-size: 0.92rem; margin-bottom: 2.5rem; }
+
+h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-top: 2.8rem;
+  margin-bottom: 0.2rem;
+  letter-spacing: -0.01em;
+}
+
+h2 .num {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 6px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+h2 + .h2-sub {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 1.2rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+p { margin-bottom: 0.85rem; font-size: 0.92rem; }
+p:last-child { margin-bottom: 0; }
+
+.callout {
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 1rem 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.callout.principle { background: var(--accent-bg); border-left: 3px solid var(--accent); }
+.callout.why { background: var(--green-bg); border-left: 3px solid var(--green); }
+.callout.warning { background: var(--amber-bg); border-left: 3px solid var(--amber); }
+.callout.anti { background: var(--red-bg); border-left: 3px solid var(--red); }
+.callout.file { background: var(--purple-bg); border-left: 3px solid var(--purple); }
+
+.callout-label {
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.callout.principle .callout-label { color: var(--accent); }
+.callout.why .callout-label { color: var(--green); }
+.callout.warning .callout-label { color: var(--amber); }
+.callout.anti .callout-label { color: var(--red); }
+.callout.file .callout-label { color: var(--purple); }
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  padding: 14px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.8rem 0;
+}
+
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+  background: var(--surface-alt);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+pre code { background: none; padding: 0; font-size: inherit; }
+
+.cm { color: var(--code-comment); }
+.kw { color: var(--code-keyword); }
+.st { color: var(--code-string); }
+.fn { color: var(--code-func); }
+
+.flow-diagram {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 1.2rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.82rem;
+}
+
+.flow-step {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  text-align: center;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.flow-step.highlight {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.flow-arrow {
+  padding: 0 6px;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.savings {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 1rem 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 500px) { .savings { grid-template-columns: 1fr; } }
+
+.savings-item {
+  font-size: 0.85rem;
+}
+
+.savings-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+}
+
+.footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Tactical Dev Playbook</h1>
+<p class="subtitle">Three layers that catch the bugs without slowing the pushes &middot; Quarry / Hounddog / BirdDog</p>
+
+<div class="callout principle">
+  <div class="callout-label">Core principle</div>
+  Your current flow — commit, push, redeploy in Coolify — doesn't change. Everything below bolts onto that flow. Nothing gates your deploys. Nothing requires a separate server. Nothing adds a step between you and production.
+</div>
+
+<div class="flow-diagram">
+  <div class="flow-step">commit</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step highlight">pre-push checks</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step">push</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step">Coolify redeploy</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step highlight">Sentry catches errors</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step highlight">Axiom shows everything</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">1</span> Sentry: Stop swallowing errors</h2>
+<p class="h2-sub">Catches the "silently broken" bugs that caused 27 rework commits</p>
+
+<p>Four of your worst clusters started with errors being silently swallowed — Stripe webhooks dropping payments, audit trail failing invisibly, capacity audit timing out without a trace, backups 500-ing with no notification. Sentry catches every unhandled exception the moment it happens and pings you. You don't need a staging environment to find these bugs — you need production to tell you about them instead of hiding them.</p>
+
+<h3>FastAPI integration</h3>
+<div class="callout file">
+  <div class="callout-label">File: hounddog/main.py</div>
+  Add this before your app starts — above the FastAPI() constructor.
+</div>
+<pre><code><span class="kw">import</span> sentry_sdk
+
+sentry_sdk.<span class="fn">init</span>(
+    dsn=os.environ.get(<span class="st">"SENTRY_DSN"</span>),
+    traces_sample_rate=<span class="st">0.1</span>,          <span class="cm"># 10% of requests get performance traces</span>
+    profiles_sample_rate=<span class="st">0.1</span>,
+    environment=os.environ.get(<span class="st">"DEPLOY_ENV"</span>, <span class="st">"production"</span>),
+    release=os.environ.get(<span class="st">"GIT_SHA"</span>, <span class="st">"dev"</span>),
+    <span class="cm"># Tag every error with the commit that introduced it</span>
+    before_send=<span class="kw">lambda</span> event, hint: {**event, <span class="st">"tags"</span>: {
+        **event.get(<span class="st">"tags"</span>, {}),
+        <span class="st">"deploy_sha"</span>: os.environ.get(<span class="st">"GIT_SHA"</span>, <span class="st">"unknown"</span>),
+    }},
+)
+</code></pre>
+
+<h3>Catch the silent killers explicitly</h3>
+<p>Everywhere you currently have <code>except Exception: pass</code> or <code>except Exception as e: logger.error(e)</code>, add Sentry capture so it actually reaches you:</p>
+<pre><code><span class="kw">try</span>:
+    result = <span class="kw">await</span> call_sis_api(moravian_id)
+<span class="kw">except</span> Exception <span class="kw">as</span> e:
+    sentry_sdk.<span class="fn">capture_exception</span>(e)
+    <span class="cm"># Still degrade gracefully — but now you KNOW it happened</span>
+    result = None
+</code></pre>
+
+<h3>Stripe webhook protection</h3>
+<p>Wrap your webhook handler so failed payments never go silent again:</p>
+<pre><code><span class="kw">@app.post</span>(<span class="st">"/api/stripe/webhook"</span>)
+<span class="kw">async def</span> <span class="fn">stripe_webhook</span>(request: Request):
+    <span class="kw">try</span>:
+        event = stripe.Webhook.construct_event(...)
+    <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        sentry_sdk.<span class="fn">capture_exception</span>(e)
+        <span class="kw">raise</span>  <span class="cm"># Return 400 to Stripe so it retries</span>
+
+    <span class="kw">with</span> sentry_sdk.<span class="fn">push_scope</span>() <span class="kw">as</span> scope:
+        scope.set_context(<span class="st">"stripe_event"</span>, {
+            <span class="st">"type"</span>: event[<span class="st">"type"</span>],
+            <span class="st">"id"</span>: event[<span class="st">"id"</span>],
+        })
+        <span class="cm"># process the event...</span>
+</code></pre>
+
+<h3>BirdDog (iOS)</h3>
+<pre><code><span class="cm">// AppDelegate or @main App init</span>
+<span class="kw">import</span> Sentry
+
+SentrySDK.<span class="fn">start</span> { options <span class="kw">in</span>
+    options.dsn = <span class="st">"https://your-key@sentry.io/your-project"</span>
+    options.tracesSampleRate = <span class="st">0.2</span>
+    options.enableAutoPerformanceTracing = <span class="kw">true</span>
+    options.attachScreenshot = <span class="kw">true</span>  <span class="cm">// screenshot on crash — huge for camera bugs</span>
+    options.environment = <span class="st">"production"</span>
+}
+</code></pre>
+
+<div class="callout why">
+  <div class="callout-label">What this prevents</div>
+  Stripe silently dropping payments (8 commits). Audit trail failing invisibly (7 commits). Capacity audit timing out (7 commits). Backup 500s nobody knew about (5 commits). You would have gotten a Sentry alert on your phone within seconds of each of these instead of discovering them hours or days later.
+</div>
+
+<h3>Coolify env vars to add</h3>
+<pre><code>SENTRY_DSN=https://your-key@o123.ingest.us.sentry.io/456
+GIT_SHA=${SOURCE_COMMIT}    <span class="cm"># Coolify exposes this during build</span>
+DEPLOY_ENV=production
+</code></pre>
+
+<!-- ============================================================ -->
+<h2><span class="num">2</span> Axiom: See everything that happens</h2>
+<p class="h2-sub">Structured request logging that replaces "add diagnostic endpoint" commits</p>
+
+<p>Sentry catches errors. Axiom shows you everything — every request, every response time, every slow query, every external call. This replaces the pattern where you added a diagnostic endpoint to figure out what was going on (you did this at least 4 times across Stripe, audit trail, tickets, and capacity).</p>
+
+<h3>Structured request logging middleware</h3>
+<div class="callout file">
+  <div class="callout-label">File: hounddog/middleware/axiom_logging.py</div>
+  One middleware that logs every request with all the context you'd want when debugging.
+</div>
+<pre><code><span class="kw">import</span> time, os, httpx
+<span class="kw">from</span> starlette.middleware.base <span class="kw">import</span> BaseHTTPMiddleware
+
+AXIOM_TOKEN = os.environ.get(<span class="st">"AXIOM_TOKEN"</span>)
+AXIOM_DATASET = os.environ.get(<span class="st">"AXIOM_DATASET"</span>, <span class="st">"hounddog"</span>)
+AXIOM_URL = <span class="st">f"https://api.axiom.co/v1/datasets/{AXIOM_DATASET}/ingest"</span>
+
+<span class="kw">class</span> <span class="fn">AxiomRequestLogger</span>(BaseHTTPMiddleware):
+    <span class="kw">async def</span> <span class="fn">dispatch</span>(self, request, call_next):
+        start = time.monotonic()
+        response = <span class="kw">None</span>
+        error = <span class="kw">None</span>
+
+        <span class="kw">try</span>:
+            response = <span class="kw">await</span> call_next(request)
+            <span class="kw">return</span> response
+        <span class="kw">except</span> Exception <span class="kw">as</span> e:
+            error = str(e)
+            <span class="kw">raise</span>
+        <span class="kw">finally</span>:
+            duration_ms = (time.monotonic() - start) * 1000
+            user = getattr(request.state, <span class="st">"user"</span>, <span class="kw">None</span>)
+
+            event = {
+                <span class="st">"_time"</span>: time.time(),
+                <span class="st">"method"</span>: request.method,
+                <span class="st">"path"</span>: request.url.path,
+                <span class="st">"status"</span>: response.status_code <span class="kw">if</span> response <span class="kw">else</span> 500,
+                <span class="st">"duration_ms"</span>: round(duration_ms, 1),
+                <span class="st">"user"</span>: user.email <span class="kw">if</span> user <span class="kw">else None</span>,
+                <span class="st">"error"</span>: error,
+                <span class="st">"deploy_sha"</span>: os.environ.get(<span class="st">"GIT_SHA"</span>, <span class="st">"unknown"</span>),
+            }
+
+            <span class="cm"># Fire and forget — never block the response</span>
+            <span class="kw">try</span>:
+                <span class="kw">async with</span> httpx.AsyncClient() <span class="kw">as</span> client:
+                    <span class="kw">await</span> client.post(AXIOM_URL,
+                        json=[event],
+                        headers={<span class="st">"Authorization"</span>: <span class="st">f"Bearer {AXIOM_TOKEN}"</span>},
+                        timeout=2.0)
+            <span class="kw">except</span>:
+                <span class="kw">pass</span>  <span class="cm"># Logging must never break the app</span>
+</code></pre>
+
+<h3>What to query when debugging</h3>
+<p>Instead of adding diagnostic endpoints, you open Axiom and query:</p>
+<pre><code><span class="cm">// "Why are Stripe webhooks failing?"</span>
+method == <span class="st">"POST"</span> <span class="kw">and</span> path == <span class="st">"/api/stripe/webhook"</span> <span class="kw">and</span> status >= <span class="st">400</span>
+
+<span class="cm">// "What's slow right now?"</span>
+duration_ms > <span class="st">2000</span> | <span class="fn">sort</span> -duration_ms
+
+<span class="cm">// "Did my last deploy break anything?"</span>
+deploy_sha == <span class="st">"abc123"</span> <span class="kw">and</span> status >= <span class="st">500</span>
+
+<span class="cm">// "What did this user see?"</span>
+user == <span class="st">"student@moravian.edu"</span> | <span class="fn">sort</span> _time
+</code></pre>
+
+<div class="callout why">
+  <div class="callout-label">What this prevents</div>
+  The "add diagnostic endpoint" cycle (4+ instances). The "what is even happening in production" blind spots. The capacity audit timeout that took 7 commits — you would have seen <code>duration_ms: 32000</code> on the SIS call in Axiom and known immediately.
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">3</span> Infrastructure Guardrails</h2>
+<p class="h2-sub">A constraints file + API wrapper that make WAF-blocked patterns impossible</p>
+
+<p>This is not a staging environment. This is a file in your repo that encodes everything you've learned about Moravian's infrastructure the hard way, plus a thin wrapper that enforces it in code so you can never hit the same wall again.</p>
+
+<h3>The constraints file</h3>
+<div class="callout file">
+  <div class="callout-label">File: INFRASTRUCTURE.md (repo root)</div>
+  Every time you discover a new constraint, add it here. Claude reads this before writing code.
+</div>
+<pre><code><span class="cm"># Moravian Infrastructure Constraints
+# Last updated: 2026-09-18
+
+## WAF (Web Application Firewall)
+- HTTP DELETE is BLOCKED. Use POST /revoke or PATCH with status change.
+- HTTP PATCH field names containing "delete" are BLOCKED. Rename fields.
+- Request bodies over ~10MB may be silently truncated.
+
+## CSP (Content Security Policy)
+- Google Maps requires: *.googleapis.com, *.gstatic.com in script-src
+  and connect-src, plus fonts.googleapis.com in style-src.
+- Okta requires: login.moravian.edu AND *.okta.com in frame-src
+  and connect-src.
+
+## Container (Coolify / Docker)
+- Filesystem is EPHEMERAL. Never persist to disk. Use PostgreSQL.
+- No cron. Use APScheduler or background tasks in the web process.
+- Backups must write to external storage (S3/volume), not /tmp.
+
+## Okta SSO
+- ID token may not contain groups claim. Always fall back to /userinfo.
+- Callback page must initialize auth SDK independently.
+
+## Database
+- Startup migrations race with web workers. Use Alembic or single-worker
+  migration entrypoint.
+- ARRAY columns: use sqlalchemy.dialects.postgresql.ARRAY, not generic.</span>
+</code></pre>
+
+<h3>API route protection</h3>
+<p>A decorator that refuses to register DELETE or PATCH routes, forcing you to use safe alternatives at definition time instead of discovering the failure in production:</p>
+<pre><code><span class="cm"># hounddog/utils/waf.py</span>
+
+<span class="kw">from</span> fastapi <span class="kw">import</span> APIRouter
+<span class="kw">import</span> warnings
+
+<span class="kw">class</span> <span class="fn">SafeRouter</span>(APIRouter):
+    <span class="st">"""APIRouter that warns on WAF-blocked HTTP methods."""</span>
+
+    <span class="kw">def</span> <span class="fn">api_route</span>(self, path, *, methods=<span class="kw">None</span>, **kwargs):
+        <span class="kw">if</span> methods:
+            blocked = {<span class="st">"DELETE"</span>, <span class="st">"PATCH"</span>} & {m.upper() <span class="kw">for</span> m <span class="kw">in</span> methods}
+            <span class="kw">if</span> blocked:
+                <span class="kw">raise</span> ValueError(
+                    <span class="st">f"WAF blocks {blocked} — see INFRASTRUCTURE.md. "</span>
+                    <span class="st">f"Use POST with an action verb instead: "</span>
+                    <span class="st">f"POST {path}/revoke, POST {path}/archive"</span>
+                )
+        <span class="kw">return super</span>().api_route(path, methods=methods, **kwargs)
+
+    <span class="kw">def</span> <span class="fn">delete</span>(self, *a, **kw):
+        <span class="kw">raise</span> ValueError(<span class="st">"WAF blocks DELETE — use POST with /revoke or /archive"</span>)
+
+    <span class="kw">def</span> <span class="fn">patch</span>(self, *a, **kw):
+        <span class="kw">raise</span> ValueError(<span class="st">"WAF blocks PATCH — use PUT or POST"</span>)
+</code></pre>
+
+<p>Then swap <code>APIRouter</code> for <code>SafeRouter</code> in your route files. If you or Claude try to add a DELETE endpoint, it blows up immediately with a clear message instead of silently failing in production three weeks later.</p>
+
+<div class="callout why">
+  <div class="callout-label">What this prevents</div>
+  The WAF rediscovery cycle (10 commits, 5–6 hours, happened three separate times). The branding-stored-to-disk bug (5 commits). The Okta groups-missing-from-ID-token bug (discovered twice). Every infrastructure constraint you encode here is one you never hit again.
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">4</span> Targeted Tests: 200 Lines That Prevent 30 Commits</h2>
+<p class="h2-sub">Not a test suite. Not CI. One file you run before pushing when you touch these areas.</p>
+
+<div class="callout anti">
+  <div class="callout-label">What this is NOT</div>
+  This is not pytest with fixtures and mocks and 80% coverage targets. That would slow you down and you'd stop using it. This is one Python file with direct assertions on the pure functions that keep breaking. You run it when you touch access logic or matching code. That's it.
+</div>
+
+<div class="callout file">
+  <div class="callout-label">File: hounddog/tests/smoke.py</div>
+  Run with: <code>python tests/smoke.py</code> — no pytest needed, no dependencies.
+</div>
+
+<pre><code><span class="st">"""
+Smoke tests for the logic that keeps breaking.
+Run: python tests/smoke.py
+No frameworks. No fixtures. Just assertions.
+"""</span>
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime, time
+
+<span class="cm"># === After-hours access (8 rework commits) ===</span>
+
+<span class="kw">def</span> <span class="fn">test_after_hours_access</span>():
+    <span class="kw">from</span> hounddog.services.access <span class="kw">import</span> check_lot_access
+
+    <span class="cm"># Commuter at 3:59 PM — should NOT have FSC access</span>
+    <span class="kw">assert not</span> check_lot_access(<span class="st">"commuter"</span>, <span class="st">"FSC"</span>, time(15, 59))
+
+    <span class="cm"># Commuter at 4:00 PM — SHOULD have FSC access</span>
+    <span class="kw">assert</span> check_lot_access(<span class="st">"commuter"</span>, <span class="st">"FSC"</span>, time(16, 0))
+
+    <span class="cm"># Commuter at midnight — edge case</span>
+    <span class="kw">assert</span> check_lot_access(<span class="st">"commuter"</span>, <span class="st">"FSC"</span>, time(0, 0))
+
+    <span class="cm"># Faculty at any time — always has access</span>
+    <span class="kw">assert</span> check_lot_access(<span class="st">"faculty"</span>, <span class="st">"FSC"</span>, time(8, 0))
+    <span class="kw">assert</span> check_lot_access(<span class="st">"faculty"</span>, <span class="st">"FSC"</span>, time(23, 59))
+
+    print(<span class="st">"  ✓ after-hours access"</span>)
+
+
+<span class="cm"># === Lot normalization (4 rework commits) ===</span>
+
+<span class="kw">def</span> <span class="fn">test_lot_normalization</span>():
+    <span class="kw">from</span> hounddog.services.lots <span class="kw">import</span> normalize_lot_code
+
+    <span class="cm"># These all mean the same lot</span>
+    <span class="kw">assert</span> normalize_lot_code(<span class="st">"Lot M"</span>) == <span class="st">"M"</span>
+    <span class="kw">assert</span> normalize_lot_code(<span class="st">"lot m"</span>) == <span class="st">"M"</span>
+    <span class="kw">assert</span> normalize_lot_code(<span class="st">"M"</span>) == <span class="st">"M"</span>
+    <span class="kw">assert</span> normalize_lot_code(<span class="st">"  lot M  "</span>) == <span class="st">"M"</span>
+
+    <span class="cm"># Comma-joined lots should split</span>
+    <span class="kw">assert</span> normalize_lot_codes(<span class="st">"M, FSC, G"</span>) == [<span class="st">"M"</span>, <span class="st">"FSC"</span>, <span class="st">"G"</span>]
+
+    print(<span class="st">"  ✓ lot normalization"</span>)
+
+
+<span class="cm"># === Capacity calculation (4 rework commits) ===</span>
+
+<span class="kw">def</span> <span class="fn">test_capacity_matching</span>():
+    <span class="kw">from</span> hounddog.services.capacity <span class="kw">import</span> match_lot_to_capacity
+
+    lots = [{<span class="st">"id"</span>: 1, <span class="st">"name"</span>: <span class="st">"Lot M"</span>}, {<span class="st">"id"</span>: 2, <span class="st">"name"</span>: <span class="st">"FSC"</span>}]
+
+    <span class="cm"># Match by name</span>
+    <span class="kw">assert</span> match_lot_to_capacity(<span class="st">"Lot M"</span>, lots) == 1
+    <span class="cm"># Match by name without prefix</span>
+    <span class="kw">assert</span> match_lot_to_capacity(<span class="st">"M"</span>, lots) == 1
+    <span class="cm"># Match by ID</span>
+    <span class="kw">assert</span> match_lot_to_capacity(2, lots) == 2
+    <span class="cm"># No match returns None, not crash</span>
+    <span class="kw">assert</span> match_lot_to_capacity(<span class="st">"ZZZZZ"</span>, lots) <span class="kw">is None</span>
+
+    print(<span class="st">"  ✓ capacity matching"</span>)
+
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    print(<span class="st">"Running smoke tests..."</span>)
+    test_after_hours_access()
+    test_lot_normalization()
+    test_capacity_matching()
+    print(<span class="st">"All passed."</span>)
+</code></pre>
+
+<div class="callout warning">
+  <div class="callout-label">Important</div>
+  The imports above assume you extract the access logic, normalization, and capacity matching into standalone pure functions (no database, no request context). That's the refactor: pull these out of your route handlers into service modules that take simple arguments and return simple values. The tests then just call those functions directly.
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">5</span> Pre-Push Business Rules Spec</h2>
+<p class="h2-sub">Five minutes of writing that prevents five hours of code churn</p>
+
+<p>The freshmen exclusion saga (6 implementations in one day) and the lottery config UI churn (5 commits) weren't bugs. They were "what do we actually want" problems solved by trial and error in code. The fix is embarrassingly simple: before coding a business rule change, write one paragraph describing the rule in plain English. Keep it in a living doc.</p>
+
+<div class="callout file">
+  <div class="callout-label">File: BUSINESS_RULES.md (repo root)</div>
+  This is the source of truth for "what the system is supposed to do."
+</div>
+<pre><code><span class="cm"># Business Rules — Quarry Parking
+
+## Lottery Eligibility
+- Freshmen (class year = current academic year + 4) are excluded from
+  residential parking lotteries by default.
+- Each lottery can override this with its own "Allow Freshmen" toggle.
+- Commuter permits are NOT subject to the freshmen restriction.
+
+## After-Hours Access
+- Commuter permits gain access to FS and FSC lots after 4:00 PM.
+- "After 4:00 PM" means >= 16:00 local time. Midnight (00:00) counts.
+- Faculty/staff permits have 24/7 access to all assigned lots.
+- Extended Premium Commuter has full-time access to FS, FSC, and streets.
+
+## Permit Renewals
+- Permits expire June 30 annually.
+- Renewal emails offer one-click Renew or Decline.
+- Decline soft-deletes the permit (recoverable).</span>
+</code></pre>
+
+<p>When you or Claude are about to change access logic or lottery rules, you check this file first, update it if the rule is changing, then implement the updated rule. One commit instead of six.</p>
+
+<!-- ============================================================ -->
+<h2><span class="num">6</span> Claude Integration: Make Claude Read the Guardrails</h2>
+<p class="h2-sub">Tell Claude about the constraints before it writes code that hits them</p>
+
+<p>Add this to your <code>CLAUDE.md</code> or <code>.cursorrules</code> so every coding session starts with awareness of the infrastructure:</p>
+
+<div class="callout file">
+  <div class="callout-label">Add to: CLAUDE.md or .cursorrules</div>
+</div>
+<pre><code><span class="cm">## Required Reading Before Writing Code
+
+Before writing any backend route or API endpoint:
+- Read INFRASTRUCTURE.md for WAF/CSP/container constraints
+- Read BUSINESS_RULES.md for the current rule definitions
+- Use SafeRouter instead of APIRouter
+- Never use HTTP DELETE or PATCH methods
+- Never persist files to the container filesystem
+- Always surface errors to Sentry, never silently swallow them
+- Log structured events to Axiom for any new endpoint
+
+Before changing lottery, access, or permit logic:
+- Check BUSINESS_RULES.md for the current rule
+- If the rule is changing, update BUSINESS_RULES.md FIRST
+- Write or update the corresponding test in tests/smoke.py</span>
+</code></pre>
+
+<!-- ============================================================ -->
+<h2>Implementation Order</h2>
+<p class="h2-sub">Fastest impact first, each step takes less than an hour</p>
+
+<div class="callout principle">
+  <div class="callout-label">The order matters</div>
+  Sentry goes first because it's the fastest to set up and immediately catches the entire class of "silent failure" bugs. Axiom goes second because you already have the account — you just need the middleware. The constraints file and tests come third because they require extracting some logic into pure functions. None of these block each other.
+</div>
+
+<p><strong>Day 1 (30 min):</strong> Add Sentry to Hounddog. Create project at sentry.io, add the DSN to Coolify env vars, add the 4-line init to main.py, redeploy. You're immediately protected against silent errors.</p>
+
+<p><strong>Day 1 (30 min):</strong> Add Sentry to BirdDog. Add the Swift package, 5-line init in app startup. Next TestFlight build has crash reporting with screenshots.</p>
+
+<p><strong>Day 2 (30 min):</strong> Add Axiom middleware. Drop in axiom_logging.py, add the middleware to the app, add the env vars. Every request is now logged with timing, user, and deploy SHA.</p>
+
+<p><strong>Day 2 (20 min):</strong> Create INFRASTRUCTURE.md and BUSINESS_RULES.md. You already know all of this — it's just writing it down.</p>
+
+<p><strong>Day 2 (10 min):</strong> Add the Claude/Cursor instructions to CLAUDE.md. Paste the block above.</p>
+
+<p><strong>Day 3 (1 hr):</strong> Build SafeRouter and swap it into your route files. Extract access logic into a pure function. Write the first smoke test. This is the only step that touches existing code.</p>
+
+<div class="savings">
+  <div class="savings-item"><span class="savings-value">~27 commits</span> prevented by Sentry alone</div>
+  <div class="savings-item"><span class="savings-value">~10 commits</span> prevented by SafeRouter + INFRASTRUCTURE.md</div>
+  <div class="savings-item"><span class="savings-value">~30 commits</span> prevented by smoke tests on pure functions</div>
+  <div class="savings-item"><span class="savings-value">~20 commits</span> prevented by business rules specs</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>What This Is Not</h2>
+
+<p>This playbook deliberately avoids everything that slows down tactical development:</p>
+
+<p><strong>No staging server.</strong> You don't need a second Coolify instance. Your production IS your staging — you just need it to tell you when things break (Sentry) and let you see what happened (Axiom).</p>
+
+<p><strong>No CI/CD pipeline.</strong> No GitHub Actions, no build gates, no required checks. You push, you redeploy. That doesn't change.</p>
+
+<p><strong>No code review process.</strong> You and Claude move fast. The guardrails are in the code (SafeRouter), in the docs (INFRASTRUCTURE.md), and in the tooling (Sentry/Axiom) — not in a process that requires you to stop and wait.</p>
+
+<p><strong>No test coverage mandates.</strong> One file, ~200 lines, covering only the things that have actually broken repeatedly. Not a test suite. A targeted weapon against your specific rework patterns.</p>
+
+<div class="footer">
+  Tactical Dev Playbook &middot; Quarry / Hounddog / BirdDog &middot; Sep 2026
+</div>
+
+</div>
+</body>
+</html>

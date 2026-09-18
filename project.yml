@@ -25,6 +25,9 @@ packages:
   StarXpand-SDK-iOS:
     url: https://github.com/star-micronics/StarXpand-SDK-iOS
     from: "2.6.0"
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: "8.0.0"
 targets:
   BirdDog:
     type: application
@@ -41,6 +44,7 @@ targets:
     dependencies:
       - package: StarXpand-SDK-iOS
         product: StarIO10
+      - package: Sentry
       - sdk: ExternalAccessory.framework
     entitlements:
       path: BirdDog/App/BirdDog.entitlements

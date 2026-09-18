@@ -1,4 +1,5 @@
 import base64
+import sentry_sdk
 import logging
 import os
 import uuid as uuid_mod
@@ -10,6 +11,7 @@ from ..services.plate_utils import normalize_plate
 logger = logging.getLogger("quarry.sync")
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,8 +49,8 @@ from ..schemas.sync import (
 )
 from ..services.email import send_citation_email
 
-router = APIRouter()
-diagnostic_router = APIRouter()
+router = SafeRouter()
+diagnostic_router = SafeRouter()
 
 
 @diagnostic_router.get("/ticket-test")
@@ -71,6 +73,7 @@ async def ticket_creation_test(
         vtype = vt_result.scalar()
         steps["violation_type_query"] = f"ok (found={'yes' if vtype else 'no'})"
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["violation_type_query"] = f"FAILED: {e}"
         steps["violation_type_traceback"] = traceback.format_exc()
 
@@ -82,6 +85,7 @@ async def ticket_creation_test(
         es = es_result.scalar()
         steps["enforcement_settings"] = f"ok (found={'yes' if es else 'no'})"
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["enforcement_settings"] = f"FAILED: {e}"
 
     # Step 3: Can we query Permit?
@@ -92,6 +96,7 @@ async def ticket_creation_test(
         p = p_result.scalar()
         steps["permit_query"] = f"ok (has_permits={'yes' if p else 'no'})"
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["permit_query"] = f"FAILED: {e}"
         steps["permit_traceback"] = traceback.format_exc()
 
@@ -103,6 +108,7 @@ async def ticket_creation_test(
         tc = tc_result.scalar()
         steps["ticket_count"] = f"ok (count={tc})"
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["ticket_count"] = f"FAILED: {e}"
         steps["ticket_traceback"] = traceback.format_exc()
 
@@ -122,6 +128,7 @@ async def ticket_creation_test(
         await db.rollback()
         steps["ticket_insert"] = f"ok (test_id={test_id})"
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["ticket_insert"] = f"FAILED: {e}"
         steps["ticket_insert_traceback"] = traceback.format_exc()
         try:
@@ -149,6 +156,7 @@ async def ticket_creation_test(
             })
         steps["recent_tickets"] = recent
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["recent_tickets"] = f"FAILED: {e}"
 
     # Step 7: Check column existence on tickets table
@@ -161,6 +169,7 @@ async def ticket_creation_test(
         cols = [r[0] for r in col_result.fetchall()]
         steps["ticket_columns"] = cols
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         steps["ticket_columns"] = f"FAILED: {e}"
 
     return {"steps": steps}
@@ -549,6 +558,7 @@ async def upload_ticket(
     try:
         return await _upload_ticket_impl(ticket, device, db)
     except Exception as exc:
+        sentry_sdk.capture_exception(exc)
         _log.error("upload_ticket FAILED: %s\n%s", exc, _tb.format_exc())
         raise HTTPException(status_code=500, detail=f"Ticket creation failed: {exc}")
 
@@ -843,6 +853,7 @@ async def _upload_ticket_impl(
                 notification_sent = True
                 notification_email = recipient_email
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         import logging
         logging.getLogger("quarry.sync").warning("Citation email failed (non-fatal): %s", e)
 
@@ -862,6 +873,7 @@ async def _upload_ticket_impl(
                 student_email=recipient_email or getattr(permit, 'email', None),
             )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Escalation check failed (non-fatal): %s", e)
 
     return TicketUploadResponse(

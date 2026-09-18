@@ -1,8 +1,10 @@
 import logging
+import sentry_sdk
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +37,7 @@ from ..services.email import send_lot_closure_notification, send_lot_reopen_noti
 
 logger = logging.getLogger("quarry.lots")
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = SafeRouter(dependencies=[Depends(get_current_user)])
 
 COMMUTER_EVENING_SCHEDULE = [
     {
@@ -602,7 +604,8 @@ async def detect_spots_endpoint(
 
     try:
         detected = await detect_spots(lot.boundary)
-    except Exception:
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.exception("Spot detection failed for lot %s", lot_id)
         raise HTTPException(502, "AI spot detection failed — check server logs for details")
 

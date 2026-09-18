@@ -44,6 +44,7 @@ async def _audit(summary: str, action: str = "POST", details: dict | None = None
                     changes=details,
                 ))
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to write backup audit entry: %s", e)
 
 
@@ -149,6 +150,7 @@ async def _read_schedule_from_db() -> dict | None:
             else:
                 logger.warning("Backup schedule: no row found in app_config for 'backup_schedule'")
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Backup schedule: failed to read from DB: %s", e)
     return None
 
@@ -159,6 +161,7 @@ def _read_schedule_from_disk() -> dict:
         try:
             return json.loads(SCHEDULE_FILE.read_text())
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
     return {"enabled": False}
 
@@ -188,11 +191,13 @@ async def _write_schedule(data: dict):
             """), {"val": value_str})
             await db.commit()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("Failed to write schedule to DB: %s", e)
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to write schedule to disk: %s", e)
 
 
@@ -268,6 +273,7 @@ async def _persist_backup(filename: str, content: str, source: str = "scheduled"
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         (BACKUP_DIR / filename).write_text(content)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Disk mirror of backup failed (DB copy saved): %s", e)
 
     logger.info("Backup saved: %s (%.1f KB) source=%s", filename, size / 1024, source)
@@ -312,6 +318,7 @@ async def list_persisted_backups() -> list[dict]:
                     "created_at": row[3].isoformat() if row[3] else None,
                 })
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to list DB backups: %s", e)
 
     if history:
@@ -329,6 +336,7 @@ async def list_persisted_backups() -> list[dict]:
                 "created_at": datetime.utcfromtimestamp(stat.st_mtime).replace(tzinfo=timezone.utc).isoformat(),
             })
         except Exception:
+            sentry_sdk.capture_exception(e)
             pass
     return history
 
@@ -344,6 +352,7 @@ async def get_persisted_backup_content(filename: str) -> str | None:
             if row:
                 return row
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to read DB backup %s: %s", filename, e)
 
     path = BACKUP_DIR / filename
@@ -363,6 +372,7 @@ async def delete_persisted_backup(filename: str) -> bool:
             await db.commit()
             deleted = (result.rowcount or 0) > 0
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to delete DB backup %s: %s", filename, e)
 
     path = BACKUP_DIR / filename
@@ -388,6 +398,7 @@ def _cleanup_old_backups_disk(keep: int = MAX_KEEP_COUNT):
             deleted += 1
             logger.info("Deleted old backup: %s", old_file.name)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.warning("Failed to delete old backup %s: %s", old_file.name, e)
     if deleted:
         logger.info("Backup retention: kept %d, deleted %d on disk", min(keep, len(backups)), deleted)
@@ -406,6 +417,7 @@ async def _cleanup_old_backups_db(keep: int = MAX_KEEP_COUNT):
             """), {"keep": keep})
             await db.commit()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to prune DB backups: %s", e)
 
 
@@ -422,6 +434,7 @@ def _check_disk_space() -> bool:
             return False
         return True
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Disk space check failed: %s — proceeding with backup", e)
         return True
 
@@ -450,6 +463,7 @@ async def _latest_scheduled_created_at() -> datetime | None:
             if isinstance(row, datetime):
                 return _aware(row)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Failed to read latest scheduled backup: %s", e)
     return None
 
@@ -557,6 +571,7 @@ async def _execute_scheduled_backup(
                 else:
                     logger.warning("Google Drive upload returned no file ID")
             except Exception as e:
+                sentry_sdk.capture_exception(e)
                 logger.error("Google Drive upload failed (backup still saved in DB): %s", e)
                 await _audit(f"Google Drive upload failed: {e}", action="DELETE")
 

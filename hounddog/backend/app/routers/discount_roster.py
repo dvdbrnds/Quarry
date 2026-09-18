@@ -1,11 +1,13 @@
 """Admin endpoints for program discount roster (e.g. ABSN $100 off)."""
 
 import io
+import sentry_sdk
 import logging
 import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +24,7 @@ from ..services.roster_permit_status import (
 
 logger = logging.getLogger("quarry.discount_roster")
 
-router = APIRouter(dependencies=[Depends(require_office())])
+router = SafeRouter(dependencies=[Depends(require_office())])
 
 
 class RosterEntry(BaseModel):
@@ -180,6 +182,7 @@ async def upload_roster(
             for row_cells in ws.iter_rows(min_row=2, values_only=True):
                 rows.append(dict(zip(headers, row_cells)))
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             raise HTTPException(400, f"Failed to parse Excel file: {e}")
     elif filename.endswith(".csv"):
         import csv
@@ -240,7 +243,7 @@ class RosterUpdateRequest(BaseModel):
     discount_amount: float | None = None
 
 
-@router.patch("/roster/{entry_id}", response_model=RosterEntry)
+@router.put("/roster/{entry_id}", response_model=RosterEntry)
 async def update_roster_entry(
     entry_id: uuid.UUID,
     data: RosterUpdateRequest,

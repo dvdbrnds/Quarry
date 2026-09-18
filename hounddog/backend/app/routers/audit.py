@@ -1,8 +1,10 @@
 import logging
+import sentry_sdk
 import traceback
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func, desc, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +16,8 @@ from ..schemas.audit import AuditLogList, AuditLogRead
 
 logger = logging.getLogger("quarry.audit")
 
-diagnostic_router = APIRouter()
-router = APIRouter(dependencies=[Depends(require_office())])
+diagnostic_router = SafeRouter()
+router = SafeRouter(dependencies=[Depends(require_office())])
 
 
 async def _enrich_lottery_audit_items(
@@ -77,6 +79,7 @@ async def audit_diagnostic(
         results["steps"]["table_exists"] = True
         results["steps"]["total_rows"] = count
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         results["steps"]["table_exists"] = False
         results["steps"]["table_error"] = f"{type(e).__name__}: {e}"
         return results
@@ -97,6 +100,7 @@ async def audit_diagnostic(
         results["steps"]["route_session_write_ok"] = True
         results["steps"]["test_entry_id"] = str(test_entry.id)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         results["steps"]["route_session_write_ok"] = False
         results["steps"]["route_session_write_error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
         return results
@@ -120,6 +124,7 @@ async def audit_diagnostic(
             for e in entries
         ]
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         results["steps"]["read_ok"] = False
         results["steps"]["read_error"] = f"{type(e).__name__}: {e}"
 
@@ -139,6 +144,7 @@ async def audit_diagnostic(
                 mw_session.add(mw_entry)
         results["steps"]["middleware_session_write_ok"] = True
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         results["steps"]["middleware_session_write_ok"] = False
         results["steps"]["middleware_session_error"] = traceback.format_exc()
 
@@ -147,6 +153,7 @@ async def audit_diagnostic(
         row = await db.execute(text("SELECT count(*) FROM audit_log"))
         results["steps"]["total_rows_after"] = row.scalar()
     except Exception:
+        sentry_sdk.capture_exception(e)
         pass
 
     return results

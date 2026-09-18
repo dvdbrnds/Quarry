@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +14,9 @@ from ..models.branding_settings import BrandingSettings
 from ..models.voucher import Voucher
 from ..models.voucher_usage import VoucherUsage
 
-router = APIRouter()
+router = SafeRouter()
 
-admin_router = APIRouter(dependencies=[Depends(require_office())])
+admin_router = SafeRouter(dependencies=[Depends(require_office())])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

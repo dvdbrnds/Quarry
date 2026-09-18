@@ -1,6 +1,8 @@
 import logging
+import sentry_sdk
 
 from fastapi import APIRouter, Depends, Request
+from ..utils.safe_router import SafeRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_token
@@ -11,7 +13,7 @@ from ..services.sis_student_data import lookup_student_parking_data
 
 logger = logging.getLogger("quarry.audit")
 
-router = APIRouter()
+router = SafeRouter()
 
 
 @router.get("/config/public")
@@ -45,6 +47,7 @@ async def _write_auth_event(user: OktaUser, action: str, summary: str,
                     ip_address=ip,
                 ))
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.warning("Auth audit write failed: %s", e)
 
 
@@ -87,6 +90,7 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
                     elif sis.employee:
                         role = "staff"
             except Exception:
+                sentry_sdk.capture_exception(e)
                 logger.debug("SIS lookup failed during auth for %s", user.email)
 
     await _write_auth_event(

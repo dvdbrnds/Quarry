@@ -1,6 +1,7 @@
 """Shared async SMTP email service with branded templates."""
 
 import logging
+import sentry_sdk
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -58,7 +59,8 @@ async def _load_branding() -> dict:
                     "department_name": bs.department_name or "Parking Authority",
                 }
                 return _cached_branding
-    except Exception:
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
         pass
     return {
         "brand_name": settings.brand_name,
@@ -205,6 +207,7 @@ async def send_email(
             stats.record_email_success(r, subject)
         return True
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("Email send failed to %s: %s", ", ".join(to), e, exc_info=True)
         from .notification_health import stats
         for r in to:

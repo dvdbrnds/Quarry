@@ -1,10 +1,12 @@
 """Faculty/staff permit renewal via magic-link token."""
 
 import secrets
+import sentry_sdk
 import uuid as uuid_mod
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -19,7 +21,7 @@ from ..services.email import send_renewal_email, get_department_name
 from ..services.permit_numbering import next_permit_number
 from ..services.timeutils import today_local
 
-router = APIRouter()
+router = SafeRouter()
 
 
 def _next_june_30(from_date: date | None = None) -> date:
@@ -53,7 +55,8 @@ async def _build_response_html(title: str, heading: str, message: str, success: 
                 school = bs.school_name or ""
                 department = bs.department_name or department
                 logo_url = bs.logo_url or ""
-    except Exception:
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
         pass
 
     nav_title = f"{school} {department}" if school else f"{brand}"
@@ -187,6 +190,7 @@ async def send_renewal_campaign(
             else:
                 errors.append(f"Email send failed for {permit.email}")
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             errors.append(f"Error sending to {permit.email}: {str(e)}")
 
     await db.flush()

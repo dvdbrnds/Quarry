@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +26,7 @@ from ..schemas.messaging import (
 from ..services.email import send_email, branded_email_shell
 from ..services.sms import send_bulk_sms_async
 
-router = APIRouter(dependencies=[Depends(require_role("admin"))])
+router = SafeRouter(dependencies=[Depends(require_role("admin"))])
 
 
 def _render_template(text: str, context: dict[str, str]) -> str:

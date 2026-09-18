@@ -82,6 +82,7 @@ from .routers import (
     legacy,
 )
 from .middleware.audit import AuditMiddleware
+from .middleware.axiom_logging import AxiomRequestLogger
 
 logger = structlog.get_logger("quarry")
 
@@ -1562,6 +1563,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(AuditMiddleware)
+app.add_middleware(AxiomRequestLogger)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

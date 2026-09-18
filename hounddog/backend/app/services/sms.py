@@ -1,6 +1,7 @@
 """Twilio SMS service for lot closure and general notifications."""
 
 import asyncio
+import sentry_sdk
 import logging
 
 from ..config import settings
@@ -45,6 +46,7 @@ def send_sms(to: str, body: str) -> bool:
         stats.record_sms_success(to)
         return True
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error("SMS send failed to %s: %s", to, e, exc_info=True)
         from .notification_health import stats
         stats.record_sms_failure(to, body[:50], str(e))

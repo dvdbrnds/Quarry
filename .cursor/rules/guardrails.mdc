@@ -1,0 +1,38 @@
+---
+description: Dev guardrails for Quarry — read before writing any backend route, business logic, or API endpoint.
+globs: hounddog/backend/**/*.py, hounddog/frontend/src/**/*.ts, hounddog/frontend/src/**/*.tsx, BirdDog/**/*.swift
+alwaysApply: false
+---
+
+# Guardrails — Read Before Writing Code
+
+## Before writing any backend route or API endpoint:
+- Read INFRASTRUCTURE.md for WAF/CSP/container constraints
+- Read BUSINESS_RULES.md for current rule definitions
+- Use SafeRouter (from app.utils.safe_router) instead of APIRouter
+- Never use HTTP PATCH — the WAF blocks it silently. Use PUT or POST instead.
+- HTTP DELETE works via MethodOverrideMiddleware (frontend sends POST + X-HTTP-Method-Override: DELETE). Use `router.delete()` normally.
+- Never persist files to the container filesystem — it's ephemeral
+- Always surface errors to Sentry — never silently swallow exceptions
+- Log structured events to Axiom for any new endpoint that handles money, external services, or user-facing operations
+
+## Before changing lottery, access, or permit logic:
+- Check BUSINESS_RULES.md for the current rule
+- If the rule is changing, update BUSINESS_RULES.md FIRST, then implement
+- Update or add the corresponding test in tests/smoke.py
+- Run `python -m tests.smoke` from backend/ before committing
+
+## Error handling pattern:
+```python
+try:
+    result = await risky_operation()
+except Exception as e:
+    sentry_sdk.capture_exception(e)
+    # degrade gracefully but NEVER silently
+    result = fallback_value
+```
+
+## WAF-safe route patterns:
+- Delete something: `router.delete("/items/{id}")` (MethodOverrideMiddleware handles it)
+- Partial update: `router.put("/items/{id}")` (NOT patch)
+- Action endpoint: `router.post("/items/{id}/revoke")`

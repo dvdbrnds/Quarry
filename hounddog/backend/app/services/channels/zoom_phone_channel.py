@@ -3,6 +3,7 @@
 Uses Zoom Server-to-Server OAuth2 to authenticate, then triggers a paging
 broadcast to a configured paging group. The paging message is TTS derived
 from the alert subject and body.
+import sentry_sdk
 
 Config:
     ZOOM_ACCOUNT_ID
@@ -78,6 +79,7 @@ class ZoomPhoneChannel(AlertChannel):
         try:
             token = await _get_access_token()
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Zoom OAuth token failed: %s", e)
             return ChannelResult(channel=self.name, failed=1, error=f"OAuth failed: {e}")
 
@@ -103,5 +105,6 @@ class ZoomPhoneChannel(AlertChannel):
                 resp.raise_for_status()
             return ChannelResult(channel=self.name, sent=1)
         except Exception as e:
+            sentry_sdk.capture_exception(e)
             logger.error("Zoom Phone paging failed: %s", e)
             return ChannelResult(channel=self.name, failed=1, error=str(e))
