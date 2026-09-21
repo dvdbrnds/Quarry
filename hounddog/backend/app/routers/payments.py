@@ -73,6 +73,7 @@ async def _check_existing_permit(
             func.lower(Permit.email) == email.strip().lower(),
             Permit.status == "active",
             Permit.deleted_at.is_(None),
+            Permit.is_tag_only.isnot(True),
         ).limit(1)
     )
     existing = result.scalar()

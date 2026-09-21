@@ -369,11 +369,14 @@ async def submit_application(
             raise HTTPException(409, "You already have an active application for this permit type")
 
         # Check for any active permit across ALL types (one permit per student)
+        # Exclude vehicle tags (is_tag_only) — they are not real permits and
+        # should not block purchasing. Tags get auto-retired post-purchase.
         existing_permit = await db.execute(
             select(Permit).where(
                 func.lower(Permit.email) == (user.email or "").strip().lower(),
                 Permit.status == "active",
                 Permit.deleted_at.is_(None),
+                Permit.is_tag_only.isnot(True),
             ).limit(1)
         )
         if existing_permit.scalar():
