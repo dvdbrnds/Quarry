@@ -1118,9 +1118,9 @@ async def lifespan(app: FastAPI):
             # ── v32: Enforcement audit fixes
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS enforcement_warning TEXT",
             # Create contracted_staff permit type for vendor/contractor workers (Sodexo, etc.)
-            """INSERT INTO permit_types (id, code, label, eligible, price, max_capacity, valid_days, lot_assignments, is_purchasable_online, sort_order)
+            """INSERT INTO permit_types (id, code, label, eligible, price, max_capacity, valid_days, lot_assignments, is_purchasable_online, is_active, sort_order)
                VALUES (gen_random_uuid(), 'contracted_staff', 'Contracted Staff', 'Vendor/contractor employees (Sodexo, etc.)', 0, 0, 365,
-                       '{A,F,H,J,M,N,O,R,S,W}', false, 12)
+                       '{A,F,H,J,M,N,O,R,S,W}', false, true, 12)
                ON CONFLICT (code) DO NOTHING""",
             # Migrate preset-based faculty_staff permits to contracted_staff
             """UPDATE permits
