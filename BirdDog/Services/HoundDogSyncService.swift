@@ -511,6 +511,7 @@ final class HoundDogSyncService: ObservableObject {
         let offenseNumber: Int
         let notificationSent: Bool
         let notificationEmail: String?
+        let enforcementWarning: String?
 
         var isDuplicate: Bool { status == "duplicate" }
     }
@@ -592,7 +593,8 @@ final class HoundDogSyncService: ObservableObject {
             fineAmount: json["fine_amount"] as? String ?? "0.00",
             offenseNumber: json["offense_number"] as? Int ?? 1,
             notificationSent: json["notification_sent"] as? Bool ?? false,
-            notificationEmail: json["notification_email"] as? String
+            notificationEmail: json["notification_email"] as? String,
+            enforcementWarning: json["enforcement_warning"] as? String
         )
     }
 

@@ -77,13 +77,14 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
 
         let weekday = calendar.component(.weekday, from: date)
         let dayAbbrev = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][weekday - 1]
+        let lowerType = permitType.lowercased()
 
         for season in accessSchedule {
             for rule in season.rules {
                 guard rule.days.contains(dayAbbrev) else { continue }
                 guard Self.timeInRange(timeStr, start: rule.start, end: rule.end) else { continue }
                 if rule.allowedPermitTypes.isEmpty { return true }
-                if rule.allowedPermitTypes.contains(permitType) { return true }
+                if rule.allowedPermitTypes.contains(where: { $0.lowercased() == lowerType }) { return true }
                 return false
             }
         }

@@ -74,6 +74,7 @@ class Ticket(Base):
     escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     notification_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    enforcement_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     dispute_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_email: Mapped[str | None] = mapped_column(String(256), nullable=True)

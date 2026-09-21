@@ -104,3 +104,4 @@ class TicketUploadResponse(BaseModel):
     offense_number: int = 1
     notification_sent: bool = False
     notification_email: str | None = None
+    enforcement_warning: str | None = None

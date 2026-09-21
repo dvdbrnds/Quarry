@@ -13,10 +13,34 @@ struct PermitInfo: Sendable, Equatable, Codable {
     let hcStatus: String
     let hcExpiry: Date?
 
+    private static let displayNames: [String: String] = [
+        "commuter_undergrad": "Commuter (Undergrad)",
+        "commuter_grad": "Commuter (Grad)",
+        "premium_commuter": "Premium Commuter",
+        "north_premium_resident": "North Premium Resident",
+        "north_guaranteed_resident": "North Guaranteed Resident",
+        "steel_field_resident": "Steel Field Resident",
+        "south_premium_resident": "South Premium Resident",
+        "south_guaranteed_resident": "South Guaranteed Resident",
+        "south_standalone": "South Third Party",
+        "faculty_staff": "Faculty/Staff",
+        "contracted_staff": "Contracted Staff",
+        "local_resident": "Local Resident",
+        "visitor_day": "Visitor (Day)",
+        "visitor_vendor": "Vendor",
+        "visitor_vendor_longterm": "Vendor (Long-term)",
+        "visitor_contracted_staff": "Contracted Staff",
+        "student_guest": "Student Guest",
+        "vehicle_tag": "Vehicle Tag",
+    ]
+
     var displayType: String {
         let primary = permitType.components(separatedBy: ",").first?
             .trimmingCharacters(in: .whitespaces) ?? permitType
-        return primary.capitalized
+        if let name = Self.displayNames[primary.lowercased()] {
+            return name
+        }
+        return primary.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     var isHC: Bool {

@@ -159,8 +159,8 @@ final class PlateAuthService: PlateCheckable {
             }
         }
 
-        // Visitors are allowed in any lot — they don't know campus lot rules
-        let visitorTypes: Set<String> = ["visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"]
+        // Visitors and contracted staff are allowed in any lot — they don't know campus lot rules
+        let visitorTypes: Set<String> = ["visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"]
         if visitorTypes.contains(record.permitType.lowercased()) {
             return .authorized(permit: info)
         }

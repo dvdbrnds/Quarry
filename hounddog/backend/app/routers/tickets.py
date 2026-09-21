@@ -43,6 +43,81 @@ public_router = SafeRouter()
 
 VALID_STATUSES = {"issued", "warning", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
 
+VISITOR_PERMIT_TYPES = {"visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"}
+
+
+@router.get("/enforcement-audit")
+async def enforcement_audit(
+    days: int = Query(7, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_office()),
+):
+    """Return tickets from the last N days where the cited plate had an active permit
+    that likely authorized parking in that lot — potential false citations."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    tickets_result = await db.execute(
+        select(Ticket).where(
+            Ticket.issued_at >= cutoff,
+            Ticket.status.notin_(["voided", "warning"]),
+        ).order_by(Ticket.issued_at.desc())
+    )
+    tickets = tickets_result.scalars().all()
+
+    flagged = []
+    for t in tickets:
+        if not t.plate:
+            continue
+        # Find active permits for this plate at time of ticketing
+        raw_plate = t.plate.upper()
+        norm_plate = raw_plate.replace(" ", "").replace("-", "")
+        permit_result = await db.execute(
+            select(Permit).where(
+                or_(
+                    Permit.plates.contains([raw_plate]),
+                    Permit.plates.contains([norm_plate]),
+                ),
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+                Permit.start_date <= t.issued_at,
+                or_(Permit.end_date.is_(None), Permit.end_date >= t.issued_at),
+            )
+        )
+        permits = permit_result.scalars().all()
+        if not permits:
+            continue
+
+        for p in permits:
+            pt = (p.permit_type or "").lower()
+            lot = (t.lot or "").strip().upper()
+            assigned = {l.strip().upper() for l in (p.lot_assignment or "").split(",") if l.strip()}
+
+            reason = None
+            if pt in VISITOR_PERMIT_TYPES:
+                reason = f"Active {pt.replace('_', ' ')} permit — authorized in all lots"
+            elif lot and lot in assigned:
+                reason = f"Active {pt.replace('_', ' ')} permit assigned to lot {lot}"
+
+            if reason:
+                flagged.append({
+                    "ticket_id": str(t.id),
+                    "ticket_number": t.ticket_number,
+                    "plate": t.plate,
+                    "lot": t.lot,
+                    "violation_type": t.violation_type,
+                    "fine_amount": str(t.fine_amount) if t.fine_amount else "0.00",
+                    "issued_at": t.issued_at.isoformat() if t.issued_at else None,
+                    "status": t.status,
+                    "officer_name": t.officer_name,
+                    "permit_name": p.name,
+                    "permit_type": p.permit_type,
+                    "permit_lot_assignment": p.lot_assignment,
+                    "reason": reason,
+                    "enforcement_warning": t.enforcement_warning,
+                })
+                break
+
+    return {"flagged": flagged, "total_tickets": len(tickets), "total_flagged": len(flagged)}
+
 
 @router.get("")
 async def list_tickets(

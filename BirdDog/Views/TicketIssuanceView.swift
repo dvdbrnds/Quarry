@@ -638,7 +638,8 @@ struct TicketIssuanceView: View {
                         }(),
                         offenseNumber: db.offenseCount(forPlate: normalizedPlate),
                         notificationSent: false,
-                        notificationEmail: nil
+                        notificationEmail: nil,
+                        enforcementWarning: nil
                     )
                 }
             }
@@ -720,6 +721,21 @@ struct TicketConfirmationView: View {
                         .font(.subheadline)
                         .foregroundStyle(.orange)
                 }
+            }
+
+            if let warning = result.enforcementWarning, !warning.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.yellow)
+                    Text(warning)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .background(Color.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.yellow.opacity(0.5), lineWidth: 1))
             }
 
             if ownerName != nil || permitTypeLabel != nil || permitLotZone != nil {

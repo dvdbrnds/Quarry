@@ -58,6 +58,7 @@ interface Ticket {
   mailed_at: string | null;
   mailed_address: string | null;
   has_legacy?: boolean;
+  enforcement_warning: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1276,6 +1277,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           {t.has_legacy && (
             <Tag color="orange" className="ml-1" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>LEGACY</Tag>
           )}
+          {t.enforcement_warning && (
+            <Tag color="red" className="ml-1" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>⚠️ REVIEW</Tag>
+          )}
           {t.ocr_original_plate && (
             <Tag color="volcano" className="ml-1" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>corrected</Tag>
           )}
@@ -1658,6 +1662,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 <div>{selected.officer_name || selected.officer_id}</div>
                 {selected.officer_email && <div className="text-xs text-gray-400">{selected.officer_email}</div>}
               </Descriptions.Item>
+              {selected.enforcement_warning && (
+                <Descriptions.Item label="⚠️ Warning" span={2}>
+                  <span style={{ color: "#d4380d", fontWeight: 600 }}>{selected.enforcement_warning}</span>
+                </Descriptions.Item>
+              )}
               {selected.owner_name && <Descriptions.Item label="Owner">{selected.owner_name}</Descriptions.Item>}
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
               {selected.permit_type_label && <Descriptions.Item label="Permit Type">{selected.permit_type_label}</Descriptions.Item>}
@@ -1959,6 +1968,82 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   );
 }
 
+function EnforcementAudit() {
+  const { message } = App.useApp();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(7);
+
+  const load = useCallback(async (d: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/tickets/enforcement-audit?days=${d}`, {
+        headers: { Authorization: `Bearer ${await (await import("../auth")).getAccessToken()}` },
+      });
+      if (!res.ok) throw new Error("Failed");
+      setData(await res.json());
+    } catch {
+      message.error("Failed to load enforcement audit");
+    } finally {
+      setLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => { load(days); }, [load, days]);
+
+  const auditColumns: ColumnsType<any> = [
+    {
+      title: "Ticket #", dataIndex: "ticket_number", key: "ticket_number", width: 100,
+      render: (v: string) => <span className="font-mono">{v || "—"}</span>,
+    },
+    { title: "Plate", dataIndex: "plate", key: "plate", width: 100, render: (v: string) => <span className="font-mono">{v}</span> },
+    { title: "Lot", dataIndex: "lot", key: "lot", width: 60 },
+    { title: "Violation", dataIndex: "violation_type", key: "violation", width: 120, render: (v: string) => <span className="capitalize">{(v || "").replace(/_/g, " ")}</span> },
+    { title: "Fine", dataIndex: "fine_amount", key: "fine", width: 70, render: (v: string) => `$${v}` },
+    { title: "Issued", dataIndex: "issued_at", key: "issued", width: 140, render: (v: string) => v ? new Date(v).toLocaleString() : "—" },
+    { title: "Officer", dataIndex: "officer_name", key: "officer", width: 120 },
+    { title: "Status", dataIndex: "status", key: "status", width: 80, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
+    { title: "Permit Holder", dataIndex: "permit_name", key: "permit_name", width: 140 },
+    { title: "Permit Type", dataIndex: "permit_type", key: "permit_type", width: 120, render: (v: string) => <span className="capitalize">{(v || "").replace(/_/g, " ")}</span> },
+    { title: "Why Flagged", dataIndex: "reason", key: "reason", ellipsis: true },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold">Enforcement Audit</h3>
+          <p className="text-sm text-gray-500">Tickets where the cited plate had an active permit that likely authorized parking in that lot.</p>
+        </div>
+        <Space>
+          <Select value={days} onChange={(v) => setDays(v)} style={{ width: 140 }}>
+            <Select.Option value={1}>Last 24 hours</Select.Option>
+            <Select.Option value={7}>Last 7 days</Select.Option>
+            <Select.Option value={30}>Last 30 days</Select.Option>
+            <Select.Option value={90}>Last 90 days</Select.Option>
+          </Select>
+          <Button onClick={() => load(days)} loading={loading}>Refresh</Button>
+        </Space>
+      </div>
+      {data && (
+        <div className="flex gap-4 mb-4">
+          <Card size="small"><Statistic title="Total Tickets" value={data.total_tickets} /></Card>
+          <Card size="small"><Statistic title="Potentially False" value={data.total_flagged} valueStyle={{ color: data.total_flagged > 0 ? "#cf1322" : "#3f8600" }} /></Card>
+          <Card size="small"><Statistic title="False Rate" value={data.total_tickets > 0 ? `${((data.total_flagged / data.total_tickets) * 100).toFixed(1)}%` : "0%"} valueStyle={{ color: data.total_flagged > 0 ? "#cf1322" : "#3f8600" }} /></Card>
+        </div>
+      )}
+      <Table
+        dataSource={data?.flagged || []}
+        columns={auditColumns}
+        rowKey="ticket_id"
+        loading={loading}
+        size="small"
+        pagination={{ pageSize: 50 }}
+      />
+    </div>
+  );
+}
+
 export default function Tickets() {
   const user = useCurrentUser();
   const isAdmin = isAdminRole(user?.role);
@@ -1970,6 +2055,7 @@ export default function Tickets() {
     ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
     ...(isAdmin ? [{ key: "officer-report", label: "Reporting", children: <OfficerReport /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
+    ...(isAdmin ? [{ key: "audit", label: "Enforcement Audit", children: <EnforcementAudit /> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];
 
