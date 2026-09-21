@@ -506,7 +506,7 @@ async def _run_loop():
             logger.error("Scheduler tick (closures) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -518,7 +518,7 @@ async def _run_loop():
             logger.error("Scheduler tick (escalation) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -527,7 +527,7 @@ async def _run_loop():
             logger.error("Scheduler tick (lottery offers) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -536,7 +536,7 @@ async def _run_loop():
             logger.error("Scheduler tick (lottery auto-draw) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -545,7 +545,7 @@ async def _run_loop():
             logger.error("Scheduler tick (renewal emails) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -554,7 +554,7 @@ async def _run_loop():
             logger.error("Scheduler tick (guest permit expiry) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -564,7 +564,7 @@ async def _run_loop():
             logger.error("Scheduler tick (scheduled alerts) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         try:
@@ -574,7 +574,7 @@ async def _run_loop():
             logger.error("Scheduler tick (scheduled backups) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         # Stripe permit reconciliation — every 5 minutes (every 5th tick)
@@ -591,7 +591,7 @@ async def _run_loop():
                 logger.error("Scheduler tick (stripe reconciler) failed: %s", e, exc_info=True)
                 try:
                     import sentry_sdk; sentry_sdk.capture_exception(e)
-                except Exception:
+                except Exception as e:
                     pass
 
         # Auto-expire temporary HC designations and revert expired temp lot assignments
@@ -627,7 +627,7 @@ async def _run_loop():
             logger.error("Scheduler tick (HC/temp-lot expiry) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
-            except Exception:
+            except Exception as e:
                 pass
 
         await asyncio.sleep(60)

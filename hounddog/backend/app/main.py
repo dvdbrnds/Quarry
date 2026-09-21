@@ -174,7 +174,7 @@ async def _normalize_permit_plates():
             if updated:
                 await db.commit()
                 logger.info("Normalized plates on %d permits (stripped dashes/spaces)", updated)
-    except Exception:
+    except Exception as e:
         logger.exception("Plate normalization backfill failed (non-fatal)")
 
 
@@ -238,7 +238,7 @@ async def _backfill_visitor_preset_ids():
                 logger.info("preset_id backfill: tagged %d/%d visitor permits", updated, len(rows))
             else:
                 logger.info("preset_id backfill: no matches found for %d untagged permits", len(rows))
-    except Exception:
+    except Exception as e:
         logger.exception("preset_id backfill failed")
 
 
@@ -319,7 +319,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 30
+    SCHEMA_VERSION = 31
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -340,7 +340,7 @@ async def lifespan(app: FastAPI):
             logger.info("Schema already at version %d, skipping %d migrations.", current_version, SCHEMA_VERSION)
             try:
                 await conn.execute(text("SELECT pg_advisory_unlock(42)"))
-            except Exception:
+            except Exception as e:
                 pass
         else:
             logger.info("Schema at version %d, applying migrations up to %d...", current_version, SCHEMA_VERSION)
@@ -1090,6 +1090,31 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE legacy_records ALTER COLUMN vehicle_year TYPE TEXT",
             "ALTER TABLE legacy_records ALTER COLUMN vehicle_description TYPE TEXT",
             "ALTER TABLE legacy_records ALTER COLUMN source TYPE TEXT",
+            # ── v31: Re-apply access schedules by lot NAME (not designation_code)
+            # to fix lots that got their designation_code AFTER the schedule was set.
+            # Also add U to commuter lot assignments since commuters are allowed in U.
+            # Commuter lots: U, X
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","faculty_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Commuter + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE name IN ('U', 'X')""",
+            # Resident lots: B, C, D, G, P, T, Q
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Residents + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE name IN ('B', 'C', 'D', 'G', 'P', 'T', 'Q')""",
+            # Premium resident lots: I, Z
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Residents + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE name IN ('I', 'Z')""",
+            # FSC lots: A, F, H, J, M, N, O, R, S, W
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["faculty_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff"],"label":"Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE name IN ('A', 'F', 'H', 'J', 'M', 'N', 'O', 'R', 'S', 'W')""",
+            # Add U to commuter_undergrad lot assignments (commuters can always park in U)
+            """UPDATE permit_types SET lot_assignments = lot_assignments || '{U}'
+               WHERE code = 'commuter_undergrad' AND NOT ('U' = ANY(lot_assignments))""",
+            # Add U to commuter_grad lot assignments
+            """UPDATE permit_types SET lot_assignments = lot_assignments || '{U}'
+               WHERE code = 'commuter_grad' AND NOT ('U' = ANY(lot_assignments))""",
             ]
             for migration in migrations:
                 try:
@@ -1112,7 +1137,7 @@ async def lifespan(app: FastAPI):
             logger.info("Schema migrations applied, now at version %d.", SCHEMA_VERSION)
             try:
                 await conn.execute(text("SELECT pg_advisory_unlock(42)"))
-            except Exception:
+            except Exception as e:
                 pass
 
     # Auto-revert expired temporary lot assignments
@@ -1840,7 +1865,7 @@ async def migrate_photos_to_db(user=Depends(require_admin()), db: AsyncSession =
             ticket.photo_mime = "image/jpeg"
             ticket.photo_url = f"/api/tickets/{ticket.id}/photo"
             migrated += 1
-        except Exception:
+        except Exception as e:
             errors += 1
 
     if migrated > 0:
@@ -1905,7 +1930,7 @@ async def impersonate_lookup(email: str, user=Depends(require_office()), db: Asy
                             class_year = int(cy)
                         except (ValueError, TypeError):
                             pass
-        except Exception:
+        except Exception as e:
             pass
 
     # Fallback to DB if Okta didn't find them
@@ -1985,7 +2010,7 @@ async def impersonate_lookup(email: str, user=Depends(require_office()), db: Asy
                 is_employee = sis.employee
                 if sis.housing_status in ("R", "C"):
                     is_current_student = True
-        except Exception:
+        except Exception as e:
             logger.debug("SIS lookup failed for impersonate %s", email)
 
     # Also check Okta groups for staff indicators
@@ -2060,7 +2085,7 @@ async def health():
                 f"Health check DEGRADED: {exc}",
                 level="error",
             )
-        except Exception:
+        except Exception as e:
             pass
         from fastapi.responses import JSONResponse
         return JSONResponse(

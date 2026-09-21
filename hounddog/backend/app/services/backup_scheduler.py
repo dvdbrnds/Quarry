@@ -584,6 +584,6 @@ async def _execute_scheduled_backup(
         try:
             import sentry_sdk
             sentry_sdk.capture_exception(e)
-        except Exception:
+        except Exception as e:
             pass
         await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")
