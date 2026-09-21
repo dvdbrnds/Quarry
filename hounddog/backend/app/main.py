@@ -319,7 +319,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 32
+    SCHEMA_VERSION = 33
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1147,6 +1147,19 @@ async def lifespan(app: FastAPI):
             """UPDATE parking_lots
                SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Residents + Faculty/Staff + Contractors + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":[],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":[],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
                WHERE name IN ('I', 'Z')""",
+            # ── v33: Migrate visitor_contracted_staff permits → contracted_staff
+            # Convert all visitor_contracted_staff permits to contracted_staff and
+            # update their lot_assignment to the contracted_staff lots.
+            """UPDATE permits
+               SET permit_type = 'contracted_staff',
+                   lot_assignment = (SELECT array_to_string(lot_assignments, ',') FROM permit_types WHERE code = 'contracted_staff'),
+                   updated_at = now()
+               WHERE permit_type = 'visitor_contracted_staff'
+                 AND deleted_at IS NULL""",
+            # Update any visitor presets still pointing to visitor_contracted_staff
+            "UPDATE visitor_presets SET permit_type_code = 'contracted_staff' WHERE permit_type_code = 'visitor_contracted_staff'",
+            # Deactivate the visitor_contracted_staff permit type (no longer needed)
+            "UPDATE permit_types SET is_active = false WHERE code = 'visitor_contracted_staff'",
             ]
             for migration in migrations:
                 try:
