@@ -672,13 +672,17 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
             "status": p.status,
         }
 
-    # Exclude faculty_staff and contracted_staff — they have allow_multiple=true by design
-    _multi_types = {"faculty_staff", "contracted_staff"}
-    non_fs = [p for p in active if p.permit_type not in _multi_types]
+    # Exclude types that are allowed multiples or aren't real permits
+    _skip_types = {"faculty_staff", "contracted_staff", "student_guest"}
+    real_permits = [
+        p for p in active
+        if p.permit_type not in _skip_types
+        and not p.is_tag_only
+    ]
 
     # --- By email: same person holding multiple active permits ---
     email_map: dict[str, list[Permit]] = {}
-    for p in non_fs:
+    for p in real_permits:
         if p.email:
             key = p.email.strip().lower()
             email_map.setdefault(key, []).append(p)
@@ -695,7 +699,7 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
 
     # --- By plate: different people sharing a plate ---
     plate_map: dict[str, list[Permit]] = {}
-    for p in non_fs:
+    for p in real_permits:
         for plate in p.plates:
             key = plate.upper().strip()
             if key:
@@ -735,12 +739,12 @@ async def duplicate_reconciliation(
     )
     active = result.scalars().all()
 
-    _multi_types = {"faculty_staff", "contracted_staff"}
+    _skip_types = {"faculty_staff", "contracted_staff", "student_guest"}
 
-    # Group by email (excluding multi-allowed types and tag-only)
+    # Group by email (excluding multi-allowed types, tags, and guest permits)
     email_map: dict[str, list[Permit]] = {}
     for p in active:
-        if p.permit_type in _multi_types:
+        if p.permit_type in _skip_types:
             continue
         if p.is_tag_only:
             continue
