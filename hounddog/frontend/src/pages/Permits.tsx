@@ -4,7 +4,7 @@ import { api, Permit } from "../api";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography,
+  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography, Spin,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -853,6 +853,132 @@ function HCReport() {
   );
 }
 
+function DuplicateReconciliation({ onMerged, navigate, message, dupByPlate }: {
+  onMerged: () => void;
+  navigate: (path: string) => void;
+  message: any;
+  dupByPlate: any[];
+}) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [merging, setMerging] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/permits/duplicate-reconciliation", { headers: await authHeaders() });
+        if (res.ok) setData(await res.json());
+      } catch { /* ignore */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleMerge = async (keepId: string, cancelId: string) => {
+    setMerging(cancelId);
+    try {
+      const res = await fetch("/api/permits/merge-duplicate", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ keep_permit_id: keepId, cancel_permit_id: cancelId }),
+      });
+      if (res.ok) {
+        const r = await res.json();
+        message.success(`Merged plates into ${r.kept.permit_number}. Cancelled ${r.cancelled.permit_number}.`);
+        onMerged();
+        // Refresh reconciliation data
+        const res2 = await fetch("/api/permits/duplicate-reconciliation", { headers: await authHeaders() });
+        if (res2.ok) setData(await res2.json());
+      } else {
+        const err = await res.json().catch(() => ({}));
+        message.error(err.detail || "Merge failed");
+      }
+    } catch { message.error("Merge failed"); }
+    setMerging(null);
+  };
+
+  if (loading) return <Spin size="small" />;
+  if (!data) return <div className="text-xs text-ink-mute">Failed to load reconciliation data</div>;
+
+  return (
+    <div className="mt-2 space-y-4">
+      {data.duplicates.length > 0 && (
+        <>
+          <div className="text-xs font-bold text-red-700 uppercase tracking-wide">
+            Students with Multiple Active Permits — Stripe Reconciliation
+          </div>
+          {data.duplicates.map((group: any) => (
+            <Card size="small" key={group.email} className={`border-l-4 ${group.recommendation === "paid_for_all" ? "border-l-green-400" : group.recommendation === "merge_plates" ? "border-l-orange-400" : "border-l-red-400"}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-bold text-red-800">
+                  {group.email} — {group.count} permits
+                </div>
+                <div className="flex gap-2">
+                  {group.recommendation === "merge_plates" && (
+                    <Tag color="orange">💡 Merge — paid once</Tag>
+                  )}
+                  {group.recommendation === "paid_for_all" && (
+                    <Tag color="green">✅ Paid for all</Tag>
+                  )}
+                  {group.recommendation === "review_manually" && (
+                    <Tag color="red">⚠️ Review manually</Tag>
+                  )}
+                  <Tag>{group.total_stripe_payments} Stripe payment{group.total_stripe_payments !== 1 ? "s" : ""}</Tag>
+                </div>
+              </div>
+              {group.permits.map((p: any, idx: number) => (
+                <div key={p.id} className="flex items-center gap-3 text-xs mb-1 py-1 border-b border-gray-100 last:border-0">
+                  <span className="font-mono w-20">{p.permit_number || "—"}</span>
+                  <span className="font-medium w-32 truncate">{p.name}</span>
+                  <span className="capitalize text-ink-mute w-36 truncate">{(p.permit_type || "").replace(/_/g, " ")}</span>
+                  <span className="text-ink-mute w-24 truncate">{p.lot_assignment}</span>
+                  <span className="font-mono text-ink-mute w-20">{(p.plates || []).join(", ")}</span>
+                  {p.paid ? (
+                    <Tag color="green" className="text-[10px]">💳 Paid {p.stripe_payments[0]?.amount ? `$${p.stripe_payments[0].amount}` : ""}</Tag>
+                  ) : (
+                    <Tag color="default" className="text-[10px]">No payment</Tag>
+                  )}
+                  <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
+                  {idx > 0 && group.recommendation === "merge_plates" && (
+                    <Button
+                      size="small"
+                      type="primary"
+                      danger
+                      loading={merging === p.id}
+                      onClick={() => handleMerge(group.permits[0].id, p.id)}
+                    >
+                      Merge into {group.permits[0].permit_number}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </Card>
+          ))}
+        </>
+      )}
+      {dupByPlate.length > 0 && (
+        <>
+          <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mt-2">Shared Plate Conflicts</div>
+          {dupByPlate.map((group: any) => (
+            <Card size="small" key={group.shared_plate} className="border-l-4 border-l-amber-400">
+              <div className="text-xs font-mono font-bold text-amber-800 mb-2">Plate: {group.shared_plate}</div>
+              {group.permits.map((p: any) => (
+                <div key={p.id} className="flex items-center gap-3 text-xs mb-1">
+                  <span className="font-mono">{p.permit_number || "—"}</span>
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-ink-mute">{p.email}</span>
+                  <span className="capitalize text-ink-mute">{(p.permit_type || "").replace(/_/g, " ")}</span>
+                  <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
+                </div>
+              ))}
+            </Card>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Permits() {
   const { modal, message } = App.useApp();
   const navigate = useNavigate();
@@ -1112,47 +1238,7 @@ export default function Permits() {
                     showIcon
                     message={`${dupByEmail.length} student${dupByEmail.length !== 1 ? "s" : ""} with multiple permits · ${dupByPlate.length} shared plate conflict${dupByPlate.length !== 1 ? "s" : ""}`}
                     description={showDuplicates ? (
-                      <div className="mt-2 space-y-4">
-                        {dupByEmail.length > 0 && (
-                          <>
-                            <div className="text-xs font-bold text-red-700 uppercase tracking-wide">Students with Multiple Active Permits</div>
-                            {dupByEmail.map(group => (
-                              <Card size="small" key={group.email} className="border-l-4 border-l-red-400">
-                                <div className="text-xs font-bold text-red-800 mb-2">{group.email} — {group.count} permits</div>
-                                {group.permits.map(p => (
-                                  <div key={p.id} className="flex items-center gap-3 text-xs mb-1">
-                                    <span className="font-mono">{p.permit_number || "—"}</span>
-                                    <span className="font-medium">{p.name}</span>
-                                    <span className="capitalize text-ink-mute">{p.permit_type.replace(/_/g, " ")}</span>
-                                    <span className="text-ink-mute">{p.lot_assignment}</span>
-                                    <span className="font-mono text-ink-mute">{(p.plates || []).join(", ")}</span>
-                                    <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
-                                  </div>
-                                ))}
-                              </Card>
-                            ))}
-                          </>
-                        )}
-                        {dupByPlate.length > 0 && (
-                          <>
-                            <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mt-2">Shared Plate Conflicts</div>
-                            {dupByPlate.map(group => (
-                              <Card size="small" key={group.shared_plate} className="border-l-4 border-l-amber-400">
-                                <div className="text-xs font-mono font-bold text-amber-800 mb-2">Plate: {group.shared_plate}</div>
-                                {group.permits.map(p => (
-                                  <div key={p.id} className="flex items-center gap-3 text-xs mb-1">
-                                    <span className="font-mono">{p.permit_number || "—"}</span>
-                                    <span className="font-medium">{p.name}</span>
-                                    <span className="text-ink-mute">{p.email}</span>
-                                    <span className="capitalize text-ink-mute">{p.permit_type.replace(/_/g, " ")}</span>
-                                    <Button type="link" size="small" onClick={() => navigate(`/permits/${p.id}`)}>View</Button>
-                                  </div>
-                                ))}
-                              </Card>
-                            ))}
-                          </>
-                        )}
-                      </div>
+                      <DuplicateReconciliation onMerged={() => { load(); }} navigate={navigate} message={message} dupByPlate={dupByPlate} />
                     ) : undefined}
                     action={<Button size="small" type="text" onClick={() => setShowDuplicates(!showDuplicates)}>{showDuplicates ? "Hide" : "Review"}</Button>}
                   />

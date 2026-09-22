@@ -724,6 +724,159 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/duplicate-reconciliation")
+async def duplicate_reconciliation(
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_office()),
+):
+    """Return duplicate permits with Stripe payment cross-reference for reconciliation."""
+    result = await db.execute(
+        select(Permit).where(Permit.status == "active", Permit.deleted_at.is_(None))
+    )
+    active = result.scalars().all()
+
+    _multi_types = {"faculty_staff", "contracted_staff"}
+
+    # Group by email (excluding multi-allowed types and tag-only)
+    email_map: dict[str, list[Permit]] = {}
+    for p in active:
+        if p.permit_type in _multi_types:
+            continue
+        if p.is_tag_only:
+            continue
+        if p.email:
+            key = p.email.strip().lower()
+            email_map.setdefault(key, []).append(p)
+
+    duplicates = []
+    for email, permits in sorted(email_map.items()):
+        if len(permits) < 2:
+            continue
+
+        # Find all Stripe payments for this email
+        pay_result = await db.execute(
+            select(Payment).where(
+                func.lower(Payment.payer_email) == email,
+                Payment.payment_type.in_([
+                    "direct_permit_purchase", "permit_purchase",
+                    "standalone_permit_purchase", "lottery_v2_permit",
+                    "online_permit_purchase", "admin_permit_charge",
+                ]),
+            ).order_by(Payment.paid_at.desc())
+        )
+        payments = pay_result.scalars().all()
+
+        permit_list = []
+        for p in permits:
+            # Find Stripe payment matching this permit's plate
+            matching_payments = [
+                pay for pay in payments
+                if pay.plate and p.plates and pay.plate.upper() in [pl.upper() for pl in p.plates]
+            ]
+            permit_list.append({
+                "id": str(p.id),
+                "permit_number": p.permit_number,
+                "name": p.name,
+                "email": p.email,
+                "plates": p.plates,
+                "lot_assignment": p.lot_assignment,
+                "permit_type": p.permit_type,
+                "is_tag_only": p.is_tag_only or False,
+                "start_date": p.start_date.isoformat() if p.start_date else None,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "stripe_payments": [
+                    {
+                        "id": str(pay.id),
+                        "amount": str(pay.amount),
+                        "stripe_id": pay.stripe_payment_id,
+                        "paid_at": pay.paid_at.isoformat() if pay.paid_at else None,
+                        "plate": pay.plate,
+                        "method": pay.method,
+                    }
+                    for pay in matching_payments
+                ],
+                "paid": len(matching_payments) > 0,
+            })
+
+        # Sort: paid permits first, then by created_at (oldest first = primary)
+        permit_list.sort(key=lambda x: (not x["paid"], x["created_at"] or ""))
+
+        total_paid = sum(1 for p in permit_list if p["paid"])
+        all_plates = []
+        for p in permit_list:
+            all_plates.extend(p["plates"] or [])
+
+        duplicates.append({
+            "email": email,
+            "count": len(permits),
+            "total_stripe_payments": total_paid,
+            "all_plates": list(set(pl.upper() for pl in all_plates)),
+            "permits": permit_list,
+            "recommendation": (
+                "merge_plates" if total_paid <= 1
+                else "review_manually" if total_paid < len(permits)
+                else "paid_for_all"
+            ),
+        })
+
+    return {
+        "duplicates": duplicates,
+        "total_groups": len(duplicates),
+    }
+
+
+class MergeDuplicateRequest(BaseModel):
+    keep_permit_id: str
+    cancel_permit_id: str
+
+
+@router.post("/merge-duplicate")
+async def merge_duplicate_permit(
+    data: MergeDuplicateRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Merge plates from a duplicate permit into the primary and cancel the duplicate."""
+    keep = await db.get(Permit, uuid.UUID(data.keep_permit_id))
+    cancel = await db.get(Permit, uuid.UUID(data.cancel_permit_id))
+
+    if not keep or keep.deleted_at:
+        raise HTTPException(404, "Primary permit not found")
+    if not cancel or cancel.deleted_at:
+        raise HTTPException(404, "Duplicate permit not found")
+    if str(keep.id) == str(cancel.id):
+        raise HTTPException(400, "Cannot merge a permit with itself")
+
+    # Merge plates from cancelled permit into the kept one
+    existing_plates = set(p.upper() for p in (keep.plates or []))
+    new_plates = list(keep.plates or [])
+    for plate in (cancel.plates or []):
+        if plate.upper() not in existing_plates:
+            new_plates.append(plate)
+            existing_plates.add(plate.upper())
+
+    keep.plates = new_plates
+
+    # Cancel the duplicate
+    cancel.status = "cancelled"
+
+    await db.flush()
+    await db.commit()
+
+    return {
+        "kept": {
+            "id": str(keep.id),
+            "permit_number": keep.permit_number,
+            "plates": keep.plates,
+        },
+        "cancelled": {
+            "id": str(cancel.id),
+            "permit_number": cancel.permit_number,
+        },
+        "merged_plates": new_plates,
+    }
+
+
 @router.get("/{permit_id}", response_model=PermitRead)
 async def get_permit(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     permit = await db.get(Permit, permit_id)
