@@ -897,6 +897,35 @@ function DuplicateReconciliation({ onMerged, navigate, message, dupByPlate }: {
     setMerging(null);
   };
 
+  const exportCsv = () => {
+    if (!data?.duplicates?.length) return;
+    const rows: string[][] = [["Email", "Recommendation", "Permit #", "Name", "Permit Type", "Lot Assignment", "Plates", "Paid?", "Stripe Amount", "Stripe ID", "Created"]];
+    for (const g of data.duplicates) {
+      for (const p of g.permits) {
+        rows.push([
+          g.email,
+          g.recommendation.replace(/_/g, " "),
+          p.permit_number || "—",
+          p.name || "",
+          (p.permit_type || "").replace(/_/g, " "),
+          p.lot_assignment || "",
+          (p.plates || []).join(" / "),
+          p.paid ? "YES" : "NO",
+          p.stripe_payments?.[0]?.amount || "",
+          p.stripe_payments?.[0]?.stripe_id || "",
+          p.created_at ? new Date(p.created_at).toLocaleDateString() : "",
+        ]);
+      }
+    }
+    const csv = rows.map(r => r.map(c => `"${(c || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `duplicate_permits_reconciliation_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   if (loading) return <Spin size="small" />;
   if (!data) return <div className="text-xs text-ink-mute">Failed to load reconciliation data</div>;
 
@@ -904,8 +933,11 @@ function DuplicateReconciliation({ onMerged, navigate, message, dupByPlate }: {
     <div className="mt-2 space-y-4">
       {data.duplicates.length > 0 && (
         <>
-          <div className="text-xs font-bold text-red-700 uppercase tracking-wide">
-            Students with Multiple Active Permits — Stripe Reconciliation
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold text-red-700 uppercase tracking-wide">
+              Students with Multiple Active Permits — Stripe Reconciliation ({data.total_groups})
+            </div>
+            <Button size="small" onClick={exportCsv}>📋 Export CSV</Button>
           </div>
           {data.duplicates.map((group: any) => (
             <Card size="small" key={group.email} className={`border-l-4 ${group.recommendation === "paid_for_all" ? "border-l-green-400" : group.recommendation === "merge_plates" ? "border-l-orange-400" : "border-l-red-400"}`}>
