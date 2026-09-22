@@ -1282,13 +1282,25 @@ async def lifespan(app: FastAPI):
                         if dp.upper() not in keeper_plates_set:
                             keeper.plates = list(keeper.plates or []) + [dp]
                             keeper_plates_set.add(dp.upper())
+                    # Reassign any citations from the duplicate to the keeper
+                    from sqlalchemy import update as _upd
+                    from .models.ticket import Ticket as _T
+                    reassigned = await _dds.execute(
+                        _upd(_T).where(_T.permit_id == dup.id).values(permit_id=keeper.id)
+                    )
+                    if reassigned.rowcount:
+                        logger.info(
+                            "Reassigned %d citation(s) from tag %s to %s",
+                            reassigned.rowcount, dup.id, keeper.id,
+                        )
+
                     dup.status = "cancelled"
                     seen_cancelled.add(dup.id)
                     cancelled += 1
 
             if cancelled:
                 await _dds.commit()
-                logger.info("Deduped vehicle tags: cancelled %d duplicates.", cancelled)
+                logger.info("Deduped vehicle tags: cancelled %d duplicates, citations reassigned.", cancelled)
     except Exception as exc:
         logger.warning("Vehicle tag dedup failed (non-fatal): %s", exc)
 
