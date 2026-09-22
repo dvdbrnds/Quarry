@@ -210,6 +210,11 @@ export default function Finance() {
   const [backfillResult, setBackfillResult] = useState<{ updated: number; already_set: number; skipped_no_email: number; errors: string[]; details: { id: string; email: string; source: string }[] } | null>(null);
   const [payBackfillRunning, setPayBackfillRunning] = useState(false);
   const [payBackfillResult, setPayBackfillResult] = useState<{ created: number; skipped_existing: number; errors: string[] } | null>(null);
+  const [reconcileRunning, setReconcileRunning] = useState(false);
+  const [reconcileResult, setReconcileResult] = useState<{ fulfilled: number; tickets_fulfilled: number; already_fulfilled: number; errors: string[] } | null>(null);
+  const [reconcileLookback, setReconcileLookback] = useState(720);
+  const [unmatchedLoading, setUnmatchedLoading] = useState(false);
+  const [unmatched, setUnmatched] = useState<{ unmatched: { session_id: string; payment_intent: string; amount: string; email: string; name: string; payment_type: string; permit_type: string; plate: string; created: string; metadata: Record<string, string> }[]; count: number } | null>(null);
 
   const loadReport = useCallback(async () => {
     try { const res = await fetch("/api/payments/revenue", { headers: await authHeaders() }); if (res.ok) setReport(await res.json()); }
@@ -822,6 +827,78 @@ export default function Finance() {
                       <ul className="list-disc pl-4 text-xs mt-1">{payBackfillResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
                     ) : undefined} />
                 )}
+              </Card>
+              <Card title="🔍 Stripe Payment Reconciliation" className="border-2 border-orange-300">
+                <p className="text-sm text-ink-mute mb-4">
+                  Scans Stripe for paid checkout sessions that have no matching permit or payment in HoundDog.
+                  Use this to catch cases where a student paid but their permit was never created.
+                </p>
+                <Space direction="vertical" className="w-full" size="middle">
+                  <Space>
+                    <Select value={reconcileLookback} onChange={setReconcileLookback} style={{ width: 180 }}
+                      options={[
+                        { value: 72, label: "Last 3 days" },
+                        { value: 168, label: "Last 7 days" },
+                        { value: 720, label: "Last 30 days (default)" },
+                        { value: 2160, label: "Last 90 days" },
+                      ]} />
+                    <Button loading={unmatchedLoading} onClick={async () => {
+                      setUnmatchedLoading(true);
+                      setUnmatched(null);
+                      try {
+                        const res = await fetch(`/api/payments/unmatched-stripe?lookback_hours=${reconcileLookback}`, { headers: await authHeaders() });
+                        if (res.ok) { const r = await res.json(); setUnmatched(r); }
+                        else message.error("Failed to scan Stripe");
+                      } catch { message.error("Failed to scan Stripe"); } finally { setUnmatchedLoading(false); }
+                    }}>Scan for Unmatched Payments</Button>
+                    <Button type="primary" danger loading={reconcileRunning} onClick={async () => {
+                      setReconcileRunning(true);
+                      setReconcileResult(null);
+                      try {
+                        const res = await fetch(`/api/payments/reconcile-permits?lookback_hours=${reconcileLookback}`, { method: "POST", headers: await authHeaders() });
+                        if (res.ok) {
+                          const r = await res.json();
+                          setReconcileResult(r);
+                          if (r.fulfilled > 0 || r.tickets_fulfilled > 0) {
+                            message.success(`Reconciled ${r.fulfilled} permits, ${r.tickets_fulfilled} tickets`);
+                            loadReport(); loadPayments();
+                          } else {
+                            message.info("No unmatched payments found to reconcile");
+                          }
+                        } else message.error("Reconciliation failed");
+                      } catch { message.error("Reconciliation failed"); } finally { setReconcileRunning(false); }
+                    }}>Reconcile Now (Create Missing Permits)</Button>
+                  </Space>
+                  {unmatched && (
+                    unmatched.count === 0 ? (
+                      <Alert type="success" showIcon message="✅ All Stripe payments are matched — no missing permits or payments found." />
+                    ) : (
+                      <div>
+                        <Alert type="warning" showIcon className="mb-3"
+                          message={`⚠️ Found ${unmatched.count} unmatched Stripe payment${unmatched.count !== 1 ? "s" : ""} — students paid but no permit/payment exists in HoundDog.`}
+                          description="Click 'Reconcile Now' to automatically create the missing permits." />
+                        <Table size="small" dataSource={unmatched.unmatched} rowKey="payment_intent" pagination={false}
+                          columns={[
+                            { title: "Date", dataIndex: "created", width: 140, render: (v: string) => fmtDateTimeCompact(v) },
+                            { title: "Name", dataIndex: "name", width: 150 },
+                            { title: "Email", dataIndex: "email", width: 220 },
+                            { title: "Amount", dataIndex: "amount", width: 90 },
+                            { title: "Type", dataIndex: "payment_type", width: 140, render: (v: string) => <Tag color={TYPE_COLORS[v] || "default"}>{TYPE_LABELS[v] || v}</Tag> },
+                            { title: "Permit Type", dataIndex: "permit_type", width: 140 },
+                            { title: "Plate", dataIndex: "plate", width: 100 },
+                            { title: "PI", dataIndex: "payment_intent", width: 180, render: (v: string) => <span className="text-xs font-mono">{v.slice(0, 24)}…</span> },
+                          ]} />
+                      </div>
+                    )
+                  )}
+                  {reconcileResult && (
+                    <Alert type={reconcileResult.fulfilled > 0 || reconcileResult.tickets_fulfilled > 0 ? "success" : "info"} showIcon
+                      message={`Reconciliation complete: ${reconcileResult.fulfilled} permits created, ${reconcileResult.tickets_fulfilled} tickets marked paid, ${reconcileResult.already_fulfilled} already matched`}
+                      description={reconcileResult.errors.length > 0 ? (
+                        <ul className="list-disc pl-4 text-xs mt-1">{reconcileResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                      ) : undefined} />
+                  )}
+                </Space>
               </Card>
               <Card title="Bursar Import">
                 <p className="text-sm text-ink-mute mb-4">Upload a CSV with columns: <code>ticket_id</code>, <code>amount</code>, <code>reference</code>, <code>paid_date</code>.</p>

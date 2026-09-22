@@ -578,15 +578,21 @@ async def _run_loop():
                 pass
 
         # Stripe permit reconciliation — every 5 minutes (every 5th tick)
+        # Regular scan: 72h lookback.  Deep scan: 720h (30 days) once per hour.
         global _reconciler_tick_count
         _reconciler_tick_count += 1
         if _reconciler_tick_count >= 5:
-            _reconciler_tick_count = 0
+            _deep = _reconciler_tick_count >= 60  # every 60 ticks (~1 hour)
+            if _deep:
+                _reconciler_tick_count = 0
+            else:
+                _reconciler_tick_count = 5  # reset to 5 so next tick at 10, etc.
             try:
                 from .stripe_reconciler import reconcile_stripe_permits
-                result = await reconcile_stripe_permits(lookback_hours=72)
+                lookback = 720 if _deep else 72
+                result = await reconcile_stripe_permits(lookback_hours=lookback)
                 if result.get("fulfilled", 0) > 0:
-                    logger.info("Stripe reconciler: %s", result)
+                    logger.info("Stripe reconciler (%dh lookback): %s", lookback, result)
             except Exception as e:
                 logger.error("Scheduler tick (stripe reconciler) failed: %s", e, exc_info=True)
                 try:

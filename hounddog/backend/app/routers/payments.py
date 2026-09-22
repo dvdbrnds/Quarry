@@ -1428,17 +1428,106 @@ async def stripe_backfill_emails(
 
 @router.post("/reconcile-permits")
 async def reconcile_permits(
-    lookback_hours: int = Query(72, ge=1, le=720),
+    lookback_hours: int = Query(72, ge=1, le=2160),
     user: OktaUser = Depends(require_admin()),
 ):
     """Manually trigger Stripe permit reconciliation.
 
     Polls Stripe for paid checkout sessions in the last N hours and creates
     permits for any that were paid but never fulfilled (e.g. student closed tab).
+    Max lookback: 2160h (90 days).
     """
     from ..services.stripe_reconciler import reconcile_stripe_permits
     result = await reconcile_stripe_permits(lookback_hours=lookback_hours)
     return result
+
+
+@router.get("/unmatched-stripe")
+async def unmatched_stripe_payments(
+    lookback_hours: int = Query(720, ge=1, le=2160),
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Find Stripe checkout sessions that were paid but have no matching permit or payment in HoundDog.
+
+    Returns a list of unmatched sessions with details for manual review.
+    """
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe as _stripe
+    _stripe.api_key = settings.stripe_secret_key
+
+    created_after = int((datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).timestamp())
+    unmatched: list[dict] = []
+    starting_after = None
+    pages = 0
+
+    while pages < 20:
+        params: dict = {
+            "limit": 100,
+            "status": "complete",
+            "created": {"gte": created_after},
+        }
+        if starting_after:
+            params["starting_after"] = starting_after
+
+        try:
+            page = _stripe.checkout.Session.list(**params)
+        except Exception as e:
+            raise HTTPException(502, f"Stripe API error: {e}")
+
+        if not page.data:
+            break
+
+        for sess in page.data:
+            sd = sess.to_dict() if hasattr(sess, "to_dict") else dict(sess)
+            if sd.get("payment_status") != "paid":
+                continue
+
+            metadata = sd.get("metadata") or {}
+            payment_type = metadata.get("type", "")
+
+            stripe_pi = sd.get("payment_intent", "")
+            if not stripe_pi:
+                continue
+
+            # Check if we have a matching payment record
+            existing = await db.execute(
+                select(func.count()).select_from(Payment).where(
+                    Payment.stripe_payment_id == stripe_pi
+                )
+            )
+            if (existing.scalar() or 0) > 0:
+                continue
+
+            # This is an unmatched payment
+            customer_details = sd.get("customer_details") or {}
+            amount = sd.get("amount_total", 0)
+            unmatched.append({
+                "session_id": sd.get("id", ""),
+                "payment_intent": stripe_pi,
+                "amount": f"${amount / 100:.2f}" if amount else "$0.00",
+                "amount_raw": amount,
+                "email": sd.get("customer_email") or customer_details.get("email") or metadata.get("student_email") or "",
+                "name": customer_details.get("name") or metadata.get("student_name") or "",
+                "payment_type": payment_type,
+                "permit_type": metadata.get("permit_type_code") or metadata.get("permit_type_label") or "",
+                "plate": metadata.get("plate") or "",
+                "created": datetime.fromtimestamp(sd.get("created", 0), tz=timezone.utc).isoformat(),
+                "metadata": metadata,
+            })
+
+        if not page.has_more:
+            break
+        starting_after = page.data[-1].id
+        pages += 1
+
+    return {
+        "unmatched": unmatched,
+        "count": len(unmatched),
+        "lookback_hours": lookback_hours,
+    }
 
 
 @router.post("/stripe-backfill-payments")
