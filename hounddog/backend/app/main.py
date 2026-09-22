@@ -1226,6 +1226,72 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("HC auto-expire failed (non-fatal): %s", exc)
 
+    # One-time dedup of vehicle tags — cancel duplicates, keep the newest per plate
+    try:
+        from .database import async_session as _dedup_session
+        async with _dedup_session() as _dds:
+            from .models.permit import Permit as _P
+            from sqlalchemy import select as _sel
+            result = await _dds.execute(
+                _sel(_P).where(
+                    _P.is_tag_only.is_(True),
+                    _P.status == "active",
+                    _P.deleted_at.is_(None),
+                )
+            )
+            all_tags = result.scalars().all()
+
+            # Group by plate
+            plate_tags: dict[str, list] = {}
+            for t in all_tags:
+                for plate in (t.plates or []):
+                    key = plate.upper().strip()
+                    if key:
+                        plate_tags.setdefault(key, []).append(t)
+
+            cancelled = 0
+            seen_cancelled: set = set()
+            for plate, tags in plate_tags.items():
+                if len(tags) < 2:
+                    continue
+                # Sort by created_at desc — keep the newest
+                tags.sort(key=lambda t: t.created_at or t.start_date or datetime.min, reverse=True)
+                keeper = tags[0]
+                for dup in tags[1:]:
+                    if dup.id in seen_cancelled:
+                        continue
+                    # Merge useful info into keeper
+                    if not keeper.name or keeper.name.startswith("Unknown"):
+                        if dup.name and not dup.name.startswith("Unknown"):
+                            keeper.name = dup.name
+                    if not keeper.email and dup.email:
+                        keeper.email = dup.email
+                    if not keeper.home_address and dup.home_address:
+                        keeper.home_address = dup.home_address
+                    if not keeper.vehicle_make and dup.vehicle_make:
+                        keeper.vehicle_make = dup.vehicle_make
+                    if not keeper.vehicle_model and dup.vehicle_model:
+                        keeper.vehicle_model = dup.vehicle_model
+                    if not keeper.vehicle_color and dup.vehicle_color:
+                        keeper.vehicle_color = dup.vehicle_color
+                    if not keeper.vehicle_year and dup.vehicle_year:
+                        keeper.vehicle_year = dup.vehicle_year
+                    # Also merge any extra plates from the dup
+                    keeper_plates_set = set(p.upper() for p in (keeper.plates or []))
+                    for dp in (dup.plates or []):
+                        if dp.upper() not in keeper_plates_set:
+                            keeper.plates = list(keeper.plates or []) + [dp]
+                            keeper_plates_set.add(dp.upper())
+                    dup.status = "cancelled"
+                    seen_cancelled.add(dup.id)
+                    cancelled += 1
+
+            if cancelled:
+                await _dds.commit()
+                logger.info("Deduped vehicle tags: cancelled %d duplicates.", cancelled)
+    except Exception as exc:
+        logger.warning("Vehicle tag dedup failed (non-fatal): %s", exc)
+
     from .services.alert_dispatcher import init_channels
     init_channels()
 
