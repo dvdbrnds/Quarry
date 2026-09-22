@@ -607,7 +607,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
         # Trigger permit fulfillment for paid permit sessions
         permit_fulfilled = False
         ticket_fulfilled = False
-        if payment_status == "paid" and payment_type in ("direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"):
+        if payment_status == "paid" and payment_type in ("direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase", "permit_purchase"):
             try:
                 from ..services.stripe_reconciler import _fulfill_session, _permit_exists_for_session
                 stripe_pi = data.get("payment_intent", "")

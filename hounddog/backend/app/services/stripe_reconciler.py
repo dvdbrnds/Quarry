@@ -28,7 +28,7 @@ from .timeutils import today_local
 
 logger = logging.getLogger("quarry.stripe_reconciler")
 
-PERMIT_SESSION_TYPES = {"direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase"}
+PERMIT_SESSION_TYPES = {"direct_permit_purchase", "lottery_v2_permit", "standalone_permit_purchase", "permit_purchase"}
 ADMIN_CHARGE_TYPE = "admin_permit_charge"
 ALL_RECONCILABLE_TYPES = PERMIT_SESSION_TYPES | {"ticket_payment", ADMIN_CHARGE_TYPE}
 
@@ -270,6 +270,120 @@ async def _fulfill_admin_charge(db: AsyncSession, session_data: dict) -> bool:
     return True
 
 
+async def _fulfill_permit_purchase(db: AsyncSession, session_data: dict) -> bool:
+    """Fulfill a ticket-to-permit purchase: create the permit, mark the ticket as resolved_permit.
+
+    This mirrors _handle_permit_purchase from payments.py but is safe to call
+    from the reconciler (idempotent, checks for existing payment).
+    """
+    from ..models.ticket import Ticket
+    from ..models.enforcement_settings import EnforcementSettings
+    from .tag_upgrade import retire_tags_for_plates
+
+    metadata = session_data.get("metadata") or {}
+    stripe_pi = session_data.get("payment_intent", "")
+
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return False
+
+    ticket_id = metadata.get("ticket_id")
+    if not ticket_id:
+        return False
+
+    try:
+        ticket = await db.get(Ticket, uuid.UUID(ticket_id))
+    except (ValueError, TypeError):
+        return False
+    if not ticket:
+        return False
+    if ticket.status in ("paid", "voided", "resolved_permit"):
+        return False
+
+    permit_type_code = metadata.get("permit_type_code", "")
+    student_name = metadata.get("student_name", "")
+    plate = metadata.get("plate", "")
+    email = metadata.get("email") or metadata.get("student_email") or session_data.get("customer_email") or ""
+    valid_days = int(metadata.get("valid_days") or metadata.get("permit_valid_days") or "365")
+
+    lot_assignment = metadata.get("lot_assignment") or ""
+    if not lot_assignment:
+        permit_type_id = metadata.get("permit_type_id")
+        if permit_type_id:
+            try:
+                pt = await db.get(PermitType, uuid.UUID(permit_type_id))
+                if pt and pt.lot_assignments:
+                    lot_assignment = ", ".join(pt.lot_assignments)
+            except (ValueError, TypeError):
+                pass
+
+    amount_total = session_data.get("amount_total", 0)
+
+    new_permit = Permit(
+        permit_number=await next_permit_number(db),
+        name=student_name,
+        email=email or None,
+        plates=[plate] if plate else [],
+        permit_type=permit_type_code,
+        lot_assignment=lot_assignment,
+        start_date=today_local(),
+        end_date=today_local() + timedelta(days=valid_days),
+        status="active",
+    )
+    db.add(new_permit)
+
+    payment = Payment(
+        ticket_id=ticket.id,
+        amount=Decimal(amount_total) / 100 if amount_total else Decimal("0.00"),
+        method="online_permit_purchase",
+        stripe_payment_id=stripe_pi or None,
+        payment_type="permit_purchase",
+        payer_name=student_name or None,
+        payer_email=email or None,
+        plate=plate or None,
+        description=f"Permit ({permit_type_code}) — {plate}" if plate else f"Permit ({permit_type_code})",
+    )
+    db.add(payment)
+
+    # Mark ticket as resolved via permit purchase
+    try:
+        es_result = await db.execute(
+            select(EnforcementSettings).where(EnforcementSettings.id == 1)
+        )
+        es = es_result.scalar()
+        ticket.fine_amount = es.permit_fine_reduction if es else Decimal("0.00")
+    except Exception:
+        pass
+    ticket.status = "resolved_permit"
+
+    await retire_tags_for_plates(db, [plate] if plate else [])
+    await db.flush()
+
+    # Send confirmation email (best-effort)
+    if email:
+        try:
+            from .email import send_permit_confirmation_email
+            permit_label = metadata.get("permit_type_label", permit_type_code)
+            await send_permit_confirmation_email(
+                recipient_email=email,
+                student_name=student_name,
+                permit_type_label=permit_label,
+                permit_number=new_permit.permit_number or "",
+                plate=plate,
+                lot_assignment=lot_assignment,
+                start_date=new_permit.start_date.strftime("%B %d, %Y"),
+                end_date=new_permit.end_date.strftime("%B %d, %Y"),
+            )
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            logger.warning("Permit purchase confirmation email failed for %s: %s", email, e)
+
+    return True
+
+
 async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
     """Poll Stripe for paid checkout sessions and fulfill any missing permits/tickets.
 
@@ -322,7 +436,20 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                     continue
 
                 try:
-                    if payment_type in PERMIT_SESSION_TYPES:
+                    if payment_type == "permit_purchase":
+                        # Ticket-to-permit purchase — uses dedicated handler that
+                        # also marks the ticket as resolved_permit.
+                        result = await _fulfill_permit_purchase(db, sess_dict)
+                        if result:
+                            fulfilled += 1
+                            logger.info(
+                                "Reconciled permit_purchase: plate=%s pi=%s",
+                                metadata.get("plate", "?"),
+                                sess_dict.get("payment_intent", "?")[:16],
+                            )
+                        else:
+                            already_fulfilled += 1
+                    elif payment_type in PERMIT_SESSION_TYPES:
                         result = await _fulfill_session(db, sess_dict)
                         if result:
                             fulfilled += 1
