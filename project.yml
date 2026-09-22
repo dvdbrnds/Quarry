@@ -50,8 +50,8 @@ targets:
       path: BirdDog/App/BirdDog.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.birddog
-        MARKETING_VERSION: "2.2.0"
+        PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.quarry.birddog
+        MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: P6D8DZ6BZ7
         CODE_SIGN_STYLE: Automatic
@@ -73,7 +73,7 @@ targets:
       - target: BirdDog
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.birddog.tests
+        PRODUCT_BUNDLE_IDENTIFIER: edu.moravian.quarry.birddog.tests
         DEVELOPMENT_TEAM: P6D8DZ6BZ7
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_STYLE: Automatic

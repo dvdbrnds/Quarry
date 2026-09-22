@@ -672,8 +672,9 @@ async def list_duplicate_permits(db: AsyncSession = Depends(get_db)):
             "status": p.status,
         }
 
-    # Exclude faculty_staff — they have allow_multiple=true by design
-    non_fs = [p for p in active if p.permit_type != "faculty_staff"]
+    # Exclude faculty_staff and contracted_staff — they have allow_multiple=true by design
+    _multi_types = {"faculty_staff", "contracted_staff"}
+    non_fs = [p for p in active if p.permit_type not in _multi_types]
 
     # --- By email: same person holding multiple active permits ---
     email_map: dict[str, list[Permit]] = {}
