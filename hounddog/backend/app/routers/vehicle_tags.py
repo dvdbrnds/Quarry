@@ -177,12 +177,32 @@ async def create_vehicle_tag(
     if not data.plates:
         raise HTTPException(400, "At least one plate is required")
 
+    normalized_plates = [p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates]
+
+    # Check for existing active tag or permit with any of these plates
+    for plate in normalized_plates:
+        existing = await db.execute(
+            select(Permit).where(
+                Permit.deleted_at.is_(None),
+                Permit.status == "active",
+                Permit.plates.any(plate),
+            ).limit(1)
+        )
+        dup = existing.scalar()
+        if dup:
+            label = f"tag ({dup.name})" if dup.is_tag_only else f"permit {dup.permit_number or ''} ({dup.name})"
+            raise HTTPException(
+                409,
+                f"Plate {plate} already has an active {label}. "
+                "Edit the existing record instead of creating a duplicate.",
+            )
+
     vehicle_desc_parts = [p for p in [data.vehicle_year, data.vehicle_make, data.vehicle_model, data.vehicle_color] if p]
     vehicle_desc = " ".join(vehicle_desc_parts) if vehicle_desc_parts else ""
 
     tag = Permit(
         name=data.name,
-        plates=[p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates],
+        plates=normalized_plates,
         email=data.email,
         phone=data.phone,
         home_address=data.home_address,

@@ -1021,6 +1021,39 @@ async def create_vehicle_tag_from_device(
         raise HTTPException(400, "At least one plate is required")
 
     normalized = [p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates]
+
+    # Check for existing active tag with any of these plates — update instead of duplicate
+    for plate in normalized:
+        existing = await db.execute(
+            select(Permit).where(
+                Permit.deleted_at.is_(None),
+                Permit.status == "active",
+                Permit.is_tag_only.is_(True),
+                Permit.plates.any(plate),
+            ).limit(1)
+        )
+        dup = existing.scalar()
+        if dup:
+            # Update existing tag with new info instead of creating duplicate
+            if data.owner_name and data.owner_name.strip():
+                dup.name = data.owner_name
+            if data.student_email and data.student_email.strip():
+                dup.email = data.student_email.strip()[:256]
+            if data.owner_address and data.owner_address.strip():
+                dup.home_address = data.owner_address.strip()[:512]
+            if data.vehicle_make:
+                dup.vehicle_make = data.vehicle_make
+            if data.vehicle_model:
+                dup.vehicle_model = data.vehicle_model
+            if data.vehicle_color:
+                dup.vehicle_color = data.vehicle_color
+            if data.vehicle_year:
+                dup.vehicle_year = data.vehicle_year
+            await db.flush()
+            await db.refresh(dup)
+            logger.info("[VehicleTag] Updated existing tag for plate %s (id=%s)", plate, dup.id)
+            return VehicleTagUploadResponse(status="updated", tag_id=str(dup.id), plates=dup.plates)
+
     vehicle_parts = [p for p in [data.vehicle_year, data.vehicle_color, data.vehicle_make, data.vehicle_model] if p]
     vehicle_desc = " ".join(vehicle_parts) if vehicle_parts else ""
 
