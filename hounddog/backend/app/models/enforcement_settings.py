@@ -26,4 +26,5 @@ class EnforcementSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    conduct_officer_emails: Mapped[str] = mapped_column(String(1024), default="")
     updated_by: Mapped[str] = mapped_column(String(256), default="system")

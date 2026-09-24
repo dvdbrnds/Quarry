@@ -57,6 +57,7 @@ from .routers import (
     auth,
     backup,
     branding,
+    conduct,
     vouchers,
     devices,
     enforcement_settings,
@@ -1197,6 +1198,8 @@ async def lifespan(app: FastAPI):
                     EXECUTE 'ALTER TABLE housing_overrides DROP CONSTRAINT ' || r.conname;
                 END LOOP;
             END $$""",
+            # ── v38: Conduct officer emails column
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS conduct_officer_emails VARCHAR(1024) DEFAULT ''",
             ]
             for migration in migrations:
                 try:
@@ -1850,6 +1853,7 @@ app.include_router(violation_types.router, prefix="/api/violation-types", tags=[
 app.include_router(permit_types.router, prefix="/api/permit-types", tags=["permit-types"])
 app.include_router(academic_calendar.router, prefix="/api/academic-calendar", tags=["academic-calendar"])
 app.include_router(enforcement_settings.router, prefix="/api/settings/enforcement", tags=["settings"])
+app.include_router(conduct.router, prefix="/api/conduct", tags=["conduct"])
 app.include_router(audit.diagnostic_router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])

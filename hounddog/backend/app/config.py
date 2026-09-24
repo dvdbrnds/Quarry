@@ -124,6 +124,9 @@ class Settings(BaseSettings):
     conduct_referral_threshold: int = 3
     registration_hold_threshold: int = 5
 
+    # Conduct officer portal access (comma-separated Okta emails)
+    conduct_officer_emails: str = ""
+
     # Maxient integration (email-based referral by default)
     maxient_intake_email: str = ""
     maxient_referral_enabled: bool = True

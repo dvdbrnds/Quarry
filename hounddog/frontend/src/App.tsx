@@ -23,6 +23,7 @@ import StudentPermits from "./pages/StudentPermits";
 import StudentCitations from "./pages/StudentCitations";
 import StaffPermits from "./pages/StaffPermits";
 import SponsorDashboard from "./pages/SponsorDashboard";
+import ConductDashboard from "./pages/ConductDashboard";
 import LotteryApplyV2 from "./pages/LotteryApplyV2";
 import ParkingMap from "./pages/ParkingMap";
 import Appeals from "./pages/Appeals";
@@ -402,6 +403,7 @@ export default function App() {
     return (
       <Routes>
         <Route path="/sponsor" element={<SponsorDashboard />} />
+        <Route path="/conduct" element={<ConductDashboard />} />
       </Routes>
     );
   }

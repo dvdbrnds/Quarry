@@ -13,6 +13,7 @@ interface EnforcementSettingsData {
   escalation_threshold: number; permit_fine_reduction: string;
   unpaid_blocks_registration: boolean; towing_enabled: boolean;
   towing_violation_codes: string[]; snow_emergency_active: boolean;
+  conduct_officer_emails: string;
   updated_at: string; updated_by: string;
 }
 
@@ -93,6 +94,17 @@ export default function EnforcementSettings() {
               <span className={settings.snow_emergency_active ? "text-red-600 font-medium" : ""}>Snow Emergency Active</span>
             </Checkbox>
           </Space>
+          <div className="pt-4 border-t">
+            <label className="block text-xs font-medium text-ink-mute mb-1">Conduct Officer Emails</label>
+            <Input.TextArea
+              rows={2}
+              value={settings.conduct_officer_emails}
+              onChange={e => setSettings({ ...settings, conduct_officer_emails: e.target.value })}
+              disabled={!isAdmin}
+              placeholder="officer1@moravian.edu, officer2@moravian.edu"
+            />
+            <p className="text-xs text-ink-mute mt-1">Comma-separated emails of conduct officers who can access the /conduct portal</p>
+          </div>
           <div className="flex items-center gap-4 pt-4 border-t">
             {isAdmin && <Button type="primary" onClick={handleSave} loading={saving}>Save Settings</Button>}
             <span className={isAdmin ? "ml-auto text-xs text-ink-mute" : "text-xs text-ink-mute"}>
