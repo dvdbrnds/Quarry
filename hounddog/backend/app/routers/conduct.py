@@ -148,6 +148,16 @@ async def get_case(
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(require_conduct),
 ):
+  try:
+    return await _get_case_detail(case_id, db)
+  except HTTPException:
+    raise
+  except Exception as e:
+    _logger.error("Failed to load case %s: %s", case_id, e, exc_info=True)
+    raise HTTPException(500, f"Internal error: {str(e)[:200]}")
+
+
+async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
     row = await db.execute(text("""
         SELECT e.id, e.student_id, e.student_name, e.student_email, e.plate,
                e.ticket_count, e.ticket_ids, e.status, e.details,
@@ -202,7 +212,13 @@ async def get_case(
     tickets = []
     if all_ids:
         try:
-            all_uuids = [uuid.UUID(tid) for tid in all_ids]
+            valid_ids = []
+            for tid in all_ids:
+                try:
+                    valid_ids.append(uuid.UUID(tid))
+                except (ValueError, AttributeError):
+                    _logger.warning("Skipping invalid ticket id: %s", tid)
+            all_uuids = valid_ids
             t_result = await db.execute(
                 select(Ticket).where(Ticket.id.in_(all_uuids)).order_by(Ticket.issued_at.desc())
             )
