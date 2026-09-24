@@ -915,6 +915,25 @@ async def update_permit(
 
     await db.flush()
     await db.refresh(permit)
+
+    # Propagate owner/student info changes to all tickets for matching plates
+    updated = data.model_dump(exclude_unset=True)
+    if permit.plates and ("name" in updated or "email" in updated):
+        ticket_updates: dict = {}
+        if "name" in updated and permit.name:
+            ticket_updates["owner_name"] = permit.name
+        if "email" in updated and permit.email:
+            ticket_updates["notification_email"] = permit.email
+        if ticket_updates:
+            for plate in permit.plates:
+                plate_norm = plate.upper().replace(" ", "").replace("-", "")
+                await db.execute(
+                    Ticket.__table__.update()
+                    .where(func.upper(func.replace(func.replace(Ticket.plate, " ", ""), "-", "")) == plate_norm)
+                    .values(**ticket_updates)
+                )
+            await db.flush()
+
     await _notify_permit_change("updated", 1)
     return permit
 

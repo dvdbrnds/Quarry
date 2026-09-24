@@ -795,7 +795,13 @@ async def update_ticket(
     await db.refresh(ticket)
 
     # If owner info changed, propagate to the vehicle tag and other tickets on same plate
+    propagate_fields = {}
     if "owner_name" in updated_fields and ticket.owner_name:
+        propagate_fields["owner_name"] = ticket.owner_name
+    if "notification_email" in updated_fields and ticket.notification_email:
+        propagate_fields["notification_email"] = ticket.notification_email
+
+    if propagate_fields:
         plate_norm = ticket.plate.upper().replace(" ", "").replace("-", "")
         # Update the associated tag
         tag_result = await db.execute(
@@ -807,15 +813,16 @@ async def update_ticket(
         )
         tag = tag_result.scalar_one_or_none()
         if tag:
-            tag.name = ticket.owner_name
-            if ticket.notification_email and not tag.email:
-                tag.email = ticket.notification_email
+            if "owner_name" in propagate_fields:
+                tag.name = propagate_fields["owner_name"]
+            if "notification_email" in propagate_fields:
+                tag.email = propagate_fields["notification_email"]
             await db.flush()
         # Update other tickets with the same plate
         await db.execute(
             Ticket.__table__.update()
             .where(Ticket.plate == ticket.plate, Ticket.id != ticket.id)
-            .values(owner_name=ticket.owner_name)
+            .values(**propagate_fields)
         )
         await db.flush()
 

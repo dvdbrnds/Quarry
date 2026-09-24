@@ -25,6 +25,7 @@ interface Ticket {
   officer_name: string | null;
   officer_email: string | null;
   owner_name: string | null;
+  notification_email: string | null;
   permit_number: string | null;
   permit_type_label: string | null;
   permit_lot_zone: string | null;
@@ -948,6 +949,29 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [tagSaving, setTagSaving] = useState(false);
   const [sortBy, setSortBy] = useState<string>("issued_at");
   const [sortOrder, setSortOrder] = useState<string>("descend");
+  const [roSaving, setRoSaving] = useState(false);
+
+  async function handleSaveRO(ticketId: string, ownerName: string, email: string) {
+    setRoSaving(true);
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify({ owner_name: ownerName || null, notification_email: email || null }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      const updated = await res.json();
+      setSelected((prev) => prev ? { ...prev, owner_name: updated.owner_name, notification_email: updated.notification_email } : null);
+      setTickets((prev) => prev.map((t) =>
+        t.plate === updated.plate ? { ...t, owner_name: updated.owner_name } : t
+      ));
+      message.success("Owner info saved and propagated to all tickets for this plate");
+    } catch {
+      message.error("Failed to save owner info");
+    } finally {
+      setRoSaving(false);
+    }
+  }
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -1667,7 +1691,6 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   <span style={{ color: "#d4380d", fontWeight: 600 }}>{selected.enforcement_warning}</span>
                 </Descriptions.Item>
               )}
-              {selected.owner_name && <Descriptions.Item label="Owner">{selected.owner_name}</Descriptions.Item>}
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}
               {selected.permit_type_label && <Descriptions.Item label="Permit Type">{selected.permit_type_label}</Descriptions.Item>}
               {selected.permit_lot_zone && <Descriptions.Item label="Permit Lot">{selected.permit_lot_zone}</Descriptions.Item>}
@@ -1685,6 +1708,49 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 </Descriptions.Item>
               )}
             </Descriptions>
+
+            {isOffice && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="font-medium text-blue-800 text-sm mb-2">Registered Owner / Connected Student</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Owner Name</label>
+                    <Input
+                      size="small"
+                      defaultValue={selected.owner_name || ""}
+                      key={`ro-name-${selected.id}`}
+                      id={`ro-name-${selected.id}`}
+                      placeholder="e.g. John Doe"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Notification Email</label>
+                    <Input
+                      size="small"
+                      defaultValue={(selected as any).notification_email || ""}
+                      key={`ro-email-${selected.id}`}
+                      id={`ro-email-${selected.id}`}
+                      placeholder="e.g. student@moravian.edu"
+                    />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={roSaving}
+                    onClick={() => {
+                      const nameEl = document.getElementById(`ro-name-${selected.id}`) as HTMLInputElement;
+                      const emailEl = document.getElementById(`ro-email-${selected.id}`) as HTMLInputElement;
+                      handleSaveRO(selected.id, nameEl?.value || "", emailEl?.value || "");
+                    }}
+                  >
+                    Save & Apply to All Tickets
+                  </Button>
+                  <span className="text-xs text-gray-400">Updates all tickets for plate {selected.plate}</span>
+                </div>
+              </div>
+            )}
 
             {legacyRecord && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
