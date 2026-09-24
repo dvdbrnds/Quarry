@@ -19,6 +19,8 @@ final class PermitRecord {
     var beaconId: String?
     var hcStatus: String
     var hcExpiry: Date?
+    var neverTicket: Bool
+    var neverTicketReason: String?
 
     init(
         plateNormalized: String,
@@ -35,7 +37,9 @@ final class PermitRecord {
         importedAt: Date = Date(),
         beaconId: String? = nil,
         hcStatus: String = "none",
-        hcExpiry: Date? = nil
+        hcExpiry: Date? = nil,
+        neverTicket: Bool = false,
+        neverTicketReason: String? = nil
     ) {
         self.plateNormalized = plateNormalized
         self.plateRaw = plateRaw
@@ -52,5 +56,7 @@ final class PermitRecord {
         self.beaconId = beaconId
         self.hcStatus = hcStatus
         self.hcExpiry = hcExpiry
+        self.neverTicket = neverTicket
+        self.neverTicketReason = neverTicketReason
     }
 }

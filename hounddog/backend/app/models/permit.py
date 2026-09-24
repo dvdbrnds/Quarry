@@ -56,3 +56,5 @@ class Permit(Base):
     temp_lot_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     home_address: Mapped[str | None] = mapped_column(String(512), nullable=True)
     student_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    never_ticket: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    never_ticket_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

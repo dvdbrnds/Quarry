@@ -12,6 +12,8 @@ struct PermitInfo: Sendable, Equatable, Codable {
     let issuedDate: Date
     let hcStatus: String
     let hcExpiry: Date?
+    let neverTicket: Bool
+    let neverTicketReason: String?
 
     private static let displayNames: [String: String] = [
         "commuter_undergrad": "Commuter (Undergrad)",
@@ -55,6 +57,7 @@ struct PermitInfo: Sendable, Equatable, Codable {
 
 enum PlateStatus: Sendable, Equatable, Codable {
     case authorized(permit: PermitInfo)
+    case neverTicket(permit: PermitInfo)
     case wrongLot(permit: PermitInfo, expectedLot: String, actualLot: String)
     case expired(permit: PermitInfo)
     case tagOnly(permit: PermitInfo)
@@ -68,6 +71,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
     var label: String {
         switch self {
         case .authorized: return "Allowed"
+        case .neverTicket: return "DO NOT TICKET"
         case .wrongLot: return "Wrong Lot"
         case .expired: return "Expired"
         case .tagOnly: return "No Permit"
@@ -80,6 +84,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
     var color: Color {
         switch self {
         case .authorized: return Self.allowedGreen
+        case .neverTicket: return Self.allowedGreen
         case .wrongLot: return .orange
         case .expired: return .yellow
         case .tagOnly: return .cyan
@@ -92,6 +97,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
     var systemImage: String {
         switch self {
         case .authorized: return "checkmark.shield.fill"
+        case .neverTicket: return "hand.raised.fill"
         case .wrongLot: return "location.slash.fill"
         case .expired: return "exclamationmark.triangle.fill"
         case .tagOnly: return "person.badge.shield.checkmark.fill"
@@ -103,7 +109,7 @@ enum PlateStatus: Sendable, Equatable, Codable {
 
     var permit: PermitInfo? {
         switch self {
-        case .authorized(let p), .wrongLot(let p, _, _), .expired(let p), .tagOnly(let p):
+        case .authorized(let p), .neverTicket(let p), .wrongLot(let p, _, _), .expired(let p), .tagOnly(let p):
             return p
         case .unknown, .unchecked, .ticketed:
             return nil

@@ -745,17 +745,22 @@ async def _upload_ticket_impl(
     # permit that should authorize parking in this lot right now.
     enforcement_warning: str | None = None
     if permit and permit.status == "active" and permit.deleted_at is None:
-        _pt = (permit.permit_type or "").lower()
-        _visitor_types = {"visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"}
-        _lot = (ticket.lot or "").strip()
-        _lot_assignment = permit.lot_assignment or ""
+        # Never-ticket check takes priority
+        if permit.never_ticket:
+            reason = f" Reason: {permit.never_ticket_reason}" if permit.never_ticket_reason else ""
+            enforcement_warning = f"🛑 DO NOT TICKET — This plate is flagged as Never Ticket.{reason}"
+        else:
+            _pt = (permit.permit_type or "").lower()
+            _visitor_types = {"visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"}
+            _lot = (ticket.lot or "").strip()
+            _lot_assignment = permit.lot_assignment or ""
 
-        if _pt in _visitor_types:
-            enforcement_warning = f"⚠️ This plate has an active {_pt.replace('_', ' ')} permit — visitors/contractors are authorized in all lots."
-        elif _lot and _lot_assignment:
-            _assigned_lots = {l.strip().upper() for l in _lot_assignment.split(",") if l.strip()}
-            if _lot.upper() in _assigned_lots:
-                enforcement_warning = f"⚠️ This plate has an active permit assigned to lot {_lot}. The vehicle may be legally parked."
+            if _pt in _visitor_types:
+                enforcement_warning = f"⚠️ This plate has an active {_pt.replace('_', ' ')} permit — visitors/contractors are authorized in all lots."
+            elif _lot and _lot_assignment:
+                _assigned_lots = {l.strip().upper() for l in _lot_assignment.split(",") if l.strip()}
+                if _lot.upper() in _assigned_lots:
+                    enforcement_warning = f"⚠️ This plate has an active permit assigned to lot {_lot}. The vehicle may be legally parked."
 
     # Truncate permit_number to fit DB column (256 chars) — visitor permits
     # can have long custom-field strings flowing through student_id.

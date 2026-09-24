@@ -276,7 +276,9 @@ final class HoundDogSyncService: ObservableObject {
             expirationDate: permit.endDate,
             beaconId: permit.beaconId,
             hcStatus: permit.hcStatus,
-            hcExpiry: permit.hcExpiry
+            hcExpiry: permit.hcExpiry,
+            neverTicket: permit.neverTicket,
+            neverTicketReason: permit.neverTicketReason
         )
     }
 
@@ -818,6 +820,8 @@ struct SyncPermit: Decodable {
     let vehicleModel: String?
     let vehicleColor: String?
     let vehicleYear: String?
+    let neverTicket: Bool?
+    let neverTicketReason: String?
 
     var vehicleDescription: String {
         [vehicleYear, vehicleColor, vehicleMake, vehicleModel]
@@ -843,6 +847,8 @@ struct SyncPermit: Decodable {
         case vehicleModel = "vehicle_model"
         case vehicleColor = "vehicle_color"
         case vehicleYear = "vehicle_year"
+        case neverTicket = "never_ticket"
+        case neverTicketReason = "never_ticket_reason"
     }
 }
 

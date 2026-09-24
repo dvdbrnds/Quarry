@@ -124,8 +124,15 @@ final class PlateAuthService: PlateCheckable {
             plateState: record.plateState,
             issuedDate: record.issuedDate,
             hcStatus: record.hcStatus,
-            hcExpiry: record.hcExpiry
+            hcExpiry: record.hcExpiry,
+            neverTicket: record.neverTicket,
+            neverTicketReason: record.neverTicketReason
         )
+
+        // Never Ticket — always show DO NOT TICKET regardless of anything else
+        if record.neverTicket {
+            return .neverTicket(permit: info)
+        }
 
         // Vehicle tag (known vehicle, no permit) — always show as "tag only"
         if record.permitType.lowercased() == "vehicle_tag" {

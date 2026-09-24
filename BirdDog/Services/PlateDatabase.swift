@@ -144,6 +144,11 @@ final class PlateDatabase {
                     existing.hcStatus = entryHC
                     existing.hcExpiry = permit.parsedHcExpiry
                 }
+                // Never-ticket: if either has it, keep it
+                if permit.neverTicket ?? false {
+                    existing.neverTicket = true
+                    existing.neverTicketReason = permit.neverTicketReason ?? existing.neverTicketReason
+                }
                 skippedDuplicate += 1
                 continue
             }
@@ -161,7 +166,9 @@ final class PlateDatabase {
                 issuedDate: permit.parsedIssuedDate,
                 expirationDate: permit.parsedExpirationDate,
                 hcStatus: entryHC,
-                hcExpiry: permit.parsedHcExpiry
+                hcExpiry: permit.parsedHcExpiry,
+                neverTicket: permit.neverTicket ?? false,
+                neverTicketReason: permit.neverTicketReason
             )
             context.insert(record)
             seenPlates[normalized] = record
@@ -367,6 +374,9 @@ final class PlateDatabase {
             if !entry.lotZone.isEmpty && !existing.lotZone.contains(entry.lotZone) {
                 existing.lotZone = existing.lotZone.isEmpty ? entry.lotZone : "\(existing.lotZone), \(entry.lotZone)"
             }
+            // Never-ticket flag
+            existing.neverTicket = entry.neverTicket ?? false
+            existing.neverTicketReason = entry.neverTicketReason
             existing.importedAt = Date()
         } else {
             let record = PermitRecord(
@@ -383,7 +393,9 @@ final class PlateDatabase {
                 expirationDate: entry.parsedExpirationDate,
                 beaconId: entry.beaconId,
                 hcStatus: entry.hcStatus ?? "none",
-                hcExpiry: entry.parsedHcExpiry
+                hcExpiry: entry.parsedHcExpiry,
+                neverTicket: entry.neverTicket ?? false,
+                neverTicketReason: entry.neverTicketReason
             )
             context.insert(record)
         }
@@ -589,6 +601,8 @@ struct PermitEntry: Decodable {
     let beaconId: String?
     let hcStatus: String?
     let hcExpiry: String?
+    let neverTicket: Bool?
+    let neverTicketReason: String?
 
     private static let dateFormatters: [DateFormatter] = {
         let formats = [

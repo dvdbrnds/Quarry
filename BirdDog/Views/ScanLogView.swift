@@ -251,6 +251,7 @@ struct ScanLogView: View {
     private func plateTextColor(for status: PlateStatus) -> Color {
         switch status {
         case .authorized: return PlateStatus.allowedGreen
+        case .neverTicket: return PlateStatus.allowedGreen
         case .unknown: return .red
         case .wrongLot: return .orange
         case .tagOnly: return .cyan
@@ -264,6 +265,8 @@ struct ScanLogView: View {
         Group {
             switch status {
             case .authorized:
+                PlateStatus.allowedGreen.opacity(0.14)
+            case .neverTicket:
                 PlateStatus.allowedGreen.opacity(0.14)
             case .unknown:
                 Color.red.opacity(0.08)
@@ -295,6 +298,10 @@ struct ScanLogView: View {
         case .authorized(let permit):
             let parts = ["ALLOWED", permit.lotZone, permit.displayType, permit.ownerName]
                 .filter { !$0.isEmpty }
+            return parts.joined(separator: " · ")
+        case .neverTicket(let permit):
+            let reason = permit.neverTicketReason ?? ""
+            let parts = ["🛑 DO NOT TICKET", permit.ownerName, reason].filter { !$0.isEmpty }
             return parts.joined(separator: " · ")
         case .wrongLot(let permit, let expected, let actual):
             return "WRONG LOT · Permit: \(expected) · Here: \(actual) · \(permit.ownerName)"

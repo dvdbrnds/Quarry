@@ -319,7 +319,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 33
+    SCHEMA_VERSION = 34
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1160,6 +1160,9 @@ async def lifespan(app: FastAPI):
             "UPDATE visitor_presets SET permit_type_code = 'contracted_staff' WHERE permit_type_code = 'visitor_contracted_staff'",
             # Deactivate the visitor_contracted_staff permit type (no longer needed)
             "UPDATE permit_types SET is_active = false WHERE code = 'visitor_contracted_staff'",
+            # ── v34: Never Ticket designation
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS never_ticket BOOLEAN NOT NULL DEFAULT false",
+            "ALTER TABLE permits ADD COLUMN IF NOT EXISTS never_ticket_reason TEXT",
             ]
             for migration in migrations:
                 try:

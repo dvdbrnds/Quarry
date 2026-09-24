@@ -32,6 +32,8 @@ class PermitBase(BaseModel):
     tag_notes: str | None = None
     tag_source: str | None = None
     home_address: str | None = None
+    never_ticket: bool = False
+    never_ticket_reason: str | None = None
 
 
 class PermitCreate(PermitBase):
@@ -63,6 +65,8 @@ class PermitUpdate(BaseModel):
     tag_notes: str | None = None
     tag_source: str | None = None
     home_address: str | None = None
+    never_ticket: bool | None = None
+    never_ticket_reason: str | None = None
 
 
 class PermitRead(PermitBase):

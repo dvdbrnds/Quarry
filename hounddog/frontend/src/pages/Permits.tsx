@@ -362,6 +362,8 @@ function PermitForm({
         end_date: initial.end_date ? dayjs(initial.end_date) : null,
         hc_status: initial.hc_status || "none",
         hc_expiry: initial.hc_expiry ? dayjs(initial.hc_expiry) : null,
+        never_ticket: (initial as any).never_ticket || false,
+        never_ticket_reason: (initial as any).never_ticket_reason || "",
       });
       setSelectedTypeCode(initial.permit_type || undefined);
     } else {
@@ -506,6 +508,8 @@ function PermitForm({
                   end_date: values.end_date?.format("YYYY-MM-DD") || null,
                   hc_status: values.hc_status || "none",
                   hc_expiry: values.hc_status === "temporary" && values.hc_expiry ? values.hc_expiry.format("YYYY-MM-DD") : null,
+                  never_ticket: values.never_ticket || false,
+                  never_ticket_reason: values.never_ticket ? (values.never_ticket_reason || null) : null,
                 };
                 await api.permits.update(initial.id, otherData);
                 if (reassignResult.action === "charge") {
@@ -563,6 +567,8 @@ function PermitForm({
           end_date: values.end_date?.format("YYYY-MM-DD") || null,
           hc_status: values.hc_status || "none",
           hc_expiry: values.hc_status === "temporary" && values.hc_expiry ? values.hc_expiry.format("YYYY-MM-DD") : null,
+          never_ticket: values.never_ticket || false,
+          never_ticket_reason: values.never_ticket ? (values.never_ticket_reason || null) : null,
         };
         await api.permits.update(initial.id, data);
         message.success("Permit updated");
@@ -691,6 +697,16 @@ function PermitForm({
           </Form.Item>
           <Form.Item name="home_address" label="Home Address">
             <Input placeholder="123 Main St, Bethlehem, PA 18018" />
+          </Form.Item>
+          <Form.Item name="never_ticket" label="Never Ticket" valuePropName="checked">
+            <Checkbox>🛑 Do Not Ticket this vehicle</Checkbox>
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev: any, cur: any) => prev.never_ticket !== cur.never_ticket}>
+            {({ getFieldValue }: any) => getFieldValue("never_ticket") ? (
+              <Form.Item name="never_ticket_reason" label="Reason">
+                <Input placeholder="e.g. University president, VIP, special arrangement" />
+              </Form.Item>
+            ) : null}
           </Form.Item>
           <Form.Item name="hc_status" label="HC Designation">
             <Select options={[
@@ -1194,6 +1210,7 @@ export default function Permits() {
           <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "cancelled" ? "purple" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
           {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
           {p.active_ticket_count > 0 && <Tag color="red">🚨 {p.active_ticket_count} citation{p.active_ticket_count > 1 ? "s" : ""}</Tag>}
+          {(p as any).never_ticket && <Tag color="green">🛑 Never Ticket</Tag>}
           {p.hc_status === "permanent" && <Tag color="blue">♿ HC</Tag>}
           {p.hc_status === "temporary" && <Tag color={p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"}>{p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "♿ HC Expired" : "♿ HC Temp"}</Tag>}
         </Space>
