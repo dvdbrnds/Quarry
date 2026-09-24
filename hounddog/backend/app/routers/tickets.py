@@ -845,7 +845,7 @@ async def update_ticket(
                 Permit.plates.any(plate_norm),
             )
         )
-        tag = tag_result.scalar_one_or_none()
+        tag = tag_result.scalars().first()
         if tag:
             if "owner_name" in propagate_fields:
                 tag.name = propagate_fields["owner_name"]
