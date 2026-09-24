@@ -876,6 +876,28 @@ async def update_ticket(
         except Exception as e:
             sentry_sdk.capture_exception(e)
 
+    # Re-check escalation after plate correction or owner propagation
+    if plate_was_corrected or propagate_fields:
+        try:
+            from ..services.escalation import check_and_escalate
+            # Find the permit for the (possibly new) plate to get student info
+            esc_permit = (await db.execute(
+                select(Permit).where(
+                    Permit.deleted_at.is_(None),
+                    Permit.plates.any(ticket.plate.upper().replace(" ", "").replace("-", "")),
+                ).order_by(Permit.is_tag_only.asc())
+            )).scalars().first()
+            if esc_permit and getattr(esc_permit, 'student_id', None):
+                await check_and_escalate(
+                    db=db,
+                    plate=ticket.plate,
+                    student_id=esc_permit.student_id,
+                    student_name=esc_permit.name or ticket.owner_name,
+                    student_email=getattr(esc_permit, 'email', None),
+                )
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+
     return ticket
 
 
