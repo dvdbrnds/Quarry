@@ -319,7 +319,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 34
+    SCHEMA_VERSION = 35
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1163,6 +1163,18 @@ async def lifespan(app: FastAPI):
             # ── v34: Never Ticket designation
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS never_ticket BOOLEAN NOT NULL DEFAULT false",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS never_ticket_reason TEXT",
+            # ── v35: BPA (Bethlehem Parking Authority) North Campus permit type
+            # For North Campus residents who park on city streets with a BPA pass.
+            # Allows parking on campus after hours (4pm-7am) and weekends only.
+            # Manually assigned by dispatch — not purchasable online, not in lottery.
+            """INSERT INTO permit_types (id, code, label, eligible, price, max_capacity, valid_days,
+                   lot_assignments, is_purchasable_online, is_active, sort_order, allow_multiple)
+               VALUES (gen_random_uuid(), 'bpa_north_campus', 'BPA – North Campus',
+                       'North Campus residents with Bethlehem Parking Authority street pass',
+                       0, 0, 365,
+                       '{B,C,D,G,P,T,U,X,A,F,H,J,M,N,O,R,S,W}',
+                       false, true, 13, false)
+               ON CONFLICT (code) DO NOTHING""",
             ]
             for migration in migrations:
                 try:
