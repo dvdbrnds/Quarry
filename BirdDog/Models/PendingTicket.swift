@@ -41,6 +41,11 @@ final class PendingTicket {
     var permitTypeLabel: String?
     var permitLotZone: String?
 
+    // Retry tracking
+    var retryCount: Int
+    var permanentFailure: Bool
+    var lastError: String?
+
     // Response from server
     var paymentUrl: String?
     var fineAmount: String?
@@ -82,6 +87,8 @@ final class PendingTicket {
         self.additionalPhotoPaths = additionalPhotoPaths
         self.issuedAt = Date()
         self.uploaded = false
+        self.retryCount = 0
+        self.permanentFailure = false
         self.ticketCategory = ticketCategory
         self.locationLat = locationLat
         self.locationLng = locationLng

@@ -466,7 +466,14 @@ final class PlateDatabase {
 
     func pendingTickets() -> [PendingTicket] {
         let descriptor = FetchDescriptor<PendingTicket>(
-            predicate: #Predicate<PendingTicket> { !$0.uploaded }
+            predicate: #Predicate<PendingTicket> { !$0.uploaded && !$0.permanentFailure }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    func failedTickets() -> [PendingTicket] {
+        let descriptor = FetchDescriptor<PendingTicket>(
+            predicate: #Predicate<PendingTicket> { $0.permanentFailure }
         )
         return (try? context.fetch(descriptor)) ?? []
     }

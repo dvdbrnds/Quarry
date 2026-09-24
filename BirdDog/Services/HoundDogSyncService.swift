@@ -28,7 +28,9 @@ final class HoundDogSyncService: ObservableObject {
     private static let lastPermitSyncKey = "HoundDogSync.lastPermitSync"
     private static let lastLotSyncKey = "HoundDogSync.lastLotSync"
     private static let isEnabledKey = "HoundDogSync.isEnabled"
-    private static let syncIntervalSeconds: TimeInterval = 60
+    private static let baseSyncInterval: TimeInterval = 60
+    private static let maxSyncInterval: TimeInterval = 300  // 5 min max backoff
+    private var consecutiveFailures: Int = 0
 
     private static let jsonDecoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -71,7 +73,12 @@ final class HoundDogSyncService: ObservableObject {
     private var syncTimer: Timer?
     private let monitor = NWPathMonitor()
     private var isConnected = false
-    private let session = URLSession.shared
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15   // 15s per request (was default 60s)
+        config.timeoutIntervalForResource = 30  // 30s total (was default 7 days)
+        return URLSession(configuration: config)
+    }()
 
     private var lastPermitSync: Date? {
         get { UserDefaults.standard.object(forKey: Self.lastPermitSyncKey) as? Date }
@@ -102,13 +109,19 @@ final class HoundDogSyncService: ObservableObject {
     func start() {
         guard isEnabled else { return }
         started = true
+        scheduleNextSync()
+        Task { await syncNow() }
+    }
+
+    private func scheduleNextSync() {
         syncTimer?.invalidate()
-        syncTimer = Timer.scheduledTimer(withTimeInterval: Self.syncIntervalSeconds, repeats: true) { [weak self] _ in
+        let backoff = min(Self.baseSyncInterval * pow(1.5, Double(consecutiveFailures)), Self.maxSyncInterval)
+        syncTimer = Timer.scheduledTimer(withTimeInterval: backoff, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 await self?.syncNow()
+                self?.scheduleNextSync()
             }
         }
-        Task { await syncNow() }
     }
 
     func stop() {
@@ -178,6 +191,7 @@ final class HoundDogSyncService: ObservableObject {
             await DeviceLogService.shared.flush()
             syncState = .synced
             lastSyncDate = Date()
+            consecutiveFailures = 0  // Reset backoff on success
             NotificationCenter.default.post(name: .init("HoundDogSyncCompleted"), object: nil)
         } catch {
             let msg = error.localizedDescription
@@ -185,6 +199,7 @@ final class HoundDogSyncService: ObservableObject {
             DeviceLogService.shared.log(level: "error", event: "sync_failed", extra: ["error": msg])
             syncState = .error
             lastError = msg
+            consecutiveFailures = min(consecutiveFailures + 1, 10)  // Cap backoff growth
             await DeviceLogService.shared.flush()
         }
     }
@@ -479,26 +494,81 @@ final class HoundDogSyncService: ObservableObject {
 
     // MARK: - Pending Ticket Retry
 
+    /// HTTP status codes that indicate the upload will NEVER succeed — stop retrying.
+    private static let permanentFailureCodes: Set<Int> = [400, 409, 413, 422]
+    private static let maxRetryCount = 20
+
     private func retryPendingTickets() async {
         let db = PlateDatabase.shared
-        let pending = db.pendingTickets()
+        let pending = db.pendingTickets().filter { !$0.permanentFailure }
         guard !pending.isEmpty else { return }
         print("[HoundDog] Retrying \(pending.count) pending ticket(s)...")
         DeviceLogService.shared.log(event: "ticket_retry_started", extra: ["count": "\(pending.count)"])
         for ticket in pending {
+            // Skip tickets that have exceeded the retry limit
+            if ticket.retryCount >= Self.maxRetryCount {
+                ticket.permanentFailure = true
+                ticket.lastError = "Exceeded \(Self.maxRetryCount) retry attempts"
+                try? db.saveContext()
+                DeviceLogService.shared.log(level: "error", event: "ticket_retry_abandoned",
+                    extra: ["ticket_id": ticket.ticketId, "retries": "\(ticket.retryCount)"])
+                continue
+            }
+
+            // For tickets with photos that previously failed with 413,
+            // retry WITHOUT the photo (better to have the ticket record than nothing)
+            let strip413Photo = ticket.lastError?.contains("413") == true && ticket.retryCount >= 3
+
             do {
-                let result = try await uploadTicket(ticket)
+                let result: TicketUploadResponse
+                if strip413Photo {
+                    // Create a copy without photos to get the ticket record through
+                    let originalPhoto = ticket.photoPath
+                    let originalAdditional = ticket.additionalPhotoPaths
+                    ticket.photoPath = nil
+                    ticket.additionalPhotoPaths = []
+                    result = try await uploadTicket(ticket)
+                    // Restore paths so the ticket record still has them locally
+                    ticket.photoPath = originalPhoto
+                    ticket.additionalPhotoPaths = originalAdditional
+                    DeviceLogService.shared.log(event: "ticket_uploaded_without_photo",
+                        extra: ["ticket_id": ticket.ticketId])
+                } else {
+                    result = try await uploadTicket(ticket)
+                }
+
                 db.markTicketUploaded(ticket)
                 ticket.paymentUrl = result.paymentUrl
                 ticket.fineAmount = result.fineAmount
                 ticket.offenseNumber = result.offenseNumber
                 try? db.saveContext()
-                // Immediately mark plate as ticketed so all devices see it
                 let normalized = ticket.plate.uppercased().trimmingCharacters(in: .whitespaces)
                 recentlyTicketedPlates[normalized] = ticket.lot
+            } catch let error as SyncError {
+                ticket.retryCount += 1
+                let errorMsg = error.localizedDescription
+                ticket.lastError = errorMsg
+                try? db.saveContext()
+
+                // Check if this is a permanent failure (413, 409 duplicate, etc.)
+                if case .serverError(let code, _) = error, Self.permanentFailureCodes.contains(code) {
+                    ticket.permanentFailure = true
+                    try? db.saveContext()
+                    print("[HoundDog] Ticket \(ticket.ticketId) permanently failed (HTTP \(code)) — will not retry")
+                    DeviceLogService.shared.log(level: "error", event: "ticket_permanent_failure",
+                        extra: ["ticket_id": ticket.ticketId, "http_code": "\(code)", "error": errorMsg])
+                } else {
+                    print("[HoundDog] Retry \(ticket.retryCount) failed for \(ticket.ticketId): \(errorMsg)")
+                    DeviceLogService.shared.log(level: "error", event: "ticket_retry_failed",
+                        extra: ["error": errorMsg, "retry": "\(ticket.retryCount)"])
+                }
             } catch {
-                print("[HoundDog] Retry failed for ticket \(ticket.ticketId): \(error.localizedDescription)")
-                DeviceLogService.shared.log(level: "error", event: "ticket_retry_failed", extra: ["error": error.localizedDescription])
+                ticket.retryCount += 1
+                ticket.lastError = error.localizedDescription
+                try? db.saveContext()
+                print("[HoundDog] Retry \(ticket.retryCount) failed for \(ticket.ticketId): \(error.localizedDescription)")
+                DeviceLogService.shared.log(level: "error", event: "ticket_retry_failed",
+                    extra: ["error": error.localizedDescription, "retry": "\(ticket.retryCount)"])
             }
         }
     }
