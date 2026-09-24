@@ -32,6 +32,7 @@ class TicketCreate(BaseModel):
 
 
 class TicketUpdate(BaseModel):
+    plate: str | None = None
     status: str | None = None
     fine_amount: Decimal | None = None
     photo_url: str | None = None

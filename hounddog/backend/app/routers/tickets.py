@@ -786,6 +786,34 @@ async def update_ticket(
         raise HTTPException(404, "Ticket not found")
 
     updated_fields = data.model_dump(exclude_unset=True)
+
+    # If plate changed, re-link to the correct permit/tag
+    if "plate" in updated_fields and updated_fields["plate"]:
+        old_plate = ticket.plate
+        new_plate = updated_fields["plate"].upper().replace(" ", "").replace("-", "")
+        updated_fields["plate"] = new_plate
+        if new_plate != old_plate.upper().replace(" ", "").replace("-", ""):
+            # Store original plate if this is the first correction
+            if not ticket.ocr_original_plate:
+                ticket.ocr_original_plate = old_plate
+            # Find permit/tag for the new plate
+            permit_result = await db.execute(
+                select(Permit).where(
+                    Permit.deleted_at.is_(None),
+                    Permit.status != "cancelled",
+                    Permit.plates.any(new_plate),
+                ).order_by(Permit.is_tag_only.asc())  # real permits first
+            )
+            new_permit = permit_result.scalars().first()
+            if new_permit:
+                updated_fields["permit_id"] = new_permit.id
+                if new_permit.name:
+                    updated_fields["owner_name"] = new_permit.name
+                if new_permit.email:
+                    updated_fields["notification_email"] = new_permit.email
+            else:
+                updated_fields["permit_id"] = None
+
     for field, value in updated_fields.items():
         if field == "status" and value not in VALID_STATUSES:
             raise HTTPException(400, f"Invalid status: {value}")

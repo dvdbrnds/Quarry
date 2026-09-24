@@ -950,6 +950,29 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [sortBy, setSortBy] = useState<string>("issued_at");
   const [sortOrder, setSortOrder] = useState<string>("descend");
   const [roSaving, setRoSaving] = useState(false);
+  const [editingPlate, setEditingPlate] = useState(false);
+  const [plateSaving, setPlateSaving] = useState(false);
+
+  async function handleReassignPlate(ticketId: string, newPlate: string) {
+    setPlateSaving(true);
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify({ plate: newPlate }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      const updated = await res.json();
+      setSelected((prev) => prev ? { ...prev, plate: updated.plate, permit_id: updated.permit_id, owner_name: updated.owner_name, notification_email: updated.notification_email, ocr_original_plate: updated.ocr_original_plate } : null);
+      setTickets((prev) => prev.map((t) => t.id === updated.id ? { ...t, plate: updated.plate, owner_name: updated.owner_name } : t));
+      setEditingPlate(false);
+      message.success(`Plate corrected to ${updated.plate}${updated.owner_name ? ` — reassigned to ${updated.owner_name}` : ""}`);
+    } catch {
+      message.error("Failed to reassign plate");
+    } finally {
+      setPlateSaving(false);
+    }
+  }
 
   async function handleSaveRO(ticketId: string, ownerName: string, email: string) {
     setRoSaving(true);
@@ -1611,7 +1634,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
       <Modal
         open={!!selected}
-        onCancel={() => setSelected(null)}
+        onCancel={() => { setSelected(null); setEditingPlate(false); }}
         title={
           <div className="flex items-center justify-between pr-8">
             <Space>
@@ -1664,11 +1687,43 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           <div className="space-y-4">
             <Descriptions size="small" column={{ xs: 1, sm: 2, md: 2 }} bordered>
               <Descriptions.Item label="Plate">
-                <span className="font-mono">{selected.plate}</span>
-                {selected.ocr_original_plate && (
-                  <Tag color="volcano" className="ml-2" style={{ fontSize: 11 }}>
-                    OCR read: {selected.ocr_original_plate}
-                  </Tag>
+                {editingPlate ? (
+                  <Space.Compact size="small">
+                    <Input
+                      id={`plate-edit-${selected.id}`}
+                      defaultValue={selected.plate}
+                      className="font-mono"
+                      style={{ width: 120, textTransform: "uppercase" }}
+                      onPressEnter={() => {
+                        const el = document.getElementById(`plate-edit-${selected.id}`) as HTMLInputElement;
+                        if (el?.value) handleReassignPlate(selected.id, el.value);
+                      }}
+                    />
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={plateSaving}
+                      onClick={() => {
+                        const el = document.getElementById(`plate-edit-${selected.id}`) as HTMLInputElement;
+                        if (el?.value) handleReassignPlate(selected.id, el.value);
+                      }}
+                    >Save</Button>
+                    <Button size="small" onClick={() => setEditingPlate(false)}>Cancel</Button>
+                  </Space.Compact>
+                ) : (
+                  <>
+                    <span className="font-mono">{selected.plate}</span>
+                    {isOffice && (
+                      <Button type="link" size="small" className="ml-1" style={{ fontSize: 11, padding: 0 }} onClick={() => setEditingPlate(true)}>
+                        ✏️ Correct
+                      </Button>
+                    )}
+                    {selected.ocr_original_plate && (
+                      <Tag color="volcano" className="ml-2" style={{ fontSize: 11 }}>
+                        OCR read: {selected.ocr_original_plate}
+                      </Tag>
+                    )}
+                  </>
                 )}
               </Descriptions.Item>
               <Descriptions.Item label={selected.ticket_category === "moving" ? "Location" : "Lot"}>
