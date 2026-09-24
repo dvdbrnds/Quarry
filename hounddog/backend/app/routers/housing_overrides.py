@@ -82,7 +82,7 @@ async def create_override(
         raise HTTPException(400, "student_email is required")
 
     existing = (
-        await db.execute(select(HousingOverride).where(HousingOverride.student_email == email))
+        await db.execute(select(HousingOverride).where(func.lower(HousingOverride.student_email) == email))
     ).scalar_one_or_none()
     if existing:
         raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")

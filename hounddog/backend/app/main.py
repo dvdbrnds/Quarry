@@ -319,7 +319,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 35
+    SCHEMA_VERSION = 36
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1175,6 +1175,10 @@ async def lifespan(app: FastAPI):
                        '{B,C,D,G,P,T,U,X,A,F,H,J,M,N,O,R,S,W}',
                        false, true, 13, false)
                ON CONFLICT (code) DO NOTHING""",
+            # ── v36: Clean up ghost housing override and make unique index case-insensitive
+            "DELETE FROM housing_overrides WHERE LOWER(student_email) = 'schaffern03@moravian.edu'",
+            "DROP INDEX IF EXISTS idx_housing_overrides_email",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_housing_overrides_email ON housing_overrides(LOWER(student_email))",
             ]
             for migration in migrations:
                 try:
