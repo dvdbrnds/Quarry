@@ -314,6 +314,7 @@ export default function App() {
   const isLotteryRoute = location.pathname === "/parking" || location.pathname === "/parking/lottery-v2";
   const isEmployeeParkingRoute = location.pathname === "/employee-parking";
   const isSponsorRoute = location.pathname === "/sponsor";
+  const isConductRoute = location.pathname === "/conduct";
   const isParkingMapRoute = location.pathname === "/parking-map";
   const isVisitorRoute = location.pathname.startsWith("/visitor");
   const isAppealsRoute = location.pathname === "/appeals" || location.pathname === "/citations";
@@ -403,6 +404,13 @@ export default function App() {
     return (
       <Routes>
         <Route path="/sponsor" element={<SponsorDashboard />} />
+      </Routes>
+    );
+  }
+
+  if (isConductRoute) {
+    return (
+      <Routes>
         <Route path="/conduct" element={<ConductDashboard />} />
       </Routes>
     );
