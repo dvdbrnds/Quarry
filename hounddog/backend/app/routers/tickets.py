@@ -518,6 +518,126 @@ async def officer_report(
     }
 
 
+@router.get("/officer-report/export")
+async def officer_report_export(
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+    time_range: str = Query("all"),
+):
+    """Same as officer-report but includes open tickets list for PDF export."""
+    now = datetime.now(timezone.utc)
+    cutoff = _resolve_range(time_range, now)
+
+    total_q = select(func.count()).select_from(Ticket)
+    if cutoff:
+        total_q = total_q.where(Ticket.issued_at >= cutoff)
+    total_all = (await db.execute(total_q)).scalar() or 0
+
+    # Officer emails
+    officer_emails_q = select(Ticket.officer_email).where(Ticket.officer_email.isnot(None))
+    if cutoff:
+        officer_emails_q = officer_emails_q.where(Ticket.issued_at >= cutoff)
+    officer_emails_q = officer_emails_q.group_by(Ticket.officer_email)
+    officer_emails = [r[0] for r in (await db.execute(officer_emails_q)).all()]
+
+    officers = []
+    for email in officer_emails:
+        stats = await _officer_stats_for_email(email, db, now, cutoff)
+        officer_name_row = (await db.execute(
+            select(Ticket.officer_name).where(Ticket.officer_email == email, Ticket.officer_name.isnot(None))
+            .order_by(Ticket.issued_at.desc()).limit(1)
+        )).scalar()
+        stats["officer_email"] = email
+        stats["officer_name"] = officer_name_row
+        stats["global_share"] = round((stats["all_time"] / total_all) * 100, 1) if total_all else 0
+        officers.append(stats)
+    officers.sort(key=lambda o: o["all_time"], reverse=True)
+
+    # Lot breakdown
+    lot_q = select(Ticket.lot, func.count().label("cnt"))
+    if cutoff:
+        lot_q = lot_q.where(Ticket.issued_at >= cutoff)
+    lot_q = lot_q.group_by(Ticket.lot).order_by(func.count().desc())
+    by_lot_total = [{"lot": r[0] or "Unknown", "count": r[1]} for r in (await db.execute(lot_q)).all()]
+
+    # Violation breakdown
+    viol_total_q = select(Ticket.violation_type, func.count().label("cnt"))
+    if cutoff:
+        viol_total_q = viol_total_q.where(Ticket.issued_at >= cutoff)
+    viol_total_q = viol_total_q.group_by(Ticket.violation_type).order_by(func.count().desc())
+    viol_total_rows = (await db.execute(viol_total_q)).all()
+    viol_codes = [r[0] for r in viol_total_rows]
+    viol_label_map: dict[str, str] = {}
+    if viol_codes:
+        vt_r = await db.execute(
+            select(ViolationType.code, ViolationType.label).where(ViolationType.code.in_(viol_codes))
+        )
+        viol_label_map = {r[0]: r[1] for r in vt_r.all()}
+    by_violation_total = [
+        {"violation_type": r[0], "label": viol_label_map.get(r[0], r[0]), "count": r[1]}
+        for r in viol_total_rows
+    ]
+
+    # Team revenue
+    rev_q = select(func.coalesce(func.sum(Ticket.fine_amount), 0))
+    paid_q = select(func.coalesce(func.sum(Ticket.fine_amount), 0)).where(Ticket.status == "paid")
+    if cutoff:
+        rev_q = rev_q.where(Ticket.issued_at >= cutoff)
+        paid_q = paid_q.where(Ticket.issued_at >= cutoff)
+    total_revenue = float((await db.execute(rev_q)).scalar() or 0)
+    paid_revenue = float((await db.execute(paid_q)).scalar() or 0)
+
+    # Team week/month
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    team_this_week = (await db.execute(select(func.count()).select_from(Ticket).where(Ticket.issued_at >= week_start))).scalar() or 0
+    team_this_month = (await db.execute(select(func.count()).select_from(Ticket).where(Ticket.issued_at >= month_start))).scalar() or 0
+
+    total_voided = sum(1 for o in officers for s in o.get("by_status", []) if s["status"] == "voided" for _ in range(s["count"]))
+    avg_void_rate = round((total_voided / total_all) * 100, 1) if total_all else 0
+
+    # Open tickets within the time range
+    open_q = (
+        select(
+            Ticket.ticket_number, Ticket.plate, Ticket.lot, Ticket.violation_type,
+            Ticket.fine_amount, Ticket.status, Ticket.issued_at, Ticket.officer_name,
+            Ticket.owner_name,
+        )
+        .where(Ticket.status.notin_(["paid", "voided", "resolved_permit"]))
+        .order_by(Ticket.issued_at.desc())
+    )
+    if cutoff:
+        open_q = open_q.where(Ticket.issued_at >= cutoff)
+    open_rows = (await db.execute(open_q)).all()
+    open_tickets = [
+        {
+            "ticket_number": r[0],
+            "plate": r[1],
+            "lot": r[2],
+            "violation_type": viol_label_map.get(r[3], (r[3] or "").replace("_", " ").title()),
+            "fine_amount": f"{float(r[4]):.2f}",
+            "status": r[5],
+            "issued_at": r[6].isoformat() if r[6] else None,
+            "officer_name": r[7],
+            "owner_name": r[8],
+        }
+        for r in open_rows
+    ]
+
+    return {
+        "total_all": total_all,
+        "team_this_week": team_this_week,
+        "team_this_month": team_this_month,
+        "team_revenue": {"total_fines": round(total_revenue, 2), "paid_fines": round(paid_revenue, 2)},
+        "avg_void_rate": avg_void_rate,
+        "by_lot_total": by_lot_total,
+        "by_violation_total": by_violation_total,
+        "officers": officers,
+        "open_tickets": open_tickets,
+        "time_range": time_range,
+    }
+
+
 @router.post("", response_model=TicketRead, status_code=201)
 async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
     from ..services.ticket_numbering import next_ticket_number

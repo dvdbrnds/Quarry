@@ -7,6 +7,7 @@ import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
 import { api, LegacyRecord } from "../api";
+import { PrinterOutlined } from "@ant-design/icons";
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 
@@ -434,12 +435,14 @@ const RANGE_OPTIONS = [
 ];
 
 function OfficerReport() {
+  const { message } = App.useApp();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState("all");
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [selectedOfficer, setSelectedOfficer] = useState<OfficerRow | null>(null);
   const [selectedViolation, setSelectedViolation] = useState<ViolationDetail | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -470,6 +473,123 @@ function OfficerReport() {
 
   const rangeLabel = RANGE_OPTIONS.find(r => r.value === range)?.label ?? "All Time";
 
+  async function handleExportPDF() {
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/tickets/officer-report/export?time_range=${range}`, { headers: await authHeaders() });
+      if (!res.ok) throw new Error("Failed to load export data");
+      const d = await res.json();
+      const now = new Date();
+      const fmtDate = (iso: string | null) => {
+        if (!iso) return "—";
+        return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+      };
+      const qualityPct = Math.round(100 - (d.avg_void_rate || 0));
+      const w = window.open("", "_blank");
+      if (!w) return;
+      w.document.write(`<!DOCTYPE html><html><head><title>Officer Performance Report — ${rangeLabel}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 32px; color: #1a1a1a; font-size: 13px; line-height: 1.5; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin: 24px 0 10px; padding-bottom: 4px; border-bottom: 2px solid #e5e7eb; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 20px; }
+  .stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat { border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 16px; min-width: 120px; }
+  .stat-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 16px; }
+  th, td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; }
+  th { background: #f9fafb; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #555; }
+  td.mono { font-family: "SF Mono", Menlo, monospace; font-size: 11px; }
+  td.right, th.right { text-align: right; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+  .badge-issued { background: #fef3c7; color: #92400e; }
+  .badge-overdue { background: #fee2e2; color: #991b1b; }
+  .badge-appealed { background: #dbeafe; color: #1e40af; }
+  .page-break { page-break-before: always; }
+  .footer { margin-top: 32px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #999; text-align: center; }
+  @media print {
+    body { padding: 16px; }
+    .page-break { page-break-before: always; }
+  }
+</style></head><body>
+<h1>Officer Performance Report</h1>
+<div class="subtitle">${rangeLabel} &middot; ${d.officers.length} officers &middot; ${d.total_all} citations &middot; Exported ${now.toLocaleString()}</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-label">Total Citations</div><div class="stat-value">${d.total_all}</div></div>
+  <div class="stat"><div class="stat-label">This Week</div><div class="stat-value">${d.team_this_week}</div></div>
+  <div class="stat"><div class="stat-label">This Month</div><div class="stat-value">${d.team_this_month}</div></div>
+  <div class="stat"><div class="stat-label">Total Revenue</div><div class="stat-value">$${d.team_revenue.total_fines.toLocaleString()}</div></div>
+  <div class="stat"><div class="stat-label">Collected</div><div class="stat-value">$${d.team_revenue.paid_fines.toLocaleString()}</div></div>
+  <div class="stat"><div class="stat-label">Team Quality</div><div class="stat-value">${qualityPct}%</div></div>
+</div>
+
+<h2>Officer Leaderboard</h2>
+<table>
+  <tr><th>#</th><th>Officer</th><th class="right">Total</th><th class="right">This Week</th><th class="right">This Month</th><th class="right">Void Rate</th><th class="right">Share</th></tr>
+  ${d.officers.map((o: any, i: number) => `<tr>
+    <td>${i + 1}</td>
+    <td>${o.officer_name || o.officer_email?.split("@")[0] || "—"}</td>
+    <td class="right">${o.all_time}</td>
+    <td class="right">${o.this_week}</td>
+    <td class="right">${o.this_month}</td>
+    <td class="right">${o.appeal_void_rate?.void_rate ?? 0}%</td>
+    <td class="right">${o.global_share}%</td>
+  </tr>`).join("")}
+</table>
+
+<h2>Citations by Lot</h2>
+<table>
+  <tr><th>Lot</th><th class="right">Citations</th><th class="right">% of Total</th></tr>
+  ${d.by_lot_total.map((l: any) => `<tr>
+    <td>${l.lot}</td>
+    <td class="right">${l.count}</td>
+    <td class="right">${d.total_all ? ((l.count / d.total_all) * 100).toFixed(1) : 0}%</td>
+  </tr>`).join("")}
+</table>
+
+<h2>Citations by Type</h2>
+<table>
+  <tr><th>Violation</th><th class="right">Citations</th><th class="right">% of Total</th></tr>
+  ${d.by_violation_total.map((v: any) => `<tr>
+    <td>${v.label || v.violation_type}</td>
+    <td class="right">${v.count}</td>
+    <td class="right">${d.total_all ? ((v.count / d.total_all) * 100).toFixed(1) : 0}%</td>
+  </tr>`).join("")}
+</table>
+
+<div class="page-break"></div>
+<h2>Open Tickets (${d.open_tickets.length})</h2>
+${d.open_tickets.length === 0 ? "<p style='color:#888;'>No open tickets in this time range.</p>" : `<table>
+  <tr><th>Ticket #</th><th>Plate</th><th>Lot</th><th>Violation</th><th class="right">Fine</th><th>Status</th><th>Issued</th><th>Officer</th><th>Owner</th></tr>
+  ${d.open_tickets.map((t: any) => `<tr>
+    <td class="mono">${t.ticket_number || "—"}</td>
+    <td class="mono">${t.plate || "—"}</td>
+    <td>${t.lot || "—"}</td>
+    <td>${t.violation_type || "—"}</td>
+    <td class="right">$${t.fine_amount}</td>
+    <td><span class="badge badge-${t.status}">${t.status}</span></td>
+    <td>${fmtDate(t.issued_at)}</td>
+    <td>${t.officer_name || "—"}</td>
+    <td>${t.owner_name || "—"}</td>
+  </tr>`).join("")}
+</table>`}
+
+<div class="footer">
+  Officer Performance Report &middot; ${rangeLabel} &middot; Generated ${now.toLocaleString()} &middot; ${d.open_tickets.length} open ticket${d.open_tickets.length !== 1 ? "s" : ""}
+</div>
+</body></html>`);
+      w.document.close();
+      w.print();
+    } catch (e: any) {
+      message.error(e.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-2">
@@ -477,13 +597,16 @@ function OfficerReport() {
           <h2 className="text-2xl font-bold mb-1">Officer Performance Report</h2>
           <p className="text-sm text-gray-500">{officers.length} officer{officers.length !== 1 ? "s" : ""} &middot; {data.total_all} total citations{range !== "all" ? ` (${rangeLabel.toLowerCase()})` : ""}</p>
         </div>
-        <Select
-          value={range}
-          onChange={setRange}
-          options={RANGE_OPTIONS}
-          style={{ width: 170 }}
-          size="middle"
-        />
+        <Space>
+          <Select
+            value={range}
+            onChange={setRange}
+            options={RANGE_OPTIONS}
+            style={{ width: 170 }}
+            size="middle"
+          />
+          <Button icon={<PrinterOutlined />} loading={exporting} onClick={handleExportPDF}>Export PDF</Button>
+        </Space>
       </div>
 
       {/* Section 1 — Team overview cards */}
