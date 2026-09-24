@@ -1,5 +1,7 @@
 """Admin endpoints for managing housing status overrides."""
 
+import logging
+import sentry_sdk
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import require_office, OktaUser, get_current_user
 from ..database import get_db
 from ..models.housing_override import HousingOverride
+
+_logger = logging.getLogger("quarry.housing_overrides")
 
 router = SafeRouter(dependencies=[Depends(require_office())])
 
@@ -73,17 +77,26 @@ async def create_override(
     if existing:
         raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")
 
-    override = HousingOverride(
-        moravian_id=data.moravian_id.strip(),
-        student_name=data.student_name.strip(),
-        student_email=email,
-        override_status=data.override_status,
-        reason=data.reason.strip(),
-        created_by=getattr(user, "email", ""),
-    )
-    db.add(override)
-    await db.flush()
-    await db.refresh(override)
+    try:
+        override = HousingOverride(
+            moravian_id=data.moravian_id.strip(),
+            student_name=data.student_name.strip(),
+            student_email=email,
+            override_status=data.override_status,
+            reason=data.reason.strip(),
+            created_by=getattr(user, "email", ""),
+        )
+        db.add(override)
+        await db.flush()
+        await db.refresh(override)
+    except HTTPException:
+        raise
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        _logger.error("Failed to create housing override for %s: %s", email, e)
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")
+        raise HTTPException(500, f"Failed to save override: {e}")
     return {"id": str(override.id), "student_email": override.student_email}
 
 
