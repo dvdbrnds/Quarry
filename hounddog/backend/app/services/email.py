@@ -713,3 +713,62 @@ async def send_multi_vehicle_decision_email(
     return await send_email([student_email], subject, body_html, body_text)
 
 
+async def send_plate_correction_dismissal_email(
+    recipient_email: str,
+    recipient_name: str,
+    ticket_number: str,
+    old_plate: str,
+    fine_amount: str,
+    violation_label: str,
+    lot: str,
+    issued_at: str = "",
+) -> bool:
+    """Notify original student that a citation was removed from their record due to a plate misread."""
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    primary = b["primary_color"]
+    department = b.get("department_name", "Parking Authority")
+    first_name = extract_first_name(recipient_name)
+    subject = f"Citation Removed From Your Record — {ticket_number}"
+
+    inner = (
+        f'<h2 style="color:{primary};margin:0 0 8px;font-size:20px;">'
+        f'Citation Removed From Your Record</h2>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">Dear {first_name},</p>'
+        f'<p style="color:#333;font-size:15px;line-height:1.6;">'
+        f'Citation <strong>{ticket_number}</strong> has been removed from your record. '
+        f'Our review determined that the license plate was misread during enforcement, '
+        f'and this citation does not belong to your vehicle.</p>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8f9fa;border-radius:8px;margin:20px 0;">'
+        f'<tr><td style="padding:10px 16px;color:#666;font-size:14px;">Citation #</td>'
+        f'<td style="padding:10px 16px;font-weight:600;">{ticket_number}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;font-size:14px;">Plate (as read)</td>'
+        f'<td style="padding:10px 16px;font-family:monospace;">{old_plate}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;font-size:14px;">Violation</td>'
+        f'<td style="padding:10px 16px;">{violation_label}</td></tr>'
+        f'<tr><td style="padding:10px 16px;color:#666;font-size:14px;">Location</td>'
+        f'<td style="padding:10px 16px;">{lot}</td></tr>'
+        '</table>'
+        '<p style="color:#333;font-size:15px;line-height:1.6;">'
+        '<strong>You are not liable for any fees associated with this citation.</strong> '
+        'No further action is required on your part.</p>'
+        f'<p style="color:#666;font-size:13px;">If you have questions, please contact the {department}.</p>'
+    )
+    body_html = await branded_email_shell(school, inner)
+    body_text = (
+        f"CITATION REMOVED FROM YOUR RECORD\n\n"
+        f"Dear {first_name},\n\n"
+        f"Citation {ticket_number} has been removed from your record. "
+        f"Our review determined that the license plate was misread during enforcement, "
+        f"and this citation does not belong to your vehicle.\n\n"
+        f"Citation #: {ticket_number}\n"
+        f"Plate (as read): {old_plate}\n"
+        f"Violation: {violation_label}\n"
+        f"Location: {lot}\n\n"
+        f"You are not liable for any fees associated with this citation. "
+        f"No further action is required on your part.\n\n"
+        f"{school} {department}"
+    )
+    return await send_email([recipient_email], subject, body_html, body_text)
+
+

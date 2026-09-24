@@ -18,7 +18,7 @@ from ..models.legacy_record import LegacyRecord
 from ..models.ticket import Ticket
 from ..models.violation_type import ViolationType
 from ..services.timeutils import campus_tz, today_local, to_local
-from ..services.email import send_citation_email
+from ..services.email import send_citation_email, send_plate_correction_dismissal_email
 from ..schemas.ticket import (
     ActionItem,
     ActivityEvent,
@@ -788,11 +788,17 @@ async def update_ticket(
     updated_fields = data.model_dump(exclude_unset=True)
 
     # If plate changed, re-link to the correct permit/tag
+    old_owner_email: str | None = None
+    old_owner_name: str | None = None
+    plate_was_corrected = False
     if "plate" in updated_fields and updated_fields["plate"]:
         old_plate = ticket.plate
         new_plate = updated_fields["plate"].upper().replace(" ", "").replace("-", "")
         updated_fields["plate"] = new_plate
         if new_plate != old_plate.upper().replace(" ", "").replace("-", ""):
+            plate_was_corrected = True
+            old_owner_email = ticket.notification_email
+            old_owner_name = ticket.owner_name
             # Store original plate if this is the first correction
             if not ticket.ocr_original_plate:
                 ticket.ocr_original_plate = old_plate
@@ -853,6 +859,22 @@ async def update_ticket(
             .values(**propagate_fields)
         )
         await db.flush()
+
+    # Send dismissal email to the originally ticketed student if plate was corrected
+    if plate_was_corrected and old_owner_email:
+        try:
+            await send_plate_correction_dismissal_email(
+                recipient_email=old_owner_email,
+                recipient_name=old_owner_name or "",
+                ticket_number=ticket.ticket_number or str(ticket.id)[:8].upper(),
+                old_plate=ticket.ocr_original_plate or old_plate,
+                fine_amount=f"${float(ticket.fine_amount):.2f}",
+                violation_label=ticket.violation_type.replace("_", " ").title(),
+                lot=ticket.lot or "",
+                issued_at=ticket.issued_at.isoformat() if ticket.issued_at else "",
+            )
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
 
     return ticket
 
