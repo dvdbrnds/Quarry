@@ -5,6 +5,8 @@ struct PlateOverlayView: View {
     let plates: [RecognizedPlate]
     let authStatus: PlateStatus
 
+    @State private var neverTicketPulse = false
+
     private var latestPlate: String? {
         plates.first?.text
     }
@@ -12,7 +14,7 @@ struct PlateOverlayView: View {
     private var backgroundColor: Color {
         switch authStatus {
         case .authorized: return PlateStatus.allowedGreen.opacity(0.85)
-        case .neverTicket: return PlateStatus.allowedGreen.opacity(0.85)
+        case .neverTicket: return Color.green.opacity(neverTicketPulse ? 0.95 : 0.7)
         case .wrongLot: return .orange.opacity(0.8)
         case .expired: return .yellow.opacity(0.75)
         case .tagOnly: return .cyan.opacity(0.8)
@@ -95,6 +97,19 @@ struct PlateOverlayView: View {
                             .foregroundStyle(textColor.opacity(0.9))
                     }
 
+                    if case .neverTicket(let permit) = authStatus {
+                        if !permit.ownerName.isEmpty {
+                            Text(permit.ownerName)
+                                .font(.caption.bold())
+                                .foregroundStyle(textColor)
+                        }
+                        if let reason = permit.neverTicketReason, !reason.isEmpty {
+                            Text(reason)
+                                .font(.caption)
+                                .foregroundStyle(textColor.opacity(0.9))
+                        }
+                    }
+
                     if case .expired(let permit) = authStatus, !permit.ownerName.isEmpty {
                         Text(permit.ownerName)
                             .font(.caption)
@@ -106,6 +121,21 @@ struct PlateOverlayView: View {
                 .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12))
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 .id(plate)
+                .onChange(of: latestPlate) {
+                    if case .neverTicket = authStatus {
+                        neverTicketPulse = false
+                        withAnimation(.easeInOut(duration: 0.6).repeatCount(3, autoreverses: true)) {
+                            neverTicketPulse = true
+                        }
+                    }
+                }
+                .onAppear {
+                    if case .neverTicket = authStatus {
+                        withAnimation(.easeInOut(duration: 0.6).repeatCount(3, autoreverses: true)) {
+                            neverTicketPulse = true
+                        }
+                    }
+                }
             }
         }
         .padding(.bottom, 16)
