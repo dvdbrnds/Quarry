@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import get_current_user, OktaUser
 from ..database import get_db
-from ..models.enforcement_settings import EnforcementSettings
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..utils.safe_router import SafeRouter
@@ -23,10 +22,14 @@ router = SafeRouter()
 
 async def _get_conduct_emails(db: AsyncSession) -> list[str]:
     """Load conduct officer emails from enforcement_settings."""
-    result = await db.execute(
-        select(EnforcementSettings.conduct_officer_emails).where(EnforcementSettings.id == 1)
-    )
-    raw = result.scalar() or ""
+    try:
+        result = await db.execute(
+            text("SELECT conduct_officer_emails FROM enforcement_settings WHERE id = 1")
+        )
+        raw = result.scalar() or ""
+    except Exception:
+        await db.rollback()
+        raw = ""
     return [e.strip().lower() for e in raw.split(",") if e.strip()]
 
 
