@@ -110,6 +110,10 @@ function ConductPage() {
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -214,6 +218,45 @@ function ConductPage() {
       message.error(e.message);
     } finally {
       setNoteSaving(false);
+    }
+  }
+
+  function startEditing() {
+    if (!selected) return;
+    setEditName(selected.student_name || "");
+    setEditEmail(selected.student_email || "");
+    setEditing(true);
+  }
+
+  async function handleSaveStudent() {
+    if (!selected) return;
+    setEditSaving(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/conduct/cases/${selected.id}/update-student`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_name: editName.trim() || null,
+          student_email: editEmail.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Failed to save");
+      }
+      setSelected(prev => prev ? {
+        ...prev,
+        student_name: editName.trim(),
+        student_email: editEmail.trim(),
+      } : null);
+      setEditing(false);
+      message.success("Student info updated and applied to all tickets for this plate");
+      loadCases();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -518,7 +561,7 @@ function ConductPage() {
       {/* Case Detail Modal */}
       <Modal
         open={!!selected}
-        onCancel={() => setSelected(null)}
+        onCancel={() => { setSelected(null); setEditing(false); }}
         title={
           <Space>
             <span>Conduct Case — {selected?.student_name || selected?.student_id || ""}</span>
@@ -550,31 +593,61 @@ function ConductPage() {
         {selected && (
           <div className="space-y-4">
             {/* Student + Permit Info */}
-            <Descriptions size="small" column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label="Student Name">{selected.student_name || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Email">{selected.student_email || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Student ID">{selected.student_id || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Plate"><span className="font-mono">{selected.plate || "—"}</span></Descriptions.Item>
-              {selected.permit && (
-                <>
-                  <Descriptions.Item label="Permit Type">
-                    <Tag color={selected.permit.is_tag_only ? "cyan" : "blue"}>
-                      {selected.permit.is_tag_only ? "Vehicle Tag" : (selected.permit.permit_type || "").replace(/_/g, " ")}
-                    </Tag>
-                    {selected.permit.permit_number && <span className="ml-2">#{selected.permit.permit_number}</span>}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Lot Assignment">{selected.permit.lot_zone || "—"}</Descriptions.Item>
-                </>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-500">Student & Permit Information</span>
+              {!editing && (
+                <Button size="small" type="link" onClick={startEditing}>✏️ Edit</Button>
               )}
-              <Descriptions.Item label="Referred">{fmtDateTime(selected.created_at)}</Descriptions.Item>
-              <Descriptions.Item label="Ticket Count"><span className="font-semibold text-red-600">{selected.ticket_count}</span></Descriptions.Item>
-              {selected.resolved_at && (
-                <>
-                  <Descriptions.Item label="Resolved">{fmtDateTime(selected.resolved_at)}</Descriptions.Item>
-                  <Descriptions.Item label="Resolved By">{selected.resolved_by || "—"}</Descriptions.Item>
-                </>
-              )}
-            </Descriptions>
+            </div>
+            {editing ? (
+              <div className="border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Student Name</label>
+                    <Input size="small" value={editName} onChange={e => setEditName(e.target.value)} placeholder="e.g. John Doe" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Email</label>
+                    <Input size="small" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="e.g. student@moravian.edu" />
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400">
+                  Changes will apply to all tickets for plate <span className="font-mono font-semibold">{selected.plate}</span> and update the vehicle tag.
+                </div>
+                <div className="flex gap-2">
+                  <Button size="small" type="primary" loading={editSaving} onClick={handleSaveStudent}>
+                    Save & Apply to All Tickets
+                  </Button>
+                  <Button size="small" onClick={() => setEditing(false)}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <Descriptions size="small" column={{ xs: 1, sm: 2 }} bordered>
+                <Descriptions.Item label="Student Name">{selected.student_name || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Email">{selected.student_email || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Student ID">{selected.student_id || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Plate"><span className="font-mono">{selected.plate || "—"}</span></Descriptions.Item>
+                {selected.permit && (
+                  <>
+                    <Descriptions.Item label="Permit Type">
+                      <Tag color={selected.permit.is_tag_only ? "cyan" : "blue"}>
+                        {selected.permit.is_tag_only ? "Vehicle Tag" : (selected.permit.permit_type || "").replace(/_/g, " ")}
+                      </Tag>
+                      {selected.permit.permit_number && <span className="ml-2">#{selected.permit.permit_number}</span>}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Lot Assignment">{selected.permit.lot_zone || "—"}</Descriptions.Item>
+                  </>
+                )}
+                <Descriptions.Item label="Referred">{fmtDateTime(selected.created_at)}</Descriptions.Item>
+                <Descriptions.Item label="Ticket Count"><span className="font-semibold text-red-600">{selected.ticket_count}</span></Descriptions.Item>
+                {selected.resolved_at && (
+                  <>
+                    <Descriptions.Item label="Resolved">{fmtDateTime(selected.resolved_at)}</Descriptions.Item>
+                    <Descriptions.Item label="Resolved By">{selected.resolved_by || "—"}</Descriptions.Item>
+                  </>
+                )}
+              </Descriptions>
+            )}
 
             {/* Notes */}
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">

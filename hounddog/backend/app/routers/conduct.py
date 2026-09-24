@@ -542,3 +542,93 @@ async def add_note(
 
     _logger.info("Note added to conduct case %s by %s", real_id, user.email)
     return {"ok": True, "details": new_details}
+
+
+class UpdateStudentRequest(BaseModel):
+    student_name: str | None = None
+    student_email: str | None = None
+    plate: str | None = None
+
+
+@router.put("/cases/{case_id}/update-student")
+async def update_student_info(
+    case_id: str,
+    body: UpdateStudentRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_conduct),
+):
+    """Update owner name/email on all tickets for this case's plate."""
+    # Resolve the plate — either from escalation_log or from the plate: prefix
+    if case_id.startswith("plate:"):
+        plate_norm = case_id[6:]
+        # Get actual plate from tickets
+        p_row = await db.execute(text("""
+            SELECT plate FROM tickets
+            WHERE UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :p
+            LIMIT 1
+        """), {"p": plate_norm})
+        plate_val = p_row.scalar()
+        if not plate_val:
+            raise HTTPException(404, "No tickets found for this plate")
+    else:
+        real_id = case_id
+        row = await db.execute(text("""
+            SELECT plate FROM escalation_log
+            WHERE id = :case_id AND escalation_type = 'conduct_referral'
+        """), {"case_id": real_id})
+        esc = row.mappings().first()
+        if not esc:
+            raise HTTPException(404, "Case not found")
+        plate_val = esc["plate"]
+
+    if not plate_val:
+        raise HTTPException(400, "No plate associated with this case")
+
+    plate_norm = plate_val.upper().replace(" ", "").replace("-", "")
+    updates: dict = {}
+    if body.student_name is not None:
+        updates["owner_name"] = body.student_name
+    if body.student_email is not None:
+        updates["notification_email"] = body.student_email
+
+    if not updates:
+        raise HTTPException(400, "Nothing to update")
+
+    # Update all tickets for this plate
+    set_clauses = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["plate"] = plate_val
+    await db.execute(text(f"""
+        UPDATE tickets SET {set_clauses} WHERE plate = :plate
+    """), updates)
+
+    # Also update the vehicle tag if one exists
+    tag_result = await db.execute(
+        select(Permit).where(
+            Permit.is_tag_only.is_(True),
+            Permit.deleted_at.is_(None),
+            Permit.plates.any(plate_norm),
+        )
+    )
+    tag = tag_result.scalars().first()
+    if tag:
+        if body.student_name is not None:
+            tag.name = body.student_name
+        if body.student_email is not None:
+            tag.email = body.student_email
+        await db.flush()
+
+    # Update the escalation_log entry too
+    esc_updates = {}
+    if body.student_name is not None:
+        esc_updates["student_name"] = body.student_name
+    if body.student_email is not None:
+        esc_updates["student_email"] = body.student_email
+    if esc_updates and not case_id.startswith("plate:"):
+        set_esc = ", ".join(f"{k} = :{k}" for k in esc_updates)
+        esc_updates["case_id"] = case_id
+        await db.execute(text(f"""
+            UPDATE escalation_log SET {set_esc} WHERE id = :case_id
+        """), esc_updates)
+
+    _logger.info("Student info updated for plate %s by %s: %s", plate_val, user.email, updates)
+    return {"ok": True}
