@@ -332,4 +332,39 @@ async def resolve_case(
     })
 
     _logger.info("Conduct case %s resolved by %s", case_id, user.email)
-    return {"resolved": True, "resolved_by": user.email}
+    return {"ok": True}
+
+
+class NoteRequest(BaseModel):
+    note: str
+
+
+@router.put("/cases/{case_id}/note")
+async def add_note(
+    case_id: uuid.UUID,
+    body: NoteRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_conduct),
+):
+    row = await db.execute(text("""
+        SELECT id, details FROM escalation_log
+        WHERE id = :case_id AND escalation_type = 'conduct_referral'
+    """), {"case_id": str(case_id)})
+    case_row = row.mappings().first()
+    if not case_row:
+        raise HTTPException(404, "Case not found")
+
+    note_text = body.note.strip()
+    if not note_text:
+        raise HTTPException(400, "Note cannot be empty")
+
+    ts = datetime.now(timezone.utc).strftime("%b %d, %Y %I:%M %p")
+    existing = case_row["details"] or ""
+    new_details = f"{existing}\n[{ts} — {user.email}] {note_text}".strip()
+
+    await db.execute(text("""
+        UPDATE escalation_log SET details = :details WHERE id = :case_id
+    """), {"case_id": str(case_id), "details": new_details})
+
+    _logger.info("Note added to conduct case %s by %s", case_id, user.email)
+    return {"ok": True, "details": new_details}

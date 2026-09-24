@@ -107,6 +107,8 @@ function ConductPage() {
   const [resolving, setResolving] = useState(false);
   const [resolveNote, setResolveNote] = useState("");
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -186,6 +188,31 @@ function ConductPage() {
       message.error(e.message);
     } finally {
       setResolving(false);
+    }
+  }
+
+  async function handleAddNote() {
+    if (!selected || !newNote.trim()) return;
+    setNoteSaving(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/conduct/cases/${selected.id}/note`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ note: newNote.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Failed to save note");
+      }
+      const data = await res.json();
+      setSelected(prev => prev ? { ...prev, details: data.details } : null);
+      setNewNote("");
+      message.success("Note saved");
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setNoteSaving(false);
     }
   }
 
@@ -542,12 +569,34 @@ function ConductPage() {
             </Descriptions>
 
             {/* Notes */}
-            {selected.details && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <div className="text-xs font-medium text-yellow-800 mb-1">Case Notes</div>
-                <div className="text-sm whitespace-pre-wrap">{selected.details}</div>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <div className="text-xs font-medium text-gray-600 mb-2">Case Notes</div>
+              {selected.details ? (
+                <div className="text-sm whitespace-pre-wrap mb-3 bg-white rounded p-2 border border-gray-100 max-h-40 overflow-auto">{selected.details}</div>
+              ) : (
+                <div className="text-xs text-gray-400 mb-3 italic">No notes yet</div>
+              )}
+              <div className="flex gap-2">
+                <Input.TextArea
+                  rows={2}
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  placeholder="Add a note..."
+                  className="flex-1"
+                  onPressEnter={e => { if (e.metaKey || e.ctrlKey) handleAddNote(); }}
+                />
+                <Button
+                  type="primary"
+                  size="small"
+                  loading={noteSaving}
+                  disabled={!newNote.trim()}
+                  onClick={handleAddNote}
+                  style={{ alignSelf: "flex-end" }}
+                >
+                  Add Note
+                </Button>
               </div>
-            )}
+            </div>
 
             {/* Tickets */}
             <div>
