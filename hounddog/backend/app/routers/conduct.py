@@ -195,7 +195,6 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
             SELECT DISTINCT t.id::text FROM tickets t
             JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
             WHERE p.student_id = :sid AND p.deleted_at IS NULL
-            ORDER BY t.id
         """), {"sid": case_row["student_id"]})
         all_ticket_rows = [r[0] for r in all_result.fetchall()]
 
