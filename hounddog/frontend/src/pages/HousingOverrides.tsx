@@ -106,6 +106,8 @@ export default function HousingOverrides() {
       const msg = e.message || "Save failed";
       if (msg.includes("409")) {
         message.warning("An override already exists for this student. Delete it first to change it.");
+        load();
+        setModalOpen(false);
       } else {
         message.error(msg);
       }
