@@ -55,7 +55,8 @@ interface TicketDetail {
   location_text: string | null;
   location_lat: number | null;
   location_lng: number | null;
-  _extra?: boolean;
+  _tag?: "referral" | "extra" | "history";
+  _prior_conduct?: boolean;
 }
 
 interface CaseDetail extends CaseRow {
@@ -434,10 +435,14 @@ function ConductPage() {
     },
     {
       title: "Status",
-      dataIndex: "status",
       key: "status",
-      width: 90,
-      render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag>,
+      width: 130,
+      render: (_: unknown, t: TicketDetail) => (
+        <Space size={4}>
+          <Tag color={STATUS_COLORS[t.status] || "default"}>{t.status}</Tag>
+          {t._prior_conduct && <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>Prior Conduct</Tag>}
+        </Space>
+      ),
     },
     {
       title: "Issued",
@@ -465,6 +470,9 @@ function ConductPage() {
   ];
 
   const totalFines = selected?.tickets.reduce((sum, t) => sum + Number(t.fine_amount), 0) ?? 0;
+  const unpaidFines = selected?.tickets
+    .filter(t => !["paid", "voided", "resolved_permit"].includes(t.status))
+    .reduce((sum, t) => sum + Number(t.fine_amount), 0) ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -602,15 +610,18 @@ function ConductPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-sm">
-                  Citations ({selected.tickets.length})
-                  {selected.tickets.some(t => t._extra) && (
-                    <span className="text-xs text-gray-400 font-normal ml-2">
-                      includes tickets added after referral
-                    </span>
-                  )}
+                  Full Ticket History ({selected.tickets.length})
                 </h3>
-                <span className="text-sm font-semibold text-red-600">
-                  Total: ${totalFines.toFixed(2)}
+                <div className="flex gap-3 text-xs text-gray-400">
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1" />This referral</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-yellow-400 mr-1" />New since referral</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1" />Resolved/paid</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-purple-400 mr-1" />Prior conduct</span>
+                </div>
+                <span className="text-sm">
+                  <span className="text-gray-500">All: ${totalFines.toFixed(2)}</span>
+                  <span className="mx-2">·</span>
+                  <span className="font-semibold text-red-600">Unpaid: ${unpaidFines.toFixed(2)}</span>
                 </span>
               </div>
               <Table
@@ -658,7 +669,12 @@ function ConductPage() {
                   ),
                   rowExpandable: (t: TicketDetail) => !!(t.officer_notes || t.vehicle_description || t.photo_url || t.appeal_note || t.location_lat),
                 }}
-                rowClassName={(t: TicketDetail) => t._extra ? "bg-yellow-50" : ""}
+                rowClassName={(t: TicketDetail) => {
+                  if (t._prior_conduct) return "bg-purple-50";
+                  if (t._tag === "history") return "bg-gray-50";
+                  if (t._tag === "extra") return "bg-yellow-50";
+                  return "";
+                }}
               />
             </div>
           </div>

@@ -160,19 +160,59 @@ async def get_case(
     if not case_row:
         raise HTTPException(404, "Case not found")
 
-    ticket_ids = [t.strip() for t in (case_row["ticket_ids"] or "").split(",") if t.strip()]
+    referral_ids = set(t.strip() for t in (case_row["ticket_ids"] or "").split(",") if t.strip())
 
-    # Fetch full ticket details
+    # Collect all ticket IDs previously referenced by resolved conduct cases for this student
+    prior_resolved_ids: set[str] = set()
+    if case_row["student_id"]:
+        prior_result = await db.execute(text("""
+            SELECT ticket_ids FROM escalation_log
+            WHERE escalation_type = 'conduct_referral'
+              AND student_id = :sid
+              AND resolved_at IS NOT NULL
+              AND id != :case_id
+        """), {"sid": case_row["student_id"], "case_id": str(case_id)})
+        for pr in prior_result.fetchall():
+            for tid in (pr[0] or "").split(","):
+                tid = tid.strip()
+                if tid:
+                    prior_resolved_ids.add(tid)
+
+    # Fetch ALL tickets for this student (via permit/plate match), any status
+    all_ticket_rows = []
+    if case_row["student_id"]:
+        all_result = await db.execute(text("""
+            SELECT DISTINCT t.id::text FROM tickets t
+            JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
+            WHERE p.student_id = :sid AND p.deleted_at IS NULL
+            ORDER BY t.id
+        """), {"sid": case_row["student_id"]})
+        all_ticket_rows = [r[0] for r in all_result.fetchall()]
+
+    # Also include referral ticket IDs (in case permit link is broken)
+    all_ids = set(all_ticket_rows) | referral_ids
+    if not all_ids and case_row["plate"]:
+        plate_norm = case_row["plate"].upper().replace(" ", "").replace("-", "")
+        plate_result = await db.execute(text("""
+            SELECT t.id::text FROM tickets t
+            WHERE UPPER(REPLACE(REPLACE(t.plate, ' ', ''), '-', '')) = :plate
+        """), {"plate": plate_norm})
+        all_ids = set(r[0] for r in plate_result.fetchall())
+
     tickets = []
-    if ticket_ids:
+    if all_ids:
         try:
-            ticket_uuids = [uuid.UUID(tid) for tid in ticket_ids]
+            all_uuids = [uuid.UUID(tid) for tid in all_ids]
             t_result = await db.execute(
-                select(Ticket).where(Ticket.id.in_(ticket_uuids)).order_by(Ticket.issued_at.desc())
+                select(Ticket).where(Ticket.id.in_(all_uuids)).order_by(Ticket.issued_at.desc())
             )
             for t in t_result.scalars().all():
+                tid_str = str(t.id)
+                tag = "referral" if tid_str in referral_ids else "history"
+                if tag == "history" and t.status not in ("paid", "voided", "resolved_permit"):
+                    tag = "extra"  # unpaid ticket added after referral
                 tickets.append({
-                    "id": str(t.id),
+                    "id": tid_str,
                     "ticket_number": t.ticket_number,
                     "plate": t.plate,
                     "lot": t.lot,
@@ -191,49 +231,11 @@ async def get_case(
                     "location_text": getattr(t, "location_text", None),
                     "location_lat": getattr(t, "location_lat", None),
                     "location_lng": getattr(t, "location_lng", None),
+                    "_tag": tag,
+                    "_prior_conduct": tid_str in prior_resolved_ids,
                 })
         except Exception:
-            _logger.warning("Failed to parse ticket_ids for case %s", case_id)
-
-    # Also fetch any OTHER unpaid tickets for this student not in the original list
-    if case_row["student_id"]:
-        extra_result = await db.execute(text("""
-            SELECT t.id::text FROM tickets t
-            JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
-            WHERE p.student_id = :sid
-              AND t.status NOT IN ('paid', 'voided', 'resolved_permit')
-              AND t.id::text NOT IN (SELECT unnest(string_to_array(:tids, ',')))
-            ORDER BY t.issued_at DESC
-        """), {"sid": case_row["student_id"], "tids": ",".join(ticket_ids) if ticket_ids else ""})
-        extra_ids = [r[0] for r in extra_result.fetchall()]
-        if extra_ids:
-            extra_uuids = [uuid.UUID(eid) for eid in extra_ids]
-            et_result = await db.execute(
-                select(Ticket).where(Ticket.id.in_(extra_uuids)).order_by(Ticket.issued_at.desc())
-            )
-            for t in et_result.scalars().all():
-                tickets.append({
-                    "id": str(t.id),
-                    "ticket_number": t.ticket_number,
-                    "plate": t.plate,
-                    "lot": t.lot,
-                    "violation_type": t.violation_type,
-                    "fine_amount": str(t.fine_amount),
-                    "status": t.status,
-                    "issued_at": t.issued_at.isoformat() if t.issued_at else None,
-                    "officer_name": t.officer_name,
-                    "officer_notes": t.officer_notes,
-                    "vehicle_description": t.vehicle_description,
-                    "photo_url": t.photo_url,
-                    "appeal_decision": getattr(t, "appeal_decision", None),
-                    "appeal_note": getattr(t, "appeal_note", None),
-                    "owner_name": t.owner_name,
-                    "notification_email": t.notification_email,
-                    "location_text": getattr(t, "location_text", None),
-                    "location_lat": getattr(t, "location_lat", None),
-                    "location_lng": getattr(t, "location_lng", None),
-                    "_extra": True,
-                })
+            _logger.warning("Failed to fetch tickets for case %s", case_id, exc_info=True)
 
     # Get permit/tag
     permit_info = None
