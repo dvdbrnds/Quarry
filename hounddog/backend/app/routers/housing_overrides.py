@@ -86,7 +86,7 @@ async def create_override(
     ).scalar_one_or_none()
     if existing:
         _logger.warning("Duplicate override blocked for %s — existing id=%s, status=%s", email, existing.id, existing.override_status)
-        raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")
+        raise HTTPException(409, f"[EMAIL CHECK] Override already exists for {email} (id={existing.id}). Edit or delete the existing one.")
 
     try:
         override = HousingOverride(
@@ -105,16 +105,7 @@ async def create_override(
     except Exception as e:
         sentry_sdk.capture_exception(e)
         _logger.error("Failed to create housing override for %s: %s", email, e)
-        err_str = str(e).lower()
-        if "unique" in err_str or "duplicate" in err_str:
-            if "moravian_id" in err_str:
-                raise HTTPException(
-                    409,
-                    "A unique constraint on moravian_id is blocking this insert. "
-                    "This is a known migration issue — please redeploy to fix it."
-                )
-            raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")
-        raise HTTPException(500, f"Failed to save override: {e}")
+        raise HTTPException(409, f"[DB ERROR] {str(e)[:300]}")
 
     cancelled = await _cancel_conflicting_applications(db, email, data.override_status)
     return {
