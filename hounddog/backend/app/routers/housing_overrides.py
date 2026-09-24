@@ -7,14 +7,24 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import require_office, OktaUser, get_current_user
 from ..database import get_db
 from ..models.housing_override import HousingOverride
+from ..models.permit_application import PermitApplication
+from ..models.permit_type import PermitType
 
 _logger = logging.getLogger("quarry.housing_overrides")
+
+# Must stay in sync with student_permits.py
+_COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
+_RESIDENT_CODES = {
+    "north_premium_resident", "south_premium_resident",
+    "north_guaranteed_resident", "south_guaranteed_resident",
+    "south_standalone", "steel_field_resident",
+}
 
 router = SafeRouter(dependencies=[Depends(require_office())])
 
@@ -97,7 +107,13 @@ async def create_override(
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")
         raise HTTPException(500, f"Failed to save override: {e}")
-    return {"id": str(override.id), "student_email": override.student_email}
+
+    cancelled = await _cancel_conflicting_applications(db, email, data.override_status)
+    return {
+        "id": str(override.id),
+        "student_email": override.student_email,
+        "cancelled_applications": cancelled,
+    }
 
 
 @router.put("/{override_id}")
@@ -109,9 +125,12 @@ async def update_override(
     override = await db.get(HousingOverride, override_id)
     if not override:
         raise HTTPException(404, "Override not found")
+    status_changed = False
     if data.override_status is not None:
         if data.override_status not in VALID_STATUSES:
             raise HTTPException(400, f"override_status must be one of: {', '.join(sorted(VALID_STATUSES))}")
+        if data.override_status != override.override_status:
+            status_changed = True
         override.override_status = data.override_status
     if data.reason is not None:
         override.reason = data.reason.strip()
@@ -119,7 +138,16 @@ async def update_override(
         override.student_name = data.student_name.strip()
     if data.moravian_id is not None:
         override.moravian_id = data.moravian_id.strip()
-    return {"id": str(override.id), "student_email": override.student_email}
+
+    cancelled = 0
+    if status_changed:
+        cancelled = await _cancel_conflicting_applications(db, override.student_email, override.override_status)
+
+    return {
+        "id": str(override.id),
+        "student_email": override.student_email,
+        "cancelled_applications": cancelled,
+    }
 
 
 @router.delete("/{override_id}")
@@ -132,6 +160,59 @@ async def delete_override(
         raise HTTPException(404, "Override not found")
     await db.delete(override)
     return {"deleted": True}
+
+
+async def _cancel_conflicting_applications(
+    db: AsyncSession, student_email: str, new_status: str
+) -> int:
+    """Cancel pending/waitlisted lottery applications that conflict with the new housing status.
+
+    If overriding to Commuter, cancel resident applications.
+    If overriding to Resident, cancel commuter applications.
+    Returns the count of cancelled applications.
+    """
+    if new_status == "C":
+        conflicting_codes = _RESIDENT_CODES
+    elif new_status == "R":
+        conflicting_codes = _COMMUTER_CODES
+    else:
+        return 0
+
+    try:
+        # Find permit_type IDs for conflicting codes
+        pt_result = await db.execute(
+            select(PermitType.id).where(PermitType.code.in_(conflicting_codes))
+        )
+        conflicting_type_ids = [row[0] for row in pt_result]
+        if not conflicting_type_ids:
+            return 0
+
+        # Find active applications for this student that match conflicting types
+        apps_result = await db.execute(
+            select(PermitApplication).where(
+                func.lower(PermitApplication.student_email) == student_email.lower(),
+                PermitApplication.permit_type_id.in_(conflicting_type_ids),
+                PermitApplication.status.in_(["pending", "waitlisted", "selected", "accepted"]),
+            )
+        )
+        apps = apps_result.scalars().all()
+
+        for app in apps:
+            old_status = app.status
+            app.status = "expired"
+            _logger.info(
+                "Auto-cancelled %s application %s for %s (was %s, housing override → %s)",
+                app.permit_type_id, app.id, student_email, old_status, new_status,
+            )
+
+        if apps:
+            await db.flush()
+
+        return len(apps)
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        _logger.error("Failed to cancel conflicting applications for %s: %s", student_email, e)
+        return 0
 
 
 async def get_housing_override_by_email(email: str, db: AsyncSession) -> str | None:

@@ -79,7 +79,7 @@ export default function HousingOverrides() {
       const values = await form.validateFields();
       setSaving(true);
       if (editing) {
-        await apiRequest(`/${editing.id}`, {
+        const result = await apiRequest<{ cancelled_applications?: number }>(`/${editing.id}`, {
           method: "PUT",
           body: JSON.stringify({
             student_name: values.student_name,
@@ -87,10 +87,16 @@ export default function HousingOverrides() {
             reason: values.reason,
           }),
         });
-        message.success("Override updated");
+        const cancelled = result.cancelled_applications || 0;
+        message.success(cancelled > 0
+          ? `Override updated — ${cancelled} conflicting waitlist application${cancelled > 1 ? "s" : ""} cancelled`
+          : "Override updated");
       } else {
-        await apiRequest("", { method: "POST", body: JSON.stringify(values) });
-        message.success("Override created");
+        const result = await apiRequest<{ cancelled_applications?: number }>("", { method: "POST", body: JSON.stringify(values) });
+        const cancelled = result.cancelled_applications || 0;
+        message.success(cancelled > 0
+          ? `Override created — ${cancelled} conflicting waitlist application${cancelled > 1 ? "s" : ""} cancelled`
+          : "Override created");
       }
       setModalOpen(false);
       setEditing(null);
