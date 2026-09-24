@@ -188,25 +188,38 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
                 if tid:
                     prior_resolved_ids.add(tid)
 
-    # Fetch ALL tickets for this student (via permit/plate match), any status
-    all_ticket_rows = []
+    # Fetch ALL tickets for this student via multiple strategies
+    all_ids: set[str] = set(referral_ids)
+
+    # Strategy 1: by student_id on permits
     if case_row["student_id"]:
-        all_result = await db.execute(text("""
+        sid = case_row["student_id"]
+        sid_result = await db.execute(text("""
             SELECT DISTINCT t.id::text FROM tickets t
             JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
             WHERE p.student_id = :sid AND p.deleted_at IS NULL
-        """), {"sid": case_row["student_id"]})
-        all_ticket_rows = [r[0] for r in all_result.fetchall()]
+        """), {"sid": sid})
+        all_ids.update(r[0] for r in sid_result.fetchall())
 
-    # Also include referral ticket IDs (in case permit link is broken)
-    all_ids = set(all_ticket_rows) | referral_ids
-    if not all_ids and case_row["plate"]:
+        # Also try student_id as email (permits.student_id might be email-based)
+        if "@" not in sid:
+            email = case_row["student_email"]
+            if email:
+                email_result = await db.execute(text("""
+                    SELECT DISTINCT t.id::text FROM tickets t
+                    JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
+                    WHERE p.student_id = :sid AND p.deleted_at IS NULL
+                """), {"sid": email})
+                all_ids.update(r[0] for r in email_result.fetchall())
+
+    # Strategy 2: by plate (always run, not just as fallback)
+    if case_row["plate"]:
         plate_norm = case_row["plate"].upper().replace(" ", "").replace("-", "")
         plate_result = await db.execute(text("""
-            SELECT t.id::text FROM tickets t
+            SELECT DISTINCT t.id::text FROM tickets t
             WHERE UPPER(REPLACE(REPLACE(t.plate, ' ', ''), '-', '')) = :plate
         """), {"plate": plate_norm})
-        all_ids = set(r[0] for r in plate_result.fetchall())
+        all_ids.update(r[0] for r in plate_result.fetchall())
 
     tickets = []
     if all_ids:
