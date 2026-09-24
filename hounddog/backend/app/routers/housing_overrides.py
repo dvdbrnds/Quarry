@@ -105,7 +105,14 @@ async def create_override(
     except Exception as e:
         sentry_sdk.capture_exception(e)
         _logger.error("Failed to create housing override for %s: %s", email, e)
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+        err_str = str(e).lower()
+        if "unique" in err_str or "duplicate" in err_str:
+            if "moravian_id" in err_str:
+                raise HTTPException(
+                    409,
+                    "A unique constraint on moravian_id is blocking this insert. "
+                    "This is a known migration issue — please redeploy to fix it."
+                )
             raise HTTPException(409, f"Override already exists for {email}. Edit or delete the existing one.")
         raise HTTPException(500, f"Failed to save override: {e}")
 
