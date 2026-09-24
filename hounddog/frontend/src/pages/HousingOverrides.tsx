@@ -21,6 +21,14 @@ const STATUS_OPTIONS = [
   { value: "O", label: "Off Campus Release" },
 ];
 
+class ApiError extends Error {
+  status: number;
+  constructor(status: number, body: string) {
+    super(body || `${status}`);
+    this.status = status;
+  }
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -30,7 +38,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/admin/housing-overrides${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || `${res.status}`);
+    throw new ApiError(res.status, body);
   }
   return res.json();
 }
@@ -103,13 +111,12 @@ export default function HousingOverrides() {
       load();
     } catch (e: any) {
       if (e.errorFields) return;
-      const msg = e.message || "Save failed";
-      if (msg.includes("409")) {
+      if (e instanceof ApiError && e.status === 409) {
         message.warning("An override already exists for this student. Delete it first to change it.");
         load();
         setModalOpen(false);
       } else {
-        message.error(msg);
+        message.error(e.message || "Save failed");
       }
     } finally {
       setSaving(false);
