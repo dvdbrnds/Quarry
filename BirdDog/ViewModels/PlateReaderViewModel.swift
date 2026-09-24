@@ -681,6 +681,9 @@ final class PlateReaderViewModel: ObservableObject {
         case .ticketed:
             hapticLight.impactOccurred()
             hapticLight.prepare()
+        case .neverTicket:
+            hapticLight.impactOccurred()
+            hapticLight.prepare()
         }
     }
 
