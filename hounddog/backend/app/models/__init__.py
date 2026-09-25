@@ -37,6 +37,12 @@ from .violation_type import ViolationType
 from .visitor_approval_token import VisitorApprovalToken
 from .vehicle_request import VehicleRequest
 
+# CJIS / JNET compliance models
+from .jnet_authorized_user import JNETAuthorizedUser
+from .cjis_audit_log import CJISAuditLog
+from .cjis_audit_alert import CJISAuditAlert
+from .cjis_incident import CJISIncident
+
 __all__ = [
     "AcademicSeason",
     "AppealCommitteeMember",
@@ -80,4 +86,9 @@ __all__ = [
     "ViolationType",
     "VisitorApprovalToken",
     "VehicleRequest",
+    # CJIS / JNET
+    "JNETAuthorizedUser",
+    "CJISAuditLog",
+    "CJISAuditAlert",
+    "CJISIncident",
 ]

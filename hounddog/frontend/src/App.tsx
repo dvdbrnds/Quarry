@@ -29,6 +29,10 @@ import ParkingMap from "./pages/ParkingMap";
 import Appeals from "./pages/Appeals";
 import AppealsCommittee from "./pages/AppealsCommittee";
 import VehicleApproval from "./pages/VehicleApproval";
+import CJISDashboard from "./pages/CJISDashboard";
+import CJISAuditLog from "./pages/CJISAuditLog";
+import CJISAlerts from "./pages/CJISAlerts";
+import CJISUsers from "./pages/CJISUsers";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth, isOfficeRole, isAdminRole } from "./auth";
@@ -91,6 +95,21 @@ function AdminShell({ user }: { user: AuthUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [impersonateInput, setImpersonateInput] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
+  const [isCjisAdmin, setIsCjisAdmin] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { authHeaders } = await import("./auth");
+        const headers = await authHeaders();
+        const res = await fetch("/api/jnet/status", { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setIsCjisAdmin(data.role === "cjis_admin");
+        }
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -138,6 +157,7 @@ function AdminShell({ user }: { user: AuthUser }) {
         {isAdminRole(user.role) && <NavItem to="/finance">Finance</NavItem>}
         {isAdminRole(user.role) && <NavItem to="/alerts">Alerts</NavItem>}
         <NavItem to="/settings">Settings</NavItem>
+        {isCjisAdmin && <NavItem to="/cjis">CJIS</NavItem>}
 
         <div className="ml-auto flex items-center gap-2">
           <div className="flex items-center gap-1">
@@ -255,6 +275,10 @@ function AdminShell({ user }: { user: AuthUser }) {
           <Route path="/finance" element={isAdminRole(user.role) ? <Finance /> : <Navigate to="/dashboard" replace />} />
           <Route path="/alerts" element={isAdminRole(user.role) ? <Alerts /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/cjis" element={isCjisAdmin ? <CJISDashboard /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/cjis/audit" element={isCjisAdmin ? <CJISAuditLog /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/cjis/alerts" element={isCjisAdmin ? <CJISAlerts /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/cjis/users" element={isCjisAdmin ? <CJISUsers /> : <Navigate to="/dashboard" replace />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
           <Route path="/student/permits" element={<StudentPermits />} />
         </Routes>

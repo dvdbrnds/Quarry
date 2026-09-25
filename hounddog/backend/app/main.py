@@ -86,6 +86,8 @@ from .routers import (
     visitor_permits,
     device_logs,
     legacy,
+    jnet,
+    cjis_audit,
 )
 from .middleware.audit import AuditMiddleware
 from .middleware.axiom_logging import AxiomRequestLogger
@@ -241,6 +243,67 @@ async def _backfill_visitor_preset_ids():
                 logger.info("preset_id backfill: no matches found for %d untagged permits", len(rows))
     except Exception as e:
         logger.exception("preset_id backfill failed")
+
+
+async def _cjis_periodic_tasks():
+    """CJIS background tasks: access revocation, training expiry, anomaly scan."""
+    import asyncio as _aio
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select, and_, or_, update
+    from .database import async_session
+    from .models.jnet_authorized_user import JNETAuthorizedUser
+    from .services.jnet.config import jnet_settings as _jcfg
+    from .services.jnet.anomaly import run_comprehensive_anomaly_scan
+
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+
+            async with async_session() as session:
+                async with session.begin():
+                    # 1. Revoke access for users inactive for 90+ days
+                    inactive_cutoff = now - timedelta(days=_jcfg.jnet_inactive_revoke_days)
+                    await session.execute(
+                        update(JNETAuthorizedUser)
+                        .where(
+                            and_(
+                                JNETAuthorizedUser.jnet_authorized == True,  # noqa: E712
+                                JNETAuthorizedUser.role == "jnet_officer",
+                                or_(
+                                    JNETAuthorizedUser.jnet_last_activity.is_(None),
+                                    JNETAuthorizedUser.jnet_last_activity < inactive_cutoff,
+                                ),
+                            )
+                        )
+                        .values(jnet_authorized=False)
+                    )
+
+                    # 2. Revoke access for users with expired training
+                    training_cutoff = now - timedelta(days=_jcfg.jnet_training_validity_days)
+                    await session.execute(
+                        update(JNETAuthorizedUser)
+                        .where(
+                            and_(
+                                JNETAuthorizedUser.jnet_authorized == True,  # noqa: E712
+                                JNETAuthorizedUser.role == "jnet_officer",
+                                JNETAuthorizedUser.jnet_training_completed_at.isnot(None),
+                                JNETAuthorizedUser.jnet_training_completed_at < training_cutoff,
+                            )
+                        )
+                        .values(jnet_authorized=False)
+                    )
+
+            # 3. Comprehensive anomaly scan
+            await run_comprehensive_anomaly_scan()
+
+            logger.info("cjis_periodic_tasks_complete")
+        except Exception as exc:
+            import sentry_sdk
+            sentry_sdk.capture_exception(exc)
+            logger.error("cjis_periodic_tasks_failed", error=str(exc))
+
+        # Run every hour
+        await _aio.sleep(3600)
 
 
 @asynccontextmanager
@@ -1774,7 +1837,17 @@ async def lifespan(app: FastAPI):
     # Normalize plates (strip dashes/spaces) so OCR reads match stored plates
     asyncio.create_task(_normalize_permit_plates())
 
+    # CJIS background tasks (run only when JNET is enabled)
+    from .services.jnet.config import jnet_settings as _jnet_cfg
+    _cjis_tasks: list[asyncio.Task] = []
+    if _jnet_cfg.jnet_enabled:
+        _cjis_tasks.append(asyncio.create_task(_cjis_periodic_tasks()))
+
     yield
+
+    for t in _cjis_tasks:
+        if not t.done():
+            t.cancel()
 
     if _backfill_task and not _backfill_task.done():
         _backfill_task.cancel()
@@ -1883,6 +1956,10 @@ app.include_router(vehicle_requests.public_router, tags=["vehicle-requests-publi
 app.include_router(vehicle_tags.router, prefix="/api/vehicle-tags", tags=["vehicle-tags"])
 app.include_router(device_logs.router, prefix="/api/device-logs", tags=["device-logs"])
 app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
+
+# CJIS / JNET (routers define their own prefixes)
+app.include_router(jnet.router)
+app.include_router(cjis_audit.router)
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

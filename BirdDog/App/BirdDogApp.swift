@@ -9,19 +9,57 @@ struct BirdDogApp: App {
     @StateObject private var appSettings = AppSettings.shared
     @StateObject private var officerAuth = OfficerAuthService.shared
     @State private var onboardingComplete = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showPrivacyScreen = false
 
     var body: some Scene {
         WindowGroup {
-            if !(appSettings.isServerConfigured || onboardingComplete) {
-                OnboardingView {
-                    onboardingComplete = true
-                    HoundDogSyncService.shared.startIfConfigured()
+            ZStack {
+                if !(appSettings.isServerConfigured || onboardingComplete) {
+                    OnboardingView {
+                        onboardingComplete = true
+                        HoundDogSyncService.shared.startIfConfigured()
+                    }
+                } else if !officerAuth.isLoggedIn {
+                    OfficerLoginView()
+                } else {
+                    ContentView()
+                        .task { await backgroundInit() }
                 }
-            } else if !officerAuth.isLoggedIn {
-                OfficerLoginView()
-            } else {
-                ContentView()
-                    .task { await backgroundInit() }
+
+                // CJIS privacy screen — covers CJI in app switcher
+                if showPrivacyScreen {
+                    Color(.systemBackground)
+                        .ignoresSafeArea()
+                        .overlay(
+                            VStack(spacing: 12) {
+                                Image(systemName: "lock.shield")
+                                    .font(.system(size: 48))
+                                    .foregroundColor(.secondary)
+                                Text("BirdDog")
+                                    .font(.title2)
+                                    .foregroundColor(.secondary)
+                            }
+                        )
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                switch newPhase {
+                case .active:
+                    showPrivacyScreen = false
+                    CJISSessionManager.shared.handleForegroundTransition()
+                    // Re-check jailbreak on return from background
+                    if JailbreakDetector.isJailbroken() {
+                        officerAuth.isJNETAuthorized = false
+                    }
+                case .inactive, .background:
+                    // Clear CJI and show privacy screen
+                    showPrivacyScreen = true
+                    CJIDataStore.shared.clear()
+                    CJISSessionManager.shared.handleBackgroundTransition()
+                @unknown default:
+                    break
+                }
             }
         }
     }

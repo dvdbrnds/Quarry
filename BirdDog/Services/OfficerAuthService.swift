@@ -14,6 +14,10 @@ final class OfficerAuthService: NSObject, ObservableObject {
     @Published private(set) var isLoggingIn = false
     @Published private(set) var loginError: String?
 
+    /// JNET authorization flag — checked from /api/jnet/status after login.
+    /// Cleared on logout or jailbreak detection.
+    @Published var isJNETAuthorized = false
+
     var isAdmin: Bool {
         let adminGroup = AppSettings.shared.oktaAdminGroup
         return officerGroups.contains(adminGroup)
@@ -95,6 +99,9 @@ final class OfficerAuthService: NSObject, ObservableObject {
         officerEmail = ""
         officerGroups = []
         isLoggedIn = false
+        isJNETAuthorized = false
+        CJISSessionManager.shared.reset()
+        CJIDataStore.shared.clear()
         clearKeychain()
     }
 
@@ -300,6 +307,14 @@ final class OfficerAuthService: NSObject, ObservableObject {
 
         HoundDogSyncService.shared.resetSyncDates()
         HoundDogSyncService.shared.startIfConfigured()
+
+        // Check JNET authorization (non-blocking)
+        Task {
+            await JNETService.shared.checkStatus()
+            self.isJNETAuthorized = JNETService.shared.isAuthorized
+                && JNETService.shared.prerequisitesMet
+                && !JailbreakDetector.isJailbroken()
+        }
     }
 
     // MARK: - JWT Signature Verification
