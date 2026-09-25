@@ -378,13 +378,13 @@ async def lifespan(app: FastAPI):
             if result.returncode == 0:
                 logger.info("Alembic migrations applied successfully.")
             else:
-                logger.warning("Alembic upgrade failed (rc=%d): %s", result.returncode, result.stderr[:500])
+                logger.warning("Alembic upgrade failed (rc=%d): %s", result.returncode, result.stderr[-2000:])
     except Exception as e:
         logger.warning("Alembic migration skipped: %s", e)
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 38
+    SCHEMA_VERSION = 39
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1264,6 +1264,12 @@ async def lifespan(app: FastAPI):
             END $$""",
             # ── v38: Conduct officer emails column
             "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS conduct_officer_emails VARCHAR(1024) DEFAULT ''",
+            # ── v39: Seed JNET system settings + bootstrap cjis_admin
+            "INSERT INTO system_settings (key, value, updated_by) VALUES ('jnet_system_enabled', 'true', 'migration-v39') ON CONFLICT (key) DO UPDATE SET value = 'true', updated_by = 'migration-v39'",
+            """INSERT INTO jnet_authorized_users (id, okta_sub, email, full_name, role, jnet_authorized, jnet_authorized_by_email, jnet_authorized_at, created_at, updated_at)
+               SELECT gen_random_uuid(), al.user_sub, 'brandesd@moravian.edu', 'David Brands', 'cjis_admin', true, 'migration-v39', now(), now(), now()
+               FROM audit_logs al WHERE al.user_email = 'brandesd@moravian.edu' AND al.user_sub != '' ORDER BY al.timestamp DESC LIMIT 1
+               ON CONFLICT DO NOTHING""",
             ]
             for migration in migrations:
                 try:

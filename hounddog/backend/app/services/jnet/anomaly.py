@@ -163,19 +163,21 @@ async def run_comprehensive_anomaly_scan() -> None:
 
         async with async_session() as session:
             # Get daily query counts per user for the last 30 days
+            from sqlalchemy import cast, Date
+            day_col = cast(CJISAuditLog.timestamp, Date).label("day")
             daily_counts = (
                 await session.execute(
                     select(
                         CJISAuditLog.user_id,
                         CJISAuditLog.user_email,
-                        func.date_trunc("day", CJISAuditLog.timestamp).label("day"),
+                        day_col,
                         func.count().label("count"),
                     )
                     .where(CJISAuditLog.timestamp >= thirty_days_ago)
                     .group_by(
                         CJISAuditLog.user_id,
                         CJISAuditLog.user_email,
-                        func.date_trunc("day", CJISAuditLog.timestamp),
+                        cast(CJISAuditLog.timestamp, Date),
                     )
                 )
             ).all()
