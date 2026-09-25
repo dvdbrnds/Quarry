@@ -137,11 +137,12 @@ async def enforce_cjis_prerequisites(
 
     These checks return 403 with actionable details because the user
     is already known to be JNET-authorized.
+    cjis_admin can also perform lookups (for testing/verification).
     """
-    if jnet_user.role != "jnet_officer":
+    if jnet_user.role not in ("jnet_officer", "cjis_admin"):
         raise HTTPException(
             status_code=403,
-            detail="JNET lookups require jnet_officer role.",
+            detail="JNET lookups require jnet_officer or cjis_admin role.",
         )
 
     _check_background_check(jnet_user)
