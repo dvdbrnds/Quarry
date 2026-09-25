@@ -1268,7 +1268,7 @@ async def lifespan(app: FastAPI):
             "INSERT INTO system_settings (key, value, updated_by) VALUES ('jnet_system_enabled', 'true', 'migration-v39') ON CONFLICT (key) DO UPDATE SET value = 'true', updated_by = 'migration-v39'",
             """INSERT INTO jnet_authorized_users (id, okta_sub, email, full_name, role, jnet_authorized, jnet_authorized_by_email, jnet_authorized_at, created_at, updated_at)
                SELECT gen_random_uuid(), al.user_sub, 'brandesd@moravian.edu', 'David Brands', 'cjis_admin', true, 'migration-v39', now(), now(), now()
-               FROM audit_logs al WHERE al.user_email = 'brandesd@moravian.edu' AND al.user_sub != '' ORDER BY al.timestamp DESC LIMIT 1
+               FROM audit_log al WHERE al.user_email = 'brandesd@moravian.edu' AND al.user_sub != '' ORDER BY al.timestamp DESC LIMIT 1
                ON CONFLICT DO NOTHING""",
             ]
             for migration in migrations:

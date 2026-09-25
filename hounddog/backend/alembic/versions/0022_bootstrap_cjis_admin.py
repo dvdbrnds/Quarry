@@ -35,7 +35,7 @@ def upgrade() -> None:
             true,
             'migration-0022',
             now(), now(), now()
-        FROM audit_logs al
+        FROM audit_log al
         WHERE al.user_email = '{ADMIN_EMAIL}'
           AND al.user_sub != ''
         ORDER BY al.timestamp DESC
