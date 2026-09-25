@@ -16,10 +16,12 @@ final class JNETService: ObservableObject {
     // MARK: - Status Check
 
     /// Check JNET authorization status. Called on login.
+    /// A 404 means the feature is invisible to this user (stealth mode) —
+    /// treated identically to "not authorized" with no error surfaced.
     func checkStatus() async {
         guard let baseURL = AppSettings.shared.serverURL,
               let url = URL(string: "\(baseURL)/api/jnet/status") else {
-            isAuthorized = false
+            clearStatus()
             return
         }
 
@@ -32,9 +34,15 @@ final class JNETService: ObservableObject {
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+            guard let http = response as? HTTPURLResponse else {
+                clearStatus()
+                return
+            }
+
+            // 404 = stealth (feature invisible to this user), treat as not authorized
+            guard http.statusCode == 200,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                isAuthorized = false
+                clearStatus()
                 return
             }
 
@@ -43,8 +51,16 @@ final class JNETService: ObservableObject {
             prerequisitesMet = json["prerequisites_met"] as? Bool ?? false
             missingPrerequisites = json["missing_prerequisites"] as? [String] ?? []
         } catch {
-            isAuthorized = false
+            clearStatus()
         }
+    }
+
+    /// Reset all JNET status to defaults (not authorized).
+    private func clearStatus() {
+        jnetEnabled = false
+        isAuthorized = false
+        prerequisitesMet = false
+        missingPrerequisites = []
     }
 
     // MARK: - Plate Lookup
@@ -78,6 +94,12 @@ final class JNETService: ObservableObject {
 
         guard let http = response as? HTTPURLResponse else {
             throw JNETServiceError.networkError
+        }
+
+        // 404 = stealth denial (feature disabled or access revoked mid-session)
+        if http.statusCode == 404 {
+            clearStatus()
+            throw JNETServiceError.unauthorized
         }
 
         if http.statusCode == 401 {

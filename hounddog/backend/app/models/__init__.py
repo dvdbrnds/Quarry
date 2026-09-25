@@ -37,6 +37,9 @@ from .violation_type import ViolationType
 from .visitor_approval_token import VisitorApprovalToken
 from .vehicle_request import VehicleRequest
 
+# System settings
+from .system_setting import SystemSetting
+
 # CJIS / JNET compliance models
 from .jnet_authorized_user import JNETAuthorizedUser
 from .cjis_audit_log import CJISAuditLog
@@ -86,6 +89,7 @@ __all__ = [
     "ViolationType",
     "VisitorApprovalToken",
     "VehicleRequest",
+    "SystemSetting",
     # CJIS / JNET
     "JNETAuthorizedUser",
     "CJISAuditLog",

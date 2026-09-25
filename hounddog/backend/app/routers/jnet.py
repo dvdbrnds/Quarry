@@ -20,7 +20,8 @@ from ..models.jnet_authorized_user import JNETAuthorizedUser
 from ..models.cjis_audit_log import CJISAuditLog
 from ..services.jnet.client import JNETClient
 from ..services.jnet.config import jnet_settings
-from ..services.jnet.middleware import require_jnet_officer
+from ..services.jnet.dependencies import require_jnet_visible
+from ..services.jnet.middleware import enforce_cjis_prerequisites
 from ..services.jnet.audit import log_jnet_query
 from ..services.jnet.anomaly import check_query_anomalies
 from ..services.jnet.models import JNETError
@@ -55,7 +56,7 @@ async def plate_lookup(
     body: PlateLookupRequest,
     request: Request,
     response: Response,
-    jnet_user: JNETAuthorizedUser = Depends(require_jnet_officer),
+    jnet_user: JNETAuthorizedUser = Depends(require_jnet_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -64,6 +65,9 @@ async def plate_lookup(
     Requires jnet_officer role + all CJIS prerequisites.
     CJI data is returned in the response body and NEVER persisted.
     """
+    # Enforce CJIS prerequisites (403 for actionable failures)
+    await enforce_cjis_prerequisites(jnet_user, request.state.okta_user, db)
+
     # CJI must never be cached
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -116,66 +120,46 @@ async def plate_lookup(
 
 @router.get("/status")
 async def jnet_status(
-    user: OktaUser = Depends(get_current_user),
+    jnet_user: JNETAuthorizedUser = Depends(require_jnet_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Return JNET integration status and current user's authorization.
-    No CJI in this response.
+    Return JNET status for an authorized user. Returns 404 for
+    non-JNET users so the feature's existence is never disclosed.
     """
-    enabled = jnet_settings.jnet_enabled
+    from datetime import datetime, timedelta, timezone
 
-    # Check if user is authorized
-    authorized = False
-    prerequisites_met = False
-    role = None
     missing_prerequisites: list[str] = []
-
-    if enabled:
-        result = await db.execute(
-            select(JNETAuthorizedUser).where(
-                JNETAuthorizedUser.okta_sub == user.sub
-            )
+    if jnet_user.jnet_background_check_date is None:
+        missing_prerequisites.append("background_check")
+    if jnet_user.jnet_training_completed_at is None:
+        missing_prerequisites.append("training")
+    else:
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            days=jnet_settings.jnet_training_validity_days
         )
-        jnet_user = result.scalars().first()
-
-        if jnet_user and jnet_user.jnet_authorized:
-            authorized = True
-            role = jnet_user.role
-
-            if jnet_user.jnet_background_check_date is None:
-                missing_prerequisites.append("background_check")
-            if jnet_user.jnet_training_completed_at is None:
-                missing_prerequisites.append("training")
-            elif jnet_user.jnet_training_completed_at.replace(
-                tzinfo=None
-            ) < (
-                __import__("datetime").datetime.utcnow()
-                - __import__("datetime").timedelta(
-                    days=jnet_settings.jnet_training_validity_days
-                )
-            ):
-                missing_prerequisites.append("training_expired")
-
-            prerequisites_met = len(missing_prerequisites) == 0
+        training_dt = jnet_user.jnet_training_completed_at
+        if training_dt.tzinfo is None:
+            training_dt = training_dt.replace(tzinfo=timezone.utc)
+        if training_dt < cutoff:
+            missing_prerequisites.append("training_expired")
 
     # Last successful query time (no CJI)
     last_success = None
-    if enabled:
-        result = await db.execute(
-            select(func.max(CJISAuditLog.timestamp)).where(
-                CJISAuditLog.success == True  # noqa: E712
-            )
+    result = await db.execute(
+        select(func.max(CJISAuditLog.timestamp)).where(
+            CJISAuditLog.success == True  # noqa: E712
         )
-        last_success_dt = result.scalar()
-        if last_success_dt:
-            last_success = last_success_dt.isoformat()
+    )
+    last_success_dt = result.scalar()
+    if last_success_dt:
+        last_success = last_success_dt.isoformat()
 
     return {
-        "enabled": enabled,
-        "authorized": authorized,
-        "role": role,
-        "prerequisites_met": prerequisites_met,
+        "enabled": True,
+        "authorized": True,
+        "role": jnet_user.role,
+        "prerequisites_met": len(missing_prerequisites) == 0,
         "missing_prerequisites": missing_prerequisites,
         "last_successful_query": last_success,
     }

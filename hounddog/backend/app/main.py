@@ -88,6 +88,7 @@ from .routers import (
     legacy,
     jnet,
     cjis_audit,
+    jnet_settings,
 )
 from .middleware.audit import AuditMiddleware
 from .middleware.axiom_logging import AxiomRequestLogger
@@ -1960,6 +1961,7 @@ app.include_router(legacy.router, prefix="/api/legacy", tags=["legacy"])
 # CJIS / JNET (routers define their own prefixes)
 app.include_router(jnet.router)
 app.include_router(cjis_audit.router)
+app.include_router(jnet_settings.router)
 
 
 @app.get("/api/admin/notification-health", tags=["admin"])

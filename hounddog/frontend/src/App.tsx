@@ -33,6 +33,7 @@ import CJISDashboard from "./pages/CJISDashboard";
 import CJISAuditLog from "./pages/CJISAuditLog";
 import CJISAlerts from "./pages/CJISAlerts";
 import CJISUsers from "./pages/CJISUsers";
+import JNETSettings from "./pages/JNETSettings";
 import AuthCallback from "./pages/AuthCallback";
 import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth, isOfficeRole, isAdminRole } from "./auth";
@@ -95,21 +96,8 @@ function AdminShell({ user }: { user: AuthUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [impersonateInput, setImpersonateInput] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const [isCjisAdmin, setIsCjisAdmin] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { authHeaders } = await import("./auth");
-        const headers = await authHeaders();
-        const res = await fetch("/api/jnet/status", { headers });
-        if (res.ok) {
-          const data = await res.json();
-          setIsCjisAdmin(data.role === "cjis_admin");
-        }
-      } catch {}
-    })();
-  }, []);
+  const isCjisAdmin = user.jnet_status?.role === "cjis_admin";
+  const hasJnetAccess = !!user.jnet_status;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -279,6 +267,7 @@ function AdminShell({ user }: { user: AuthUser }) {
           <Route path="/cjis/audit" element={isCjisAdmin ? <CJISAuditLog /> : <Navigate to="/dashboard" replace />} />
           <Route path="/cjis/alerts" element={isCjisAdmin ? <CJISAlerts /> : <Navigate to="/dashboard" replace />} />
           <Route path="/cjis/users" element={isCjisAdmin ? <CJISUsers /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/cjis/settings" element={isCjisAdmin ? <JNETSettings /> : <Navigate to="/dashboard" replace />} />
           <Route path="/permits/:id" element={<PermitDetail />} />
           <Route path="/student/permits" element={<StudentPermits />} />
         </Routes>

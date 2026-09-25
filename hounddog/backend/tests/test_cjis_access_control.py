@@ -1,4 +1,4 @@
-"""Tests for CJIS access control — 403 for unauthorized, expired training, missing background check."""
+"""Tests for CJIS access control — stealth 404 for unauthorized, 403 for actionable failures."""
 
 import uuid
 import pytest
@@ -38,12 +38,14 @@ def _make_jnet_user(**overrides) -> JNETAuthorizedUser:
 
 
 class TestJNETEnabled:
-    def test_raises_503_when_disabled(self):
+    def test_raises_404_when_disabled(self):
+        """Stealth: disabled JNET returns 404, not 503."""
         with patch("app.services.jnet.middleware.jnet_settings") as cfg:
             cfg.jnet_enabled = False
             with pytest.raises(HTTPException) as exc:
                 _check_jnet_enabled()
-            assert exc.value.status_code == 503
+            assert exc.value.status_code == 404
+            assert exc.value.detail == "Not found"
 
 
 class TestBackgroundCheck:

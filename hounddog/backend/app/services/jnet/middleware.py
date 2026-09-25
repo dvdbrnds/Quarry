@@ -28,12 +28,9 @@ _rate_limit_windows: dict[str, collections.deque] = {}
 
 
 def _check_jnet_enabled() -> None:
-    """Raise 503 if JNET integration is disabled."""
+    """Raise 404 if JNET integration is disabled (stealth)."""
     if not jnet_settings.jnet_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="JNET integration is not enabled.",
-        )
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 async def _resolve_jnet_user(
@@ -48,16 +45,10 @@ async def _resolve_jnet_user(
     jnet_user = result.scalars().first()
 
     if not jnet_user:
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have a JNET authorization record. Contact a CJIS administrator.",
-        )
+        raise HTTPException(status_code=404, detail="Not found")
 
     if not jnet_user.jnet_authorized:
-        raise HTTPException(
-            status_code=403,
-            detail="Your JNET access has been revoked or is not yet active.",
-        )
+        raise HTTPException(status_code=404, detail="Not found")
 
     return jnet_user
 
@@ -136,6 +127,36 @@ def _check_rate_limit(okta_sub: str) -> None:
     window.append(now)
 
 
+async def enforce_cjis_prerequisites(
+    jnet_user: JNETAuthorizedUser,
+    okta_user: OktaUser,
+    db: AsyncSession,
+) -> None:
+    """
+    Enforce CJIS prerequisites AFTER visibility gate has passed.
+
+    These checks return 403 with actionable details because the user
+    is already known to be JNET-authorized.
+    """
+    if jnet_user.role != "jnet_officer":
+        raise HTTPException(
+            status_code=403,
+            detail="JNET lookups require jnet_officer role.",
+        )
+
+    _check_background_check(jnet_user)
+    _check_training(jnet_user)
+    _check_session_timeout(jnet_user)
+    _check_rate_limit(okta_user.sub)
+
+    # Update last activity timestamp
+    await db.execute(
+        update(JNETAuthorizedUser)
+        .where(JNETAuthorizedUser.id == jnet_user.id)
+        .values(jnet_last_activity=datetime.now(timezone.utc))
+    )
+
+
 async def require_jnet_officer(
     request: Request,
     user: OktaUser = Depends(get_current_user),
@@ -195,15 +216,9 @@ async def require_cjis_admin(
     jnet_user = result.scalars().first()
 
     if not jnet_user or jnet_user.role != "cjis_admin":
-        raise HTTPException(
-            status_code=403,
-            detail="CJIS administration requires cjis_admin role.",
-        )
+        raise HTTPException(status_code=404, detail="Not found")
 
     if not jnet_user.jnet_authorized:
-        raise HTTPException(
-            status_code=403,
-            detail="Your CJIS admin access has been revoked.",
-        )
+        raise HTTPException(status_code=404, detail="Not found")
 
     return jnet_user

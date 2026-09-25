@@ -22,13 +22,13 @@ from ..models.cjis_audit_log import CJISAuditLog
 from ..models.cjis_audit_alert import CJISAuditAlert
 from ..models.cjis_incident import CJISIncident
 from ..models.jnet_authorized_user import JNETAuthorizedUser
-from ..services.jnet.middleware import require_cjis_admin
+from ..services.jnet.dependencies import require_cjis_admin_visible
 from ..services.jnet.config import jnet_settings
 
 router = SafeRouter(
     prefix="/api/cjis",
     tags=["CJIS Administration"],
-    dependencies=[Depends(require_cjis_admin)],
+    dependencies=[Depends(require_cjis_admin_visible)],
 )
 
 
@@ -314,7 +314,7 @@ class ReviewAlertBody(BaseModel):
 async def review_alert(
     alert_id: uuid.UUID,
     body: ReviewAlertBody,
-    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin),
+    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark an alert as reviewed or dismissed."""
@@ -377,7 +377,7 @@ class AuthorizeUserBody(BaseModel):
 @router.post("/users/{user_id}/authorize")
 async def authorize_user(
     user_id: uuid.UUID,
-    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin),
+    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """Grant JNET access to a user."""
@@ -398,7 +398,7 @@ async def authorize_user(
 @router.post("/users/create")
 async def create_jnet_user(
     body: AuthorizeUserBody,
-    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin),
+    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new JNET authorized user record."""
@@ -430,7 +430,7 @@ async def create_jnet_user(
 @router.post("/users/{user_id}/revoke")
 async def revoke_user(
     user_id: uuid.UUID,
-    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin),
+    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke JNET access from a user."""
@@ -454,7 +454,7 @@ class BackgroundCheckBody(BaseModel):
 async def record_background_check(
     user_id: uuid.UUID,
     body: BackgroundCheckBody,
-    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin),
+    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """Record a background check completion date."""
@@ -478,7 +478,7 @@ class TrainingBody(BaseModel):
 async def record_training(
     user_id: uuid.UUID,
     body: TrainingBody,
-    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin),
+    jnet_user: JNETAuthorizedUser = Depends(require_cjis_admin_visible),
     db: AsyncSession = Depends(get_db),
 ):
     """Record security awareness training completion date."""

@@ -9,7 +9,10 @@ from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_to
 from ..config import settings
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
+from ..models.jnet_authorized_user import JNETAuthorizedUser
 from ..services.sis_student_data import lookup_student_parking_data
+from ..services.jnet.dependencies import get_effective_jnet_enabled
+from ..services.jnet.config import jnet_settings
 
 logger = logging.getLogger("quarry.audit")
 
@@ -62,7 +65,11 @@ def _extract_moravian_id(user: OktaUser) -> str | None:
 
 
 @router.get("/me")
-async def me(request: Request, user: OktaUser = Depends(get_current_user)):
+async def me(
+    request: Request,
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     ip = request.client.host if request.client else None
 
     role = user.role
@@ -98,11 +105,76 @@ async def me(request: Request, user: OktaUser = Depends(get_current_user)):
         f"User signed in: {user.email} (role: {role})",
         ip,
     )
+
+    # JNET status: null for non-authorized users (stealth)
+    jnet_status = None
+    try:
+        jnet_effective = await get_effective_jnet_enabled(db)
+        if jnet_effective:
+            from sqlalchemy import select
+            result = await db.execute(
+                select(JNETAuthorizedUser).where(
+                    JNETAuthorizedUser.okta_sub == user.sub
+                )
+            )
+            jnet_user = result.scalars().first()
+            if jnet_user and jnet_user.jnet_authorized:
+                from datetime import datetime as _dt, timedelta, timezone
+                bg_valid = jnet_user.jnet_background_check_date is not None
+                training_valid = False
+                if jnet_user.jnet_training_completed_at is not None:
+                    cutoff = _dt.now(timezone.utc) - timedelta(
+                        days=jnet_settings.jnet_training_validity_days
+                    )
+                    t = jnet_user.jnet_training_completed_at
+                    if t.tzinfo is None:
+                        t = t.replace(tzinfo=timezone.utc)
+                    training_valid = t >= cutoff
+
+                # Compute system_status
+                from ..routers.jnet_settings import _compute_system_status
+                from ..models.cjis_audit_log import CJISAuditLog
+                from ..models.system_setting import SystemSetting
+                from sqlalchemy import func as sa_func
+                db_setting = await db.execute(
+                    select(SystemSetting.value).where(
+                        SystemSetting.key == "jnet_system_enabled"
+                    )
+                )
+                db_enabled = db_setting.scalar() == "true"
+                has_live = False
+                if jnet_settings.jnet_base_url:
+                    lq = await db.execute(
+                        select(sa_func.count()).where(
+                            CJISAuditLog.success == True  # noqa: E712
+                        )
+                    )
+                    has_live = (lq.scalar() or 0) > 0
+                sys_status = _compute_system_status(
+                    env_enabled=jnet_settings.jnet_enabled,
+                    db_enabled=db_enabled,
+                    base_url=jnet_settings.jnet_base_url,
+                    cert_path=jnet_settings.jnet_client_cert_path,
+                    ori=jnet_settings.jnet_ori,
+                    has_live_query=has_live,
+                )
+
+                jnet_status = {
+                    "role": jnet_user.role,
+                    "authorized": True,
+                    "background_check_valid": bg_valid,
+                    "training_valid": training_valid,
+                    "system_status": sys_status,
+                }
+    except Exception:
+        pass
+
     return {
         "sub": user.sub,
         "email": user.email,
         "role": role,
         "groups": user.groups,
+        "jnet_status": jnet_status,
     }
 
 

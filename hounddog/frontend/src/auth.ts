@@ -1,10 +1,19 @@
 import { OktaAuth } from "@okta/okta-auth-js";
 
+export interface JNETStatus {
+  role: string;
+  authorized: boolean;
+  background_check_valid: boolean;
+  training_valid: boolean;
+  system_status: string;
+}
+
 export interface AuthUser {
   sub: string;
   email: string;
   role: string;
   groups: string[];
+  jnet_status?: JNETStatus | null;
 }
 
 // ── Global 401 interceptor ──────────────────────────────────────────
