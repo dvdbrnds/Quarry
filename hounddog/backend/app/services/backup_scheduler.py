@@ -2,23 +2,28 @@
 Scheduled backup processor.
 
 Runs inside the existing closure_scheduler loop every 60s.
-Checks the schedule config from the database (with disk fallback) and creates
-a JSON backup file when due. Also handles retention cleanup of old backup files.
+Creates a pg_dump backup file when due. Also handles retention cleanup.
 
-SAFETY: A minimum interval of 1 hour is enforced between backups regardless
-of config to prevent runaway backup loops from filling disk.
+SAFETY:
+- A minimum interval of 1 hour is enforced between backups.
+- Writes to a temp file and renames on success (no partial dumps).
+- Hard timeout of 30 minutes; kills pg_dump and deletes partial file.
+- Python never holds the database contents in memory.
+- Persists last attempt time so crash-restart loops don't re-trigger.
+- First backup delayed at least 10 minutes after startup.
+- QUARRY_BACKUP_ENABLED env var (default true) can disable entirely.
 """
 
+import asyncio
 import json
 import logging
+import os
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-from sqlalchemy import text, inspect as sa_inspect
-
-from ..database import engine, async_session
-from ..models.audit_log import AuditLog
+from ..database import async_session
 
 logger = logging.getLogger("quarry.backup_scheduler")
 
@@ -27,29 +32,12 @@ MIN_BACKUP_INTERVAL = timedelta(hours=1)
 MIN_FREE_DISK_GB = 2.0
 MAX_KEEP_COUNT = 7
 
-
-async def _audit(summary: str, action: str = "POST", details: dict | None = None):
-    """Write a system-level audit entry visible in the Activity Log."""
-    try:
-        async with async_session() as db:
-            async with db.begin():
-                db.add(AuditLog(
-                    user_email="system:backup_scheduler",
-                    user_sub="system",
-                    action=action,
-                    resource_type="backup",
-                    endpoint="/system/backup_scheduler",
-                    summary=summary,
-                    response_status=200,
-                    changes=details,
-                ))
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Failed to write backup audit entry: %s", e)
-
+BACKUP_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+STARTUP_DELAY_SECONDS = 10 * 60   # 10 minutes
+ATTEMPT_COOLDOWN = timedelta(hours=6)
 
 SCHEDULE_FILE = BACKUP_DIR / "_schedule.json"
-SKIP_TABLES = {"alembic_version", "backup_snapshots"}
+ATTEMPT_FILE = BACKUP_DIR / "_last_attempt"
 BACKUP_ADVISORY_LOCK_KEY = 870014
 
 FREQUENCY_DELTAS = {
@@ -57,6 +45,14 @@ FREQUENCY_DELTAS = {
     "weekly": timedelta(weeks=1),
     "monthly": timedelta(days=30),
 }
+
+# Module-level startup timestamp to enforce 10-minute delay
+_module_loaded_at = datetime.now(timezone.utc)
+
+
+def _backup_enabled() -> bool:
+    """Check QUARRY_BACKUP_ENABLED env var (default true)."""
+    return os.environ.get("QUARRY_BACKUP_ENABLED", "true").lower() in ("true", "1", "yes")
 
 
 def _aware(dt: datetime) -> datetime:
@@ -96,15 +92,7 @@ def is_backup_due(
     now: datetime,
     last_scheduled: datetime | None,
 ) -> bool:
-    """Whether a scheduled backup should run for the current slot.
-
-    Daily due-ness is slot-based (today's HH:MM in Eastern), not "24 hours
-    since last_run". That way a 10 AM catch-up still leaves tomorrow's 2 AM
-    intact, and a missing next_run in app_config cannot skip the window.
-
-    Weekly/monthly additionally require the full period since the last
-    scheduled snapshot so they cannot fire every day after the first miss.
-    """
+    """Whether a scheduled backup should run for the current slot."""
     if last_scheduled is None:
         from .timeutils import campus_tz
         local = _aware(now).astimezone(campus_tz())
@@ -122,22 +110,51 @@ def is_backup_due(
     return (_aware(now) - last) >= period
 
 
-def _serialise(value):
-    from datetime import date as _date
-    from decimal import Decimal
-    from uuid import UUID as _UUID
-    if isinstance(value, (datetime, _date)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, _UUID):
-        return str(value)
-    return value
+# ---------------------------------------------------------------------------
+# Attempt tracking (prevents restart loops)
+# ---------------------------------------------------------------------------
 
+def _read_last_attempt() -> datetime | None:
+    """Read last backup attempt timestamp from disk."""
+    try:
+        if ATTEMPT_FILE.exists():
+            ts = ATTEMPT_FILE.read_text().strip()
+            return datetime.fromisoformat(ts)
+    except Exception:
+        pass
+    return None
+
+
+def _write_last_attempt(dt: datetime | None = None):
+    """Persist current time as last backup attempt."""
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        ATTEMPT_FILE.write_text((dt or datetime.now(timezone.utc)).isoformat())
+    except Exception as e:
+        logger.warning("Failed to write last attempt timestamp: %s", e)
+
+
+def _too_soon_after_startup() -> bool:
+    """Return True if we're within 10 minutes of module load (startup)."""
+    elapsed = (datetime.now(timezone.utc) - _module_loaded_at).total_seconds()
+    return elapsed < STARTUP_DELAY_SECONDS
+
+
+def _attempted_recently() -> bool:
+    """Return True if a backup was attempted in the last 6 hours."""
+    last = _read_last_attempt()
+    if last is None:
+        return False
+    return (datetime.now(timezone.utc) - _aware(last)) < ATTEMPT_COOLDOWN
+
+
+# ---------------------------------------------------------------------------
+# Schedule config (DB + disk)
+# ---------------------------------------------------------------------------
 
 async def _read_schedule_from_db() -> dict | None:
-    """Try reading backup schedule from the app_config table."""
     try:
+        from sqlalchemy import text
         async with async_session() as db:
             result = await db.execute(
                 text("SELECT value FROM app_config WHERE key = 'backup_schedule'")
@@ -145,29 +162,24 @@ async def _read_schedule_from_db() -> dict | None:
             row = result.scalar()
             if row:
                 parsed = row if isinstance(row, dict) else json.loads(row)
-                logger.debug("Backup schedule from DB: %s", parsed)
                 return parsed
-            else:
-                logger.warning("Backup schedule: no row found in app_config for 'backup_schedule'")
     except Exception as e:
+        import sentry_sdk
         sentry_sdk.capture_exception(e)
         logger.warning("Backup schedule: failed to read from DB: %s", e)
     return None
 
 
 def _read_schedule_from_disk() -> dict:
-    """Fallback: read from disk file."""
     if SCHEDULE_FILE.exists():
         try:
             return json.loads(SCHEDULE_FILE.read_text())
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
+        except Exception:
             pass
     return {"enabled": False}
 
 
 async def _read_schedule() -> dict:
-    """Read schedule from DB first, fall back to disk."""
     db_config = await _read_schedule_from_db()
     if db_config is not None:
         return db_config
@@ -175,13 +187,8 @@ async def _read_schedule() -> dict:
 
 
 async def _write_schedule(data: dict):
-    """Write schedule to both DB and disk.
-
-    Must use CAST(:val AS jsonb) — SQLAlchemy treats :val::jsonb as a
-    parameter named 'val::jsonb', so the scheduler could never persist
-    last_run / next_run and would recompute a future window every tick.
-    """
     try:
+        from sqlalchemy import text
         value_str = json.dumps(data)
         async with async_session() as db:
             await db.execute(text("""
@@ -191,203 +198,250 @@ async def _write_schedule(data: dict):
             """), {"val": value_str})
             await db.commit()
     except Exception as e:
+        import sentry_sdk
         sentry_sdk.capture_exception(e)
         logger.error("Failed to write schedule to DB: %s", e)
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
     except Exception as e:
+        import sentry_sdk
         sentry_sdk.capture_exception(e)
         logger.warning("Failed to write schedule to disk: %s", e)
 
 
 def _compute_next_run(frequency: str, time_str: str, from_dt: datetime | None = None) -> datetime:
-    """Compute the next run datetime based on frequency and time (HH:MM Eastern)."""
     from .timeutils import campus_tz, now_local
     tz = campus_tz()
     now = _aware(from_dt).astimezone(tz) if from_dt else now_local()
     hour, minute = _parse_hhmm(time_str)
-
     candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= now:
         candidate += FREQUENCY_DELTAS.get(frequency, timedelta(days=1))
     return candidate
 
 
-async def _create_backup_payload() -> tuple[str, str, dict]:
-    """Build a backup JSON payload. Returns (filename, json_text, backup_dict)."""
-    async with engine.connect() as conn:
-        def _inspect(sync_conn):
-            insp = sa_inspect(sync_conn)
-            return insp.get_table_names()
-        table_names = await conn.run_sync(_inspect)
+# ---------------------------------------------------------------------------
+# Audit helper
+# ---------------------------------------------------------------------------
 
-    tables = sorted(n for n in table_names if n not in SKIP_TABLES)
+async def _audit(summary: str, action: str = "POST", details: dict | None = None):
+    try:
+        from ..models.audit_log import AuditLog
+        async with async_session() as db:
+            async with db.begin():
+                db.add(AuditLog(
+                    user_email="system:backup_scheduler",
+                    user_sub="system",
+                    action=action,
+                    resource_type="backup",
+                    endpoint="/system/backup_scheduler",
+                    summary=summary,
+                    response_status=200,
+                    changes=details,
+                ))
+    except Exception as e:
+        import sentry_sdk
+        sentry_sdk.capture_exception(e)
+        logger.warning("Failed to write backup audit entry: %s", e)
 
-    async with engine.connect() as conn:
-        payload: dict[str, list[dict]] = {}
-        for tbl in tables:
-            result = await conn.execute(text(f'SELECT * FROM "{tbl}"'))
-            columns = list(result.keys())
-            rows = []
-            for row in result.fetchall():
-                rows.append({col: _serialise(row[i]) for i, col in enumerate(columns)})
-            payload[tbl] = rows
 
-    backup = {
-        "format": "quarry_backup_v1",
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "source": "scheduled",
-        "tables": payload,
+# ---------------------------------------------------------------------------
+# pg_dump based backup
+# ---------------------------------------------------------------------------
+
+def _parse_database_url() -> dict:
+    """Parse DATABASE_URL into components for pg_dump.
+
+    Converts asyncpg:// to postgresql:// and extracts host, port, user, password, dbname.
+    """
+    from ..config import settings
+    url = settings.database_url
+
+    # Normalize driver prefix for parsing
+    for prefix in ("postgresql+asyncpg://", "asyncpg://"):
+        if url.startswith(prefix):
+            url = "postgresql://" + url[len(prefix):]
+            break
+
+    parsed = urlparse(url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": str(parsed.port or 5432),
+        "user": parsed.username or "quarry",
+        "password": parsed.password or "",
+        "dbname": parsed.path.lstrip("/") or "quarry",
     }
-    filename = f"quarry_backup_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    content = json.dumps(backup, indent=2, default=str)
-    return filename, content, backup
 
 
-async def _persist_backup(filename: str, content: str, source: str = "scheduled") -> str:
-    """Store backup in Postgres (survives redeploys) and mirror to disk for Drive upload."""
-    size = len(content.encode("utf-8"))
+async def _run_pg_dump(output_path: Path) -> None:
+    """Run pg_dump -Fc writing directly to output_path.
 
-    async with async_session() as db:
-        await db.execute(
-            text("""
-                INSERT INTO backup_snapshots (filename, source, size_bytes, content, created_at)
-                VALUES (:filename, :source, :size_bytes, :content, now())
-                ON CONFLICT (filename) DO UPDATE SET
-                    content = EXCLUDED.content,
-                    size_bytes = EXCLUDED.size_bytes,
-                    source = EXCLUDED.source,
-                    created_at = now()
-            """),
-            {
-                "filename": filename,
-                "source": source,
-                "size_bytes": size,
-                "content": content,
-            },
-        )
-        await db.commit()
+    Uses asyncio subprocess so we don't block the event loop.
+    Password is passed via PGPASSWORD env var (never on command line).
+    Hard timeout of 30 minutes.
+    """
+    db = _parse_database_url()
+
+    env = {**os.environ, "PGPASSWORD": db["password"]}
+    # Remove any vars that could interfere
+    env.pop("PGDATABASE", None)
+    env.pop("PGUSER", None)
+    env.pop("PGHOST", None)
+    env.pop("PGPORT", None)
+
+    cmd = [
+        "pg_dump",
+        "-Fc",                       # Custom format (compressed, streamable)
+        "-h", db["host"],
+        "-p", db["port"],
+        "-U", db["user"],
+        "-d", db["dbname"],
+        "--no-owner",
+        "--no-acl",
+        "-f", str(output_path),
+    ]
+
+    logger.info("Starting pg_dump: host=%s db=%s -> %s", db["host"], db["dbname"], output_path.name)
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        env=env,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
     try:
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        (BACKUP_DIR / filename).write_text(content)
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Disk mirror of backup failed (DB copy saved): %s", e)
+        _, stderr = await asyncio.wait_for(
+            proc.communicate(),
+            timeout=BACKUP_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error("pg_dump timed out after %d seconds — killing", BACKUP_TIMEOUT_SECONDS)
+        proc.kill()
+        await proc.wait()
+        # Clean up partial file
+        if output_path.exists():
+            output_path.unlink()
+        raise RuntimeError(f"pg_dump timed out after {BACKUP_TIMEOUT_SECONDS}s")
 
-    logger.info("Backup saved: %s (%.1f KB) source=%s", filename, size / 1024, source)
+    if proc.returncode != 0:
+        stderr_text = stderr.decode("utf-8", errors="replace").strip() if stderr else ""
+        # Clean up partial file
+        if output_path.exists():
+            output_path.unlink()
+        raise RuntimeError(f"pg_dump failed (rc={proc.returncode}): {stderr_text[:500]}")
+
+    size_mb = output_path.stat().st_size / (1024 * 1024)
+    logger.info("pg_dump completed: %s (%.1f MB)", output_path.name, size_mb)
+
+
+async def _create_backup_file(source: str = "scheduled") -> str:
+    """Create a pg_dump backup file. Returns filename.
+
+    Writes to a .tmp file first, renames on success.
+    """
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"quarry_backup_{timestamp}.dump"
+    final_path = BACKUP_DIR / filename
+    tmp_path = BACKUP_DIR / f".{filename}.tmp"
+
+    try:
+        await _run_pg_dump(tmp_path)
+        tmp_path.rename(final_path)
+    except Exception:
+        # Cleanup temp file on any failure
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
+
+    logger.info("Backup saved: %s (%.1f KB) source=%s",
+                filename, final_path.stat().st_size / 1024, source)
     return filename
 
 
 async def create_backup_now(source: str = "manual") -> str:
-    """Create and persist a backup immediately. Returns filename."""
+    """Create a backup immediately. Returns filename."""
     if not _check_disk_space():
         raise RuntimeError(
             f"Insufficient disk space (need ≥{MIN_FREE_DISK_GB}GB free). Backup aborted."
         )
-    filename, content, backup = await _create_backup_payload()
-    backup["source"] = source
-    content = json.dumps(backup, indent=2, default=str)
-    result = await _persist_backup(filename, content, source=source)
+    filename = await _create_backup_file(source=source)
     _cleanup_old_backups_disk(MAX_KEEP_COUNT)
-    await _cleanup_old_backups_db(MAX_KEEP_COUNT)
-    return result
+    return filename
 
 
-async def _create_backup_file() -> str:
-    """Create a scheduled backup (DB + disk). Returns filename."""
-    return await create_backup_now(source="scheduled")
-
+# ---------------------------------------------------------------------------
+# Backup history (disk-based — no more storing dumps in Postgres)
+# ---------------------------------------------------------------------------
 
 async def list_persisted_backups() -> list[dict]:
-    """List backups from DB (durable), falling back to disk files."""
+    """List backup files on disk."""
     history: list[dict] = []
-    try:
-        async with async_session() as db:
-            result = await db.execute(text("""
-                SELECT filename, size_bytes, source, created_at
-                FROM backup_snapshots
-                ORDER BY created_at DESC
-            """))
-            for row in result.fetchall():
-                history.append({
-                    "filename": row[0],
-                    "size_bytes": row[1] or 0,
-                    "source": row[2] or "scheduled",
-                    "created_at": row[3].isoformat() if row[3] else None,
-                })
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Failed to list DB backups: %s", e)
-
-    if history:
-        return history
-
-    # Disk fallback (legacy / pre-migration)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    for f in sorted(BACKUP_DIR.glob("quarry_backup_*.json"), reverse=True):
+    for f in sorted(BACKUP_DIR.glob("quarry_backup_*.*"), reverse=True):
+        if f.name.startswith("."):
+            continue
         try:
             stat = f.stat()
             history.append({
                 "filename": f.name,
                 "size_bytes": stat.st_size,
                 "source": "disk",
-                "created_at": datetime.utcfromtimestamp(stat.st_mtime).replace(tzinfo=timezone.utc).isoformat(),
+                "created_at": datetime.utcfromtimestamp(stat.st_mtime).replace(
+                    tzinfo=timezone.utc
+                ).isoformat(),
             })
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
+        except Exception:
             pass
     return history
 
 
-async def get_persisted_backup_content(filename: str) -> str | None:
-    try:
-        async with async_session() as db:
-            result = await db.execute(
-                text("SELECT content FROM backup_snapshots WHERE filename = :f"),
-                {"f": filename},
-            )
-            row = result.scalar()
-            if row:
-                return row
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Failed to read DB backup %s: %s", filename, e)
-
+async def get_persisted_backup_content(filename: str) -> bytes | None:
+    """Read a backup file from disk. Returns bytes (dump is binary)."""
     path = BACKUP_DIR / filename
     if path.exists():
-        return path.read_text()
+        return path.read_bytes()
     return None
 
 
 async def delete_persisted_backup(filename: str) -> bool:
-    deleted = False
-    try:
-        async with async_session() as db:
-            result = await db.execute(
-                text("DELETE FROM backup_snapshots WHERE filename = :f"),
-                {"f": filename},
-            )
-            await db.commit()
-            deleted = (result.rowcount or 0) > 0
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Failed to delete DB backup %s: %s", filename, e)
-
     path = BACKUP_DIR / filename
     if path.exists():
         path.unlink()
-        deleted = True
-    return deleted
+        return True
+    return False
 
+
+# ---------------------------------------------------------------------------
+# Latest scheduled backup
+# ---------------------------------------------------------------------------
+
+async def _latest_scheduled_created_at() -> datetime | None:
+    """Timestamp of the most recent scheduled backup file on disk."""
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    backups = sorted(BACKUP_DIR.glob("quarry_backup_*.*"), key=lambda f: f.stat().st_mtime, reverse=True)
+    for f in backups:
+        if f.name.startswith("."):
+            continue
+        try:
+            return _aware(datetime.utcfromtimestamp(f.stat().st_mtime).replace(tzinfo=timezone.utc))
+        except Exception:
+            pass
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Retention
+# ---------------------------------------------------------------------------
 
 def _cleanup_old_backups_disk(keep: int = MAX_KEEP_COUNT):
-    """Keep only the most recent N backup files on disk."""
     if not BACKUP_DIR.exists():
         return
     backups = sorted(
-        BACKUP_DIR.glob("quarry_backup_*.json"),
+        [f for f in BACKUP_DIR.glob("quarry_backup_*.*") if not f.name.startswith(".")],
         key=lambda f: f.stat().st_mtime,
         reverse=True,
     )
@@ -398,6 +452,7 @@ def _cleanup_old_backups_disk(keep: int = MAX_KEEP_COUNT):
             deleted += 1
             logger.info("Deleted old backup: %s", old_file.name)
         except Exception as e:
+            import sentry_sdk
             sentry_sdk.capture_exception(e)
             logger.warning("Failed to delete old backup %s: %s", old_file.name, e)
     if deleted:
@@ -405,8 +460,9 @@ def _cleanup_old_backups_disk(keep: int = MAX_KEEP_COUNT):
 
 
 async def _cleanup_old_backups_db(keep: int = MAX_KEEP_COUNT):
-    """Keep only the most recent N backup rows in the database."""
+    """Clean up legacy backup_snapshots rows if the table exists."""
     try:
+        from sqlalchemy import text
         async with async_session() as db:
             await db.execute(text("""
                 DELETE FROM backup_snapshots
@@ -416,13 +472,11 @@ async def _cleanup_old_backups_db(keep: int = MAX_KEEP_COUNT):
                 )
             """), {"keep": keep})
             await db.commit()
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Failed to prune DB backups: %s", e)
+    except Exception:
+        pass  # Table may not exist or be empty — fine
 
 
 def _check_disk_space() -> bool:
-    """Return False if disk has less than MIN_FREE_DISK_GB available."""
     try:
         usage = shutil.disk_usage(str(BACKUP_DIR.parent))
         free_gb = usage.free / (1024 ** 3)
@@ -434,13 +488,13 @@ def _check_disk_space() -> bool:
             return False
         return True
     except Exception as e:
+        import sentry_sdk
         sentry_sdk.capture_exception(e)
         logger.warning("Disk space check failed: %s — proceeding with backup", e)
         return True
 
 
 def _check_backup_dir_size():
-    """Log a warning if the backup directory is getting large."""
     if not BACKUP_DIR.exists():
         return
     total = sum(f.stat().st_size for f in BACKUP_DIR.glob("*") if f.is_file())
@@ -449,42 +503,28 @@ def _check_backup_dir_size():
         logger.warning("Backup directory is %.1fGB — check retention policy", total_gb)
 
 
-async def _latest_scheduled_created_at() -> datetime | None:
-    """Timestamp of the most recent scheduled snapshot (source of truth for due-ness)."""
-    try:
-        async with async_session() as db:
-            result = await db.execute(text("""
-                SELECT created_at FROM backup_snapshots
-                WHERE source = 'scheduled'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """))
-            row = result.scalar()
-            if isinstance(row, datetime):
-                return _aware(row)
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logger.warning("Failed to read latest scheduled backup: %s", e)
-    return None
-
+# ---------------------------------------------------------------------------
+# Main scheduler entry point
+# ---------------------------------------------------------------------------
 
 async def process_scheduled_backups():
     """Check if a scheduled backup is due and execute it.
 
     Called every 60s from the closure_scheduler loop.
-
-    Due-ness is based on backup_snapshots (did we already take a scheduled
-    backup for this slot?), not on next_run in app_config. next_run is still
-    written for the UI, but a failed config write cannot skip or loop backups.
-
-    Two uvicorn workers both run this loop; a Postgres advisory lock ensures
-    only one worker creates the snapshot.
     """
+    if not _backup_enabled():
+        logger.debug("Backups disabled via QUARRY_BACKUP_ENABLED=false")
+        return
+
+    if _too_soon_after_startup():
+        logger.debug("Backup scheduler: waiting for startup delay (%ds)", STARTUP_DELAY_SECONDS)
+        return
+
+    if _attempted_recently():
+        logger.debug("Backup scheduler: attempt within last %s, skipping", ATTEMPT_COOLDOWN)
+        return
+
     config = await _read_schedule()
-    logger.debug(
-        "Backup scheduler tick — enabled=%s, config_keys=%s",
-        config.get("enabled"), list(config.keys()),
-    )
     if not config.get("enabled"):
         return
 
@@ -494,10 +534,6 @@ async def process_scheduled_backups():
     last_scheduled = await _latest_scheduled_created_at()
 
     if last_scheduled and (now - last_scheduled) < MIN_BACKUP_INTERVAL:
-        logger.debug(
-            "Backup scheduler: last scheduled run was %s ago (min interval %s), skipping",
-            now - last_scheduled, MIN_BACKUP_INTERVAL,
-        )
         return
 
     if not is_backup_due(frequency, time_str, now, last_scheduled):
@@ -506,7 +542,9 @@ async def process_scheduled_backups():
             await _write_schedule(config)
         return
 
-    # ── Only one worker proceeds with the actual backup ──
+    # Only one worker proceeds with the actual backup
+    from ..database import engine
+    from sqlalchemy import text
     async with engine.connect() as lock_conn:
         got_lock = (await lock_conn.execute(
             text("SELECT pg_try_advisory_lock(:k)"),
@@ -515,7 +553,6 @@ async def process_scheduled_backups():
         if not got_lock:
             return
         try:
-            # Re-check inside the lock — the other worker may have just finished
             last_scheduled = await _latest_scheduled_created_at()
             if last_scheduled and (now - last_scheduled) < MIN_BACKUP_INTERVAL:
                 return
@@ -533,18 +570,20 @@ async def process_scheduled_backups():
 async def _execute_scheduled_backup(
     config: dict, frequency: str, time_str: str, now: datetime,
 ):
+    # Record attempt BEFORE starting so crash-restarts won't retry immediately
+    _write_last_attempt(now)
+
     if not _check_disk_space():
         await _audit("Backup SKIPPED: insufficient disk space", action="DELETE")
         return
 
     try:
         logger.info("Backup scheduler: starting scheduled backup")
-        filename = await _create_backup_file()
+        filename = await _create_backup_file(source="scheduled")
         logger.info("Backup scheduler: backup created — %s", filename)
         config["last_run"] = now.isoformat()
         config["next_run"] = _compute_next_run(frequency, time_str, now).isoformat()
         await _write_schedule(config)
-        logger.info("Backup scheduler: next_run updated to %s", config["next_run"])
 
         await _audit(
             f"Scheduled backup completed: {filename}",
@@ -554,29 +593,25 @@ async def _execute_scheduled_backup(
         drive_folder_id = config.get("google_drive_folder_id")
         if drive_folder_id:
             filepath = BACKUP_DIR / filename
-            if not filepath.exists():
-                content = await get_persisted_backup_content(filename)
-                if content:
-                    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-                    filepath.write_text(content)
-            try:
-                from .google_drive import upload_to_drive
-                file_id = upload_to_drive(filepath, drive_folder_id)
-                if file_id:
-                    config["last_drive_upload"] = now.isoformat()
-                    config["last_drive_file_id"] = file_id
-                    await _write_schedule(config)
-                    logger.info("Backup uploaded to Google Drive: %s", file_id)
-                    await _audit(f"Backup uploaded to Google Drive: {file_id}")
-                else:
-                    logger.warning("Google Drive upload returned no file ID")
-            except Exception as e:
-                sentry_sdk.capture_exception(e)
-                logger.error("Google Drive upload failed (backup still saved in DB): %s", e)
-                await _audit(f"Google Drive upload failed: {e}", action="DELETE")
+            if filepath.exists():
+                try:
+                    from .google_drive import upload_to_drive
+                    file_id = upload_to_drive(filepath, drive_folder_id)
+                    if file_id:
+                        config["last_drive_upload"] = now.isoformat()
+                        config["last_drive_file_id"] = file_id
+                        await _write_schedule(config)
+                        logger.info("Backup uploaded to Google Drive: %s", file_id)
+                        await _audit(f"Backup uploaded to Google Drive: {file_id}")
+                    else:
+                        logger.warning("Google Drive upload returned no file ID")
+                except Exception as e:
+                    import sentry_sdk
+                    sentry_sdk.capture_exception(e)
+                    logger.error("Google Drive upload failed (backup still saved on disk): %s", e)
+                    await _audit(f"Google Drive upload failed: {e}", action="DELETE")
 
         _cleanup_old_backups_disk(MAX_KEEP_COUNT)
-        await _cleanup_old_backups_db(MAX_KEEP_COUNT)
         _check_backup_dir_size()
 
     except Exception as e:
@@ -584,6 +619,6 @@ async def _execute_scheduled_backup(
         try:
             import sentry_sdk
             sentry_sdk.capture_exception(e)
-        except Exception as e:
+        except Exception:
             pass
         await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")

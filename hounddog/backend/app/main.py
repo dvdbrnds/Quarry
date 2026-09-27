@@ -157,27 +157,58 @@ async def _backfill_moravian_ids():
 
 
 async def _normalize_permit_plates():
-    """One-shot: strip dashes/spaces from all stored plate strings so OCR matches work."""
+    """One-shot: strip dashes/spaces from all stored plate strings so OCR matches work.
+
+    Uses batched queries (500 at a time) to avoid loading the entire permits
+    table into memory.
+    """
     import re
+    from uuid import UUID
     strip_re = re.compile(r"[\s\-\.•·]+")
     try:
         from .database import async_session
         from .models.permit import Permit
-        async with async_session() as db:
-            from sqlalchemy import select as sa_select
-            result = await db.execute(sa_select(Permit).where(Permit.deleted_at.is_(None)))
-            permits = result.scalars().all()
-            updated = 0
-            for permit in permits:
-                if not permit.plates:
-                    continue
-                normalized = [strip_re.sub("", p.strip().upper()) for p in permit.plates]
-                if normalized != list(permit.plates):
-                    permit.plates = normalized
-                    updated += 1
-            if updated:
-                await db.commit()
-                logger.info("Normalized plates on %d permits (stripped dashes/spaces)", updated)
+        from sqlalchemy import select as sa_select
+
+        batch_size = 500
+        updated_total = 0
+        last_id: UUID | None = None
+
+        while True:
+            async with async_session() as db:
+                q = (
+                    sa_select(Permit)
+                    .where(Permit.deleted_at.is_(None))
+                    .order_by(Permit.id)
+                    .limit(batch_size)
+                )
+                if last_id is not None:
+                    q = q.where(Permit.id > last_id)
+
+                result = await db.execute(q)
+                permits = result.scalars().all()
+                if not permits:
+                    break
+
+                last_id = permits[-1].id
+                batch_updated = 0
+                for permit in permits:
+                    if not permit.plates:
+                        continue
+                    normalized = [strip_re.sub("", p.strip().upper()) for p in permit.plates]
+                    if normalized != list(permit.plates):
+                        permit.plates = normalized
+                        batch_updated += 1
+
+                if batch_updated:
+                    await db.commit()
+                    updated_total += batch_updated
+
+                if len(permits) < batch_size:
+                    break
+
+        if updated_total:
+            logger.info("Normalized plates on %d permits (stripped dashes/spaces)", updated_total)
     except Exception as e:
         logger.exception("Plate normalization backfill failed (non-fatal)")
 
@@ -365,12 +396,15 @@ async def lifespan(app: FastAPI):
     # Run Alembic migrations via subprocess (can't use alembic.command inside async context)
     try:
         import subprocess, os
+        from .config import settings as _cfg
         backend_dir = os.path.dirname(os.path.dirname(__file__))
         alembic_ini = os.path.join(backend_dir, "alembic.ini")
         if os.path.exists(alembic_ini):
-            db_url = str(engine.url)
+            # Pass the raw DATABASE_URL (with real password) — str(engine.url)
+            # masks the password as *** which causes auth failures.
+            db_url = _cfg.database_url
             result = subprocess.run(
-                ["python", "-m", "alembic", "-x", f"dburl={db_url}", "upgrade", "head"],
+                ["python", "-m", "alembic", "upgrade", "head"],
                 cwd=backend_dir,
                 capture_output=True, text=True, timeout=60,
                 env={**os.environ, "DATABASE_URL": db_url},

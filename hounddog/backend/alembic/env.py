@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -12,15 +13,18 @@ from app.models import (  # noqa: F401
     EnforcementSettings, AuditLog, LotClosure,
 )
 
-import os
-
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Allow DB URL override from environment (used by startup migration subprocess)
+# Single source of truth: DATABASE_URL from environment.
+# The app's main.py passes this when spawning the Alembic subprocess.
+# Falls back to alembic.ini sqlalchemy.url only for local dev.
 db_url = os.environ.get("DATABASE_URL")
 if db_url:
+    # Ensure the URL uses the asyncpg driver (Alembic uses async_engine_from_config)
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata

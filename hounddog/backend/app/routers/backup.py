@@ -75,32 +75,18 @@ async def list_tables(
 async def export_backup(
     db: AsyncSession = Depends(get_db),
 ):
-    """Stream a full JSON backup of all data tables."""
-    tables = await _get_table_names()
-    payload: dict[str, list[dict]] = {}
-
-    for tbl in tables:
-        result = await db.execute(text(f'SELECT * FROM "{tbl}"'))
-        columns = list(result.keys())
-        rows = []
-        for row in result.fetchall():
-            rows.append({col: _serialise(row[i]) for i, col in enumerate(columns)})
-        payload[tbl] = rows
-
-    backup = {
-        "format": "quarry_backup_v1",
-        "exported_at": datetime.utcnow().isoformat(),
-        "tables": payload,
-    }
-
-    content = json.dumps(backup, indent=2, default=str)
-    buf = io.BytesIO(content.encode("utf-8"))
-    filename = f"quarry_backup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
-
-    return StreamingResponse(
-        buf,
-        media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    """Create a pg_dump backup and return it as a download."""
+    from ..services.backup_scheduler import create_backup_now, BACKUP_DIR
+    try:
+        filename = await create_backup_now(source="manual_export")
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        raise HTTPException(500, f"Export failed: {e}")
+    filepath = BACKUP_DIR / filename
+    return FileResponse(
+        path=str(filepath),
+        media_type="application/octet-stream",
+        filename=filename,
     )
 
 
@@ -358,9 +344,9 @@ async def disable_schedule(db: AsyncSession = Depends(get_db)):
 
 @router.post("/run-now")
 async def run_backup_now(db: AsyncSession = Depends(get_db)):
-    """Create a backup immediately and store it in the database (survives redeploy)."""
+    """Create a pg_dump backup immediately."""
     from datetime import timezone
-    from ..services.backup_scheduler import create_backup_now
+    from ..services.backup_scheduler import create_backup_now, BACKUP_DIR
 
     try:
         filename = await create_backup_now(source="manual")
@@ -378,14 +364,8 @@ async def run_backup_now(db: AsyncSession = Depends(get_db)):
     drive_file_id = None
     if drive_folder_id:
         try:
-            from ..services.backup_scheduler import BACKUP_DIR, get_persisted_backup_content
             from ..services.google_drive import upload_to_drive
             filepath = BACKUP_DIR / filename
-            if not filepath.exists():
-                content = await get_persisted_backup_content(filename)
-                if content:
-                    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-                    filepath.write_text(content)
             if filepath.exists():
                 drive_file_id = upload_to_drive(filepath, drive_folder_id)
                 if drive_file_id:
@@ -416,15 +396,15 @@ async def download_backup_file(filename: str):
     """Download a specific stored backup file."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(400, "Invalid filename")
-    from ..services.backup_scheduler import get_persisted_backup_content
-    content = await get_persisted_backup_content(filename)
-    if not content:
+    from ..services.backup_scheduler import BACKUP_DIR
+    filepath = BACKUP_DIR / filename
+    if not filepath.exists():
         raise HTTPException(404, "Backup file not found")
-    buf = io.BytesIO(content.encode("utf-8"))
-    return StreamingResponse(
-        buf,
-        media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    media = "application/octet-stream" if filename.endswith(".dump") else "application/json"
+    return FileResponse(
+        path=str(filepath),
+        media_type=media,
+        filename=filename,
     )
 
 
