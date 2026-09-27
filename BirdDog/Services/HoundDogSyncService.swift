@@ -676,6 +676,57 @@ final class HoundDogSyncService: ObservableObject {
         _ = try await uploadTicket(ticket)
     }
 
+    // MARK: - Void Ticket
+
+    struct VoidTicketResponse {
+        let status: String
+        let ticketId: String
+    }
+
+    func voidTicket(ticketId: String, officerEmail: String, reason: String = "") async throws -> VoidTicketResponse {
+        let settings = AppSettings.shared
+        guard !settings.houndDogURL.isEmpty else {
+            throw SyncError.serverError(0)
+        }
+
+        guard let url = URL(string: "\(settings.houndDogURL)/api/sync/tickets/\(ticketId)/void") else {
+            throw SyncError.serverError(0)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(settings.houndDogAPIKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "officer_email": officerEmail,
+            "reason": reason,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SyncError.serverError(0)
+        }
+
+        if http.statusCode == 403 {
+            throw SyncError.serverError(403, detail: "You can only void tickets you issued")
+        }
+        if http.statusCode == 400 {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw SyncError.serverError(400, detail: detail)
+        }
+        guard http.statusCode == 200 else {
+            throw SyncError.serverError(http.statusCode)
+        }
+
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        return VoidTicketResponse(
+            status: json["status"] as? String ?? "voided",
+            ticketId: json["ticket_id"] as? String ?? ticketId
+        )
+    }
+
     // MARK: - Plate Corrections
 
     struct PlateCorrectionPayload: Encodable {

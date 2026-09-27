@@ -8,7 +8,7 @@ from sqlalchemy import select, func, or_, cast, Date, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
-from ..auth.okta import get_current_user, OktaUser, require_admin, require_office
+from ..auth.okta import get_current_user, OktaUser, require_admin, require_office, require_role
 from ..config import settings
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
@@ -1026,13 +1026,16 @@ async def void_ticket(
     ticket_id: uuid.UUID,
     body: VoidRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    user: OktaUser = Depends(require_role("admin", "operator")),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
     if ticket.status == "paid":
         raise HTTPException(400, "Cannot void a paid ticket")
+    if not user.is_admin:
+        if not ticket.officer_email or ticket.officer_email.lower() != user.email.lower():
+            raise HTTPException(403, "Officers can only void tickets they issued")
     ticket.status = "voided"
     if body and body.reason:
         ticket.void_reason = body.reason.strip()[:1024]

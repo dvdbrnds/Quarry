@@ -1198,3 +1198,40 @@ async def student_search(
             plates=p.plates or [],
         ))
     return results
+
+
+class OfficerVoidRequest(BaseModel):
+    officer_email: str
+    reason: str = ""
+
+
+@router.post("/tickets/{ticket_id}/void", status_code=200)
+async def officer_void_ticket(
+    ticket_id: str,
+    body: OfficerVoidRequest,
+    device: Device = Depends(get_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Allow an officer to void a ticket they issued, from BirdDog."""
+    import uuid as _uuid
+    try:
+        tid = _uuid.UUID(ticket_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid ticket ID")
+
+    ticket = await db.get(Ticket, tid)
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    if ticket.status == "paid":
+        raise HTTPException(400, "Cannot void a paid ticket")
+    if ticket.status == "voided":
+        return {"status": "already_voided", "ticket_id": str(ticket.id)}
+    if not ticket.officer_email or ticket.officer_email.lower() != body.officer_email.strip().lower():
+        raise HTTPException(403, "Officers can only void tickets they issued")
+
+    ticket.status = "voided"
+    if body.reason.strip():
+        ticket.void_reason = body.reason.strip()[:1024]
+    await db.flush()
+    await db.refresh(ticket)
+    return {"status": "voided", "ticket_id": str(ticket.id)}

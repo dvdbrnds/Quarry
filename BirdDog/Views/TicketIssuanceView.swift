@@ -674,6 +674,11 @@ struct TicketConfirmationView: View {
 
     @State private var isPrinting = false
     @State private var printError: String?
+    @State private var showVoidConfirm = false
+    @State private var voidReason = ""
+    @State private var isVoiding = false
+    @State private var isVoided = false
+    @State private var voidError: String?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -865,6 +870,41 @@ struct TicketConfirmationView: View {
                     .multilineTextAlignment(.center)
             }
 
+            if !isWarning && !result.isDuplicate {
+                Divider()
+                    .padding(.vertical, 4)
+
+                if isVoided {
+                    HStack(spacing: 8) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                        Text("Ticket Voided")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                    }
+                } else {
+                    Button(role: .destructive) {
+                        showVoidConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "xmark.circle")
+                            Text(isVoiding ? "Voiding…" : "Void This Ticket")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .disabled(isVoiding)
+                }
+
+                if let voidError {
+                    Text(voidError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
+            }
+
             Button("Done") { dismiss() }
                 .buttonStyle(.bordered)
                 .tint(result.notificationSent ? .accentColor : nil)
@@ -877,6 +917,13 @@ struct TicketConfirmationView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Done") { dismiss() }
             }
+        }
+        .alert("Void Ticket?", isPresented: $showVoidConfirm) {
+            TextField("Reason (optional)", text: $voidReason)
+            Button("Void", role: .destructive) { performVoid() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will void the ticket for plate \(plate). This action cannot be undone.")
         }
         .onAppear {
             if !result.notificationSent && printerService.autoPrintEnabled {
@@ -951,6 +998,33 @@ struct TicketConfirmationView: View {
         #else
         printError = "Printing is not available in this build."
         #endif
+    }
+
+    private func performVoid() {
+        isVoiding = true
+        voidError = nil
+        Task {
+            do {
+                _ = try await HoundDogSyncService.shared.voidTicket(
+                    ticketId: result.ticketId,
+                    officerEmail: officerEmail,
+                    reason: voidReason.trimmingCharacters(in: .whitespaces)
+                )
+                isVoided = true
+            } catch let error as HoundDogSyncService.SyncError {
+                switch error {
+                case .serverError(403, _):
+                    voidError = "You can only void tickets you issued."
+                case .serverError(400, let detail):
+                    voidError = detail ?? "Cannot void this ticket."
+                default:
+                    voidError = "Failed to void ticket. Try again."
+                }
+            } catch {
+                voidError = "Failed to void ticket. Try again."
+            }
+            isVoiding = false
+        }
     }
 
     private func generateQRCode(from string: String) -> UIImage? {
