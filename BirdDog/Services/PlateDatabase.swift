@@ -346,22 +346,58 @@ final class PlateDatabase {
     }
 
     /// Upsert a single `PermitRecord` keyed on `entry.plateNormalized`.
-    /// Updates all fields if a record already exists; inserts otherwise.
+    /// If a record already exists with an active "real" permit and the
+    /// incoming entry is inactive/expired, the core permit fields are NOT
+    /// downgraded — only additive fields (HC, lot zones, never-ticket) are
+    /// merged. This prevents an expired guest permit from overwriting an
+    /// active commuter permit during incremental syncs.
     func upsertRecord(_ entry: PermitEntry) throws {
         let plate = entry.plateNormalized.trimmingCharacters(in: .whitespaces)
         guard !plate.isEmpty else { return }
 
         if let existing = lookup(normalizedPlate: plate) {
-            existing.plateRaw = entry.plateRaw
-            existing.plateState = entry.plateState
-            existing.ownerName = entry.ownerName
-            existing.permitNumber = entry.permitNumber
-            existing.permitType = entry.permitType
-            existing.permitStatus = entry.permitStatus
-            existing.vehicleDescription = entry.vehicleDescription
-            existing.issuedDate = entry.parsedIssuedDate
-            existing.expirationDate = entry.parsedExpirationDate
-            existing.beaconId = entry.beaconId
+            let activeStatuses: Set<String> = ["active", "valid"]
+            let existingIsActive = activeStatuses.contains(existing.permitStatus.lowercased())
+            let incomingIsActive = activeStatuses.contains(entry.permitStatus.lowercased())
+
+            // Guest/visitor permit types that should never overwrite a real permit
+            let guestTypes: Set<String> = [
+                "student_guest", "visitor_day", "visitor_vendor",
+                "visitor_vendor_longterm", "visitor_contracted_staff",
+            ]
+            let incomingIsGuest = guestTypes.contains(entry.permitType.lowercased())
+            let existingIsGuest = guestTypes.contains(existing.permitType.lowercased())
+
+            // Decide whether to update core permit fields:
+            // - Always update if incoming is active (regardless of existing)
+            // - Always update if existing is also inactive
+            // - Never downgrade an active real permit with an expired/inactive entry
+            // - Never let a guest permit overwrite a real permit of equal or better status
+            let shouldUpdateCore: Bool
+            if incomingIsActive {
+                // Active incoming: update unless it's a guest trying to overwrite a real active permit
+                shouldUpdateCore = !(incomingIsGuest && existingIsActive && !existingIsGuest)
+            } else if existingIsActive {
+                // Existing is active, incoming is not: never downgrade
+                shouldUpdateCore = false
+            } else {
+                // Both inactive: update (latest data wins)
+                shouldUpdateCore = true
+            }
+
+            if shouldUpdateCore {
+                existing.plateRaw = entry.plateRaw
+                existing.plateState = entry.plateState
+                existing.ownerName = entry.ownerName
+                existing.permitNumber = entry.permitNumber
+                existing.permitType = entry.permitType
+                existing.permitStatus = entry.permitStatus
+                existing.vehicleDescription = entry.vehicleDescription
+                existing.issuedDate = entry.parsedIssuedDate
+                existing.expirationDate = entry.parsedExpirationDate
+                existing.beaconId = entry.beaconId
+            }
+
             // Merge HC: only overwrite if the incoming entry has HC,
             // or if neither has HC. Never downgrade HC to "none".
             let incomingHC = entry.hcStatus ?? "none"
@@ -375,8 +411,10 @@ final class PlateDatabase {
                 existing.lotZone = existing.lotZone.isEmpty ? entry.lotZone : "\(existing.lotZone), \(entry.lotZone)"
             }
             // Never-ticket flag
-            existing.neverTicket = entry.neverTicket ?? false
-            existing.neverTicketReason = entry.neverTicketReason
+            if entry.neverTicket ?? false {
+                existing.neverTicket = true
+                existing.neverTicketReason = entry.neverTicketReason ?? existing.neverTicketReason
+            }
             existing.importedAt = Date()
         } else {
             let record = PermitRecord(

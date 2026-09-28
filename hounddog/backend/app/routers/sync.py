@@ -208,6 +208,41 @@ async def sync_permits(
     finally:
         db.autoflush = prev_autoflush
 
+    # For incremental syncs: also include any active permits that share a
+    # plate with the changed permits. This ensures BirdDog always has the
+    # "winning" permit for each plate (e.g., an expired guest permit won't
+    # shadow a real active commuter permit on the same plate).
+    if since and permits:
+        changed_plates: set[str] = set()
+        changed_ids: set = {p.id for p in permits}
+        for p in permits:
+            if p.plates:
+                for plate in p.plates:
+                    normalized = plate.upper().replace(" ", "").replace("-", "")
+                    if normalized:
+                        changed_plates.add(normalized)
+
+        if changed_plates:
+            # Find active permits that share any plate with the changed set
+            # but weren't already included in the results
+            all_active = (await db.execute(
+                select(Permit).where(
+                    Permit.deleted_at.is_(None),
+                    Permit.status.in_(["active", "pending_payment"]),
+                )
+            )).scalars().all()
+            for ap in all_active:
+                if ap.id in changed_ids:
+                    continue
+                if ap.plates:
+                    ap_plates = {
+                        pl.upper().replace(" ", "").replace("-", "")
+                        for pl in ap.plates if pl
+                    }
+                    if ap_plates & changed_plates:
+                        permits.append(ap)
+                        changed_ids.add(ap.id)
+
     return SyncPermitsResponse(
         permits=permits,
         server_timestamp=datetime.now(timezone.utc),
