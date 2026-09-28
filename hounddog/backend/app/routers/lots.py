@@ -39,6 +39,19 @@ logger = logging.getLogger("quarry.lots")
 
 router = SafeRouter(dependencies=[Depends(get_current_user)])
 
+# All permit types that are allowed in FSC lots after 4pm and on weekends
+_FSC_AFTER_HOURS_TYPES = [
+    "commuter_undergrad", "commuter_grad", "premium_commuter",
+    "north_premium_resident", "north_guaranteed_resident",
+    "steel_field_resident",
+    "south_premium_resident", "south_guaranteed_resident",
+    "south_standalone",
+    "faculty_staff",
+    "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff",
+    "contracted_staff",
+    "student_guest",
+]
+
 COMMUTER_EVENING_SCHEDULE = [
     {
         "season": "year_round",
@@ -48,21 +61,21 @@ COMMUTER_EVENING_SCHEDULE = [
                 "start": "07:00",
                 "end": "16:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": ["faculty_staff", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff"],
+                "allowed_permit_types": ["faculty_staff", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"],
                 "label": "Faculty/Staff + Visitors (Weekday Daytime)",
             },
             {
                 "start": "16:00",
                 "end": "07:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": [],
+                "allowed_permit_types": _FSC_AFTER_HOURS_TYPES,
                 "label": "All Permit Holders (Evenings & Overnight)",
             },
             {
                 "start": "00:00",
                 "end": "23:59",
                 "days": ["sat", "sun"],
-                "allowed_permit_types": [],
+                "allowed_permit_types": _FSC_AFTER_HOURS_TYPES,
                 "label": "All Permit Holders (Weekends)",
             },
         ],
@@ -82,7 +95,7 @@ COMMUTER_LOT_SCHEDULE = [
                 "days": ["mon", "tue", "wed", "thu", "fri"],
                 "allowed_permit_types": [
                     "commuter_undergrad", "commuter_grad", "premium_commuter",
-                    "faculty_staff",
+                    "faculty_staff", "contracted_staff",
                     "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff",
                     "student_guest",
                 ],
@@ -92,14 +105,14 @@ COMMUTER_LOT_SCHEDULE = [
                 "start": "16:00",
                 "end": "07:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": [],
+                "allowed_permit_types": _FSC_AFTER_HOURS_TYPES,
                 "label": "All Permit Holders (Evenings & Overnight)",
             },
             {
                 "start": "00:00",
                 "end": "23:59",
                 "days": ["sat", "sun"],
-                "allowed_permit_types": [],
+                "allowed_permit_types": _FSC_AFTER_HOURS_TYPES,
                 "label": "All Permit Holders (Weekends)",
             },
         ],
@@ -122,7 +135,7 @@ RESIDENT_LOT_SCHEDULE = [
                     "steel_field_resident",
                     "south_premium_resident", "south_guaranteed_resident",
                     "south_standalone",
-                    "faculty_staff",
+                    "faculty_staff", "contracted_staff",
                     "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff",
                     "student_guest",
                 ],
@@ -132,14 +145,14 @@ RESIDENT_LOT_SCHEDULE = [
                 "start": "16:00",
                 "end": "07:00",
                 "days": ["mon", "tue", "wed", "thu", "fri"],
-                "allowed_permit_types": [],
+                "allowed_permit_types": _FSC_AFTER_HOURS_TYPES,
                 "label": "All Permit Holders (Evenings & Overnight)",
             },
             {
                 "start": "00:00",
                 "end": "23:59",
                 "days": ["sat", "sun"],
-                "allowed_permit_types": [],
+                "allowed_permit_types": _FSC_AFTER_HOURS_TYPES,
                 "label": "All Permit Holders (Weekends)",
             },
         ],

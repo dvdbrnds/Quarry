@@ -418,7 +418,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 39
+    SCHEMA_VERSION = 40
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1304,6 +1304,19 @@ async def lifespan(app: FastAPI):
                SELECT gen_random_uuid(), al.user_sub, 'brandesd@moravian.edu', 'David Brands', 'cjis_admin', true, 'migration-v39', now(), now(), now()
                FROM audit_log al WHERE al.user_email = 'brandesd@moravian.edu' AND al.user_sub != '' ORDER BY al.timestamp DESC LIMIT 1
                ON CONFLICT DO NOTHING""",
+            # ── v40: FSC lot schedule — explicitly list all permit types in after-hours/weekend rules
+            #         (fixes "Wrong Lot" for premium_commuter, north_guaranteed, north_premium after 4pm)
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff"],"label":"Faculty/Staff + Contractors + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE name IN ('A', 'F', 'H', 'J', 'M', 'N', 'O', 'R', 'S', 'W')""",
+            # Also update Commuter lots (C, PC) with explicit after-hours types
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Commuter + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE designation_code IN ('C', 'PC')""",
+            # Also update Resident lots (RS, PR) with explicit after-hours types
+            """UPDATE parking_lots
+               SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Residents + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
+               WHERE designation_code IN ('RS', 'PR')""",
             ]
             for migration in migrations:
                 try:
