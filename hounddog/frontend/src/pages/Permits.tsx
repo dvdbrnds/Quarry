@@ -101,6 +101,7 @@ function CancelPermitModal({
   const [notes, setNotes] = useState("");
   const [refundAmount, setRefundAmount] = useState<number>(0);
   const [prorationMode, setProrationMode] = useState<string>("none");
+  const [skipWaitlist, setSkipWaitlist] = useState(false);
 
   useEffect(() => {
     if (!open || !permit) {
@@ -109,6 +110,7 @@ function CancelPermitModal({
       setNotes("");
       setRefundAmount(0);
       setProrationMode("none");
+      setSkipWaitlist(false);
       return;
     }
     (async () => {
@@ -136,6 +138,10 @@ function CancelPermitModal({
   useEffect(() => {
     if (!preview) return;
     if (prorationMode === "custom") return;
+    if (prorationMode === "no_refund") {
+      setRefundAmount(0);
+      return;
+    }
     const val = preview.proration_options[prorationMode as keyof typeof preview.proration_options];
     if (val !== undefined) {
       setRefundAmount(parseFloat(val) || 0);
@@ -153,7 +159,7 @@ function CancelPermitModal({
       const res = await fetch(`/api/permits/${permit.id}/cancel`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ reason, notes, refund_amount: refundAmount.toFixed(2) }),
+        body: JSON.stringify({ reason, notes, refund_amount: refundAmount.toFixed(2), skip_waitlist: skipWaitlist }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -247,6 +253,7 @@ function CancelPermitModal({
                   value={prorationMode}
                   onChange={(v) => setProrationMode(v)}
                   options={[
+                    { label: "No refund — $0.00", value: "no_refund" },
                     { label: `Full refund — $${preview.proration_options.none}`, value: "none" },
                     { label: `By week — ${preview.remaining_weeks} of ${preview.term_weeks} weeks — $${preview.proration_options.weekly}`, value: "weekly" },
                     { label: `By day — ${preview.remaining_days} of ${preview.term_days} days — $${preview.proration_options.daily}`, value: "daily" },
@@ -276,14 +283,30 @@ function CancelPermitModal({
           {preview.waitlist && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
               <div className="font-medium text-green-800 mb-1">Waitlist</div>
-              <div>
-                Next in line: <span className="font-medium">{preview.waitlist.name}</span>{" "}
-                ({preview.waitlist.email})
-              </div>
-              <div className="text-xs text-green-700 mt-1">
-                They will be offered this spot at ${preview.waitlist_offer_price} for
-                the remaining {preview.remaining_days} days.
-              </div>
+              {!skipWaitlist && (
+                <>
+                  <div>
+                    Next in line: <span className="font-medium">{preview.waitlist.name}</span>{" "}
+                    ({preview.waitlist.email})
+                  </div>
+                  <div className="text-xs text-green-700 mt-1">
+                    They will be offered this spot at ${preview.waitlist_offer_price} for
+                    the remaining {preview.remaining_days} days.
+                  </div>
+                </>
+              )}
+              <Checkbox
+                className="mt-2"
+                checked={skipWaitlist}
+                onChange={e => setSkipWaitlist(e.target.checked)}
+              >
+                <span className="text-sm">Skip waitlist advancement</span>
+              </Checkbox>
+              {skipWaitlist && (
+                <div className="text-xs text-amber-700 mt-1">
+                  The spot will not be offered to the next person in line.
+                </div>
+              )}
             </div>
           )}
 

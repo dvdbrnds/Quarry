@@ -1235,6 +1235,7 @@ class CancelRequest(BaseModel):
     reason: str
     notes: str = ""
     refund_amount: Decimal = Decimal("0.00")
+    skip_waitlist: bool = False
 
 
 def _term_window(permit: Permit, pt: PermitType | None) -> tuple[date, date, int, int, int]:
@@ -1470,7 +1471,7 @@ async def cancel_permit(
     await _notify_permit_change("updated", 1)
 
     waitlist_offered = None
-    if pt:
+    if pt and not data.skip_waitlist:
         from ..services.lottery_v2_runner import offer_vacated_seat
         offered = await offer_vacated_seat(db, pt, end if remaining_term_ok(end) else None)
         if offered:
@@ -1482,15 +1483,17 @@ async def cancel_permit(
             }
 
     logger.info(
-        "%s cancelled permit %s reason=%s refund=$%s waitlist=%s",
+        "%s cancelled permit %s reason=%s refund=$%s waitlist=%s skip_waitlist=%s",
         office.email, permit.id, data.reason, refund_amount,
         waitlist_offered["email"] if waitlist_offered else None,
+        data.skip_waitlist,
     )
     return {
         "status": "cancelled",
         "permit_id": str(permit.id),
         **refund_result,
         "waitlist_offered": waitlist_offered,
+        "waitlist_skipped": data.skip_waitlist,
     }
 
 
