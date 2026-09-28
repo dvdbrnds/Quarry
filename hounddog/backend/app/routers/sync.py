@@ -185,12 +185,25 @@ async def sync_permits(
     full_sync = since is None
     query = select(Permit)
 
+    # Exclude expired guest permits older than 30 days — they're kept in the
+    # DB as records but shouldn't be synced to BirdDog for plate checks.
+    from sqlalchemy import and_, not_
+    guest_types = ("student_guest", "visitor_day", "visitor_vendor",
+                   "visitor_vendor_longterm", "visitor_contracted_staff")
+    stale_guest_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    stale_guest = and_(
+        Permit.permit_type.in_(guest_types),
+        Permit.status != "active",
+        Permit.end_date.isnot(None),
+        Permit.end_date < stale_guest_cutoff.date(),
+    )
+
     if since:
         query = query.where(
             or_(Permit.updated_at > since, Permit.deleted_at > since)
-        )
+        ).where(not_(stale_guest))
     else:
-        query = query.where(Permit.deleted_at.is_(None))
+        query = query.where(Permit.deleted_at.is_(None)).where(not_(stale_guest))
 
     # Order so cancelled/expired permits come first — when BirdDog merges
     # duplicate plates, active permits will overwrite inactive ones.
