@@ -96,6 +96,23 @@ async def register_guest(
     if data.check_in < date.today():
         raise HTTPException(400, "Check-in date cannot be in the past.")
 
+    # Reject if the guest plate already belongs to an active permit
+    guest_plate_normalized = (data.guest_plate or "").strip().upper().replace(" ", "").replace("-", "")
+    if guest_plate_normalized:
+        existing_permit = (await db.execute(
+            select(Permit).where(
+                Permit.deleted_at.is_(None),
+                Permit.status == "active",
+                Permit.permit_type != "student_guest",
+                Permit.plates.any(guest_plate_normalized),
+            ).limit(1)
+        )).scalars().first()
+        if existing_permit:
+            raise HTTPException(
+                400,
+                "This plate already has an active parking permit and does not need a guest registration."
+            )
+
     stay_days = (data.check_out - data.check_in).days
     if stay_days < 1:
         raise HTTPException(400, "Check-out must be after check-in.")
