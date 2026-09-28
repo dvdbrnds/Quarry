@@ -185,12 +185,12 @@ async def sync_permits(
     full_sync = since is None
     query = select(Permit)
 
-    # Exclude expired guest permits older than 30 days — they're kept in the
+    # Exclude expired guest permits older than 10 days — they're kept in the
     # DB as records but shouldn't be synced to BirdDog for plate checks.
     from sqlalchemy import and_, not_
     guest_types = ("student_guest", "visitor_day", "visitor_vendor",
                    "visitor_vendor_longterm", "visitor_contracted_staff")
-    stale_guest_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    stale_guest_cutoff = datetime.now(timezone.utc) - timedelta(days=10)
     stale_guest = and_(
         Permit.permit_type.in_(guest_types),
         Permit.status != "active",
