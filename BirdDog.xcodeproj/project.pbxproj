@@ -13,6 +13,11 @@
 		08974B307700E90A8928F832 /* DataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F5636944CED0E09729E861 /* DataProvider.swift */; };
 		0FF55B00E57C6DC9EAEF1E42 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B61D8275908504C5822FC6AE /* LaunchScreen.storyboard */; };
 		146E2D4B87A2D168A6F5B247 /* PlateReaderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92DF7BA80FD5E43ACA636FAC /* PlateReaderViewModel.swift */; };
+		1A0E3F1C8B2D4A9E7C5F6D81 /* CJIDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0E3F1C8B2D4A9E7C5F6D82 /* CJIDataStore.swift */; };
+		1A0E3F1C8B2D4A9E7C5F6D83 /* CJISSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0E3F1C8B2D4A9E7C5F6D84 /* CJISSessionManager.swift */; };
+		1A0E3F1C8B2D4A9E7C5F6D85 /* JailbreakDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0E3F1C8B2D4A9E7C5F6D86 /* JailbreakDetector.swift */; };
+		1A0E3F1C8B2D4A9E7C5F6D87 /* JNETLookupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0E3F1C8B2D4A9E7C5F6D88 /* JNETLookupView.swift */; };
+		1A0E3F1C8B2D4A9E7C5F6D89 /* JNETService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0E3F1C8B2D4A9E7C5F6D8A /* JNETService.swift */; };
 		1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3E09DFE576A65B9E6C3329 /* ContentView.swift */; };
 		1E92882A49F81E47B67DE436 /* TicketReceiptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4F388DD2760B3DE754574DE /* TicketReceiptBuilder.swift */; };
 		23C3AD4F7FC3A5720F12ED8D /* ParkingLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */; };
@@ -90,6 +95,11 @@
 		07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateDatabase.swift; sourceTree = "<group>"; };
 		0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateStatus.swift; sourceTree = "<group>"; };
 		116387B05A06763086E263C1 /* BenchmarkCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkCompareView.swift; sourceTree = "<group>"; };
+		1A0E3F1C8B2D4A9E7C5F6D82 /* CJIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CJIDataStore.swift; sourceTree = "<group>"; };
+		1A0E3F1C8B2D4A9E7C5F6D84 /* CJISSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CJISSessionManager.swift; sourceTree = "<group>"; };
+		1A0E3F1C8B2D4A9E7C5F6D86 /* JailbreakDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JailbreakDetector.swift; sourceTree = "<group>"; };
+		1A0E3F1C8B2D4A9E7C5F6D88 /* JNETLookupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JNETLookupView.swift; sourceTree = "<group>"; };
+		1A0E3F1C8B2D4A9E7C5F6D8A /* JNETService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JNETService.swift; sourceTree = "<group>"; };
 		1224AF2816186DF1A8565C9F /* DiagnosticCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticCaptureView.swift; sourceTree = "<group>"; };
 		18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryManager.swift; sourceTree = "<group>"; };
 		19EEEB4BA36CBBFEA0F0E4EE /* CalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarStore.swift; sourceTree = "<group>"; };
@@ -220,11 +230,24 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		1A0E3F1C8B2D4A9E7C5F6D8B /* JNET */ = {
+			isa = PBXGroup;
+			children = (
+				1A0E3F1C8B2D4A9E7C5F6D82 /* CJIDataStore.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D84 /* CJISSessionManager.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D86 /* JailbreakDetector.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D88 /* JNETLookupView.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D8A /* JNETService.swift */,
+			);
+			path = JNET;
+			sourceTree = "<group>";
+		};
 		7633F04F8A234B0E341D30EC /* BirdDog */ = {
 			isa = PBXGroup;
 			children = (
 				7327FBC7D39DA888973428AA /* APP_STORE_REVIEW_NOTES.md */,
 				E8BE159D74C944022E6BF7BD /* App */,
+				1A0E3F1C8B2D4A9E7C5F6D8B /* JNET */,
 				23F7BA4979B2D798151C9E32 /* Models */,
 				2FA41B1B577F89D2982CA9D1 /* Resources */,
 				42549E04E38CE9D07441104A /* Services */,
@@ -457,6 +480,11 @@
 				4333F42CBBD28BA0CAF92C82 /* CameraLogView.swift in Sources */,
 				AEE13340B14ED99625381196 /* CameraPreviewView.swift in Sources */,
 				69CAE303D623B0FF8901592F /* CameraService.swift in Sources */,
+				1A0E3F1C8B2D4A9E7C5F6D81 /* CJIDataStore.swift in Sources */,
+				1A0E3F1C8B2D4A9E7C5F6D83 /* CJISSessionManager.swift in Sources */,
+				1A0E3F1C8B2D4A9E7C5F6D85 /* JailbreakDetector.swift in Sources */,
+				1A0E3F1C8B2D4A9E7C5F6D87 /* JNETLookupView.swift in Sources */,
+				1A0E3F1C8B2D4A9E7C5F6D89 /* JNETService.swift in Sources */,
 				9BC6C7A9621CBA14F935AA79 /* CandidateVoter.swift in Sources */,
 				1DB06ED6381E5A047E6133E5 /* ContentView.swift in Sources */,
 				08974B307700E90A8928F832 /* DataProvider.swift in Sources */,
