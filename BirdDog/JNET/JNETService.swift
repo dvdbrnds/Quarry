@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// API client for JNET endpoints on the Quarry backend.
 /// CJI response data is kept in memory only — never persisted.
@@ -19,8 +20,9 @@ final class JNETService: ObservableObject {
     /// A 404 means the feature is invisible to this user (stealth mode) —
     /// treated identically to "not authorized" with no error surfaced.
     func checkStatus() async {
-        guard let baseURL = AppSettings.shared.serverURL,
-              let url = URL(string: "\(baseURL)/api/jnet/status") else {
+        let base = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !base.isEmpty,
+              let url = URL(string: "\(base)/api/jnet/status") else {
             clearStatus()
             return
         }
@@ -67,8 +69,9 @@ final class JNETService: ObservableObject {
 
     /// Perform a JNET plate lookup. Returns result in memory only.
     func plateLookup(plateNumber: String, state: String = "PA") async throws -> JNETLookupResult {
-        guard let baseURL = AppSettings.shared.serverURL,
-              let url = URL(string: "\(baseURL)/api/jnet/plate-lookup") else {
+        let base = AppSettings.shared.houndDogURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !base.isEmpty,
+              let url = URL(string: "\(base)/api/jnet/plate-lookup") else {
             throw JNETServiceError.notConfigured
         }
 
@@ -80,7 +83,7 @@ final class JNETService: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        if let deviceId = DeviceInfo.deviceIdentifier {
+        if let deviceId = UIDevice.current.identifierForVendor?.uuidString {
             request.setValue(deviceId, forHTTPHeaderField: "X-BirdDog-Device-Id")
         }
 
