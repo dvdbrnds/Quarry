@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import MachO
 
 /// CJIS Security Policy v6.1 — 5.20.
 /// Detects jailbroken devices. If any check fails, JNET features are disabled.
