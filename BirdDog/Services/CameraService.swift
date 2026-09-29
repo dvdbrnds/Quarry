@@ -72,7 +72,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var frameCount: UInt64 = 0
     private var frameSkip: Int = 2
     private var isProcessing = false
-    private var cachedOrientation: CGImagePropertyOrientation = .right
+    private var cachedOrientation: CGImagePropertyOrientation = .left
 
     private(set) var isRunning = false
     private(set) var isUsingExternalCamera = false
@@ -256,7 +256,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             case .right: degrees = 90
             case .down:  degrees = 180
             case .left:  degrees = 270
-            default:     degrees = 90
+            default:     degrees = 270
             }
         }
         let rotatedImage = Self.rotateImage(rawCG, degrees: degrees)

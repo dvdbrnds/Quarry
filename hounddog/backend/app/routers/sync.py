@@ -10,25 +10,6 @@ from ..services.plate_utils import normalize_plate
 
 logger = logging.getLogger("quarry.sync")
 
-
-def _rotate_jpeg_180(data: bytes) -> bytes:
-    """Rotate a JPEG image 180° and return the re-encoded bytes.
-
-    BirdDog's iPad camera consistently produces upside-down images.
-    Falls back to the original bytes if Pillow isn't available or
-    processing fails.
-    """
-    try:
-        from PIL import Image
-        import io
-        img = Image.open(io.BytesIO(data))
-        rotated = img.rotate(180, expand=False)
-        buf = io.BytesIO()
-        rotated.save(buf, format="JPEG", quality=85)
-        return buf.getvalue()
-    except Exception:
-        return data
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
@@ -734,13 +715,11 @@ async def _upload_ticket_impl(
                 })
 
     # Handle photo upload — store in DB
-    # BirdDog's built-in iPad camera produces upside-down images, so rotate 180°
     photo_url = None
     photo_data = None
     photo_mime = None
     if ticket.photo_base64:
-        raw = base64.b64decode(ticket.photo_base64)
-        photo_data = _rotate_jpeg_180(raw)
+        photo_data = base64.b64decode(ticket.photo_base64)
         photo_mime = "image/jpeg"
 
     # Additional photos (stored as list of base64 strings in JSON column)
@@ -749,9 +728,8 @@ async def _upload_ticket_impl(
     if ticket.additional_photos_base64:
         additional_photos_data = []
         for b64 in ticket.additional_photos_base64:
-            rotated = _rotate_jpeg_180(base64.b64decode(b64))
             additional_photos_data.append({
-                "data": base64.b64encode(rotated).decode(),
+                "data": b64,
                 "mime": "image/jpeg",
             })
         additional_photo_count = len(additional_photos_data)
