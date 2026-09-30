@@ -179,12 +179,11 @@ async def create_vehicle_tag(
 
     normalized_plates = [p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates]
 
-    # Check for existing active tag or permit with any of these plates
+    # Check for existing tag or permit with any of these plates (any status)
     for plate in normalized_plates:
         existing = await db.execute(
             select(Permit).where(
                 Permit.deleted_at.is_(None),
-                Permit.status == "active",
                 Permit.plates.any(plate),
             ).limit(1)
         )
@@ -193,7 +192,7 @@ async def create_vehicle_tag(
             label = f"tag ({dup.name})" if dup.is_tag_only else f"permit {dup.permit_number or ''} ({dup.name})"
             raise HTTPException(
                 409,
-                f"Plate {plate} already has an active {label}. "
+                f"Plate {plate} already has a record: {label}. "
                 "Edit the existing record instead of creating a duplicate.",
             )
 
@@ -259,7 +258,23 @@ async def update_vehicle_tag(
     if data.name is not None:
         tag.name = data.name
     if data.plates is not None:
-        tag.plates = [p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates]
+        new_plates = [p.strip().upper().replace(" ", "").replace("-", "") for p in data.plates]
+        # Check for plate collisions with other records
+        for plate in new_plates:
+            existing = (await db.execute(
+                select(Permit).where(
+                    Permit.deleted_at.is_(None),
+                    Permit.id != tag_id,
+                    Permit.plates.any(plate),
+                ).limit(1)
+            )).scalar()
+            if existing:
+                label = f"tag ({existing.name})" if existing.is_tag_only else f"permit {existing.permit_number or ''} ({existing.name})"
+                raise HTTPException(
+                    409,
+                    f"Plate {plate} already belongs to {label}.",
+                )
+        tag.plates = new_plates
     if data.email is not None:
         tag.email = data.email
     if data.phone is not None:
