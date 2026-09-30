@@ -139,18 +139,9 @@ async def lookup_by_plate(
     """Look up all unpaid tickets for an exact plate number."""
     if not plate or not plate.strip():
         raise HTTPException(400, "Plate number is required.")
-    from ..services.plate_utils import normalize_plate
-    norm = normalize_plate(plate)
-    if len(norm) < 2:
-        raise HTTPException(400, "Please enter a valid plate number.")
-    tickets = (await db.execute(
-        select(Ticket).where(
-            Ticket.plate == norm,
-            Ticket.status.in_(["issued", "appealed", "escalated"]),
-        ).order_by(Ticket.issued_at.desc())
-    )).scalars().all()
-    results = [await _ticket_to_lookup(t, db) for t in tickets]
-    return results
+    from ..services.ticket_lookup import find_tickets_by_plate
+    tickets = await find_tickets_by_plate(db, plate, unpaid_only=True)
+    return [await _ticket_to_lookup(t, db) for t in tickets]
 
 
 @router.get("/my-tickets")
@@ -158,42 +149,9 @@ async def my_tickets(
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    """Return all unpaid tickets for the logged-in user (matched by email → permit → plates)."""
-    email = (user.email or "").strip().lower()
-    if not email:
-        return []
-
-    # Find all plates belonging to this user's permits
-    permits = (await db.execute(
-        select(Permit).where(
-            func.lower(Permit.email) == email,
-            Permit.deleted_at.is_(None),
-        )
-    )).scalars().all()
-    user_plates: set[str] = set()
-    for p in permits:
-        if p.plates:
-            for plate in p.plates:
-                norm = plate.upper().replace(" ", "").replace("-", "")
-                if norm:
-                    user_plates.add(norm)
-
-    if not user_plates:
-        # Also check tickets directly by notification_email
-        tickets = (await db.execute(
-            select(Ticket).where(
-                func.lower(Ticket.notification_email) == email,
-                Ticket.status.in_(["issued", "appealed", "escalated"]),
-            ).order_by(Ticket.issued_at.desc())
-        )).scalars().all()
-    else:
-        tickets = (await db.execute(
-            select(Ticket).where(
-                Ticket.plate.in_(user_plates),
-                Ticket.status.in_(["issued", "appealed", "escalated"]),
-            ).order_by(Ticket.issued_at.desc())
-        )).scalars().all()
-
+    """Return all unpaid tickets for the logged-in user (matched by email → permits → plates)."""
+    from ..services.ticket_lookup import find_tickets_for_user
+    tickets = await find_tickets_for_user(db, user.email or "", unpaid_only=True)
     return [await _ticket_to_lookup(t, db) for t in tickets]
 
 
@@ -319,18 +277,20 @@ async def dispute_ticket(
     data: DisputeRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public endpoint — student disputes a ticket from the payment portal."""
+    """Public endpoint — appeal a ticket from the payment portal.
+
+    Delegates to the shared appeal validation in appeals.py so the rules
+    (window check, status guard) are consistent across both entry points.
+    """
+    from .appeals import _get_appeal_window, _validate_and_appeal
+
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    if ticket.status in ("paid", "voided", "resolved_permit"):
-        raise HTTPException(400, f"Cannot dispute a {ticket.status} ticket")
-    if ticket.status == "appealed" and ticket.appeal_decision == "pending":
-        raise HTTPException(400, "A dispute has already been submitted for this ticket")
 
-    ticket.status = "appealed"
-    ticket.appeal_note = data.explanation
-    ticket.appeal_decision = "pending"
+    appeal_window_days = await _get_appeal_window(db)
+    await _validate_and_appeal(ticket, data.explanation, appeal_window_days)
+
     ticket.dispute_name = data.name
     ticket.dispute_email = data.email
     ticket.dispute_phone = data.phone
@@ -339,7 +299,7 @@ async def dispute_ticket(
     return DisputeResponse(
         status="received",
         ticket_id=ticket.id,
-        message="Your dispute has been submitted and will be reviewed within 5 business days. "
+        message="Your appeal has been submitted and will be reviewed within 5 business days. "
                 "You will be contacted at the email or phone number provided.",
     )
 

@@ -207,8 +207,8 @@ export default function Pay() {
               type="warning"
               showIcon
               className="mb-4"
-              message="Dispute Before You Pay"
-              description="If you believe a ticket was issued in error, you must dispute it BEFORE paying. Once payment is submitted, the fine is final. There are no refunds."
+              message="Appeal Before You Pay"
+              description="If you believe a ticket was issued in error, you must appeal it BEFORE paying. Once payment is submitted, the fine is final. There are no refunds."
             />
           </>
         )}
@@ -233,7 +233,7 @@ export default function Pay() {
               </div>
             )}
             <Space direction="vertical" className="w-full">
-              <Button block onClick={() => setDisputeTicket(t)}>Dispute This Ticket</Button>
+              <Button block onClick={() => setDisputeTicket(t)}>Appeal This Ticket</Button>
               {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: brand.accentColor, color: brand.accentColor }}>Buy a Commuter Permit</Button>}
               <Button type="primary" block size="large" loading={paying === t.id} onClick={() => handlePay(t.id)}>
                 {paying === t.id ? "Redirecting..." : "Pay Now"}
@@ -296,7 +296,7 @@ function DisputeModal({ ticket, onClose, onSuccess }: { ticket: TicketResult | n
   }
 
   return (
-    <Modal open={!!ticket} onCancel={onClose} footer={null} title="Dispute Ticket" destroyOnClose>
+    <Modal open={!!ticket} onCancel={onClose} footer={null} title="Appeal Ticket" destroyOnClose>
       {ticket && (
         <>
           <p className="text-sm text-ink-mute mb-4">Plate: <span className="font-mono">{ticket.plate}</span> &middot; Fine: ${Number(ticket.fine_amount).toFixed(2)}</p>
@@ -309,7 +309,7 @@ function DisputeModal({ ticket, onClose, onSuccess }: { ticket: TicketResult | n
             </Form.Item>
             <div className="flex justify-end gap-3">
               <Button onClick={onClose}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={submitting}>Submit Dispute</Button>
+              <Button type="primary" htmlType="submit" loading={submitting}>Submit Appeal</Button>
             </div>
           </Form>
         </>
