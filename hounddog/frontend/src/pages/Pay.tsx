@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App } from "antd";
+import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App, Divider } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 import { useBranding } from "../useBranding";
+import { authHeaders } from "../auth";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
 
@@ -36,12 +38,49 @@ export default function Pay() {
   const [success, setSuccess] = useState("");
   const [retrying, setRetrying] = useState(false);
   const retryAbort = useRef<AbortController | null>(null);
+  const [plateSearch, setPlateSearch] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [myTicketsLoaded, setMyTicketsLoaded] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     const id = pathTicketId || new URLSearchParams(window.location.search).get("ticket");
-    if (id) loadTicketById(id);
+    if (id) {
+      loadTicketById(id);
+    } else {
+      loadMyTickets();
+    }
     return () => { retryAbort.current?.abort(); };
   }, [pathTicketId]);
+
+  async function loadMyTickets() {
+    try {
+      const headers = await authHeaders();
+      if (!headers.Authorization) return;
+      setIsLoggedIn(true);
+      setLoading(true);
+      const res = await fetch("/api/payments/my-tickets", { headers });
+      if (!res.ok) return;
+      const data: TicketResult[] = await res.json();
+      if (data.length > 0) setTickets(data);
+      setMyTicketsLoaded(true);
+    } catch {
+    } finally { setLoading(false); }
+  }
+
+  async function searchByPlate() {
+    const plate = plateSearch.trim().toUpperCase();
+    if (!plate) return;
+    setSearchLoading(true); setError(""); setTickets([]); setSuccess("");
+    try {
+      const res = await fetch(`/api/payments/lookup?plate=${encodeURIComponent(plate)}`);
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail || "Lookup failed"); }
+      const data: TicketResult[] = await res.json();
+      if (data.length === 0) setError("No unpaid tickets found for that plate.");
+      else setTickets(data);
+    } catch (e: any) { setError(e.message || "Lookup failed"); }
+    finally { setSearchLoading(false); }
+  }
 
   async function loadTicketById(id: string, attempt = 0) {
     setLoading(true); setError(""); setTickets([]);
@@ -119,12 +158,37 @@ export default function Pay() {
       <div className="max-w-md mx-auto px-4 pt-10">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold" style={{ color: brand.primaryColor }}>Pay a Parking Ticket</h1>
-          {!hasTicket && !loading && tickets.length === 0 && (
+          {!hasTicket && (
             <p className="text-ink-mute mt-2">
-              Scan the QR code on your parking ticket, or use the link from your email to pay online.
+              Scan the QR code on your parking ticket, use the link from your email, or look up by plate.
             </p>
           )}
         </div>
+
+        {!hasTicket && tickets.length === 0 && !loading && (
+          <div className="mb-6">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter license plate…"
+                className="font-mono"
+                size="large"
+                value={plateSearch}
+                onChange={e => setPlateSearch(e.target.value.toUpperCase())}
+                onPressEnter={searchByPlate}
+                allowClear
+              />
+              <Button
+                type="primary"
+                size="large"
+                icon={<SearchOutlined />}
+                loading={searchLoading}
+                onClick={searchByPlate}
+              >
+                Look Up
+              </Button>
+            </div>
+          </div>
+        )}
 
         {loading && <div className="text-center py-8"><Spin size="large" /></div>}
 
@@ -133,13 +197,20 @@ export default function Pay() {
         {success && <Alert type="success" message={success} className="mb-4" showIcon />}
 
         {tickets.length > 0 && (
-          <Alert
-            type="warning"
-            showIcon
-            className="mb-4"
-            message="Dispute Before You Pay"
-            description="If you believe a ticket was issued in error, you must dispute it BEFORE paying. Once payment is submitted, the fine is final. There are no refunds."
-          />
+          <>
+            {tickets.length > 1 && (
+              <div className="text-sm font-medium text-gray-600 mb-3">
+                {tickets.length} unpaid citation{tickets.length > 1 ? "s" : ""} found
+              </div>
+            )}
+            <Alert
+              type="warning"
+              showIcon
+              className="mb-4"
+              message="Dispute Before You Pay"
+              description="If you believe a ticket was issued in error, you must dispute it BEFORE paying. Once payment is submitted, the fine is final. There are no refunds."
+            />
+          </>
         )}
 
         {tickets.map(t => (
@@ -172,10 +243,22 @@ export default function Pay() {
           </Card>
         ))}
 
-        {!hasTicket && !loading && tickets.length === 0 && !error && (
+        {!hasTicket && !loading && tickets.length === 0 && !error && myTicketsLoaded && (
+          <div className="text-center py-8 text-ink-mute">
+            <Empty description={isLoggedIn ? "No unpaid tickets" : "No ticket loaded"} />
+            <p className="mt-4 text-sm">
+              {isLoggedIn
+                ? "You have no outstanding parking citations. 🎉"
+                : "Enter your license plate above, scan the QR code on your citation, or log in to see all your tickets."}
+            </p>
+          </div>
+        )}
+        {!hasTicket && !loading && tickets.length === 0 && !error && !myTicketsLoaded && !searchLoading && (
           <div className="text-center py-8 text-ink-mute">
             <Empty description="No ticket loaded" />
-            <p className="mt-4 text-sm">To pay a ticket, scan the QR code printed on the citation or click the link in your notification email.</p>
+            <p className="mt-4 text-sm">
+              Enter your license plate above, or scan the QR code printed on the citation.
+            </p>
           </div>
         )}
 

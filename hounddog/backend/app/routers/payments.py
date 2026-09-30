@@ -132,9 +132,69 @@ async def _ticket_to_lookup(ticket: Ticket, db: AsyncSession) -> dict:
 
 
 @router.get("/lookup")
-async def lookup_by_plate(plate: str = ""):
-    """Disabled — plate substring search removed for privacy. Use /lookup/{ticket_id} instead."""
-    raise HTTPException(410, "Plate lookup has been disabled. Use the QR code on your ticket or the direct link from your email.")
+async def lookup_by_plate(
+    plate: str = Query("", min_length=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Look up all unpaid tickets for an exact plate number."""
+    if not plate or not plate.strip():
+        raise HTTPException(400, "Plate number is required.")
+    from ..services.plate_utils import normalize_plate
+    norm = normalize_plate(plate)
+    if len(norm) < 2:
+        raise HTTPException(400, "Please enter a valid plate number.")
+    tickets = (await db.execute(
+        select(Ticket).where(
+            Ticket.plate == norm,
+            Ticket.status.in_(["issued", "appealed", "escalated"]),
+        ).order_by(Ticket.issued_at.desc())
+    )).scalars().all()
+    results = [await _ticket_to_lookup(t, db) for t in tickets]
+    return results
+
+
+@router.get("/my-tickets")
+async def my_tickets(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
+    """Return all unpaid tickets for the logged-in user (matched by email → permit → plates)."""
+    email = (user.email or "").strip().lower()
+    if not email:
+        return []
+
+    # Find all plates belonging to this user's permits
+    permits = (await db.execute(
+        select(Permit).where(
+            func.lower(Permit.email) == email,
+            Permit.deleted_at.is_(None),
+        )
+    )).scalars().all()
+    user_plates: set[str] = set()
+    for p in permits:
+        if p.plates:
+            for plate in p.plates:
+                norm = plate.upper().replace(" ", "").replace("-", "")
+                if norm:
+                    user_plates.add(norm)
+
+    if not user_plates:
+        # Also check tickets directly by notification_email
+        tickets = (await db.execute(
+            select(Ticket).where(
+                func.lower(Ticket.notification_email) == email,
+                Ticket.status.in_(["issued", "appealed", "escalated"]),
+            ).order_by(Ticket.issued_at.desc())
+        )).scalars().all()
+    else:
+        tickets = (await db.execute(
+            select(Ticket).where(
+                Ticket.plate.in_(user_plates),
+                Ticket.status.in_(["issued", "appealed", "escalated"]),
+            ).order_by(Ticket.issued_at.desc())
+        )).scalars().all()
+
+    return [await _ticket_to_lookup(t, db) for t in tickets]
 
 
 @router.get("/lookup/{ticket_id}", response_model=TicketLookup)
