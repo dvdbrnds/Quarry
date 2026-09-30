@@ -39,17 +39,21 @@ logger = logging.getLogger("quarry.lots")
 
 router = SafeRouter(dependencies=[Depends(get_current_user)])
 
-# All permit types that are allowed in FSC lots after 4pm and on weekends
+# All permit types that are allowed in FSC/Commuter/Resident lots after 4pm and on weekends.
+# Every student permit type is included so any student with a permit can park
+# in F/S and Commuter lots after hours and on weekends — including BPA (other campus).
 _FSC_AFTER_HOURS_TYPES = [
     "commuter_undergrad", "commuter_grad", "premium_commuter",
     "north_premium_resident", "north_guaranteed_resident",
     "steel_field_resident",
     "south_premium_resident", "south_guaranteed_resident",
     "south_standalone",
+    "bpa_north_campus",
     "faculty_staff",
     "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff",
     "contracted_staff",
     "student_guest",
+    "local_resident",
 ]
 
 COMMUTER_EVENING_SCHEDULE = [
