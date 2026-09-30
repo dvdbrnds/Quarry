@@ -3,10 +3,11 @@ import { useBranding } from "../useBranding";
 import BrandMark from "./BrandMark";
 
 const PUBLIC_LINKS = [
-  { to: "/parking", label: "Students" },
+  { to: "/parking", label: "Permits" },
   { to: "/visitor", label: "Visitors" },
   { to: "/employee-parking", label: "Employees" },
   { to: "/citations", label: "Citations" },
+  { to: "/pay", label: "Pay" },
   { to: "/parking-map", label: "Map" },
 ] as const;
 
@@ -58,6 +59,10 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
               const active =
                 link.to === "/visitor"
                   ? location.pathname.startsWith("/visitor")
+                  : link.to === "/pay"
+                  ? location.pathname.startsWith("/pay")
+                  : link.to === "/parking"
+                  ? location.pathname === "/parking" || location.pathname.startsWith("/student/permits") || location.pathname.startsWith("/permits/buy")
                   : location.pathname === link.to;
               return (
                 <Link

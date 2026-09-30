@@ -7,6 +7,7 @@ import type { Lot } from "../api";
 import StudentLotMap from "../components/StudentLotMap";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
+import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
 
 /** Stable colors per permit-type code — cards and map lots share these */
@@ -1275,38 +1276,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header
-        style={{ background: brand.primaryColor }}
-        className="text-white px-6 py-4 shadow"
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BrandMark />
-            <h1 style={{ color: brand.accentColor }} className="text-xl font-bold m-0">
-              Parking Permits
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="/citations"
-              className="text-xs font-medium px-3 py-1 rounded"
-              style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}
-            >
-              🎫 My Citations
-            </a>
-            <a
-              href="/regulations"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-medium px-3 py-1 rounded"
-              style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}
-            >
-              📋 Parking Regulations
-            </a>
-            <span className="text-xs opacity-70">{user.email}</span>
-          </div>
-        </div>
-      </header>
+      <PublicPageNav subtitle="Parking Permits" />
 
       {impersonateEmail && (
         <div style={{ background: "#FEF3C7", borderBottom: "2px solid #F59E0B", padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>

@@ -20,7 +20,7 @@ import AlertUnsubscribe from "./pages/AlertUnsubscribe";
 import SignagePlayer from "./pages/SignagePlayer";
 import PermitDetail from "./pages/PermitDetail";
 import StudentPermits from "./pages/StudentPermits";
-import StudentCitations from "./pages/StudentCitations";
+// StudentCitations removed — /student/citations now redirects to /citations
 import StaffPermits from "./pages/StaffPermits";
 import SponsorDashboard from "./pages/SponsorDashboard";
 import ConductDashboard from "./pages/ConductDashboard";
@@ -200,26 +200,46 @@ function AdminShell({ user }: { user: AuthUser }) {
               </div>
 
               <div className="py-1">
-                <a
-                  href="/visitor"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  role="menuitem"
-                  className="block px-4 py-2 text-sm hover:bg-slate-50"
-                  onClick={() => setMenuOpen(false)}
-                >
+                <div className="px-4 py-1 text-[10px] uppercase tracking-wide text-slate-400">Public Portals</div>
+                <a href="/visitor" target="_blank" rel="noopener noreferrer" role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
                   Visitor Portal
                 </a>
-                <a
-                  href="/employee-parking"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  role="menuitem"
-                  className="block px-4 py-2 text-sm hover:bg-slate-50"
-                  onClick={() => setMenuOpen(false)}
-                >
+                <a href="/employee-parking" target="_blank" rel="noopener noreferrer" role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
                   My Permit
                 </a>
+                <a href="/parking" target="_blank" rel="noopener noreferrer" role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
+                  Student Permits
+                </a>
+                <a href="/pay" target="_blank" rel="noopener noreferrer" role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
+                  Pay a Citation
+                </a>
+                <a href="/parking-map" target="_blank" rel="noopener noreferrer" role="menuitem"
+                  className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
+                  Parking Map
+                </a>
+              </div>
+              {isAdminRole(user.role) && (
+                <div className="border-t border-slate-100 py-1">
+                  <div className="px-4 py-1 text-[10px] uppercase tracking-wide text-slate-400">Staff Tools</div>
+                  <a href="/conduct" target="_blank" rel="noopener noreferrer" role="menuitem"
+                    className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
+                    Conduct Dashboard
+                  </a>
+                  <a href="/appeals-committee" target="_blank" rel="noopener noreferrer" role="menuitem"
+                    className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
+                    Appeals Committee
+                  </a>
+                  <a href="/sponsor" target="_blank" rel="noopener noreferrer" role="menuitem"
+                    className="block px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setMenuOpen(false)}>
+                    Sponsor Dashboard
+                  </a>
+                </div>
+              )}
+              <div className="border-t border-slate-100 py-1">
                 <a
                   href="/docs/staff-manual.pdf"
                   target="_blank"
@@ -276,43 +296,16 @@ function AdminShell({ user }: { user: AuthUser }) {
   );
 }
 
-function StudentShell({ user }: { user: AuthUser }) {
-  const brand = useBranding();
+function StudentShell({ user: _user }: { user: AuthUser }) {
+  /* Students should use the public pages (which now all share PublicPageNav).
+     The StudentShell only renders for authenticated routes that don't match
+     any standalone page.  Redirect to /parking which is the student hub. */
   return (
-    <div className="min-h-screen">
-      <nav style={{ background: brand.primaryColor }} className="text-bone shadow-md">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-6">
-        <div className="flex items-center gap-2 mr-4">
-          <BrandMark />
-          {brand.brandName && (
-            <h1 style={{ color: brand.accentColor }} className="text-lg font-bold tracking-wide">
-              {brand.brandName}
-            </h1>
-          )}
-        </div>
-        <NavItem to="/student/permits">My Permits</NavItem>
-        <NavItem to="/student/citations">My Citations</NavItem>
-
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-bone/70">{user.email}</span>
-          <button
-            onClick={() => logout()}
-            className="text-xs text-bone/50 hover:text-bone transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <Routes>
-          <Route path="/" element={<Navigate to="/student/permits" replace />} />
-          <Route path="/student/permits" element={<StudentPermits />} />
-          <Route path="/student/citations" element={<StudentCitations />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/student/permits" element={<StudentPermits />} />
+      <Route path="/student/citations" element={<Navigate to="/citations" replace />} />
+      <Route path="*" element={<Navigate to="/parking" replace />} />
+    </Routes>
   );
 }
 

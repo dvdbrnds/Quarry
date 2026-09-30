@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "../auth";
 import { Button, Card, Tag, Empty, Alert, Modal, Form, Input, InputNumber, Spin, Space, App } from "antd";
+import PublicPageNav from "../components/PublicPageNav";
+import PublicFooter from "../components/PublicFooter";
 
 interface AvailablePermit {
   id: string; code: string; label: string; eligible: string; price: string;
@@ -89,10 +91,18 @@ export default function StudentPermits() {
 
   const appliedTypeIds = new Set(applications.filter(a => !["expired", "declined"].includes(a.status)).map(a => a.permit_type_code));
 
-  if (loading) return <div className="flex justify-center py-20"><Spin size="large" /></div>;
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50">
+      <PublicPageNav subtitle="My Permits" />
+      <div className="flex justify-center py-20"><Spin size="large" /></div>
+    </div>
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="min-h-screen bg-gray-50">
+      <PublicPageNav subtitle="My Permits" />
+      <main className="max-w-7xl mx-auto px-6 py-8">
+      <div className="space-y-8">
       <div>
         <h2 className="text-2xl font-bold text-brand-primary">Parking Permits</h2>
         <p className="text-sm text-ink-mute mt-1">Apply for a parking permit. Lottery-based permits will be drawn after the application window closes.</p>
@@ -177,6 +187,9 @@ export default function StudentPermits() {
       <ApplyModal permit={applying} onClose={() => setApplying(null)}
         onSuccess={() => { setApplying(null); message.success("Application submitted successfully"); load(); }}
         onError={msg => { message.error(msg); setApplying(null); }} />
+    </div>
+      </main>
+      <PublicFooter />
     </div>
   );
 }

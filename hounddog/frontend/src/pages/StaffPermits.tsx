@@ -4,6 +4,7 @@ import { CheckCircleOutlined } from "@ant-design/icons";
 import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail, logout, fetchCurrentUser, loadConfig, isOfficeRole, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import BrandMark from "../components/BrandMark";
+import PublicPageNav from "../components/PublicPageNav";
 import { US_STATES } from "../usStates";
 import PublicFooter from "../components/PublicFooter";
 import StudentLotMap from "../components/StudentLotMap";
@@ -199,23 +200,7 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav style={{ background: brand.primaryColor }} className="text-white/90 px-6 py-4 shadow-md">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BrandMark />
-            <div>
-              {brand.brandName && <h1 style={{ color: brand.accentColor }} className="text-lg font-bold">{brand.brandName}</h1>}
-              <span className="text-xs text-white/50">Employee Parking Portal</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <a href="/citations" className="text-xs font-medium px-3 py-1 rounded" style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}>🎫 My Citations</a>
-            <a href="/regulations" target="_blank" rel="noopener noreferrer" className="text-xs font-medium px-3 py-1 rounded" style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor, textDecoration: "none" }}>📋 Parking Regulations</a>
-            <span className="text-sm text-white/70">{user.email}</span>
-            <button onClick={() => logout()} className="text-xs text-white/40 hover:text-white transition-colors">Sign out</button>
-          </div>
-        </div>
-      </nav>
+      <PublicPageNav subtitle="Employee Parking" />
 
       {impersonateEmail && (
         <div style={{ background: "#FEF3C7", borderBottom: "2px solid #F59E0B", padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
