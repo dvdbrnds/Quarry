@@ -1317,7 +1317,13 @@ async def lifespan(app: FastAPI):
             """UPDATE parking_lots
                SET access_schedule = '[{"season":"year_round","label":"Year-Round","rules":[{"start":"07:00","end":"16:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"Residents + Faculty/Staff + Visitors (Weekday Daytime)"},{"start":"16:00","end":"07:00","days":["mon","tue","wed","thu","fri"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Evenings & Overnight)"},{"start":"00:00","end":"23:59","days":["sat","sun"],"allowed_permit_types":["commuter_undergrad","commuter_grad","premium_commuter","north_premium_resident","north_guaranteed_resident","steel_field_resident","south_premium_resident","south_guaranteed_resident","south_standalone","faculty_staff","contracted_staff","visitor_day","visitor_vendor","visitor_vendor_longterm","visitor_contracted_staff","student_guest"],"label":"All Permit Holders (Weekends)"}]}]'::jsonb
                WHERE designation_code IN ('RS', 'PR')""",
-            # ── v41: Add bpa_north_campus and local_resident to after-hours/weekend rules
+            # ── v41: Make BPA permit self-service — students register their own BPA pass
+            """UPDATE permit_types
+               SET is_purchasable_online = true,
+                   label = 'BPA Street Pass (North Campus)',
+                   eligible = 'North Campus residents with a Bethlehem Parking Authority street parking pass. Register here so campus security knows your vehicle.'
+               WHERE code = 'bpa_north_campus'""",
+            # Add bpa_north_campus and local_resident to after-hours/weekend rules
             #         so all students with permits (including other campus) can park in F/S
             #         and Commuter lots after hours and on weekends
             """UPDATE parking_lots
