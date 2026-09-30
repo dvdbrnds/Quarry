@@ -155,6 +155,27 @@ def _generate_summary(method: str, resource_type: str, resource_id: str | None,
             return "Payment webhook received"
         return f"{verb} payment"
 
+    # Permit-specific summaries — inspect the body for meaningful changes
+    if resource_type == "permits" and method in ("PUT", "PATCH") and isinstance(request_body, dict):
+        status = request_body.get("status")
+        if status:
+            status_labels = {
+                "revoked": "Permit revoked",
+                "suspended": "Permit suspended",
+                "active": "Permit reactivated",
+                "expired": "Permit expired",
+            }
+            return status_labels.get(status, f"Permit status → {status}")
+        if "plates" in request_body:
+            plates = request_body["plates"]
+            if isinstance(plates, list):
+                return f"Plates updated → {', '.join(plates)}"
+        changed = [k.replace("_", " ") for k in request_body if k not in ("id",)]
+        if changed:
+            return f"Updated permit ({', '.join(changed[:4])})"
+    if resource_type == "permits" and "cancel" in path:
+        return "Permit cancelled"
+
     if method == "GET":
         if resource_id:
             return f"Viewed {readable_type} {resource_id}"

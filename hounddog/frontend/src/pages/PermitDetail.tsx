@@ -258,16 +258,36 @@ export default function PermitDetail() {
       children: data.audit_log.length === 0
         ? <Empty description="No activity recorded" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         : <Timeline items={data.audit_log.map((entry: any) => {
-            const actionColors: Record<string, string> = {
-              CREATE: "green", APPLY: "blue", PAYMENT: "gold",
-              UPDATE: "cyan", POST: "green", PUT: "cyan",
-              PATCH: "cyan", DELETE: "red",
+            const actionConfig: Record<string, { color: string; label: string }> = {
+              CREATE: { color: "green", label: "Created" },
+              APPLY: { color: "blue", label: "Applied" },
+              PAYMENT: { color: "gold", label: "Payment" },
+              PUT: { color: "cyan", label: "Updated" },
+              PATCH: { color: "cyan", label: "Updated" },
+              POST: { color: "green", label: "Created" },
+              DELETE: { color: "red", label: "Deleted" },
             };
+            const cfg = actionConfig[entry.action] || { color: "default", label: entry.action };
+            const summary: string = entry.summary || "Activity";
+            // Detect revoke/suspend/cancel for red tag
+            const isNegative = /revoke|suspend|cancel|delet/i.test(summary);
+            const tagColor = isNegative ? "red" : cfg.color;
+            const tagLabel = isNegative
+              ? (summary.toLowerCase().includes("revoke") ? "Revoked"
+                : summary.toLowerCase().includes("suspend") ? "Suspended"
+                : summary.toLowerCase().includes("cancel") ? "Cancelled"
+                : summary.toLowerCase().includes("delet") ? "Deleted"
+                : cfg.label)
+              : cfg.label;
             return {
+              color: tagColor,
               children: (
                 <div className="flex gap-3 items-start">
-                  <div className="flex-1"><div className="text-sm">{entry.summary}</div><div className="text-xs text-ink-mute">{fmtDateTimeCompact(entry.timestamp)} — {entry.user_email}</div></div>
-                  <Tag color={actionColors[entry.action] || "default"}>{entry.action}</Tag>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{summary}</div>
+                    <div className="text-xs text-ink-mute">{fmtDateTimeCompact(entry.timestamp)} — {entry.user_email}</div>
+                  </div>
+                  <Tag color={tagColor}>{tagLabel}</Tag>
                 </div>
               ),
             };

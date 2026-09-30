@@ -1936,6 +1936,80 @@ async def send_payment_link(
     }
 
 
+def _humanize_permit_audit(entry: AuditLog) -> str | None:
+    """Turn a raw audit log entry into a human-readable timeline summary.
+
+    Returns None to skip entries that duplicate lifecycle events already
+    shown (e.g. the POST that created the permit).
+    """
+    body = entry.request_body or {}
+    action = entry.action
+    endpoint = entry.endpoint or ""
+
+    # Skip raw "Created permits" — we already have a "Permit created" event
+    if action == "POST" and not body:
+        return None
+
+    # Cancel endpoint
+    if "cancel" in endpoint:
+        refund = body.get("refund_amount")
+        mode = body.get("proration_mode", "")
+        if refund is not None:
+            return f"Permit cancelled — ${refund} refund ({mode.replace('_', ' ')})"
+        return "Permit cancelled"
+
+    # Status changes
+    status = body.get("status")
+    if status:
+        status_labels = {
+            "revoked": "Permit revoked",
+            "suspended": "Permit suspended",
+            "active": "Permit reactivated",
+            "expired": "Permit expired",
+        }
+        return status_labels.get(status, f"Status changed to {status}")
+
+    # Plate changes
+    if "plates" in body:
+        plates = body["plates"]
+        if isinstance(plates, list):
+            return f"Plates updated → {', '.join(plates)}"
+
+    # Lot assignment
+    if "lot_id" in body or "lot" in body:
+        lot = body.get("lot") or body.get("lot_name") or ""
+        if lot:
+            return f"Lot changed to {lot}"
+        return "Lot assignment updated"
+
+    # Temp lot access
+    if "temp_lot" in endpoint:
+        return "Temporary lot access granted"
+
+    # Name / contact updates
+    changed_fields = []
+    for field in ("name", "email", "phone", "student_id", "sms_opted_in"):
+        if field in body:
+            changed_fields.append(field.replace("_", " "))
+    if changed_fields:
+        return f"Updated {', '.join(changed_fields)}"
+
+    # Generic fallback — but drop the UUID from the summary
+    if action == "DELETE":
+        return "Permit deleted"
+
+    # If we can't make sense of it, show a cleaned-up version of the raw summary
+    raw = entry.summary or ""
+    # Strip UUIDs from the summary for readability
+    import re
+    cleaned = re.sub(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        "",
+        raw,
+    ).strip()
+    return cleaned or "Permit updated"
+
+
 @router.get("/{permit_id}/history")
 async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from ..models.lottery_v2 import LotteryV2Application
@@ -2030,10 +2104,20 @@ async def permit_history(permit_id: uuid.UUID, db: AsyncSession = Depends(get_db
             AuditLog.action.in_(["POST", "PUT", "PATCH", "DELETE"]),
         ).order_by(desc(AuditLog.timestamp)).limit(50)
     )
+    # Deduplicate: skip audit entries whose timestamp matches an existing
+    # lifecycle event (e.g. "Permit created" already covers the POST)
+    existing_ts = {e["timestamp"] for e in timeline}
+
     for a in audit_result.scalars().all():
+        ts = a.timestamp.isoformat()
+        if ts in existing_ts:
+            continue
+        summary = _humanize_permit_audit(a)
+        if not summary:
+            continue
         timeline.append({
-            "timestamp": a.timestamp.isoformat(),
-            "summary": a.summary,
+            "timestamp": ts,
+            "summary": summary,
             "action": a.action,
             "user_email": a.user_email,
         })
