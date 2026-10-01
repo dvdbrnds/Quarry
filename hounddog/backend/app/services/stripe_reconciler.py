@@ -445,7 +445,7 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                             logger.info(
                                 "Reconciled permit_purchase: plate=%s pi=%s",
                                 metadata.get("plate", "?"),
-                                sess_dict.get("payment_intent", "?")[:16],
+                                (sess_dict.get("payment_intent") or "?")[:16],
                             )
                         else:
                             already_fulfilled += 1
@@ -457,7 +457,7 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                                 "Reconciled permit: %s plate=%s pi=%s",
                                 result,
                                 metadata.get("plate", "?"),
-                                sess_dict.get("payment_intent", "?")[:16],
+                                (sess_dict.get("payment_intent") or "?")[:16],
                             )
                         else:
                             already_fulfilled += 1
@@ -468,7 +468,7 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                             logger.info(
                                 "Reconciled ticket payment: ticket=%s pi=%s",
                                 metadata.get("ticket_id", "?"),
-                                sess_dict.get("payment_intent", "?")[:16],
+                                (sess_dict.get("payment_intent") or "?")[:16],
                             )
                         else:
                             already_fulfilled += 1
@@ -479,7 +479,7 @@ async def reconcile_stripe_payments(lookback_hours: int = 48) -> dict:
                             logger.info(
                                 "Reconciled admin permit charge: permit=%s pi=%s",
                                 metadata.get("permit_id", "?"),
-                                sess_dict.get("payment_intent", "?")[:16],
+                                (sess_dict.get("payment_intent") or "?")[:16],
                             )
                         else:
                             already_fulfilled += 1
