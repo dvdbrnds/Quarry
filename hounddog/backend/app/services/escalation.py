@@ -153,6 +153,11 @@ async def _create_conduct_referral(
             "Set MAXIENT_INTAKE_EMAIL or MAXIENT_API_URL."
         )
 
+    # Notify designated conduct officer(s)
+    await _notify_conduct_officers(
+        db, student_name, student_email, plate, ticket_count
+    )
+
 
 async def _send_maxient_email_referral(
     student_id: str,
@@ -344,3 +349,66 @@ async def resolve_escalation(
         },
     )
     return result.rowcount > 0
+
+
+async def _notify_conduct_officers(
+    db: AsyncSession,
+    student_name: str | None,
+    student_email: str | None,
+    plate: str,
+    ticket_count: int,
+):
+    """Send an email to all designated conduct officers when a referral is triggered."""
+    # Load conduct officer emails from enforcement_settings
+    try:
+        result = await db.execute(
+            text("SELECT conduct_officer_emails FROM enforcement_settings WHERE id = 1")
+        )
+        raw = result.scalar() or ""
+    except Exception:
+        await db.rollback()
+        raw = ""
+
+    recipients = [e.strip() for e in raw.split(",") if e.strip()]
+    if not recipients:
+        logger.warning(
+            "Conduct referral triggered but no conduct officer emails configured. "
+            "Set them in Tickets → Enforcement settings."
+        )
+        return
+
+    from app.services.email import send_email, _load_branding
+    from app.services.email_templates import render_conduct_officer_notification
+
+    b = await _load_branding()
+    school = settings.school_name or "Campus"
+    subject = (
+        f"Conduct Escalation — {student_name or 'Unknown Student'} "
+        f"({ticket_count} unpaid violations)"
+    )
+    detail_url = f"{settings.public_url}/conduct"
+
+    body_html, body_text = render_conduct_officer_notification(
+        student_name, student_email, plate, ticket_count,
+        settings.conduct_referral_threshold,
+        detail_url,
+        school_name=school,
+        primary=b["primary_color"], accent=b["accent_color"],
+        brand_name=b["brand_name"], has_logo=b["has_logo"],
+        department_name=b.get("department_name", "Parking Authority"),
+    )
+
+    try:
+        await send_email(
+            to=recipients,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+        )
+        logger.info(
+            "Conduct officer notification sent to %s for student %s",
+            ", ".join(recipients), student_name or student_email or plate,
+        )
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        logger.error("Failed to send conduct officer notification: %s", e)

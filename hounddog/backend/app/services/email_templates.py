@@ -734,3 +734,65 @@ def render_hold_admin_email(
         f"{school} {department_name}"
     )
     return html, plain
+
+
+# ---------------------------------------------------------------------------
+# Escalation: conduct officer notification
+# ---------------------------------------------------------------------------
+
+def render_conduct_officer_notification(
+    student_name: str | None,
+    student_email: str | None,
+    plate: str,
+    ticket_count: int,
+    threshold: int,
+    detail_url: str,
+    *,
+    school_name: str = "",
+    primary: str = "",
+    accent: str = "",
+    brand_name: str | None = None,
+    has_logo: bool = False,
+    department_name: str = "Parking Authority",
+) -> tuple[str, str]:
+    primary = primary or settings.brand_primary_color or "#1a2744"
+    school = school_name or "Campus"
+
+    rows: list[tuple[str, str, str]] = [
+        ("Student", student_name or "Unknown", "font-weight:600;"),
+        ("Email", student_email or "Unknown", ""),
+        ("License Plate", plate, "font-family:monospace;font-weight:600;"),
+        ("Unpaid Violations", str(ticket_count), "font-weight:600;color:#dc2626;"),
+        ("Threshold", str(threshold), ""),
+    ]
+
+    inner = (
+        _heading("Conduct Escalation Notice", primary)
+        + _para(
+            f'A student has reached <strong>{ticket_count} unpaid parking violations</strong>, '
+            f'exceeding the {threshold}-ticket threshold for conduct referral.'
+        )
+        + _detail_table("Student Details", rows)
+        + _small(
+            'This notification was generated automatically. '
+            'Please review the case in the Conduct Dashboard.'
+        )
+        + _cta_button(detail_url, "Open Conduct Dashboard", primary)
+    )
+    html = render_email(
+        "Conduct Escalation Notice", inner,
+        school_name=school, primary=primary, accent=accent,
+        brand_name=brand_name, has_logo=has_logo,
+    )
+
+    plain = (
+        f"CONDUCT ESCALATION NOTICE\n\n"
+        f"A student has reached {ticket_count} unpaid parking violations "
+        f"(threshold: {threshold}).\n\n"
+        f"Student: {student_name or 'Unknown'}\n"
+        f"Email: {student_email or 'Unknown'}\n"
+        f"Plate: {plate}\n\n"
+        f"Review the case: {detail_url}\n\n"
+        f"{school} {department_name}"
+    )
+    return html, plain
