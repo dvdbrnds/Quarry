@@ -7,7 +7,7 @@ import type { ColumnsType } from "antd/es/table";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
 import { api, LegacyRecord } from "../api";
-import { PrinterOutlined } from "@ant-design/icons";
+import { PrinterOutlined, DownloadOutlined, FilePdfOutlined } from "@ant-design/icons";
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 
@@ -1075,6 +1075,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [roSaving, setRoSaving] = useState(false);
   const [editingPlate, setEditingPlate] = useState(false);
   const [plateSaving, setPlateSaving] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
 
   async function handleReassignPlate(ticketId: string, newPlate: string) {
     setPlateSaving(true);
@@ -1116,6 +1118,108 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       message.error("Failed to save owner info");
     } finally {
       setRoSaving(false);
+    }
+  }
+
+  function buildFilterQS() {
+    const qs = new URLSearchParams();
+    if (search) qs.set("search", search);
+    if (statusFilter) qs.set("status", statusFilter);
+    if (categoryFilter) qs.set("category", categoryFilter);
+    if (lotFilter) qs.set("lot", lotFilter);
+    if (dateFrom) qs.set("date_from", dateFrom);
+    if (dateTo) qs.set("date_to", dateTo);
+    if (officerEmail) qs.set("officer_email", officerEmail);
+    if (sortBy) qs.set("sort_by", sortBy);
+    if (sortOrder) qs.set("sort_order", sortOrder);
+    return qs;
+  }
+
+  async function handleExportCSV() {
+    setCsvExporting(true);
+    try {
+      const qs = buildFilterQS();
+      const res = await fetch(`/api/tickets/export/csv?${qs}`, { headers: await authHeaders() });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tickets_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      message.error(e.message || "CSV export failed");
+    } finally {
+      setCsvExporting(false);
+    }
+  }
+
+  function handleExportPDF() {
+    setPdfExporting(true);
+    try {
+      const now = new Date();
+      const fmtDate = (iso: string) => {
+        if (!iso) return "—";
+        return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+      };
+
+      const filters: string[] = [];
+      if (statusFilter) filters.push(`Status: ${statusFilter}`);
+      if (categoryFilter) filters.push(`Type: ${categoryFilter}`);
+      if (lotFilter) filters.push(`Lot: ${lotFilter}`);
+      if (dateFrom) filters.push(`From: ${dateFrom}`);
+      if (dateTo) filters.push(`To: ${dateTo}`);
+      if (search) filters.push(`Search: "${search}"`);
+      const filterLabel = filters.length > 0 ? filters.join(" · ") : "All tickets";
+
+      const w = window.open("", "_blank", "width=1000,height=800");
+      if (!w) return;
+      w.document.write(`<html><head><title>Tickets Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 24px; color: #1e293b; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { text-align: left; padding: 6px 8px; background: #f1f5f9; border-bottom: 2px solid #cbd5e1; font-weight: 600; white-space: nowrap; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .mono { font-family: monospace; }
+  .status { font-weight: 600; text-transform: capitalize; }
+  .status-issued { color: #dc2626; }
+  .status-paid { color: #16a34a; }
+  .status-voided { color: #9ca3af; }
+  .status-appealed { color: #2563eb; }
+  .status-escalated { color: #7c3aed; }
+  .total { margin-top: 12px; font-size: 12px; color: #64748b; }
+  @media print { body { margin: 12px; } }
+</style></head><body>
+<h1>Tickets Report</h1>
+<div class="subtitle">${filterLabel} · ${total} ticket${total !== 1 ? "s" : ""} · Exported ${now.toLocaleString()}</div>
+<table>
+  <thead><tr>
+    <th>Ticket #</th><th>Plate</th><th>Name</th><th>Lot</th><th>Violation</th><th>Fine</th><th>Status</th><th>Officer</th><th>Issued</th>
+  </tr></thead>
+  <tbody>
+    ${tickets.map(t => `<tr>
+      <td class="mono">${t.ticket_number || "—"}</td>
+      <td class="mono">${t.plate}</td>
+      <td>${t.owner_name || "—"}</td>
+      <td>${t.lot}</td>
+      <td>${(t.violation_type || "").replace(/_/g, " ")}</td>
+      <td>$${Number(t.fine_amount).toFixed(2)}</td>
+      <td class="status status-${t.status}">${t.status}</td>
+      <td>${t.officer_name || "—"}</td>
+      <td>${fmtDate(t.issued_at)}</td>
+    </tr>`).join("")}
+  </tbody>
+</table>
+<div class="total">Showing ${tickets.length} of ${total} tickets matching current filters.</div>
+</body></html>`);
+      w.document.close();
+      w.print();
+    } finally {
+      setPdfExporting(false);
     }
   }
 
@@ -1659,6 +1763,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               Mail Notices
             </Button>
           )}
+          <Button icon={<DownloadOutlined />} loading={csvExporting} onClick={handleExportCSV}>
+            Export CSV
+          </Button>
+          <Button icon={<FilePdfOutlined />} loading={pdfExporting} onClick={handleExportPDF}>
+            Print / PDF
+          </Button>
         </Space>
       </div>
 

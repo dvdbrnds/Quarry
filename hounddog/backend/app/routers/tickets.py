@@ -222,6 +222,123 @@ async def list_tickets(
     return {"items": enriched, "total": total, "page": page, "page_size": page_size}
 
 
+@router.get("/export/csv")
+async def export_tickets_csv(
+    search: str | None = None,
+    status: str | None = None,
+    lot: str | None = None,
+    category: str | None = None,
+    officer_email: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    sort_by: str | None = Query(None),
+    sort_order: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _office: OktaUser = Depends(require_office()),
+):
+    """Export filtered tickets as CSV. Same filters as the list endpoint."""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    query = select(Ticket)
+
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                Ticket.plate.ilike(like),
+                Ticket.officer_id.ilike(like),
+                Ticket.ticket_number.ilike(like),
+                Ticket.officer_name.ilike(like),
+                Ticket.owner_name.ilike(like),
+                Ticket.location_text.ilike(like),
+                Ticket.vehicle_description.ilike(like),
+                cast(Ticket.id, String).ilike(like),
+            )
+        )
+    if status:
+        query = query.where(Ticket.status == status)
+    if lot:
+        query = query.where(Ticket.lot == lot)
+    if category:
+        query = query.where(Ticket.ticket_category == category)
+    if officer_email:
+        query = query.where(Ticket.officer_email == officer_email)
+    if date_from:
+        try:
+            from datetime import datetime as _dt
+            dt_from = _dt.fromisoformat(date_from)
+            query = query.where(Ticket.issued_at >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            dt_to = _dt.fromisoformat(date_to) + _td(days=1)
+            query = query.where(Ticket.issued_at < dt_to)
+        except ValueError:
+            pass
+
+    TICKET_SORT_FIELDS = {
+        "ticket_number": Ticket.ticket_number,
+        "plate": Ticket.plate,
+        "owner_name": Ticket.owner_name,
+        "lot": Ticket.lot,
+        "violation_type": Ticket.violation_type,
+        "fine_amount": Ticket.fine_amount,
+        "status": Ticket.status,
+        "officer_name": Ticket.officer_name,
+        "issued_at": Ticket.issued_at,
+    }
+    sort_col = TICKET_SORT_FIELDS.get(sort_by or "", Ticket.issued_at)
+    order_clause = sort_col.asc() if sort_order == "ascend" else sort_col.desc()
+
+    tickets = (
+        await db.execute(
+            query.order_by(order_clause)
+            .options(defer(Ticket.photo_data))
+            .limit(10000)
+        )
+    ).scalars().all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Ticket #", "Plate", "Owner Name", "Email", "Lot", "Zone",
+        "Violation", "Fine", "Status", "Appeal", "Officer", "Issued",
+        "Category", "Vehicle", "Permit #", "Permit Type",
+    ])
+    for t in tickets:
+        writer.writerow([
+            t.ticket_number or "",
+            t.plate or "",
+            t.owner_name or "",
+            t.notification_email or "",
+            t.lot or "",
+            t.zone or "",
+            (t.violation_type or "").replace("_", " "),
+            f"{float(t.fine_amount):.2f}" if t.fine_amount else "",
+            t.status or "",
+            t.appeal_decision or "",
+            t.officer_name or "",
+            t.issued_at.strftime("%Y-%m-%d %H:%M") if t.issued_at else "",
+            t.ticket_category or "parking",
+            t.vehicle_description or "",
+            t.permit_number or "",
+            t.permit_type_label or "",
+        ])
+
+    buf.seek(0)
+    now_str = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"tickets_{now_str}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _resolve_range(range_key: str, now: datetime) -> datetime | None:
     """Return the cutoff datetime for a given range key, or None for all-time."""
     if range_key == "24h":
