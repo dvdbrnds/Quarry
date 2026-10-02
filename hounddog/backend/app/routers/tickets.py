@@ -216,24 +216,27 @@ async def list_tickets(
     ticket_ids_str = [str(t.id) for t in items]
     conduct_tickets: dict[str, dict] = {}
     if ticket_ids_str:
-        esc_result = await db.execute(
-            text("""
-                SELECT id, ticket_ids, escalation_type, status, student_name, created_at
-                FROM escalation_log
-                WHERE resolved_at IS NULL
-                ORDER BY created_at DESC
-            """)
-        )
-        for row in esc_result.mappings().all():
-            tids = (row["ticket_ids"] or "").split(",")
-            for tid in tids:
-                tid = tid.strip()
-                if tid in ticket_ids_str and tid not in conduct_tickets:
-                    conduct_tickets[tid] = {
-                        "escalation_type": row["escalation_type"],
-                        "escalation_status": row["status"],
-                        "escalation_student": row["student_name"],
-                    }
+        try:
+            esc_result = await db.execute(
+                text("""
+                    SELECT id, ticket_ids, escalation_type, status, student_name, created_at
+                    FROM escalation_log
+                    WHERE resolved_at IS NULL
+                    ORDER BY created_at DESC
+                """)
+            )
+            for row in esc_result.mappings().all():
+                tids = (row["ticket_ids"] or "").split(",")
+                for tid in tids:
+                    tid = tid.strip()
+                    if tid in ticket_ids_str and tid not in conduct_tickets:
+                        conduct_tickets[tid] = {
+                            "escalation_type": row["escalation_type"],
+                            "escalation_status": row["status"],
+                            "escalation_student": row["student_name"],
+                        }
+        except Exception:
+            await db.rollback()  # reset session after failed query
 
     enriched = []
     for t in items:
