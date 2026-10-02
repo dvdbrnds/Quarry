@@ -1578,6 +1578,15 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       render: (_, t) => t.ticket_category === "moving" ? (t.location_text || "—") : t.lot,
     },
     {
+      title: "Code",
+      dataIndex: "violation_type",
+      key: "violation_code",
+      width: 100,
+      sorter: true,
+      sortOrder: sortedColumn("violation_type"),
+      render: (code: string) => <span className="font-mono text-xs">{code || "—"}</span>,
+    },
+    {
       title: "Violation",
       key: "violation_type",
       sorter: true,
