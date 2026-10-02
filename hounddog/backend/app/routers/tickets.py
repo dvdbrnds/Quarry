@@ -899,7 +899,7 @@ async def update_ticket(
     ticket_id: uuid.UUID,
     data: TicketUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
