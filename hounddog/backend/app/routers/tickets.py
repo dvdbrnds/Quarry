@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from ..utils.safe_router import SafeRouter
-from sqlalchemy import select, func, or_, cast, Date, String
+from sqlalchemy import select, func, or_, cast, Date, String, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
