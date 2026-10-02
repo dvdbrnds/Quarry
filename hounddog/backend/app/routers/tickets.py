@@ -127,6 +127,7 @@ async def list_tickets(
     status: str | None = None,
     lot: str | None = None,
     category: str | None = None,
+    violation_type: str | None = None,
     officer_email: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -157,6 +158,8 @@ async def list_tickets(
         query = query.where(Ticket.lot == lot)
     if category:
         query = query.where(Ticket.ticket_category == category)
+    if violation_type:
+        query = query.where(Ticket.violation_type == violation_type)
     if officer_email:
         query = query.where(Ticket.officer_email == officer_email)
     if date_from:
@@ -256,6 +259,7 @@ async def export_tickets_csv(
     status: str | None = None,
     lot: str | None = None,
     category: str | None = None,
+    violation_type: str | None = None,
     officer_email: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -291,6 +295,8 @@ async def export_tickets_csv(
         query = query.where(Ticket.lot == lot)
     if category:
         query = query.where(Ticket.ticket_category == category)
+    if violation_type:
+        query = query.where(Ticket.violation_type == violation_type)
     if officer_email:
         query = query.where(Ticket.officer_email == officer_email)
     if date_from:

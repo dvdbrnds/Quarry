@@ -1061,6 +1061,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [lotFilter, setLotFilter] = useState(searchParams.get("lot") ?? "");
   const [dateFrom, setDateFrom] = useState(searchParams.get("date_from") ?? "");
   const [dateTo, setDateTo] = useState(searchParams.get("date_to") ?? "");
+  const [violationFilter, setViolationFilter] = useState(searchParams.get("violation_type") ?? "");
+  const [violationOptions, setViolationOptions] = useState<{ label: string; value: string }[]>([]);
   const [lotOptions, setLotOptions] = useState<{ label: string; value: string }[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1127,6 +1129,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     if (search) qs.set("search", search);
     if (statusFilter) qs.set("status", statusFilter);
     if (categoryFilter) qs.set("category", categoryFilter);
+    if (violationFilter) qs.set("violation_type", violationFilter);
     if (lotFilter) qs.set("lot", lotFilter);
     if (dateFrom) qs.set("date_from", dateFrom);
     if (dateTo) qs.set("date_to", dateTo);
@@ -1168,6 +1171,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       const filters: string[] = [];
       if (statusFilter) filters.push(`Status: ${statusFilter}`);
       if (categoryFilter) filters.push(`Type: ${categoryFilter}`);
+      if (violationFilter) filters.push(`Violation: ${violationOptions.find(v => v.value === violationFilter)?.label || violationFilter}`);
       if (lotFilter) filters.push(`Lot: ${lotFilter}`);
       if (dateFrom) filters.push(`From: ${dateFrom}`);
       if (dateTo) filters.push(`To: ${dateTo}`);
@@ -1229,11 +1233,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (categoryFilter) params.set("category", categoryFilter);
+    if (violationFilter) params.set("violation_type", violationFilter);
     if (lotFilter) params.set("lot", lotFilter);
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     setSearchParams(params, { replace: true });
-  }, [search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, setSearchParams]);
+  }, [search, statusFilter, categoryFilter, violationFilter, lotFilter, dateFrom, dateTo, setSearchParams]);
 
   useEffect(() => {
     (async () => {
@@ -1242,6 +1247,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         if (res.ok) {
           const lots: { name: string }[] = await res.json();
           setLotOptions(lots.map(l => ({ label: l.name, value: l.name })).sort((a, b) => a.label.localeCompare(b.label)));
+        }
+      } catch { /* ignore */ }
+      try {
+        const res = await fetch("/api/violation-types?all=true", { headers: await authHeaders() });
+        if (res.ok) {
+          const vts: { code: string; label: string }[] = await res.json();
+          setViolationOptions(vts.map(v => ({ label: v.label, value: v.code })).sort((a, b) => a.label.localeCompare(b.label)));
         }
       } catch { /* ignore */ }
     })();
@@ -1255,6 +1267,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       if (search) qs.set("search", search);
       if (statusFilter) qs.set("status", statusFilter);
       if (categoryFilter) qs.set("category", categoryFilter);
+      if (violationFilter) qs.set("violation_type", violationFilter);
       if (lotFilter) qs.set("lot", lotFilter);
       if (dateFrom) qs.set("date_from", dateFrom);
       if (dateTo) qs.set("date_to", dateTo);
@@ -1272,7 +1285,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, categoryFilter, lotFilter, dateFrom, dateTo, officerEmail, sortBy, sortOrder, message]);
+  }, [page, search, statusFilter, categoryFilter, violationFilter, lotFilter, dateFrom, dateTo, officerEmail, sortBy, sortOrder, message]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1578,15 +1591,6 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       render: (_, t) => t.ticket_category === "moving" ? (t.location_text || "—") : t.lot,
     },
     {
-      title: "Code",
-      dataIndex: "violation_type",
-      key: "violation_code",
-      width: 100,
-      sorter: true,
-      sortOrder: sortedColumn("violation_type"),
-      render: (code: string) => <span className="font-mono text-xs">{code || "—"}</span>,
-    },
-    {
       title: "Violation",
       key: "violation_type",
       sorter: true,
@@ -1824,6 +1828,16 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             { label: "Parking", value: "parking" },
             { label: "Moving", value: "moving" },
           ]}
+        />
+        <Select
+          value={violationFilter || undefined}
+          onChange={(val) => { setViolationFilter(val || ""); setPage(1); }}
+          placeholder="All Violations"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          style={{ width: 180 }}
+          options={violationOptions}
         />
         <Select
           value={lotFilter || undefined}
