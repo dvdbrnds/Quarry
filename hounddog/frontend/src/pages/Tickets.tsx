@@ -61,6 +61,7 @@ interface Ticket {
   mailed_address: string | null;
   has_legacy?: boolean;
   enforcement_warning: string | null;
+  conduct_escalation?: { escalation_type: string; escalation_status: string; escalation_student: string | null } | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1603,13 +1604,20 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      width: 130,
       sorter: true,
       sortOrder: sortedColumn("status"),
-      render: (status: string) => (
-        <Tag color={STATUS_COLORS[status] || "default"}>
-          {status.replace("_", " ")}
-        </Tag>
-      ),
+      render: (status: string, record: Ticket) => {
+        const tag = <Tag color={STATUS_COLORS[status] || "default"}>{status.replace("_", " ")}</Tag>;
+        if (record.committee_status) {
+          return <div>{tag}<div className="text-[10px] text-purple-600 mt-0.5">→ Appeals Committee</div></div>;
+        }
+        if (record.conduct_escalation) {
+          const label = record.conduct_escalation.escalation_type === "registration_hold" ? "Reg Hold" : "Conduct";
+          return <div>{tag}<div className="text-[10px] text-orange-600 mt-0.5">→ {label}</div></div>;
+        }
+        return tag;
+      },
     },
     {
       title: "Officer",
@@ -1793,7 +1801,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             { label: "Pending Payment", value: "pending_payment" },
             { label: "Paid", value: "paid" },
             { label: "Appealed", value: "appealed" },
-            { label: "Escalated", value: "escalated" },
+            { label: "Escalated (Committee)", value: "escalated" },
             { label: "Voided", value: "voided" },
           ]}
         />
@@ -2152,7 +2160,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
             {selected.committee_status && (
               <div className="bg-purple-50 rounded-lg p-3 text-sm">
-                <div className="font-medium text-purple-800 mb-1">Appeals Committee</div>
+                <div className="font-medium text-purple-800 mb-1">⚖️ Escalated → Appeals Committee</div>
                 <div className="text-xs space-y-1">
                   <div>Status: <Tag color={selected.committee_status === "voting" ? "processing" : "success"}>{selected.committee_status}</Tag></div>
                   {selected.escalated_by && <div>Escalated by {selected.escalated_by}</div>}
@@ -2160,6 +2168,23 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   {selected.committee_decision && (
                     <div>Decision: <Tag color={selected.committee_decision === "upheld" ? "green" : "red"}>{selected.committee_decision}</Tag></div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {selected.conduct_escalation && (
+              <div className="bg-orange-50 rounded-lg p-3 text-sm">
+                <div className="font-medium text-orange-800 mb-1">
+                  {selected.conduct_escalation.escalation_type === "registration_hold"
+                    ? "🚫 Escalated → Registration Hold"
+                    : "📋 Escalated → Conduct Referral"}
+                </div>
+                <div className="text-xs space-y-1">
+                  <div>Status: <Tag color="orange">{selected.conduct_escalation.escalation_status}</Tag></div>
+                  {selected.conduct_escalation.escalation_student && (
+                    <div>Student: {selected.conduct_escalation.escalation_student}</div>
+                  )}
+                  <div className="text-orange-600/70">Auto-escalated (unpaid ticket threshold)</div>
                 </div>
               </div>
             )}
