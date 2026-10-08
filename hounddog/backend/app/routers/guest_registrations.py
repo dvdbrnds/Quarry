@@ -96,9 +96,30 @@ async def register_guest(
     if data.check_in < date.today():
         raise HTTPException(400, "Check-in date cannot be in the past.")
 
-    # Reject if the guest plate already belongs to an active permit
+    # Reject if the guest plate belongs to the student's own permit
     guest_plate_normalized = (data.guest_plate or "").strip().upper().replace(" ", "").replace("-", "")
     if guest_plate_normalized:
+        own_permit = (await db.execute(
+            select(Permit).where(
+                Permit.deleted_at.is_(None),
+                Permit.status.in_(("active", "suspended")),
+                Permit.permit_type != "student_guest",
+                Permit.plates.any(guest_plate_normalized),
+                or_(
+                    Permit.email == (user.email or "").lower(),
+                    Permit.student_id == (user.email or "").lower(),
+                    Permit.student_id == (user.sub or ""),
+                ),
+            ).limit(1)
+        )).scalars().first()
+        if own_permit:
+            raise HTTPException(
+                400,
+                "You cannot register your own vehicle as a guest. "
+                "This plate is already on your parking permit."
+            )
+
+        # Also reject if the plate belongs to any other active permit
         existing_permit = (await db.execute(
             select(Permit).where(
                 Permit.deleted_at.is_(None),
@@ -120,12 +141,14 @@ async def register_guest(
         raise HTTPException(400, "Guests may stay a maximum of 2 consecutive nights (48 hours).")
 
     # 7-day overlap check: no more than 2 total guest-nights within any 7-day window
+    # Include expired registrations — otherwise students can register daily
+    # because yesterday's registration expires overnight and no longer counts.
     window_start = data.check_in - timedelta(days=7)
     window_end = data.check_out + timedelta(days=7)
     overlap_result = await db.execute(
         select(GuestRegistration).where(
             func.lower(GuestRegistration.host_email) == (user.email or "").lower(),
-            GuestRegistration.status == "active",
+            GuestRegistration.status.in_(("active", "expired")),
             GuestRegistration.check_out > window_start,
             GuestRegistration.check_in < window_end,
         )
