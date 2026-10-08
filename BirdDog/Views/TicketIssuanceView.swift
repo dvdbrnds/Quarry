@@ -91,6 +91,10 @@ struct TicketIssuanceView: View {
                     officerName: officerName,
                     officerEmail: officerEmail,
                     violationLabel: allViolationLabels,
+                    driverName: hasMovingViolation && !driverName.isEmpty ? driverName : nil,
+                    driverLicense: hasMovingViolation && !driverLicense.isEmpty ? driverLicense : nil,
+                    locationText: hasMovingViolation && !locationText.isEmpty ? locationText : nil,
+                    ticketCategory: hasMovingViolation ? "moving" : "parking",
                     isWarning: isWarning,
                     permitTypeLabel: prefilledEntry?.authStatus.permit?.displayType,
                     permitLotZone: prefilledEntry?.authStatus.permit?.lotZone,
@@ -580,8 +584,11 @@ struct TicketIssuanceView: View {
             ticketCategory: resolvedCategory,
             locationLat: ticketLat,
             locationLng: ticketLng,
+            locationText: hasMovingViolation && !locationText.isEmpty ? locationText : nil,
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
             officerNotes: composedNotes.isEmpty ? nil : composedNotes,
+            driverName: hasMovingViolation && !driverName.isEmpty ? driverName : nil,
+            driverLicense: hasMovingViolation && !driverLicense.isEmpty ? driverLicense : nil,
             officerName: officerName.isEmpty ? nil : officerName,
             officerEmail: officerEmail.isEmpty ? nil : officerEmail,
             isWarning: isWarning,
@@ -590,10 +597,7 @@ struct TicketIssuanceView: View {
             ownerName: permit?.ownerName,
             permitNumber: permit?.permitNumber,
             permitTypeLabel: permit?.displayType,
-            permitLotZone: permit?.lotZone,
-            driverName: hasMovingViolation && !driverName.isEmpty ? driverName : nil,
-            driverLicense: hasMovingViolation && !driverLicense.isEmpty ? driverLicense : nil,
-            locationText: hasMovingViolation && !locationText.isEmpty ? locationText : nil
+            permitLotZone: permit?.lotZone
         )
 
         // Persist locally FIRST so the retry queue works even if the server is unreachable
@@ -711,6 +715,10 @@ struct TicketConfirmationView: View {
     let officerName: String
     let officerEmail: String
     let violationLabel: String
+    var driverName: String? = nil
+    var driverLicense: String? = nil
+    var locationText: String? = nil
+    var ticketCategory: String = "parking"
     var isWarning: Bool = false
     var permitTypeLabel: String? = nil
     var permitLotZone: String? = nil
@@ -1016,10 +1024,10 @@ struct TicketConfirmationView: View {
             issuedAt: Date(),
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
             officerNotes: officerNotes.isEmpty ? nil : officerNotes,
-            driverName: hasMovingViolation && !driverName.isEmpty ? driverName : nil,
-            driverLicense: hasMovingViolation && !driverLicense.isEmpty ? driverLicense : nil,
-            locationText: hasMovingViolation && !locationText.isEmpty ? locationText : nil,
-            ticketCategory: hasMovingViolation ? "moving" : "parking",
+            driverName: driverName,
+            driverLicense: driverLicense,
+            locationText: locationText,
+            ticketCategory: ticketCategory,
             officerName: officerName.isEmpty ? nil : officerName,
             officerEmail: officerEmail.isEmpty ? nil : officerEmail,
             ownerName: ownerName,
