@@ -1,6 +1,7 @@
 import AVFoundation
 import UIKit
 import QuartzCore
+import os
 
 protocol CameraServiceDelegate: AnyObject {
     func cameraService(_ service: CameraService, didOutput sampleBuffer: CMSampleBuffer, orientation: CGImagePropertyOrientation)
@@ -74,6 +75,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var isProcessing = false
     private var cachedOrientation: CGImagePropertyOrientation = .left
 
+    /// Thread-safe cached rotation degrees for built-in camera photos.
+    /// Updated on the main thread whenever orientation changes; read from
+    /// any thread during photo capture without hitting UIKit off-main.
+    private let _cachedRotationDegrees = OSAllocatedUnfairLock(initialState: 90)
+
     private(set) var isRunning = false
     private(set) var isUsingExternalCamera = false
     @Published var debugLog: [String] = []
@@ -143,6 +149,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             try? FileManager.default.removeItem(at: Self.logFileURL)
         }
         log("START called (isRunning=\(isRunning))")
+        refreshCachedRotation()
         startOrientationObserver()
         setupSystemPreferredCameraObserver()
         setupInterruptionObservers()
@@ -200,6 +207,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     /// Grab a photo from the camera. Uses the latest buffered frame if available,
     /// otherwise briefly restarts the camera to capture one fresh frame.
     func captureOneShotPhoto() async -> String? {
+        // Snapshot the orientation on the main thread BEFORE capturing.
+        // saveBufferAsJPEG runs on a background thread where UIKit scene
+        // queries return empty results, producing wrong rotation.
+        await MainActor.run { refreshCachedRotation() }
+
         // If session is running and we have a recent buffer, use it directly
         if isRunning && latestSampleBuffer != nil {
             return captureViolationPhoto()
@@ -252,7 +264,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         if isUsingExternalCamera {
             degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
         } else {
-            degrees = Self.currentCaptureRotation()
+            degrees = cachedCaptureRotation()
         }
         let rotatedImage = Self.rotateImage(rawCG, degrees: degrees)
 
@@ -293,7 +305,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
             ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
-            : Self.currentCaptureRotation())
+            : cachedCaptureRotation())
 
         let maxDim: CGFloat = 1280
         let scale = min(maxDim / rotatedImage.size.width, maxDim / rotatedImage.size.height, 1.0)
@@ -1236,6 +1248,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @objc private func orientationChanged() {
         guard !isUsingExternalCamera else { return }
         updateOrientationFromDevice()
+        refreshCachedRotation()
     }
 
     private func updateOrientationFromDevice() {
@@ -1249,13 +1262,28 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Determine the correct rotation for saving a built-in camera photo.
-    /// Uses the window scene's interface orientation (works with orientation lock)
-    /// and falls back to UIDevice orientation, then defaults to portrait (90° CW).
-    static func currentCaptureRotation() -> Int {
-        // UIDevice.orientation is unreliable with orientation lock enabled —
-        // it reports .unknown or stale values. The interface orientation from
-        // the active window scene always reflects the actual screen layout.
+    /// Read the interface orientation on the main thread and cache it so
+    /// background-thread photo captures can use it without hitting UIKit.
+    func refreshCachedRotation() {
+        if Thread.isMainThread {
+            let degrees = Self._readRotation()
+            _cachedRotationDegrees.withLock { $0 = degrees }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let degrees = Self._readRotation()
+                self._cachedRotationDegrees.withLock { $0 = degrees }
+            }
+        }
+    }
+
+    /// Thread-safe read of the cached rotation (safe from any thread).
+    func cachedCaptureRotation() -> Int {
+        _cachedRotationDegrees.withLock { $0 }
+    }
+
+    /// Read rotation from UIWindowScene. MUST be called on main thread.
+    private static func _readRotation() -> Int {
         if let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first {
@@ -1268,14 +1296,21 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             @unknown default:          break
             }
         }
-        // Fallback: try device orientation (works when lock is off)
         switch UIDevice.current.orientation {
         case .portrait:            return 90
         case .portraitUpsideDown:  return 270
         case .landscapeLeft:       return 0
         case .landscapeRight:      return 180
-        default:                   return 90  // Default to portrait
+        default:                   return 90
         }
+    }
+
+    /// Convenience for callers that are already on the main thread.
+    static func currentCaptureRotation() -> Int {
+        if Thread.isMainThread {
+            return _readRotation()
+        }
+        return 90
     }
 
     private var externalCameraOrientation: CGImagePropertyOrientation {
@@ -1362,6 +1397,11 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             DispatchQueue.main.async { [weak self] in
                 self?.liveMetrics = snapshot
             }
+        }
+
+        // Refresh cached rotation every ~2s so photo captures use correct orientation
+        if !isUsingExternalCamera && frameCount % 60 == 0 {
+            refreshCachedRotation()
         }
 
         // Sharpness + brightness check runs early for external cameras so blurry
