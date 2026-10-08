@@ -1655,13 +1655,30 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     ...(isOffice ? [{
       title: "Actions",
       key: "actions",
-      width: 100,
-      render: (_: unknown, t: Ticket) =>
-        !["paid", "voided"].includes(t.status) ? (
-          <Button type="link" danger size="small" onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>
-            Void
-          </Button>
-        ) : null,
+      width: 200,
+      render: (_: unknown, t: Ticket) => {
+        if (["paid", "voided"].includes(t.status)) return null;
+        return (
+          <Space size={0}>
+            {t.appeal_decision === "pending" && (
+              <>
+                <Button type="link" size="small" style={{ color: "#22C55E", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "approved"); }}>
+                  Approve
+                </Button>
+                <Button type="link" size="small" style={{ color: "#ef4444", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "denied"); }}>
+                  Deny
+                </Button>
+                <Button type="link" size="small" style={{ color: "#a855f7", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>
+                  Escalate
+                </Button>
+              </>
+            )}
+            <Button type="link" danger size="small" style={{ padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>
+              Void
+            </Button>
+          </Space>
+        );
+      },
     }] : []),
   ];
 
