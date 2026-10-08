@@ -1660,7 +1660,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         if (["paid", "voided"].includes(t.status)) return null;
         return (
           <Space size={0}>
-            {t.appeal_decision === "pending" && (
+            {(t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"))) && (
               <>
                 <Button type="link" size="small" style={{ color: "#22C55E", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "approved"); }}>
                   Approve
@@ -1945,7 +1945,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <Button onClick={() => handlePrintTicket(selected)}>Print</Button>
             )}
             <div className="flex-1" />
-            {isOffice && selected?.appeal_decision === "pending" && (
+            {isOffice && (selected?.appeal_decision === "pending" || (selected?.status === "appealed" && (!selected?.appeal_decision || selected?.appeal_decision === "pending"))) && (
               <>
                 <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
                   Approve
