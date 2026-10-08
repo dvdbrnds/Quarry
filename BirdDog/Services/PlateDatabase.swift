@@ -109,10 +109,27 @@ final class PlateDatabase {
                 let activeStatuses: Set<String> = ["active", "valid"]
                 let existingIsActive = activeStatuses.contains(existing.permitStatus.lowercased())
                 let incomingIsActive = activeStatuses.contains(permit.permitStatus.lowercased())
+                let existingIsTag = existing.permitType.lowercased() == "vehicle_tag"
+                let incomingIsTag = permit.permitType.lowercased() == "vehicle_tag"
 
-                if !existingIsActive && incomingIsActive {
-                    // Incoming permit is active but existing is not — replace with incoming,
-                    // keeping merged data from the old record
+                // Decide whether the incoming permit should replace the existing core fields.
+                // A real permit always wins over a vehicle tag for the same plate.
+                let shouldReplace: Bool
+                if existingIsTag && !incomingIsTag && incomingIsActive {
+                    // Real active permit replaces a tag — always
+                    shouldReplace = true
+                } else if !existingIsTag && incomingIsTag {
+                    // Tag should never overwrite a real permit
+                    shouldReplace = false
+                } else if !existingIsActive && incomingIsActive {
+                    // Incoming is active but existing is not — replace
+                    shouldReplace = true
+                } else {
+                    // Both same priority — keep existing
+                    shouldReplace = false
+                }
+
+                if shouldReplace {
                     existing.permitNumber = permit.permitNumber
                     existing.permitType = permit.permitType
                     existing.permitStatus = permit.permitStatus
@@ -120,7 +137,6 @@ final class PlateDatabase {
                     existing.expirationDate = permit.parsedExpirationDate
                     existing.ownerName = permit.ownerName
                     existing.vehicleDescription = permit.vehicleDescription
-                    // Merge lot zones from both permits
                     if !permit.lotZone.isEmpty {
                         let existingZones = existing.lotZone
                         if existingZones.isEmpty {
@@ -130,7 +146,7 @@ final class PlateDatabase {
                         }
                     }
                 } else {
-                    // Existing is active (or both inactive) — just merge lot zones
+                    // Just merge lot zones
                     if !permit.lotZone.isEmpty {
                         let existingZones = existing.lotZone
                         if !existingZones.contains(permit.lotZone) {
@@ -360,10 +376,11 @@ final class PlateDatabase {
             let existingIsActive = activeStatuses.contains(existing.permitStatus.lowercased())
             let incomingIsActive = activeStatuses.contains(entry.permitStatus.lowercased())
 
-            // Guest/visitor permit types that should never overwrite a real permit
+            // Guest/visitor/tag permit types that should never overwrite a real permit
             let guestTypes: Set<String> = [
                 "student_guest", "visitor_day", "visitor_vendor",
                 "visitor_vendor_longterm", "visitor_contracted_staff",
+                "vehicle_tag",
             ]
             let incomingIsGuest = guestTypes.contains(entry.permitType.lowercased())
             let existingIsGuest = guestTypes.contains(existing.permitType.lowercased())

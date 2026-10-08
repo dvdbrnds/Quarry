@@ -205,19 +205,24 @@ async def sync_permits(
     else:
         query = query.where(Permit.deleted_at.is_(None)).where(not_(stale_guest))
 
-    # Order so cancelled/expired permits come first — when BirdDog merges
-    # duplicate plates, active permits will overwrite inactive ones.
+    # Order so: inactive first, then tags, then real permits.
+    # When BirdDog merges duplicate plates, real active permits overwrite tags.
     from sqlalchemy import case as sa_case
     status_order = sa_case(
         (Permit.status == "active", 1),
         (Permit.status == "pending_payment", 1),
         else_=0,
     )
+    # Tags should come before real permits so real permits win on merge
+    tag_order = sa_case(
+        (Permit.is_tag_only.is_(True), 0),
+        else_=1,
+    )
     # Disable autoflush to prevent collisions with deploy-time DDL locks (QUARRY-1T)
     prev_autoflush = db.autoflush
     db.autoflush = False
     try:
-        permits = (await db.execute(query.order_by(status_order, Permit.updated_at))).scalars().all()
+        permits = (await db.execute(query.order_by(status_order, tag_order, Permit.updated_at))).scalars().all()
     finally:
         db.autoflush = prev_autoflush
 
