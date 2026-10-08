@@ -1283,6 +1283,14 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     /// Read rotation from UIWindowScene. MUST be called on main thread.
+    ///
+    /// IMPORTANT: UIInterfaceOrientation and UIDeviceOrientation use OPPOSITE
+    /// naming for landscape! (Apple: "UIInterfaceOrientationLandscapeLeft is
+    /// equal to UIDeviceOrientationLandscapeRight and vice versa.")
+    ///   - UIInterfaceOrientation.landscapeLeft  = home button LEFT  = 180°
+    ///   - UIInterfaceOrientation.landscapeRight = home button RIGHT = 0°
+    ///   - UIDeviceOrientation.landscapeLeft     = home button RIGHT = 0°
+    ///   - UIDeviceOrientation.landscapeRight    = home button LEFT  = 180°
     private static func _readRotation() -> Int {
         if let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
@@ -1290,17 +1298,18 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             switch scene.interfaceOrientation {
             case .portrait:            return 90
             case .portraitUpsideDown:  return 270
-            case .landscapeLeft:       return 0
-            case .landscapeRight:      return 180
+            case .landscapeLeft:       return 180  // home button LEFT
+            case .landscapeRight:      return 0    // home button RIGHT
             case .unknown:             break
             @unknown default:          break
             }
         }
+        // Fallback: UIDeviceOrientation uses OPPOSITE naming for landscape
         switch UIDevice.current.orientation {
         case .portrait:            return 90
         case .portraitUpsideDown:  return 270
-        case .landscapeLeft:       return 0
-        case .landscapeRight:      return 180
+        case .landscapeLeft:       return 0    // home button RIGHT
+        case .landscapeRight:      return 180  // home button LEFT
         default:                   return 90
         }
     }
