@@ -48,17 +48,18 @@ async def check_and_escalate(
                 student_id, unpaid_count,
             )
 
-    if unpaid_count >= settings.registration_hold_threshold:
-        already_held = await _has_active_escalation(db, student_id, "registration_hold")
-        if not already_held:
-            await _create_registration_hold(
-                db, student_id, student_name, student_email, plate, unpaid_count
-            )
-            actions["registration_hold"] = True
-            logger.info(
-                "Registration hold triggered for student %s (%d tickets)",
-                student_id, unpaid_count,
-            )
+    # Registration hold mechanism temporarily disabled
+    # if unpaid_count >= settings.registration_hold_threshold:
+    #     already_held = await _has_active_escalation(db, student_id, "registration_hold")
+    #     if not already_held:
+    #         await _create_registration_hold(
+    #             db, student_id, student_name, student_email, plate, unpaid_count
+    #         )
+    #         actions["registration_hold"] = True
+    #         logger.info(
+    #             "Registration hold triggered for student %s (%d tickets)",
+    #             student_id, unpaid_count,
+    #         )
 
     return actions
 
