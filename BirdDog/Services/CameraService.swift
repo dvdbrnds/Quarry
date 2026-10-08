@@ -252,13 +252,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         if isUsingExternalCamera {
             degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
         } else {
-            switch cachedOrientation {
-            case .up:    degrees = 0
-            case .right: degrees = 90
-            case .down:  degrees = 180
-            case .left:  degrees = 270
-            default:     degrees = 270
-            }
+            degrees = Self.currentCaptureRotation()
         }
         let rotatedImage = Self.rotateImage(rawCG, degrees: degrees)
 
@@ -299,7 +293,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
             ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
-            : 90)
+            : Self.currentCaptureRotation())
 
         let maxDim: CGFloat = 1280
         let scale = min(maxDim / rotatedImage.size.width, maxDim / rotatedImage.size.height, 1.0)
@@ -1251,6 +1245,35 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         case .landscapeLeft:       cachedOrientation = .up
         case .landscapeRight:      cachedOrientation = .down
         default: break
+        }
+    }
+
+    /// Determine the correct rotation for saving a built-in camera photo.
+    /// Uses the window scene's interface orientation (works with orientation lock)
+    /// and falls back to UIDevice orientation, then defaults to portrait (90° CW).
+    static func currentCaptureRotation() -> Int {
+        // UIDevice.orientation is unreliable with orientation lock enabled —
+        // it reports .unknown or stale values. The interface orientation from
+        // the active window scene always reflects the actual screen layout.
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first {
+            switch scene.interfaceOrientation {
+            case .portrait:            return 90
+            case .portraitUpsideDown:  return 270
+            case .landscapeLeft:       return 0
+            case .landscapeRight:      return 180
+            case .unknown:             break
+            @unknown default:          break
+            }
+        }
+        // Fallback: try device orientation (works when lock is off)
+        switch UIDevice.current.orientation {
+        case .portrait:            return 90
+        case .portraitUpsideDown:  return 270
+        case .landscapeLeft:       return 0
+        case .landscapeRight:      return 180
+        default:                   return 90  // Default to portrait
         }
     }
 
