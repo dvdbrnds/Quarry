@@ -482,6 +482,33 @@ async def _expire_guest_permits():
                             len(expired_regs), len(expired_permits))
 
 
+async def _expire_moving_violations():
+    """Expire moving violation tickets after 10 days — they can no longer be
+    paid online and are referred to the local Magisterial District Court."""
+    from .timeutils import today_local
+    from ..models.ticket import Ticket as _Ticket
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=10)
+    async with async_session() as db:
+        async with db.begin():
+            result = await db.execute(
+                select(_Ticket).where(
+                    _Ticket.ticket_category == "moving",
+                    _Ticket.status.in_(("issued", "overdue")),
+                    _Ticket.issued_at < cutoff,
+                )
+            )
+            expired = result.scalars().all()
+            for t in expired:
+                t.status = "expired_magistrate"
+            if expired:
+                logger.info(
+                    "Expired %d moving violation(s) past 10-day response period",
+                    len(expired),
+                )
+
+
 async def _run_loop():
     logger.info("Closure scheduler started (60s interval)")
 
@@ -552,6 +579,15 @@ async def _run_loop():
             await _expire_guest_permits()
         except Exception as e:
             logger.error("Scheduler tick (guest permit expiry) failed: %s", e, exc_info=True)
+            try:
+                import sentry_sdk; sentry_sdk.capture_exception(e)
+            except Exception as e:
+                pass
+
+        try:
+            await _expire_moving_violations()
+        except Exception as e:
+            logger.error("Scheduler tick (moving violation expiry) failed: %s", e, exc_info=True)
             try:
                 import sentry_sdk; sentry_sdk.capture_exception(e)
             except Exception as e:

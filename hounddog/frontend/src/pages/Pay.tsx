@@ -232,14 +232,24 @@ export default function Pay() {
                 <div className="flex justify-between font-medium mt-1 pt-1 border-t"><span>Total due</span><span>${(Number(t.fine_amount) + Number(t.processing_fee)).toFixed(2)}</span></div>
               </div>
             )}
-            <Space direction="vertical" className="w-full">
-              <Button block onClick={() => setDisputeTicket(t)}>Appeal This Ticket</Button>
-              {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: brand.accentColor, color: brand.accentColor }}>Buy a Commuter Permit</Button>}
-              <Button type="primary" block size="large" loading={paying === t.id} onClick={() => handlePay(t.id)}>
-                {paying === t.id ? "Redirecting..." : "Pay Now"}
-              </Button>
-              <p className="text-xs text-center text-red-600 font-medium">By paying, you accept the fine. No refunds will be issued.</p>
-            </Space>
+            {t.status === "expired_magistrate" ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                <p className="text-sm font-semibold text-red-800 mb-1">⚖️ Referred to Magistrate</p>
+                <p className="text-xs text-red-700">
+                  This moving violation has exceeded the 10-day response period and has been
+                  referred to the local Magisterial District Court. It can no longer be paid online.
+                </p>
+              </div>
+            ) : (
+              <Space direction="vertical" className="w-full">
+                <Button block onClick={() => setDisputeTicket(t)}>Appeal This Ticket</Button>
+                {t.is_commuter_lot && <Button block onClick={() => handleShowPermits(t)} style={{ borderColor: brand.accentColor, color: brand.accentColor }}>Buy a Commuter Permit</Button>}
+                <Button type="primary" block size="large" loading={paying === t.id} onClick={() => handlePay(t.id)}>
+                  {paying === t.id ? "Redirecting..." : "Pay Now"}
+                </Button>
+                <p className="text-xs text-center text-red-600 font-medium">By paying, you accept the fine. No refunds will be issued.</p>
+              </Space>
+            )}
           </Card>
         ))}
 

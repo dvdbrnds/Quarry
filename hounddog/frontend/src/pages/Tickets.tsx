@@ -73,6 +73,7 @@ const STATUS_COLORS: Record<string, string> = {
   appealed: "gold",
   escalated: "purple",
   voided: "default",
+  expired_magistrate: "magenta",
 };
 
 const STATUS_BAR_COLORS: Record<string, string> = {
@@ -1621,7 +1622,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       sorter: true,
       sortOrder: sortedColumn("status"),
       render: (status: string, record: Ticket) => {
-        const tag = <Tag color={STATUS_COLORS[status] || "default"}>{status.replace("_", " ")}</Tag>;
+        const statusLabel = status === "expired_magistrate" ? "Magistrate" : status.replace("_", " ");
+        const tag = <Tag color={STATUS_COLORS[status] || "default"}>{statusLabel}</Tag>;
         if (record.committee_status) {
           return <div>{tag}<div className="text-[10px] text-purple-600 mt-0.5">→ Appeals Committee</div></div>;
         }
@@ -1730,7 +1732,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             <h1>MORAVIAN UNIVERSITY POLICE DEPARTMENT</h1>
             <p>Unpaid Parking Citation Notice</p>
           </div>
-          <p style="font-size:13px;color:#333;">A parking citation was issued to a vehicle registered to this address. The citation remains unpaid and is now overdue. Failure to pay or appeal within 5 days of this notice may result in a state citation being issued through the local Magisterial District Court, which carries additional court costs and fees.</p>
+          <p style="font-size:13px;color:#333;">A ${t.ticket_category === "moving" ? "traffic" : "parking"} citation was issued to a vehicle registered to this address. The citation remains unpaid and is now overdue. Failure to pay or ${t.ticket_category === "moving" ? "respond" : "appeal"} within ${t.ticket_category === "moving" ? "10" : "5"} days of this notice may result in a state citation being issued through the local Magisterial District Court, which carries additional court costs and fees.</p>
           <div class="details"><table>
             <tr><td>Citation #</td><td>${t.ticket_number || t.id.slice(0, 8).toUpperCase()}</td></tr>
             <tr><td>License Plate</td><td style="font-family:monospace;letter-spacing:1px;">${t.plate}</td></tr>
@@ -1742,7 +1744,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             ${t.vehicle_description ? `<tr><td>Vehicle</td><td>${t.vehicle_description}</td></tr>` : ""}
           </table></div>
           <div class="warning">
-            <strong>NOTICE:</strong> If this citation is not paid or appealed within 5 days of the date on this notice, a state citation will be issued through the local Magisterial District Court, carrying mandatory court costs and fees — often totaling more than $100 on top of the fine itself.
+            <strong>NOTICE:</strong> If this citation is not paid or ${t.ticket_category === "moving" ? "responded to" : "appealed"} within ${t.ticket_category === "moving" ? "10" : "5"} days of the date on this notice, a state citation will be issued through the local Magisterial District Court, carrying mandatory court costs and fees — often totaling more than $100 on top of the fine itself.
           </div>
           <div class="payment">
             <p><strong>Pay Online:</strong></p>
@@ -1816,6 +1818,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             { label: "Appealed", value: "appealed" },
             { label: "Escalated (Committee)", value: "escalated" },
             { label: "Voided", value: "voided" },
+            { label: "Magistrate Referral", value: "expired_magistrate" },
           ]}
         />
         <Select
@@ -2208,6 +2211,16 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                     <div>Student: {selected.conduct_escalation.escalation_student}</div>
                   )}
                   <div className="text-orange-600/70">Auto-escalated (unpaid ticket threshold)</div>
+                </div>
+              </div>
+            )}
+
+            {selected.status === "expired_magistrate" && (
+              <div className="bg-red-50 rounded-lg p-3 text-sm">
+                <div className="font-medium text-red-800 mb-1">⚖️ Referred to Magisterial District Court</div>
+                <div className="text-xs text-red-700">
+                  This moving violation exceeded the 10-day response period and has been
+                  referred to the local Magistrate. Online payment is no longer available.
                 </div>
               </div>
             )}

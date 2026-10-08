@@ -107,6 +107,13 @@ async def _validate_and_appeal(ticket: "Ticket", explanation: str, appeal_window
             "Once payment is processed, the citation is considered resolved.",
         )
 
+    if ticket.status == "expired_magistrate":
+        raise HTTPException(
+            400,
+            "This moving violation has exceeded the 10-day response period and has been "
+            "referred to the local Magisterial District Court. It can no longer be appealed online.",
+        )
+
     if ticket.appeal_decision == "pending":
         raise HTTPException(400, "An appeal has already been submitted for this ticket.")
 

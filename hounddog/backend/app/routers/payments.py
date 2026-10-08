@@ -174,6 +174,12 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
         raise HTTPException(404, "Ticket not found")
     if ticket.status in ("paid", "voided", "resolved_permit", "warning"):
         raise HTTPException(400, f"Ticket is already {ticket.status}" if ticket.status != "warning" else "Warnings do not require payment")
+    if ticket.status == "expired_magistrate":
+        raise HTTPException(
+            400,
+            "This moving violation has expired and been referred to the local Magisterial District Court. "
+            "It can no longer be paid online."
+        )
 
     fine_cents = int(ticket.fine_amount * 100)
 
