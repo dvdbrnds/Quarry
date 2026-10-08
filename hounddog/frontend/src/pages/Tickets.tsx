@@ -1653,30 +1653,23 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       render: (d: string) => fmtDateTimeCompact(d),
     },
     ...(isOffice ? [{
-      title: "Actions",
+      title: "",
       key: "actions",
-      width: 200,
+      width: 120,
       render: (_: unknown, t: Ticket) => {
         if (["paid", "voided"].includes(t.status)) return null;
+        const appealed = t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"));
         return (
-          <Space size={0}>
-            {(t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"))) && (
+          <div style={{ display: "flex", gap: 2 }}>
+            {appealed && (
               <>
-                <Button type="link" size="small" style={{ color: "#22C55E", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "approved"); }}>
-                  Approve
-                </Button>
-                <Button type="link" size="small" style={{ color: "#ef4444", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "denied"); }}>
-                  Deny
-                </Button>
-                <Button type="link" size="small" style={{ color: "#a855f7", padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>
-                  Escalate
-                </Button>
+                <Button size="small" type="primary" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "approved"); }}>✓</Button>
+                <Button size="small" danger style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "denied"); }}>✗</Button>
+                <Button size="small" style={{ background: "#a855f7", borderColor: "#a855f7", color: "#fff", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>↑</Button>
               </>
             )}
-            <Button type="link" danger size="small" style={{ padding: "0 4px" }} onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>
-              Void
-            </Button>
-          </Space>
+            <Button size="small" type="text" danger style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>Void</Button>
+          </div>
         );
       },
     }] : []),
