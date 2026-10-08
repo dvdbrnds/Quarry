@@ -252,6 +252,7 @@ struct ScanLogView: View {
         switch status {
         case .authorized: return PlateStatus.allowedGreen
         case .neverTicket: return PlateStatus.allowedGreen
+        case .lotClosed: return .red
         case .unknown: return .red
         case .wrongLot: return .orange
         case .tagOnly: return .cyan
@@ -268,6 +269,8 @@ struct ScanLogView: View {
                 PlateStatus.allowedGreen.opacity(0.14)
             case .neverTicket:
                 PlateStatus.allowedGreen.opacity(0.14)
+            case .lotClosed:
+                Color.red.opacity(0.12)
             case .unknown:
                 Color.red.opacity(0.08)
             case .wrongLot:
@@ -309,6 +312,8 @@ struct ScanLogView: View {
             return "KNOWN VEHICLE · NO PERMIT · \(permit.ownerName)"
         case .expired(let permit):
             return "EXPIRED · \([permit.displayType, permit.ownerName].filter { !$0.isEmpty }.joined(separator: " · "))"
+        case .lotClosed(let lotName):
+            return "⛔ LOT CLOSED — \(lotName)"
         case .unknown:
             return "NOT IN DATABASE"
         case .ticketed:

@@ -65,6 +65,16 @@ final class PlateAuthService: PlateCheckable {
             return cached
         }
 
+        // Closed lot — no one parks here regardless of permit status
+        if let currentLot {
+            let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot })
+            if let lot, lot.isClosed {
+                let cached = AuthResult(status: .lotClosed(lotName: currentLot), matchMethod: .none, matchedPlate: normalized)
+                lookupCache[cacheKey] = cached
+                return cached
+            }
+        }
+
         let result: AuthResult
         if let record = database.lookup(normalizedPlate: normalized) {
             result = AuthResult(status: statusFor(record, currentLot: currentLot), matchMethod: .exact, matchedPlate: record.plateNormalized)
@@ -97,6 +107,16 @@ final class PlateAuthService: PlateCheckable {
         }
         if let cached = lookupCache[cacheKey] {
             return cached
+        }
+
+        // Closed lot — no one parks here
+        if let currentLot {
+            let lot = GeofenceService.shared.lots.first(where: { $0.name == currentLot })
+            if let lot, lot.isClosed {
+                let closed = AuthResult(status: .lotClosed(lotName: currentLot), matchMethod: .none, matchedPlate: normalized)
+                lookupCache[cacheKey] = closed
+                return closed
+            }
         }
 
         if let record = database.lookup(normalizedPlate: normalized) {

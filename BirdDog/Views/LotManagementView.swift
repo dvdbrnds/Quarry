@@ -67,6 +67,15 @@ struct LotManagementView: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
 
+                    if lot.isClosed {
+                        Text("CLOSED")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.red, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+
                     if lot.hasSheepDog {
                         Image(systemName: "pawprint.fill")
                             .font(.caption)

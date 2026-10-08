@@ -461,6 +461,7 @@ final class HoundDogSyncService: ObservableObject {
             let parkingLot = ParkingLot(
                 id: lot.id, name: lot.name, boundary: boundary,
                 spotCount: lot.spotCount ?? 0, hasSheepDog: lot.hasSheepDog ?? false,
+                isClosed: lot.isClosed ?? false,
                 accessSchedule: lot.accessSchedule ?? []
             )
 
@@ -999,6 +1000,7 @@ struct SyncLot: Decodable {
     let boundary: [SyncCoordinate]
     let spotCount: Int?
     let hasSheepDog: Bool?
+    let isClosed: Bool?
     let spots: [SyncSpot]?
     let deletedAt: String?
     let accessSchedule: [SyncSeasonSchedule]?
@@ -1007,6 +1009,7 @@ struct SyncLot: Decodable {
         case id, name, boundary, spots
         case spotCount = "spot_count"
         case hasSheepDog = "has_sheepdog"
+        case isClosed = "is_closed"
         case deletedAt = "deleted_at"
         case accessSchedule = "access_schedule"
     }

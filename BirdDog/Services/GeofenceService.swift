@@ -92,7 +92,7 @@ final class GeofenceService: NSObject, ObservableObject {
             context.delete(stale)
         }
 
-        let record = ParkingLotRecord(lotId: lot.id, name: lot.name, boundary: lot.boundary, spotCount: lot.spotCount, hasSheepDog: lot.hasSheepDog, accessSchedule: lot.accessSchedule)
+        let record = ParkingLotRecord(lotId: lot.id, name: lot.name, boundary: lot.boundary, spotCount: lot.spotCount, hasSheepDog: lot.hasSheepDog, isClosed: lot.isClosed, accessSchedule: lot.accessSchedule)
         context.insert(record)
         try? context.save()
         loadLots()
@@ -112,6 +112,7 @@ final class GeofenceService: NSObject, ObservableObject {
             existing.boundaryJSON = (try? JSONEncoder().encode(lot.boundary)) ?? Data()
             existing.spotCount = lot.spotCount
             existing.hasSheepDog = lot.hasSheepDog
+            existing.isClosed = lot.isClosed
             existing.accessScheduleJSON = (try? JSONEncoder().encode(lot.accessSchedule)) ?? Data()
             try? context.save()
         }

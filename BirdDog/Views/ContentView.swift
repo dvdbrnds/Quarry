@@ -421,17 +421,18 @@ struct ContentView: View {
     @ViewBuilder
     private var currentLotBadge: some View {
         let geo = viewModel.geofenceService
-        if let lotName = geo.currentLotName {
+        if let lot = geo.currentLot {
+            let closed = lot.isClosed
             HStack(spacing: 4) {
-                Image(systemName: "mappin.circle.fill")
+                Image(systemName: closed ? "nosign" : "mappin.circle.fill")
                     .font(.caption2)
-                Text(lotName)
+                Text(closed ? "\(lot.name) — CLOSED" : lot.name)
                     .font(.caption2.bold())
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .foregroundStyle(.white)
-            .background(PlateStatus.allowedGreen, in: Capsule())
+            .background(closed ? Color.red : PlateStatus.allowedGreen, in: Capsule())
         } else {
             HStack(spacing: 4) {
                 Image(systemName: lotStatusIcon(for: geo))

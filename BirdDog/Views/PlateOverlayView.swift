@@ -18,6 +18,7 @@ struct PlateOverlayView: View {
         case .wrongLot: return .orange.opacity(0.8)
         case .expired: return .yellow.opacity(0.75)
         case .tagOnly: return .cyan.opacity(0.8)
+        case .lotClosed: return .red.opacity(0.9)
         case .unknown: return .red.opacity(0.8)
         case .ticketed: return .purple.opacity(0.75)
         case .unchecked: return .black.opacity(0.65)
@@ -108,6 +109,12 @@ struct PlateOverlayView: View {
                                 .font(.caption)
                                 .foregroundStyle(textColor.opacity(0.9))
                         }
+                    }
+
+                    if case .lotClosed(let lotName) = authStatus {
+                        Text("\(lotName) is CLOSED — No Parking")
+                            .font(.caption.bold())
+                            .foregroundStyle(textColor)
                     }
 
                     if case .expired(let permit) = authStatus, !permit.ownerName.isEmpty {

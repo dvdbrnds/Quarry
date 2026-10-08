@@ -17,14 +17,16 @@ struct ParkingLot: Codable, Identifiable, Sendable, Equatable {
     let boundary: [Coordinate]
     var spotCount: Int
     var hasSheepDog: Bool
+    var isClosed: Bool
     var accessSchedule: [SyncSeasonSchedule]
 
-    init(id: String, name: String, boundary: [Coordinate], spotCount: Int = 0, hasSheepDog: Bool = false, accessSchedule: [SyncSeasonSchedule] = []) {
+    init(id: String, name: String, boundary: [Coordinate], spotCount: Int = 0, hasSheepDog: Bool = false, isClosed: Bool = false, accessSchedule: [SyncSeasonSchedule] = []) {
         self.id = id
         self.name = name
         self.boundary = boundary
         self.spotCount = spotCount
         self.hasSheepDog = hasSheepDog
+        self.isClosed = isClosed
         self.accessSchedule = accessSchedule
     }
 
@@ -122,14 +124,16 @@ final class ParkingLotRecord {
     var boundaryJSON: Data
     var spotCount: Int
     var hasSheepDog: Bool
+    var isClosed: Bool
     var accessScheduleJSON: Data
 
-    init(lotId: String, name: String, boundary: [Coordinate], spotCount: Int = 0, hasSheepDog: Bool = false, accessSchedule: [SyncSeasonSchedule] = []) {
+    init(lotId: String, name: String, boundary: [Coordinate], spotCount: Int = 0, hasSheepDog: Bool = false, isClosed: Bool = false, accessSchedule: [SyncSeasonSchedule] = []) {
         self.lotId = lotId
         self.name = name
         self.boundaryJSON = (try? JSONEncoder().encode(boundary)) ?? Data()
         self.spotCount = spotCount
         self.hasSheepDog = hasSheepDog
+        self.isClosed = isClosed
         self.accessScheduleJSON = (try? JSONEncoder().encode(accessSchedule)) ?? Data()
     }
 
@@ -142,6 +146,6 @@ final class ParkingLotRecord {
     }
 
     var parkingLot: ParkingLot {
-        ParkingLot(id: lotId, name: name, boundary: boundary, spotCount: spotCount, hasSheepDog: hasSheepDog, accessSchedule: accessSchedule)
+        ParkingLot(id: lotId, name: name, boundary: boundary, spotCount: spotCount, hasSheepDog: hasSheepDog, isClosed: isClosed, accessSchedule: accessSchedule)
     }
 }

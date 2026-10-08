@@ -550,6 +550,10 @@ struct TicketIssuanceView: View {
                     ensureValidViolationSelection(preferred: [
                         "no_permit", "no_permit_displayed", "unauthorized_permit"
                     ])
+                case .lotClosed:
+                    ensureValidViolationSelection(preferred: [
+                        "prohibited_parking", "unauthorized_permit", "no_permit"
+                    ])
                 default:
                     ensureValidViolationSelection()
                 }
