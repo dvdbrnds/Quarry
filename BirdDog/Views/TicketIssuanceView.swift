@@ -37,12 +37,17 @@ struct TicketIssuanceView: View {
         "Permit pending / in process",
     ]
 
+    @State private var driverName = ""
+    @State private var driverLicense = ""
+    @State private var locationText = ""
+
     @State private var lots: [ParkingLot] = []
     @State private var officerName = ""
     @State private var officerEmail = ""
     @State private var ticketLat: Double?
     @State private var ticketLng: Double?
     @State private var violationTypes: [(String, String)] = []
+    @State private var movingViolationCodes: Set<String> = []
 
     var cameraService: CameraService?
     var prefilledPlate: String?
@@ -51,6 +56,11 @@ struct TicketIssuanceView: View {
 
     private func ensureValidViolationSelection(preferred: [String] = []) {
         // No-op: officers must deliberately choose a violation type
+    }
+
+    /// True when any selected violation is a moving violation
+    private var hasMovingViolation: Bool {
+        !selectedViolations.intersection(movingViolationCodes).isEmpty
     }
 
     /// Primary violation code (first in selection order preserved by violationTypes list order)
@@ -192,44 +202,45 @@ struct TicketIssuanceView: View {
             }
 
             Section {
-                ForEach(violationTypes, id: \.0) { code, label in
-                    Button {
-                        if selectedViolations.contains(code) {
-                            selectedViolations.remove(code)
-                        } else {
-                            selectedViolations.insert(code)
-                        }
-                    } label: {
-                        HStack {
-                            Text(label)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            if selectedViolations.contains(code) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.blue)
-                            } else {
-                                Image(systemName: "circle")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                if !lots.isEmpty {
-                    Picker("Lot", selection: $selectedLot) {
-                        Text("— Select —").tag("")
-                        ForEach(lots, id: \.id) { lot in
-                            Text(lot.name).tag(lot.name)
-                        }
-                    }
+                ForEach(violationTypes.filter { !movingViolationCodes.contains($0.0) }, id: \.0) { code, label in
+                    violationRow(code: code, label: label)
                 }
             } header: {
                 HStack {
-                    Text("Violations")
+                    Text("Parking Violations")
                     Spacer()
                     if !selectedViolations.isEmpty {
                         Text("\(selectedViolations.count) selected")
                             .font(.caption)
                             .foregroundStyle(.blue)
+                    }
+                }
+            }
+
+            Section(header: Text("Moving / Traffic Violations")) {
+                ForEach(violationTypes.filter { movingViolationCodes.contains($0.0) }, id: \.0) { code, label in
+                    violationRow(code: code, label: label)
+                }
+            }
+
+            if hasMovingViolation {
+                Section(header: Text("Driver Information")) {
+                    TextField("Driver name", text: $driverName)
+                        .textInputAutocapitalization(.words)
+                    TextField("Driver license #", text: $driverLicense)
+                        .textInputAutocapitalization(.characters)
+                    TextField("Location description", text: $locationText)
+                        .textInputAutocapitalization(.sentences)
+                }
+            }
+
+            if !lots.isEmpty {
+                Section {
+                    Picker("Lot", selection: $selectedLot) {
+                        Text("— Select —").tag("")
+                        ForEach(lots, id: \.id) { lot in
+                            Text(lot.name).tag(lot.name)
+                        }
                     }
                 }
             }
@@ -417,7 +428,11 @@ struct TicketIssuanceView: View {
             lots = geo.lots
             officerName = OfficerAuthService.shared.officerName
             officerEmail = OfficerAuthService.shared.officerEmail
-            violationTypes = ViolationTypeStore.shared.types(in: "parking").map { ($0.code, $0.label) }
+            let store = ViolationTypeStore.shared
+            let parkingTypes = store.types(in: "parking").map { ($0.code, $0.label) }
+            let movingTypes = store.types(in: "moving").map { ($0.code, $0.label) }
+            violationTypes = parkingTypes + movingTypes
+            movingViolationCodes = Set(movingTypes.map(\.0))
             if let loc = geo.currentLocation {
                 ticketLat = loc.coordinate.latitude
                 ticketLng = loc.coordinate.longitude
@@ -553,6 +568,8 @@ struct TicketIssuanceView: View {
             composedNotes = composedNotes.isEmpty ? warningText : "\(warningText)\n\(composedNotes)"
         }
 
+        let resolvedCategory = hasMovingViolation ? "moving" : "parking"
+
         let ticket = PendingTicket(
             plate: normalizedPlate,
             lot: selectedLot,
@@ -560,7 +577,7 @@ struct TicketIssuanceView: View {
             confidence: 1.0,
             photoPath: capturedPhotoPath,
             additionalPhotoPaths: additionalPhotoPaths,
-            ticketCategory: "parking",
+            ticketCategory: resolvedCategory,
             locationLat: ticketLat,
             locationLng: ticketLng,
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
@@ -573,7 +590,10 @@ struct TicketIssuanceView: View {
             ownerName: permit?.ownerName,
             permitNumber: permit?.permitNumber,
             permitTypeLabel: permit?.displayType,
-            permitLotZone: permit?.lotZone
+            permitLotZone: permit?.lotZone,
+            driverName: hasMovingViolation && !driverName.isEmpty ? driverName : nil,
+            driverLicense: hasMovingViolation && !driverLicense.isEmpty ? driverLicense : nil,
+            locationText: hasMovingViolation && !locationText.isEmpty ? locationText : nil
         )
 
         // Persist locally FIRST so the retry queue works even if the server is unreachable
@@ -641,6 +661,30 @@ struct TicketIssuanceView: View {
                         notificationEmail: nil,
                         enforcementWarning: nil
                     )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func violationRow(code: String, label: String) -> some View {
+        Button {
+            if selectedViolations.contains(code) {
+                selectedViolations.remove(code)
+            } else {
+                selectedViolations.insert(code)
+            }
+        } label: {
+            HStack {
+                Text(label)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if selectedViolations.contains(code) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.blue)
+                } else {
+                    Image(systemName: "circle")
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -972,10 +1016,10 @@ struct TicketConfirmationView: View {
             issuedAt: Date(),
             vehicleDescription: vehicleDescription.isEmpty ? nil : vehicleDescription,
             officerNotes: officerNotes.isEmpty ? nil : officerNotes,
-            driverName: nil,
-            driverLicense: nil,
-            locationText: nil,
-            ticketCategory: "parking",
+            driverName: hasMovingViolation && !driverName.isEmpty ? driverName : nil,
+            driverLicense: hasMovingViolation && !driverLicense.isEmpty ? driverLicense : nil,
+            locationText: hasMovingViolation && !locationText.isEmpty ? locationText : nil,
+            ticketCategory: hasMovingViolation ? "moving" : "parking",
             officerName: officerName.isEmpty ? nil : officerName,
             officerEmail: officerEmail.isEmpty ? nil : officerEmail,
             ownerName: ownerName,

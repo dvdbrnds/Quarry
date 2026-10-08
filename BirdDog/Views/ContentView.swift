@@ -10,7 +10,7 @@ struct ContentView: View {
     @State private var showSessionHistory = false
     @State private var showCameraLog = false
     @State private var showTicketIssuance = false
-    @State private var showMovingViolation = false
+    // Moving violations now handled in unified TicketIssuanceView
     @State private var showPlateCorrection = false
     @State private var ticketPrefilledPlate: String?
     @State private var ticketPrefilledEntry: ScannedPlate?
@@ -63,7 +63,7 @@ struct ContentView: View {
             viewModel.pauseScanning()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            let anyScreenOpen = showTicketIssuance || showMovingViolation
+            let anyScreenOpen = showTicketIssuance
                 || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag || showManualLookup
             if viewModel.cameraPermission == .authorized && !anyScreenOpen {
                 // Resume if paused by willResignActive (share sheet, app switcher)
@@ -79,7 +79,7 @@ struct ContentView: View {
             }
         }
         .onReceive(tick) { t in
-            let anyScreenOpen = showTicketIssuance || showMovingViolation
+            let anyScreenOpen = showTicketIssuance
                 || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag || showManualLookup
             if !anyScreenOpen {
                 now = t
@@ -301,9 +301,7 @@ struct ContentView: View {
                 ticketPrefilledEntry = nil
             }
         }
-        .fullScreenCover(isPresented: $showMovingViolation) {
-            MovingViolationView(cameraService: viewModel.cameraService)
-        }
+        // MovingViolationView removed — all violations handled in TicketIssuanceView
         .sheet(isPresented: $showPlateCorrection) {
             if let entry = correctionEntry {
                 PlateCorrectionView(
@@ -342,9 +340,7 @@ struct ContentView: View {
         .onChange(of: showTicketIssuance) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
         }
-        .onChange(of: showMovingViolation) { _, isOpen in
-            if !isOpen { viewModel.resumeScanning() }
-        }
+        // MovingViolationView onChange removed — unified in TicketIssuanceView
         .onChange(of: showAdminSettings) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
         }
@@ -602,21 +598,11 @@ struct ContentView: View {
             }
 
             if officerAuth.isStaff {
-                Menu {
-                    Button {
-                        viewModel.pauseScanning()
-                        ticketPrefilledPlate = nil
-                        ticketPrefilledEntry = nil
-                        showTicketIssuance = true
-                    } label: {
-                        Label("Parking Ticket", systemImage: "doc.text")
-                    }
-                    Button {
-                        viewModel.pauseScanning()
-                        showMovingViolation = true
-                    } label: {
-                        Label("Moving Citation", systemImage: "car.side")
-                    }
+                Button {
+                    viewModel.pauseScanning()
+                    ticketPrefilledPlate = nil
+                    ticketPrefilledEntry = nil
+                    showTicketIssuance = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
