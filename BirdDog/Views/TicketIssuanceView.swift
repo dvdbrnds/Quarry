@@ -48,6 +48,38 @@ struct TicketIssuanceView: View {
     @State private var ticketLng: Double?
     @State private var violationTypes: [(String, String)] = []
     @State private var movingViolationCodes: Set<String> = []
+    @State private var showAllParking = false
+    @State private var showAllMoving = false
+
+    private static let parkingVisibleCount = 10
+    private static let movingVisibleCount = 5
+    private static let usageKey = "ViolationUsageCounts"
+
+    /// Load officer's violation usage counts from UserDefaults.
+    private static func loadUsageCounts() -> [String: Int] {
+        UserDefaults.standard.dictionary(forKey: usageKey) as? [String: Int] ?? [:]
+    }
+
+    /// Increment usage count for each violation code after issuing a ticket.
+    static func recordUsage(codes: [String]) {
+        var counts = loadUsageCounts()
+        for code in codes {
+            counts[code, default: 0] += 1
+        }
+        UserDefaults.standard.set(counts, forKey: usageKey)
+    }
+
+    /// Sort violation types by officer usage frequency (most-used first),
+    /// preserving original order for codes with equal counts.
+    private func sortedByUsage(_ types: [(String, String)]) -> [(String, String)] {
+        let counts = Self.loadUsageCounts()
+        return types.enumerated().sorted { a, b in
+            let countA = counts[a.element.0] ?? 0
+            let countB = counts[b.element.0] ?? 0
+            if countA != countB { return countA > countB }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
 
     var cameraService: CameraService?
     var prefilledPlate: String?
@@ -206,8 +238,29 @@ struct TicketIssuanceView: View {
             }
 
             Section {
-                ForEach(violationTypes.filter { !movingViolationCodes.contains($0.0) }, id: \.0) { code, label in
+                let parkingAll = sortedByUsage(violationTypes.filter { !movingViolationCodes.contains($0.0) })
+                let parkingVisible = showAllParking ? parkingAll : Array(parkingAll.prefix(Self.parkingVisibleCount))
+                // Always show selected violations even when collapsed
+                let parkingSelected = showAllParking ? [] : parkingAll.dropFirst(Self.parkingVisibleCount).filter { selectedViolations.contains($0.0) }
+                let parkingDisplay = parkingVisible + parkingSelected
+
+                ForEach(parkingDisplay, id: \.0) { code, label in
                     violationRow(code: code, label: label)
+                }
+                if parkingAll.count > Self.parkingVisibleCount {
+                    Button {
+                        withAnimation { showAllParking.toggle() }
+                    } label: {
+                        HStack {
+                            Text(showAllParking ? "Show Less" : "\(parkingAll.count - Self.parkingVisibleCount) more…")
+                                .font(.subheadline)
+                                .foregroundStyle(.blue)
+                            Spacer()
+                            Image(systemName: showAllParking ? "chevron.up" : "chevron.down")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             } header: {
                 HStack {
@@ -222,8 +275,28 @@ struct TicketIssuanceView: View {
             }
 
             Section(header: Text("Moving / Traffic Violations")) {
-                ForEach(violationTypes.filter { movingViolationCodes.contains($0.0) }, id: \.0) { code, label in
+                let movingAll = sortedByUsage(violationTypes.filter { movingViolationCodes.contains($0.0) })
+                let movingVisible = showAllMoving ? movingAll : Array(movingAll.prefix(Self.movingVisibleCount))
+                let movingSelected = showAllMoving ? [] : movingAll.dropFirst(Self.movingVisibleCount).filter { selectedViolations.contains($0.0) }
+                let movingDisplay = movingVisible + movingSelected
+
+                ForEach(movingDisplay, id: \.0) { code, label in
                     violationRow(code: code, label: label)
+                }
+                if movingAll.count > Self.movingVisibleCount {
+                    Button {
+                        withAnimation { showAllMoving.toggle() }
+                    } label: {
+                        HStack {
+                            Text(showAllMoving ? "Show Less" : "\(movingAll.count - Self.movingVisibleCount) more…")
+                                .font(.subheadline)
+                                .foregroundStyle(.blue)
+                            Spacer()
+                            Image(systemName: showAllMoving ? "chevron.up" : "chevron.down")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
 
@@ -602,6 +675,10 @@ struct TicketIssuanceView: View {
 
         // Persist locally FIRST so the retry queue works even if the server is unreachable
         try? db.savePendingTicket(ticket)
+
+        // Track violation usage for smart sorting
+        let usedCodes = ticket.violationType.split(separator: ",").map(String.init)
+        Self.recordUsage(codes: usedCodes)
 
         let paymentBaseURL = AppSettings.shared.paymentBaseURL
 
