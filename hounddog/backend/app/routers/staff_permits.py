@@ -53,7 +53,10 @@ class AvailableStaffPermit(BaseModel):
 
 
 @router.get("/available", response_model=list[AvailableStaffPermit])
-async def available_staff_permits(db: AsyncSession = Depends(get_db)):
+async def available_staff_permits(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(get_current_user),
+):
     """Return the faculty/staff permit type(s) available for enrollment."""
     result = await db.execute(
         select(PermitType).where(
@@ -82,6 +85,13 @@ async def enroll_vehicle(
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Register a vehicle — creates a permit immediately (no lottery, no cost)."""
+    if not user.is_staff and not user.is_office:
+        raise HTTPException(
+            403,
+            "Faculty/staff permits are only available to Moravian employees. "
+            "Students should apply for a permit through the student parking portal."
+        )
+
     pt_result = await db.execute(
         select(PermitType).where(
             PermitType.code == STAFF_PERMIT_CODE,
