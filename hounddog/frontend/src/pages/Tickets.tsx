@@ -1730,7 +1730,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             <h1>MORAVIAN UNIVERSITY POLICE DEPARTMENT</h1>
             <p>Unpaid Parking Citation Notice</p>
           </div>
-          <p style="font-size:13px;color:#333;">A parking citation was issued to a vehicle registered to this address. The citation remains unpaid and is now overdue. Failure to pay or appeal within 10 days of this notice may result in a state citation being issued through the local Magisterial District Court, which carries additional court costs and fees.</p>
+          <p style="font-size:13px;color:#333;">A parking citation was issued to a vehicle registered to this address. The citation remains unpaid and is now overdue. Failure to pay or appeal within 5 days of this notice may result in a state citation being issued through the local Magisterial District Court, which carries additional court costs and fees.</p>
           <div class="details"><table>
             <tr><td>Citation #</td><td>${t.ticket_number || t.id.slice(0, 8).toUpperCase()}</td></tr>
             <tr><td>License Plate</td><td style="font-family:monospace;letter-spacing:1px;">${t.plate}</td></tr>
@@ -1742,7 +1742,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             ${t.vehicle_description ? `<tr><td>Vehicle</td><td>${t.vehicle_description}</td></tr>` : ""}
           </table></div>
           <div class="warning">
-            <strong>NOTICE:</strong> If this citation is not paid or appealed within 10 days of the date on this notice, a state citation will be issued through the local Magisterial District Court, carrying mandatory court costs and fees — often totaling more than $100 on top of the fine itself.
+            <strong>NOTICE:</strong> If this citation is not paid or appealed within 5 days of the date on this notice, a state citation will be issued through the local Magisterial District Court, carrying mandatory court costs and fees — often totaling more than $100 on top of the fine itself.
           </div>
           <div class="payment">
             <p><strong>Pay Online:</strong></p>

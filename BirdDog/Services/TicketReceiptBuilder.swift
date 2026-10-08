@@ -198,13 +198,13 @@ struct TicketReceiptBuilder {
 
         if ticket.ticketCategory == "moving" {
             for line in wrapLines(
-                "All violations must be paid or appealed within 10 days of the date issued. Fines not paid or appealed within 10 days will result in a Traffic Citation via the Local Magistrate."
+                "All violations must be paid or appealed within 5 days of the date issued. Fines not paid or appealed within 5 days will result in a Traffic Citation via the Local Magistrate."
             ) {
                 _ = printerBuilder.actionPrintText("\(line)\n")
             }
         } else {
             for line in wrapLines(
-                "Issued under campus parking regulations. Appeals must be filed within 10 business days."
+                "Issued under campus parking regulations. Appeals must be filed within 5 business days."
             ) {
                 _ = printerBuilder.actionPrintText("\(line)\n")
             }
