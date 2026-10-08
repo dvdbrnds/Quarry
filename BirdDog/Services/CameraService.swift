@@ -242,10 +242,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         return path
     }
 
+    private lazy var jpegCIContext = CIContext(options: [.useSoftwareRenderer: false])
+
     private func saveBufferAsJPEG(_ imageBuffer: CVPixelBuffer) -> String? {
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let rawCG = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        guard let rawCG = jpegCIContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
         let degrees: Int
         if isUsingExternalCamera {
@@ -294,8 +295,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
               let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
 
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-        let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let rawCG = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        guard let rawCG = jpegCIContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
         let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
             ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
@@ -973,6 +973,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var logFileHandle: FileHandle?
     private var logUpdateCounter: Int = 0
 
+    private static let maxLogFileSize: UInt64 = 2 * 1024 * 1024 // 2 MB
+
     private func log(_ message: String) {
         let ts = Self.logDateFormatter.string(from: Date())
         let line = "[\(ts)] \(message)"
@@ -985,7 +987,14 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 logFileHandle = try? FileHandle(forWritingTo: Self.logFileURL)
                 logFileHandle?.seekToEndOfFile()
             }
-            logFileHandle?.write(data)
+            if let handle = logFileHandle {
+                let currentSize = handle.offsetInFile
+                if currentSize > Self.maxLogFileSize {
+                    handle.truncateFile(atOffset: 0)
+                    handle.seek(toFileOffset: 0)
+                }
+                handle.write(data)
+            }
         }
 
         logUpdateCounter += 1

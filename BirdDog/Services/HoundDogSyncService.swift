@@ -544,6 +544,14 @@ final class HoundDogSyncService: ObservableObject {
                 try? db.saveContext()
                 let normalized = ticket.plate.uppercased().trimmingCharacters(in: .whitespaces)
                 recentlyTicketedPlates[normalized] = ticket.lot
+
+                // Clean up photo files after successful upload
+                if let photoPath = ticket.photoPath {
+                    CameraService.deleteViolationPhoto(at: photoPath)
+                }
+                for path in ticket.additionalPhotoPaths {
+                    CameraService.deleteViolationPhoto(at: path)
+                }
             } catch let error as SyncError {
                 ticket.retryCount += 1
                 let errorMsg = error.localizedDescription

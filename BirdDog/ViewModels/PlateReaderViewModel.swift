@@ -181,10 +181,14 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     private func finalizeSession() {
+        // Flush any pending debounced persist
+        persistDebounceTask?.cancel()
+        doPersistScanLog()
+
         guard var session = activeSession else { return }
         session.endTime = Date()
         session.plates = scanLog
-        session.diagnostics = diagnosticLog
+        session.diagnostics = Array(diagnosticLog.suffix(500))
 
         let metrics = cameraService.snapshotAndResetMetrics()
         session.deviceModel = DeviceInfo.modelName
@@ -362,6 +366,25 @@ final class PlateReaderViewModel: ObservableObject {
     func startNewSession() {
         finalizeSession()
         clearLog()
+        CameraService.clearDiagnosticCaptures()
+        cleanupOldViolationPhotos()
+    }
+
+    /// Remove violation photos older than 7 days to reclaim disk space.
+    private func cleanupOldViolationPhotos() {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("violation_photos", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        for file in files {
+            guard let attrs = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+                  let modified = attrs.contentModificationDate,
+                  modified < cutoff else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     func endSessionIfActive() {
@@ -417,9 +440,14 @@ final class PlateReaderViewModel: ObservableObject {
         }
     }
 
+    private static let maxDiagnosticEntries = 500
+
     private func handleResult(_ result: RecognitionResult) {
         currentPlates = result.plates
         diagnosticLog.append(contentsOf: result.diagnostics)
+        if diagnosticLog.count > Self.maxDiagnosticEntries {
+            diagnosticLog.removeFirst(diagnosticLog.count - Self.maxDiagnosticEntries)
+        }
 
         // Track OCR path usage and rectangle filter drops
         pathCounts[result.pathUsed, default: 0] += 1
@@ -704,21 +732,36 @@ final class PlateReaderViewModel: ObservableObject {
         }
     }
 
+    private var toneCache: [String: Data] = [:]
+
     private func playTone(frequency: Double, duration: Double) {
+        let cacheKey = "\(frequency)-\(duration)"
+        let wav: Data
+        if let cached = toneCache[cacheKey] {
+            wav = cached
+        } else {
+            wav = Self.generateWAV(frequency: frequency, duration: duration)
+            toneCache[cacheKey] = wav
+        }
+        alertPlayer = try? AVAudioPlayer(data: wav)
+        alertPlayer?.play()
+    }
+
+    private static func generateWAV(frequency: Double, duration: Double) -> Data {
         let sampleRate: Double = 44100
         let samples = Int(sampleRate * duration)
-        var data = Data()
+        var pcm = Data()
 
         for i in 0..<samples {
             let t = Double(i) / sampleRate
             let envelope = min(1.0, min(t / 0.005, (duration - t) / 0.005))
             let sample = Int16(envelope * 0.6 * Double(Int16.max) * sin(2.0 * .pi * frequency * t))
             var s = sample.littleEndian
-            data.append(Data(bytes: &s, count: 2))
+            pcm.append(Data(bytes: &s, count: 2))
         }
 
         let headerSize: UInt32 = 44
-        let dataSize = UInt32(data.count)
+        let dataSize = UInt32(pcm.count)
         var wav = Data()
 
         func append(_ value: UInt32) { var v = value.littleEndian; wav.append(Data(bytes: &v, count: 4)) }
@@ -737,10 +780,8 @@ final class PlateReaderViewModel: ObservableObject {
         append16(16)
         wav.append("data".data(using: .ascii)!)
         append(dataSize)
-        wav.append(data)
-
-        alertPlayer = try? AVAudioPlayer(data: wav)
-        alertPlayer?.play()
+        wav.append(pcm)
+        return wav
     }
 
     private func isFuzzyDuplicate(_ text: String) -> Bool {
@@ -914,7 +955,19 @@ final class PlateReaderViewModel: ObservableObject {
         }
     }
 
+    private var persistDebounceTask: Task<Void, Never>?
+
     private func persistScanLog() {
+        persistDebounceTask?.cancel()
+        persistDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s debounce
+            guard !Task.isCancelled, let self else { return }
+            self.doPersistScanLog()
+        }
+    }
+
+    /// Immediate persist — called on session finalize and debounce fire.
+    private func doPersistScanLog() {
         do {
             let data = try JSONEncoder().encode(scanLog)
             try data.write(to: Self.scanLogURL, options: .atomic)
@@ -924,7 +977,8 @@ final class PlateReaderViewModel: ObservableObject {
 
         if var session = activeSession {
             session.plates = scanLog
-            session.diagnostics = diagnosticLog
+            // Only persist a capped snapshot of diagnostics to avoid huge files
+            session.diagnostics = Array(diagnosticLog.suffix(200))
             sessionManager.save(session)
             activeSession = session
         }
