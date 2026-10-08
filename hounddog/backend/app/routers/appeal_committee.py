@@ -10,7 +10,7 @@ from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
-from ..auth.okta import get_current_user, require_admin, OktaUser
+from ..auth.okta import get_current_user, require_admin, require_role, OktaUser
 from ..database import get_db
 from ..models.appeal_committee import AppealCommitteeMember, CommitteeVote
 from ..models.ticket import Ticket
@@ -215,7 +215,7 @@ async def escalate_to_committee(
     ticket_id: uuid.UUID,
     body: EscalateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_role("admin", "operator")),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:

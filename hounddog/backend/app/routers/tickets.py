@@ -1199,7 +1199,7 @@ async def void_ticket(
 async def bulk_void_tickets(
     data: dict,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_role("admin", "operator")),
 ):
     """Void multiple tickets at once."""
     ids = data.get("ids", [])
@@ -1270,7 +1270,7 @@ async def decide_appeal(
     ticket_id: uuid.UUID,
     decision: AppealDecision,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_role("admin", "operator")),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:

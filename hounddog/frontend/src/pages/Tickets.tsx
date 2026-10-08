@@ -1415,7 +1415,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }
 
   async function handleVoid(id: string) {
-    if (!isAdmin) return;
+    if (!isOffice) return;
     let voidReason = "";
     modal.confirm({
       title: "Void this ticket?",
@@ -1469,7 +1469,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }
 
   async function handleAppealDecision(id: string, decision: string) {
-    if (!isAdmin) return;
+    if (!isOffice) return;
     const decided_by = user?.email || "admin";
     let appealReason = "";
     modal.confirm({
@@ -1508,7 +1508,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }
 
   async function handleEscalateToCommittee(id: string) {
-    if (!isAdmin) return;
+    if (!isOffice) return;
     let notes = "";
     modal.confirm({
       title: "Escalate to Appeals Committee?",
@@ -1652,7 +1652,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       sortOrder: sortedColumn("issued_at"),
       render: (d: string) => fmtDateTimeCompact(d),
     },
-    ...(isAdmin ? [{
+    ...(isOffice ? [{
       title: "Actions",
       key: "actions",
       width: 100,
@@ -1768,7 +1768,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Tickets</h2>
         <Space>
-          {isAdmin && selectedRowKeys.length > 0 && (
+          {isOffice && selectedRowKeys.length > 0 && (
             <Popconfirm
               title={`Void ${selectedRowKeys.length} ticket(s)?`}
               description="This will void all selected tickets. Paid and already-voided tickets will be skipped."
@@ -1868,7 +1868,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         columns={columns}
         rowKey="id"
         loading={loading}
-        rowSelection={isAdmin ? {
+        rowSelection={isOffice ? {
           selectedRowKeys,
           onChange: setSelectedRowKeys,
           getCheckboxProps: (t) => ({
@@ -1928,7 +1928,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <Button onClick={() => handlePrintTicket(selected)}>Print</Button>
             )}
             <div className="flex-1" />
-            {isAdmin && selected?.appeal_decision === "pending" && (
+            {isOffice && selected?.appeal_decision === "pending" && (
               <>
                 <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
                   Approve
@@ -1941,7 +1941,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 </Button>
               </>
             )}
-            {isAdmin && selected && !["paid", "voided"].includes(selected.status) && (
+            {isOffice && selected && !["paid", "voided"].includes(selected.status) && (
               <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
             )}
           </div>
