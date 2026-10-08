@@ -825,12 +825,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 frameSkip = 2
             }
 
-            if isExternal, let videoOut = self.videoOutput,
-               let connection = videoOut.connection(with: .video) {
-                if connection.isVideoMirroringSupported {
-                    connection.automaticallyAdjustsVideoMirroring = false
-                    connection.isVideoMirrored = false
-                }
+            if let videoOut = self.videoOutput,
+               let connection = videoOut.connection(with: .video),
+               connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = false
             }
 
             log("SWITCHED TO: \(camera.localizedName) (\(isExternal ? "EXTERNAL" : "built-in"))")
@@ -920,12 +919,14 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         session.addOutput(output)
         videoOutput = output
 
-        if isExternal, let connection = output.connection(with: .video) {
-            if connection.isVideoMirroringSupported {
-                connection.automaticallyAdjustsVideoMirroring = false
-                connection.isVideoMirrored = false
-                log("disabled video mirroring")
-            }
+        // Disable auto-mirroring on ALL cameras so saved photos match reality.
+        // Without this, front-facing and some built-in cameras mirror the
+        // pixel data in captureOutput, producing flipped violation photos.
+        if let connection = output.connection(with: .video),
+           connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
+            log("disabled video mirroring (\(isExternal ? "external" : "built-in"))")
         }
 
         session.commitConfiguration()
