@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBranding } from "../useBranding";
+import { authHeaders } from "../auth";
 import BrandMark from "./BrandMark";
 
 const PUBLIC_LINKS = [
@@ -11,9 +13,26 @@ const PUBLIC_LINKS = [
   { to: "/parking-map", label: "Map" },
 ] as const;
 
+function useUnpaidTicketCount(): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        if (!headers.Authorization) return;
+        const res = await fetch("/api/payments/my-tickets", { headers });
+        if (res.ok) setCount((await res.json()).length);
+      } catch {}
+    })();
+  }, []);
+  return count;
+}
+
 export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: string; hideLinks?: boolean }) {
   const brand = useBranding();
   const location = useLocation();
+  const unpaidCount = useUnpaidTicketCount();
+  const isPayPage = location.pathname.startsWith("/pay");
 
   return (
     <>
@@ -86,6 +105,16 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
           {hideLinks && <a href="/regulations" target="_blank" rel="noopener noreferrer" className="ml-auto text-xs font-medium px-3 py-1 rounded no-underline" style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor }}>📋 Parking Regulations</a>}
         </div>
       </nav>
+      {unpaidCount > 0 && !isPayPage && (
+        <a href="/pay" className="block no-underline">
+          <div className="bg-red-50 border-b border-red-200 px-6 py-3 flex items-center justify-center gap-3 hover:bg-red-100 transition-colors">
+            <span className="text-sm font-semibold text-red-800">
+              You have {unpaidCount} unpaid citation{unpaidCount !== 1 ? "s" : ""}
+            </span>
+            <span className="text-xs font-medium text-red-700 bg-red-200 px-2 py-0.5 rounded">Pay Now →</span>
+          </div>
+        </a>
+      )}
     </>
   );
 }
