@@ -207,16 +207,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     /// Grab a photo from the camera. Uses the latest buffered frame if available,
     /// otherwise briefly restarts the camera to capture one fresh frame.
     func captureOneShotPhoto() async -> String? {
-        // Ensure the capture connection's videoRotationAngle matches the
-        // current interface orientation. This must happen on the main thread
-        // (to read UIWindowScene) then on sessionQueue (to update connection).
-        await MainActor.run { ensureCorrectRotation() }
+        // Snapshot the orientation on the main thread BEFORE capturing.
+        // saveBufferAsJPEG may run off-main where UIKit scene queries fail.
+        await MainActor.run { refreshCachedRotation() }
 
-        // If session is running and we have a recent buffer, use it directly.
-        // Give the session queue a moment to apply the rotation to the connection
-        // so the next buffer is correctly oriented.
+        // If session is running and we have a recent buffer, use it directly
         if isRunning && latestSampleBuffer != nil {
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms for fresh rotated frame
             return captureViolationPhoto()
         }
 
@@ -263,14 +259,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         guard let rawCG = jpegCIContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
-        // Built-in cameras: AVFoundation pre-rotates via videoRotationAngle
-        // on the connection — no manual rotation needed.
-        // External cameras: still need manual rotation from user settings.
         let degrees: Int
         if isUsingExternalCamera {
             degrees = UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
         } else {
-            degrees = 0
+            degrees = cachedCaptureRotation()
         }
         let rotatedImage = Self.rotateImage(rawCG, degrees: degrees)
 
@@ -309,11 +302,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let ciImage = CIImage(cvPixelBuffer: imageBuffer)
         guard let rawCG = jpegCIContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
 
-        // Built-in cameras: buffer is pre-rotated by AVFoundation. No manual rotation.
-        // External cameras: still need manual rotation from user settings.
         let rotatedImage = Self.rotateImage(rawCG, degrees: isUsingExternalCamera
             ? UserDefaults.standard.integer(forKey: "AppSettings.externalCameraRotation")
-            : 0)
+            : cachedCaptureRotation())
 
         let maxDim: CGFloat = 1280
         let scale = min(maxDim / rotatedImage.size.width, maxDim / rotatedImage.size.height, 1.0)
@@ -846,14 +837,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             }
 
             if let videoOut = self.videoOutput,
-               let connection = videoOut.connection(with: .video) {
-                if connection.isVideoMirroringSupported {
-                    connection.automaticallyAdjustsVideoMirroring = false
-                    connection.isVideoMirrored = false
-                }
-                if !isExternal {
-                    self.applyNativeRotation(to: connection)
-                }
+               let connection = videoOut.connection(with: .video),
+               connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = false
             }
 
             log("SWITCHED TO: \(camera.localizedName) (\(isExternal ? "EXTERNAL" : "built-in"))")
@@ -943,19 +930,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         session.addOutput(output)
         videoOutput = output
 
-        if let connection = output.connection(with: .video) {
-            // Disable auto-mirroring on ALL cameras so saved photos match reality.
+        // Disable auto-mirroring on ALL cameras so saved photos match reality.
+        if let connection = output.connection(with: .video),
+           connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false
             connection.isVideoMirrored = false
             log("disabled video mirroring (\(isExternal ? "external" : "built-in"))")
-
-            // For built-in cameras: let AVFoundation pre-rotate the output
-            // to match the interface orientation. This is the native iOS way —
-            // no manual pixel rotation needed. The raw buffer comes out
-            // correctly oriented for the current device position.
-            if !isExternal {
-                applyNativeRotation(to: connection)
-            }
         }
 
         session.commitConfiguration()
@@ -1266,14 +1246,6 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         guard !isUsingExternalCamera else { return }
         updateOrientationFromDevice()
         refreshCachedRotation()
-        // Update the native rotation on the capture connection so
-        // the output buffer matches the new device orientation.
-        sessionQueue.async { [weak self] in
-            guard let self,
-                  let videoOut = self.videoOutput,
-                  let connection = videoOut.connection(with: .video) else { return }
-            self.applyNativeRotation(to: connection)
-        }
     }
 
     private func updateOrientationFromDevice() {
@@ -1284,31 +1256,6 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         case .landscapeLeft:       cachedOrientation = .up
         case .landscapeRight:      cachedOrientation = .down
         default: break
-        }
-    }
-
-    /// Set videoRotationAngle on an AVCaptureConnection so the output buffer
-    /// comes pre-rotated to match the current interface orientation.
-    /// This is the native iOS approach — no manual pixel rotation needed.
-    private func applyNativeRotation(to connection: AVCaptureConnection) {
-        let angle = cachedCaptureRotation()
-        let cgAngle = CGFloat(angle)
-        if connection.isVideoRotationAngleSupported(cgAngle) {
-            connection.videoRotationAngle = cgAngle
-            log("native rotation set to \(angle)°")
-        }
-    }
-
-    /// Ensure the capture connection's rotation matches the current orientation.
-    /// Called right before photo capture (from MainActor context) so the
-    /// cached rotation is fresh and the connection is up to date.
-    func ensureCorrectRotation() {
-        refreshCachedRotation()
-        sessionQueue.async { [weak self] in
-            guard let self, !self.isUsingExternalCamera,
-                  let videoOut = self.videoOutput,
-                  let connection = videoOut.connection(with: .video) else { return }
-            self.applyNativeRotation(to: connection)
         }
     }
 

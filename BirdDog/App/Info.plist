@@ -18,19 +18,53 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Okta SSO Callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>edu.moravian.birddog</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bird Dog uses Bluetooth to communicate with thermal printers for printing parking tickets.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Bird Dog uses Bluetooth to communicate with thermal printers for printing parking tickets.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Bird Dog needs camera access to scan license plates.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Bird Dog uses your location to determine which parking lot you are in and to detect nearby permit beacons.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Bird Dog uses your location to determine which parking lot you are in for permit verification.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Bird Dog uses motion data to adapt scanning speed — slower when walking, faster in a vehicle.</string>
+	<key>SENTRY_DSN</key>
+	<string>https://39ea80c1bf211e27ef8ed4ac5805d668@o4511224468275200.ingest.us.sentry.io/4511877191827456</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>location</string>
+		<string>external-accessory</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>
+	</array>
+	<key>UISupportedExternalAccessoryProtocols</key>
+	<array>
+		<string>jp.star-m.starpro</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -46,39 +80,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>Okta SSO Callback</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>edu.moravian.birddog</string>
-			</array>
-		</dict>
-	</array>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Bird Dog uses Bluetooth to communicate with thermal printers for printing parking tickets.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Bird Dog uses Bluetooth to communicate with thermal printers for printing parking tickets.</string>
-	<key>NSMotionUsageDescription</key>
-	<string>Bird Dog uses motion data to adapt scanning speed — slower when walking, faster in a vehicle.</string>
-	<key>UISupportedExternalAccessoryProtocols</key>
-	<array>
-		<string>jp.star-m.starpro</string>
-	</array>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Bird Dog uses your location to determine which parking lot you are in and to detect nearby permit beacons.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-		<string>fetch</string>
-		<string>location</string>
-		<string>external-accessory</string>
-	</array>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>SENTRY_DSN</key>
-	<string>https://39ea80c1bf211e27ef8ed4ac5805d668@o4511224468275200.ingest.us.sentry.io/4511877191827456</string>
 </dict>
 </plist>

@@ -95,14 +95,14 @@
 		07BDB21ECF26B3C14903F16E /* PlateDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateDatabase.swift; sourceTree = "<group>"; };
 		0B4D1EA5A4A2F5C813955C56 /* PlateStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateStatus.swift; sourceTree = "<group>"; };
 		116387B05A06763086E263C1 /* BenchmarkCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkCompareView.swift; sourceTree = "<group>"; };
+		1224AF2816186DF1A8565C9F /* DiagnosticCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticCaptureView.swift; sourceTree = "<group>"; };
+		18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryManager.swift; sourceTree = "<group>"; };
+		19EEEB4BA36CBBFEA0F0E4EE /* CalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarStore.swift; sourceTree = "<group>"; };
 		1A0E3F1C8B2D4A9E7C5F6D82 /* CJIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CJIDataStore.swift; sourceTree = "<group>"; };
 		1A0E3F1C8B2D4A9E7C5F6D84 /* CJISSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CJISSessionManager.swift; sourceTree = "<group>"; };
 		1A0E3F1C8B2D4A9E7C5F6D86 /* JailbreakDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JailbreakDetector.swift; sourceTree = "<group>"; };
 		1A0E3F1C8B2D4A9E7C5F6D88 /* JNETLookupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JNETLookupView.swift; sourceTree = "<group>"; };
 		1A0E3F1C8B2D4A9E7C5F6D8A /* JNETService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JNETService.swift; sourceTree = "<group>"; };
-		1224AF2816186DF1A8565C9F /* DiagnosticCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticCaptureView.swift; sourceTree = "<group>"; };
-		18E5B4ED6EB032B7620A5E00 /* SessionHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionHistoryManager.swift; sourceTree = "<group>"; };
-		19EEEB4BA36CBBFEA0F0E4EE /* CalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarStore.swift; sourceTree = "<group>"; };
 		202AE0BF116E09C116BC4500 /* PrinterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterService.swift; sourceTree = "<group>"; };
 		2505471792A29EC48A7FD322 /* ScannedPlate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannedPlate.swift; sourceTree = "<group>"; };
 		25E2370B957B5D10277141B6 /* PlateRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateRecognizerService.swift; sourceTree = "<group>"; };
@@ -111,7 +111,7 @@
 		2EA47A245E2ADE7C50C049E3 /* ParkingLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParkingLot.swift; sourceTree = "<group>"; };
 		32E1FFDB73B38D589FFEB99C /* PlateAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateAuthService.swift; sourceTree = "<group>"; };
 		39778BE1EF9CB973D3E88B33 /* ManualLookupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualLookupView.swift; sourceTree = "<group>"; };
-		3CF67306D07C8E2EAE63F063 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		3CF67306D07C8E2EAE63F063 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		4147968A9E6E7161ED6C4C07 /* TicketIssuanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketIssuanceView.swift; sourceTree = "<group>"; };
 		433F6EC9917DD5FBC1B70BAC /* PrinterSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterSettingsView.swift; sourceTree = "<group>"; };
 		4C3D614EEBBEBC3C7D983B40 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -180,6 +180,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1A0E3F1C8B2D4A9E7C5F6D8B /* JNET */ = {
+			isa = PBXGroup;
+			children = (
+				1A0E3F1C8B2D4A9E7C5F6D82 /* CJIDataStore.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D84 /* CJISSessionManager.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D86 /* JailbreakDetector.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D88 /* JNETLookupView.swift */,
+				1A0E3F1C8B2D4A9E7C5F6D8A /* JNETService.swift */,
+			);
+			path = JNET;
+			sourceTree = "<group>";
+		};
 		23F7BA4979B2D798151C9E32 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -228,18 +240,6 @@
 				DA87F77A7F9736D61162539C /* ViolationTypeStore.swift */,
 			);
 			path = Services;
-			sourceTree = "<group>";
-		};
-		1A0E3F1C8B2D4A9E7C5F6D8B /* JNET */ = {
-			isa = PBXGroup;
-			children = (
-				1A0E3F1C8B2D4A9E7C5F6D82 /* CJIDataStore.swift */,
-				1A0E3F1C8B2D4A9E7C5F6D84 /* CJISSessionManager.swift */,
-				1A0E3F1C8B2D4A9E7C5F6D86 /* JailbreakDetector.swift */,
-				1A0E3F1C8B2D4A9E7C5F6D88 /* JNETLookupView.swift */,
-				1A0E3F1C8B2D4A9E7C5F6D8A /* JNETService.swift */,
-			);
-			path = JNET;
 			sourceTree = "<group>";
 		};
 		7633F04F8A234B0E341D30EC /* BirdDog */ = {
