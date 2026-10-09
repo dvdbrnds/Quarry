@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App, Divider } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { SearchOutlined, LoginOutlined } from "@ant-design/icons";
 import { useBranding } from "../useBranding";
-import { authHeaders } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders } from "../auth";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
 
@@ -42,14 +42,27 @@ export default function Pay() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [myTicketsLoaded, setMyTicketsLoaded] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    const id = pathTicketId || new URLSearchParams(window.location.search).get("ticket");
-    if (id) {
-      loadTicketById(id);
-    } else {
-      loadMyTickets();
-    }
+    (async () => {
+      const id = pathTicketId || new URLSearchParams(window.location.search).get("ticket");
+      if (id) {
+        loadTicketById(id);
+        setAuthChecked(true);
+        return;
+      }
+      // Try to auto-detect Okta session
+      try {
+        await initAuth();
+        const authed = await isAuthenticated();
+        if (authed) {
+          setIsLoggedIn(true);
+          await loadMyTickets();
+        }
+      } catch {}
+      setAuthChecked(true);
+    })();
     return () => { retryAbort.current?.abort(); };
   }, [pathTicketId]);
 
@@ -66,6 +79,14 @@ export default function Pay() {
       setMyTicketsLoaded(true);
     } catch {
     } finally { setLoading(false); }
+  }
+
+  async function handleSignIn() {
+    try {
+      await initAuth();
+      sessionStorage.setItem("quarry_return_path", "/pay");
+      await login();
+    } catch {}
   }
 
   async function searchByPlate() {
@@ -263,12 +284,17 @@ export default function Pay() {
             </p>
           </div>
         )}
-        {!hasTicket && !loading && tickets.length === 0 && !error && !myTicketsLoaded && !searchLoading && (
+        {!hasTicket && !loading && tickets.length === 0 && !error && !myTicketsLoaded && !searchLoading && authChecked && (
           <div className="text-center py-8 text-ink-mute">
             <Empty description="No ticket loaded" />
             <p className="mt-4 text-sm">
               Enter your license plate above, or scan the QR code printed on the citation.
             </p>
+            {!isLoggedIn && (
+              <Button type="primary" icon={<LoginOutlined />} className="mt-4" onClick={handleSignIn}>
+                Sign in to see your tickets
+              </Button>
+            )}
           </div>
         )}
 
