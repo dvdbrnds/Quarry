@@ -4,18 +4,80 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.okta import get_current_user, OktaUser
+from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.ticket import Ticket
 from ..utils.safe_router import SafeRouter
 
 _logger = logging.getLogger("quarry.conduct")
+
+
+async def _lookup_okta_user(identifier: str) -> dict | None:
+    """Look up a user in Okta by email or sub. Returns profile dict or None."""
+    if not settings.okta_domain or not settings.okta_api_token or not identifier:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"https://{settings.okta_domain}/api/v1/users/{identifier}",
+                headers={"Authorization": f"SSWS {settings.okta_api_token}"},
+            )
+            if res.status_code == 200:
+                data = res.json()
+                profile = data.get("profile", {})
+                return {
+                    "sub": data.get("id", ""),
+                    "email": profile.get("email", ""),
+                    "name": f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip(),
+                }
+    except Exception as e:
+        _logger.debug("Okta lookup failed for %s: %s", identifier, e)
+    return None
+
+
+def _normalize_student_fields(
+    student_id: str, student_email: str, student_name: str
+) -> tuple[str, str, str]:
+    """If student_id looks like an email, move it to student_email."""
+    if student_id and "@" in student_id:
+        if not student_email:
+            student_email = student_id
+        student_id = ""
+    return student_id, student_email, student_name
+
+
+async def _enrich_student_fields(
+    student_id: str, student_email: str, student_name: str
+) -> tuple[str, str, str]:
+    """Fill in missing student_id or email via Okta lookup."""
+    student_id, student_email, student_name = _normalize_student_fields(
+        student_id, student_email, student_name
+    )
+    if student_id and student_email and student_name:
+        return student_id, student_email, student_name
+
+    lookup_key = student_id or student_email
+    if not lookup_key:
+        return student_id, student_email, student_name
+
+    okta = await _lookup_okta_user(lookup_key)
+    if okta:
+        if not student_id:
+            student_id = okta["sub"]
+        if not student_email:
+            student_email = okta["email"]
+        if not student_name:
+            student_name = okta["name"]
+
+    return student_id, student_email, student_name
 
 router = SafeRouter()
 
@@ -122,6 +184,10 @@ async def list_cases(
             continue
         if status == "resolved" and (not esc or not esc["resolved_at"]):
             continue
+
+        student_id, student_email, student_name = await _enrich_student_fields(
+            student_id, student_email, student_name
+        )
 
         cases.append({
             "id": str(esc["id"]) if esc else f"plate:{plate_norm}",
@@ -230,11 +296,15 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
             "_prior_conduct": False,
         })
 
+    sid, semail, sname = await _enrich_student_fields(
+        student_id, notification_email or "", owner_name or ""
+    )
+
     return {
         "id": f"plate:{plate_norm}",
-        "student_id": student_id,
-        "student_name": owner_name or "",
-        "student_email": notification_email or "",
+        "student_id": sid,
+        "student_name": sname,
+        "student_email": semail,
         "plate": plate,
         "ticket_count": len(unpaid),
         "status": "sent",
@@ -402,11 +472,17 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
                 "email": permit.email,
             }
 
+    sid, semail, sname = await _enrich_student_fields(
+        case_row["student_id"] or "",
+        case_row["student_email"] or "",
+        case_row["student_name"] or "",
+    )
+
     return {
         "id": str(case_row["id"]),
-        "student_id": case_row["student_id"],
-        "student_name": case_row["student_name"],
-        "student_email": case_row["student_email"],
+        "student_id": sid,
+        "student_name": sname,
+        "student_email": semail,
         "plate": case_row["plate"],
         "ticket_count": case_row["ticket_count"],
         "status": case_row["status"],

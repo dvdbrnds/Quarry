@@ -365,21 +365,24 @@ function ConductPage() {
 
   const columns: ColumnsType<CaseRow> = [
     {
-      title: "Student",
-      key: "student",
-      render: (_: unknown, r: CaseRow) => (
-        <div>
-          <div className="font-semibold">{r.student_name || "—"}</div>
-          <div className="text-xs text-gray-500">{r.student_email}</div>
-        </div>
-      ),
+      title: "Name",
+      dataIndex: "student_name",
+      key: "student_name",
+      render: (v: string) => <span className="font-semibold">{v || "—"}</span>,
       sorter: (a, b) => (a.student_name || "").localeCompare(b.student_name || ""),
+    },
+    {
+      title: "Email",
+      dataIndex: "student_email",
+      key: "student_email",
+      render: (v: string) => v ? <a href={`mailto:${v}`} className="text-xs">{v}</a> : <span className="text-gray-400 text-xs">—</span>,
+      sorter: (a, b) => (a.student_email || "").localeCompare(b.student_email || ""),
     },
     {
       title: "Student ID",
       dataIndex: "student_id",
       key: "student_id",
-      width: 110,
+      width: 130,
       render: (v: string) => <span className="text-xs font-mono">{v || "—"}</span>,
     },
     {
