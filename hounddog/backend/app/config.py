@@ -122,7 +122,7 @@ class Settings(BaseSettings):
 
     # Escalation thresholds
     conduct_referral_threshold: int = 3
-    registration_hold_threshold: int = 5
+    registration_hold_threshold: int = 3
 
     # Conduct officer portal access (comma-separated Okta emails)
     conduct_officer_emails: str = ""
