@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBranding } from "../useBranding";
-import { authHeaders } from "../auth";
+import { authHeadersAs, getImpersonateEmail } from "../auth";
 import BrandMark from "./BrandMark";
 
 const PUBLIC_LINKS = [
@@ -18,7 +18,7 @@ function useUnpaidTicketCount(): number {
   useEffect(() => {
     (async () => {
       try {
-        const headers = await authHeaders();
+        const headers = await authHeadersAs(getImpersonateEmail());
         if (!headers.Authorization) return;
         const res = await fetch("/api/payments/my-tickets", { headers });
         if (res.ok) setCount((await res.json()).length);
