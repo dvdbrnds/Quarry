@@ -139,6 +139,24 @@ export default function Pay() {
     } finally { setLoading(false); }
   }
 
+  async function handlePayAll() {
+    setPaying("all");
+    try {
+      const res = await fetch("/api/payments/checkout/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticket_ids: tickets.map(t => t.id),
+          success_url: "/pay/success",
+          cancel_url: "/pay",
+        }),
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Payment failed"); }
+      const { checkout_url } = await res.json();
+      window.location.href = checkout_url;
+    } catch (e: any) { setError(e.message); setPaying(null); }
+  }
+
   async function handlePay(ticketId: string) {
     setPaying(ticketId);
     try {
@@ -231,6 +249,27 @@ export default function Pay() {
               message="Appeal Before You Pay"
               description="If you believe a ticket was issued in error, you must appeal it BEFORE paying. Once payment is submitted, the fine is final. There are no refunds."
             />
+            {tickets.length > 1 && (
+              <Card className="mb-4" style={{ borderColor: brand.primaryColor, borderWidth: 2 }}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: brand.primaryColor }}>Pay All {tickets.length} Citations</div>
+                    <div className="text-xs text-gray-500">
+                      Total: ${tickets.reduce((sum, t) => sum + Number(t.fine_amount) + Number(t.processing_fee), 0).toFixed(2)}
+                      {" "}(includes processing fee)
+                    </div>
+                  </div>
+                  <Button
+                    type="primary"
+                    size="large"
+                    loading={paying === "all"}
+                    onClick={() => handlePayAll()}
+                  >
+                    {paying === "all" ? "Redirecting..." : "Pay All"}
+                  </Button>
+                </div>
+              </Card>
+            )}
           </>
         )}
 

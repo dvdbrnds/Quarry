@@ -35,6 +35,7 @@ from ..schemas.payment import (
     BulkRefundRequest,
     BursarImportPayload,
     BursarImportResult,
+    BulkCheckoutRequest,
     CheckoutRequest,
     CheckoutResponse,
     DisputeRequest,
@@ -272,6 +273,124 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
     )
 
     ticket.status = "pending_payment"
+    await db.flush()
+
+    return CheckoutResponse(checkout_url=session.url, session_id=session.id)
+
+
+@router.post("/checkout/bulk", response_model=CheckoutResponse)
+async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Depends(get_db)):
+    """Create a single Stripe checkout session for multiple tickets."""
+    if not data.ticket_ids:
+        raise HTTPException(400, "No tickets provided")
+    if len(data.ticket_ids) > 20:
+        raise HTTPException(400, "Maximum 20 tickets per checkout")
+
+    tickets = []
+    for tid in data.ticket_ids:
+        ticket = await db.get(Ticket, tid)
+        if not ticket:
+            raise HTTPException(404, f"Ticket {tid} not found")
+        if ticket.status in ("paid", "voided", "resolved_permit", "warning"):
+            continue
+        if ticket.status == "expired_magistrate":
+            continue
+        tickets.append(ticket)
+
+    if not tickets:
+        raise HTTPException(400, "No payable tickets found")
+
+    total_fine_cents = sum(int(t.fine_amount * 100) for t in tickets)
+    if total_fine_cents <= 0:
+        for t in tickets:
+            t.status = "paid"
+        await db.flush()
+        base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+        return CheckoutResponse(
+            checkout_url=f"{base_url}{data.success_url}?session_id=zero-fine-resolved",
+            session_id="zero-fine-resolved",
+        )
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.stripe_secret_key
+
+    base_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:5173"
+
+    # Find payer email from first ticket's permit
+    payer_email = None
+    for t in tickets:
+        if t.permit_id:
+            p = await db.execute(select(Permit).where(Permit.id == t.permit_id))
+            linked = p.scalar()
+            if linked and linked.email:
+                payer_email = linked.email
+                break
+
+    processing_fee_cents = round(
+        total_fine_cents * settings.citation_processing_fee_pct / 100
+    ) + settings.citation_processing_fee_fixed_cents
+
+    ticket_ids_str = ",".join(str(t.id) for t in tickets)
+    ticket_refs = ", ".join(t.ticket_number or str(t.id)[:8].upper() for t in tickets)
+    plates = ", ".join(sorted(set(t.plate for t in tickets)))
+
+    line_items = []
+    for t in tickets:
+        ref = t.ticket_number or str(t.id)[:8].upper()
+        line_items.append({
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"Citation {ref}",
+                    "description": f"Plate: {t.plate} | {t.violation_type}",
+                },
+                "unit_amount": int(t.fine_amount * 100),
+            },
+            "quantity": 1,
+        })
+    line_items.append({
+        "price_data": {
+            "currency": "usd",
+            "product_data": {
+                "name": "Processing Fee",
+                "description": "Non-refundable online payment processing fee",
+            },
+            "unit_amount": processing_fee_cents,
+        },
+        "quantity": 1,
+    })
+
+    session = stripe.checkout.Session.create(
+        customer_email=payer_email,
+        line_items=line_items,
+        mode="payment",
+        payment_intent_data={
+            "statement_descriptor_suffix": f"CITE x{len(tickets)}"[:22],
+            "metadata": {
+                "type": "bulk_ticket_payment",
+                "revenue_category": "parking_citations",
+                "department": "parking_services",
+                "gl_string": _build_gl_string(
+                    settings.gl_fund, settings.gl_org,
+                    settings.gl_account_citations, settings.gl_activity_citations,
+                ),
+                "ticket_ids": ticket_ids_str,
+                "ticket_count": str(len(tickets)),
+                "total_fines": str(sum(t.fine_amount for t in tickets)),
+                "plates": plates,
+                "institution": settings.school_name or "moravian",
+            },
+        },
+        success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}{data.cancel_url}",
+        metadata={"ticket_ids": ticket_ids_str, "type": "bulk_ticket_payment"},
+    )
+
+    for t in tickets:
+        t.status = "pending_payment"
     await db.flush()
 
     return CheckoutResponse(checkout_url=session.url, session_id=session.id)
@@ -677,6 +796,26 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
                 sentry_sdk.capture_exception(e)
                 logger.warning("verify-session ticket fulfillment failed (reconciler will retry): %s", e)
 
+        # Trigger bulk ticket fulfillment
+        bulk_ticket_ids = metadata.get("ticket_ids", "")
+        if payment_status == "paid" and payment_type == "bulk_ticket_payment" and bulk_ticket_ids:
+            try:
+                stripe_pi = data.get("payment_intent", "")
+                already_paid = False
+                if stripe_pi:
+                    existing = await db.execute(
+                        select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+                    )
+                    already_paid = existing.scalar() is not None
+                if not already_paid:
+                    success = await _handle_bulk_ticket_payment(data, metadata, db)
+                    if success:
+                        await db.commit()
+                        ticket_fulfilled = True
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                logger.warning("verify-session bulk ticket fulfillment failed: %s", e)
+
         ticket_plate = None
         if ticket_id:
             ticket = await db.get(Ticket, uuid.UUID(ticket_id))
@@ -746,6 +885,62 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     except Exception as e:
         sentry_sdk.capture_exception(e)
         logger.warning("Escalation resolve on payment failed (non-fatal): %s", e)
+
+    return True
+
+
+async def _handle_bulk_ticket_payment(session: dict, metadata: dict, db: AsyncSession) -> bool:
+    """Handle payment for multiple tickets in a single checkout session."""
+    ticket_ids_str = metadata.get("ticket_ids", "")
+    if not ticket_ids_str:
+        return False
+
+    stripe_pi = session.get("payment_intent", "")
+    if stripe_pi:
+        existing = await db.execute(
+            select(Payment).where(Payment.stripe_payment_id == stripe_pi)
+        )
+        if existing.scalar():
+            return True
+
+    payer_email = session.get("customer_email", "") or ""
+    total_amount = Decimal(session["amount_total"]) / 100
+    ticket_ids = [tid.strip() for tid in ticket_ids_str.split(",") if tid.strip()]
+    plates_seen = set()
+
+    for tid in ticket_ids:
+        try:
+            ticket = await db.get(Ticket, uuid.UUID(tid))
+        except (ValueError, AttributeError):
+            continue
+        if not ticket or ticket.status == "paid":
+            continue
+
+        ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
+        payment = Payment(
+            ticket_id=ticket.id,
+            amount=ticket.fine_amount,
+            method="online_card",
+            stripe_payment_id=stripe_pi,
+            payment_type="ticket_payment",
+            payer_name=metadata.get("payer_name", "") or ticket.owner_name or ticket.driver_name or "",
+            payer_email=payer_email or None,
+            plate=ticket.plate,
+            description=f"Citation #{ticket_ref} — {ticket.plate} (bulk payment)",
+        )
+        db.add(payment)
+        ticket.status = "paid"
+        plates_seen.add(ticket.plate)
+
+    await db.flush()
+
+    for plate in plates_seen:
+        try:
+            from ..services.escalation import check_and_resolve_on_payment
+            await check_and_resolve_on_payment(db, plate)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            logger.warning("Escalation resolve on bulk payment failed (non-fatal) for %s: %s", plate, e)
 
     return True
 

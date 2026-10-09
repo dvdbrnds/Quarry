@@ -29,6 +29,12 @@ class CheckoutRequest(BaseModel):
     cancel_url: str = "/pay"
 
 
+class BulkCheckoutRequest(BaseModel):
+    ticket_ids: list[uuid.UUID]
+    success_url: str = "/pay/success"
+    cancel_url: str = "/pay"
+
+
 class CheckoutResponse(BaseModel):
     checkout_url: str
     session_id: str
