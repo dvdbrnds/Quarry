@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
@@ -148,7 +148,7 @@ async def lookup_by_plate(
 @router.get("/my-tickets")
 async def my_tickets(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(get_current_user),
+    user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Return all unpaid tickets for the logged-in user (matched by email → permits → plates)."""
     from ..services.ticket_lookup import find_tickets_for_user
