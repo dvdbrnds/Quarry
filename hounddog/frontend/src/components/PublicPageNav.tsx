@@ -109,9 +109,9 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
         <a href="/pay" className="block no-underline">
           <div className="bg-red-50 border-b border-red-200 px-6 py-3 flex items-center justify-center gap-3 hover:bg-red-100 transition-colors">
             <span className="text-sm font-semibold text-red-800">
-              You have {unpaidCount} unpaid citation{unpaidCount !== 1 ? "s" : ""}
+              You have {unpaidCount} unpaid citation{unpaidCount !== 1 ? "s" : ""} — academic holds may apply and can take up to 4 hours to update after payment.
             </span>
-            <span className="text-xs font-medium text-red-700 bg-red-200 px-2 py-0.5 rounded">Pay Now →</span>
+            <span className="text-xs font-medium text-red-700 bg-red-200 px-2 py-0.5 rounded whitespace-nowrap">Pay Now →</span>
           </div>
         </a>
       )}
