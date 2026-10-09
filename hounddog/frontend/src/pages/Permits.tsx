@@ -4,8 +4,9 @@ import { api, Permit } from "../api";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography, Spin, Popconfirm,
+  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography, Spin, Popconfirm, Dropdown,
 } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import PermitTypes from "./PermitTypes";
@@ -1249,32 +1250,33 @@ export default function Permits() {
       render: (v, p) => v ? <span className={isExpiringSoon(p) ? "text-amber-600 font-medium" : ""}>{v}</span> : <span className="text-ink-mute">—</span>,
     },
     {
-      title: "Status", dataIndex: "status", key: "status", sorter: true,
+      title: "Status", dataIndex: "status", key: "status", sorter: true, width: 110,
       render: (status, p) => (
-        <Space>
-          <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "cancelled" ? "purple" : status === "expired" || status === "renewed" ? "default" : "red"}>{status === "pending_payment" ? "pending payment" : status}</Tag>
-          {isExpiringSoon(p) && <Tag color="gold">EXPIRING</Tag>}
-          {p.active_ticket_count > 0 && <Tag color="red">🚨 {p.active_ticket_count} citation{p.active_ticket_count > 1 ? "s" : ""}</Tag>}
-          {(p as any).never_ticket && <Tag color="green">🛑 Never Ticket</Tag>}
-          {p.hc_status === "permanent" && <Tag color="blue">♿ HC</Tag>}
-          {p.hc_status === "temporary" && <Tag color={p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"}>{p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "♿ HC Expired" : "♿ HC Temp"}</Tag>}
-        </Space>
+        <div className="flex flex-col gap-0.5">
+          <Tag color={status === "active" ? "green" : status === "pending_payment" ? "orange" : status === "cancelled" ? "purple" : status === "expired" || status === "renewed" ? "default" : "red"} style={{ margin: 0 }}>{status === "pending_payment" ? "pending" : status}</Tag>
+          <div className="flex gap-1 flex-wrap">
+            {isExpiringSoon(p) && <Tag color="gold" style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>EXPIRING</Tag>}
+            {p.active_ticket_count > 0 && <Tag color="red" style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>{p.active_ticket_count} cit.</Tag>}
+            {(p as any).never_ticket && <Tag color="green" style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>No Ticket</Tag>}
+            {p.hc_status && <Tag color={p.hc_status === "temporary" && p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"} style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>♿</Tag>}
+          </div>
+        </div>
       ),
     },
     ...(isAdmin ? [{
-      title: "Actions", key: "actions", width: 180, fixed: "right" as const,
-      render: (_: unknown, p: Permit) => (
-        <Space onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-          {p.is_tag_only && (
-            <Button type="link" size="small" style={{ color: "#0891b2", padding: "0 4px" }} onClick={() => {
-              setConvertTarget(p);
-              convertForm.setFieldsValue({ convert_type: undefined });
-            }}>Convert</Button>
-          )}
-          <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
-          <Button type="link" size="small" danger disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
-        </Space>
-      ),
+      title: "", key: "actions", width: 48, fixed: "right" as const,
+      render: (_: unknown, p: Permit) => {
+        const items = [
+          { key: "edit", label: "Edit", onClick: () => { setEditing(p); setCreating(false); } },
+          ...(p.is_tag_only ? [{ key: "convert", label: "Convert to Permit", onClick: () => { setConvertTarget(p); convertForm.setFieldsValue({ convert_type: undefined }); } }] : []),
+          ...(p.status !== "cancelled" ? [{ key: "cancel", label: "Cancel Permit", danger: true as const, onClick: () => handleCancel(p) }] : []),
+        ];
+        return (
+          <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
+            <Button type="text" size="small" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
+          </Dropdown>
+        );
+      },
     }] : []),
   ];
 
