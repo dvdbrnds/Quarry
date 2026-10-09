@@ -265,7 +265,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         } else {
             degrees = cachedCaptureRotation()
         }
+        let bufW = CVPixelBufferGetWidth(imageBuffer)
+        let bufH = CVPixelBufferGetHeight(imageBuffer)
+        log("PHOTO: buffer=\(bufW)×\(bufH) rotation=\(degrees)° external=\(isUsingExternalCamera) thread=\(Thread.isMainThread ? "main" : "bg")")
         let rotatedImage = Self.rotateImage(rawCG, degrees: degrees)
+        log("PHOTO: rotated=\(Int(rotatedImage.size.width))×\(Int(rotatedImage.size.height))")
 
         let maxDim: CGFloat = 1280
         let scale = min(maxDim / rotatedImage.size.width, maxDim / rotatedImage.size.height, 1.0)
@@ -1264,12 +1268,18 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     func refreshCachedRotation() {
         if Thread.isMainThread {
             let degrees = Self._readRotation()
-            _cachedRotationDegrees.withLock { $0 = degrees }
+            let old = _cachedRotationDegrees.withLock { val -> Int in let prev = val; val = degrees; return prev }
+            if old != degrees {
+                log("ROTATION: cached \(old)° → \(degrees)° (main thread)")
+            }
         } else {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 let degrees = Self._readRotation()
-                self._cachedRotationDegrees.withLock { $0 = degrees }
+                let old = self._cachedRotationDegrees.withLock { val -> Int in let prev = val; val = degrees; return prev }
+                if old != degrees {
+                    self.log("ROTATION: cached \(old)° → \(degrees)° (dispatched to main)")
+                }
             }
         }
     }
@@ -1289,26 +1299,37 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     ///   - UIDeviceOrientation.landscapeLeft     = home button RIGHT = 0°
     ///   - UIDeviceOrientation.landscapeRight    = home button LEFT  = 180°
     private static func _readRotation() -> Int {
-        if let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first {
-            switch scene.interfaceOrientation {
-            case .portrait:            return 90
-            case .portraitUpsideDown:  return 270
-            case .landscapeLeft:       return 180  // home button LEFT
-            case .landscapeRight:      return 0    // home button RIGHT
-            case .unknown:             break
-            @unknown default:          break
+        let scenes = UIApplication.shared.connectedScenes
+        let windowScenes = scenes.compactMap { $0 as? UIWindowScene }
+        if let scene = windowScenes.first {
+            let iface = scene.interfaceOrientation
+            let result: Int
+            switch iface {
+            case .portrait:            result = 90
+            case .portraitUpsideDown:  result = 270
+            case .landscapeLeft:       result = 180  // home button LEFT
+            case .landscapeRight:      result = 0    // home button RIGHT
+            case .unknown:             result = -1
+            @unknown default:          result = -1
             }
+            let deviceOri = UIDevice.current.orientation
+            print("[CameraService] ROTATION READ: interface=\(iface.rawValue) device=\(deviceOri.rawValue) → \(result)° (scenes=\(scenes.count) windowScenes=\(windowScenes.count))")
+            if result >= 0 { return result }
+        } else {
+            print("[CameraService] ROTATION READ: NO window scene found (scenes=\(scenes.count) windowScenes=\(windowScenes.count))")
         }
         // Fallback: UIDeviceOrientation uses OPPOSITE naming for landscape
-        switch UIDevice.current.orientation {
-        case .portrait:            return 90
-        case .portraitUpsideDown:  return 270
-        case .landscapeLeft:       return 0    // home button RIGHT
-        case .landscapeRight:      return 180  // home button LEFT
-        default:                   return 90
+        let deviceOri = UIDevice.current.orientation
+        let result: Int
+        switch deviceOri {
+        case .portrait:            result = 90
+        case .portraitUpsideDown:  result = 270
+        case .landscapeLeft:       result = 0    // home button RIGHT
+        case .landscapeRight:      result = 180  // home button LEFT
+        default:                   result = 90
         }
+        print("[CameraService] ROTATION FALLBACK: device=\(deviceOri.rawValue) → \(result)°")
+        return result
     }
 
     /// Convenience for callers that are already on the main thread.
