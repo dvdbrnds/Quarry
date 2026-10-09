@@ -20,6 +20,17 @@ from ..utils.safe_router import SafeRouter
 _logger = logging.getLogger("quarry.conduct")
 
 
+def _extract_moravian_id_from_profile(profile: dict) -> str | None:
+    """Extract the numeric Moravian/Jenzabar ID from an Okta profile."""
+    for field in ("altId", "studentId", "employeeNumber", "moravianId"):
+        val = profile.get(field)
+        if val:
+            candidate = str(val).split("@")[0].strip()
+            if candidate.isdigit():
+                return candidate
+    return None
+
+
 async def _lookup_okta_user(identifier: str) -> dict | None:
     """Look up a user in Okta by email or sub. Returns profile dict or None."""
     if not settings.okta_domain or not settings.okta_api_token or not identifier:
@@ -37,47 +48,39 @@ async def _lookup_okta_user(identifier: str) -> dict | None:
                     "sub": data.get("id", ""),
                     "email": profile.get("email", ""),
                     "name": f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip(),
+                    "moravian_id": _extract_moravian_id_from_profile(profile),
                 }
     except Exception as e:
         _logger.debug("Okta lookup failed for %s: %s", identifier, e)
     return None
 
 
-def _normalize_student_fields(
-    student_id: str, student_email: str, student_name: str
-) -> tuple[str, str, str]:
-    """If student_id looks like an email, move it to student_email."""
-    if student_id and "@" in student_id:
-        if not student_email:
-            student_email = student_id
-        student_id = ""
-    return student_id, student_email, student_name
-
-
 async def _enrich_student_fields(
-    student_id: str, student_email: str, student_name: str
+    moravian_id: str, student_email: str, student_name: str,
+    okta_sub: str = "",
 ) -> tuple[str, str, str]:
-    """Fill in missing student_id or email via Okta lookup."""
-    student_id, student_email, student_name = _normalize_student_fields(
-        student_id, student_email, student_name
-    )
-    if student_id and student_email and student_name:
-        return student_id, student_email, student_name
+    """Fill in missing moravian_id, email, or name via Okta lookup.
 
-    lookup_key = student_id or student_email
+    moravian_id: the 6-digit Jenzabar student ID (what we display).
+    okta_sub: the Okta sub (used for lookup only, never displayed).
+    """
+    if moravian_id and student_email and student_name:
+        return moravian_id, student_email, student_name
+
+    lookup_key = okta_sub or student_email
     if not lookup_key:
-        return student_id, student_email, student_name
+        return moravian_id, student_email, student_name
 
     okta = await _lookup_okta_user(lookup_key)
     if okta:
-        if not student_id:
-            student_id = okta["sub"]
+        if not moravian_id and okta["moravian_id"]:
+            moravian_id = okta["moravian_id"]
         if not student_email:
             student_email = okta["email"]
         if not student_name:
             student_name = okta["name"]
 
-    return student_id, student_email, student_name
+    return moravian_id, student_email, student_name
 
 router = SafeRouter()
 
@@ -141,7 +144,8 @@ async def list_cases(
 
         # Look up permit/tag for this plate
         permit_info = None
-        student_id = ""
+        moravian_id = ""
+        okta_sub = ""
         student_name = row["owner_name"] or ""
         student_email = ""
 
@@ -165,7 +169,8 @@ async def list_cases(
                 "name": permit.name,
                 "email": permit.email,
             }
-            student_id = permit.student_id or ""
+            moravian_id = permit.moravian_id or ""
+            okta_sub = permit.student_id or ""
             student_name = permit.name or student_name
             student_email = permit.email or ""
 
@@ -185,13 +190,13 @@ async def list_cases(
         if status == "resolved" and (not esc or not esc["resolved_at"]):
             continue
 
-        student_id, student_email, student_name = await _enrich_student_fields(
-            student_id, student_email, student_name
+        moravian_id, student_email, student_name = await _enrich_student_fields(
+            moravian_id, student_email, student_name, okta_sub=okta_sub
         )
 
         cases.append({
             "id": str(esc["id"]) if esc else f"plate:{plate_norm}",
-            "student_id": student_id,
+            "student_id": moravian_id,
             "student_name": student_name,
             "student_email": student_email,
             "plate": plate,
@@ -244,7 +249,8 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
 
     # Look up permit
     permit_info = None
-    student_id = ""
+    moravian_id = ""
+    okta_sub = ""
     p_result = await db.execute(
         select(Permit).where(
             Permit.deleted_at.is_(None),
@@ -254,7 +260,8 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
     )
     permit = p_result.scalars().first()
     if permit:
-        student_id = permit.student_id or ""
+        moravian_id = permit.moravian_id or ""
+        okta_sub = permit.student_id or ""
         owner_name = permit.name or owner_name
         notification_email = permit.email or notification_email
         permit_info = {
@@ -296,13 +303,14 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
             "_prior_conduct": False,
         })
 
-    sid, semail, sname = await _enrich_student_fields(
-        student_id, notification_email or "", owner_name or ""
+    mid, semail, sname = await _enrich_student_fields(
+        moravian_id, notification_email or "", owner_name or "",
+        okta_sub=okta_sub,
     )
 
     return {
         "id": f"plate:{plate_norm}",
-        "student_id": sid,
+        "student_id": mid,
         "student_name": sname,
         "student_email": semail,
         "plate": plate,
@@ -425,8 +433,9 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
         except Exception:
             _logger.warning("Failed to fetch tickets for case %s", case_id, exc_info=True)
 
-    # Get permit/tag
+    # Get permit/tag and resolve moravian_id
     permit_info = None
+    permit = None
     if case_row["student_id"]:
         p_result = await db.execute(
             select(Permit).where(
@@ -436,20 +445,8 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
             ).order_by(Permit.is_tag_only.asc())
         )
         permit = p_result.scalars().first()
-        if permit:
-            permit_info = {
-                "permit_id": str(permit.id),
-                "permit_number": permit.permit_number,
-                "permit_type": permit.permit_type,
-                "lot_zone": permit.lot_assignment,
-                "plates": permit.plates,
-                "status": permit.status,
-                "is_tag_only": permit.is_tag_only,
-                "name": permit.name,
-                "email": permit.email,
-            }
 
-    if not permit_info and case_row["plate"]:
+    if not permit and case_row["plate"]:
         plate_norm = case_row["plate"].upper().replace(" ", "").replace("-", "")
         p_result = await db.execute(
             select(Permit).where(
@@ -459,28 +456,33 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
             ).order_by(Permit.is_tag_only.asc())
         )
         permit = p_result.scalars().first()
-        if permit:
-            permit_info = {
-                "permit_id": str(permit.id),
-                "permit_number": permit.permit_number,
-                "permit_type": permit.permit_type,
-                "lot_zone": permit.lot_assignment,
-                "plates": permit.plates,
-                "status": permit.status,
-                "is_tag_only": permit.is_tag_only,
-                "name": permit.name,
-                "email": permit.email,
-            }
 
-    sid, semail, sname = await _enrich_student_fields(
-        case_row["student_id"] or "",
+    if permit:
+        permit_info = {
+            "permit_id": str(permit.id),
+            "permit_number": permit.permit_number,
+            "permit_type": permit.permit_type,
+            "lot_zone": permit.lot_assignment,
+            "plates": permit.plates,
+            "status": permit.status,
+            "is_tag_only": permit.is_tag_only,
+            "name": permit.name,
+            "email": permit.email,
+        }
+
+    moravian_id = (permit.moravian_id or "") if permit else ""
+    okta_sub = case_row["student_id"] or ((permit.student_id or "") if permit else "")
+
+    mid, semail, sname = await _enrich_student_fields(
+        moravian_id,
         case_row["student_email"] or "",
         case_row["student_name"] or "",
+        okta_sub=okta_sub,
     )
 
     return {
         "id": str(case_row["id"]),
-        "student_id": sid,
+        "student_id": mid,
         "student_name": sname,
         "student_email": semail,
         "plate": case_row["plate"],
