@@ -112,19 +112,9 @@ class OktaUser:
     @property
     def is_staff(self) -> bool:
         """True for Moravian faculty/staff employees (permit buyers), not operators.
-        Excludes student-staff roles like RAs, student workers, etc."""
-        if set(self.groups) & FACULTY_STAFF_OKTA_GROUPS:
-            return True
-        operator_group = settings.staff_okta_groups.lower()
-        # Groups containing these terms are student roles, not employees
-        student_exclusions = ("resident", "student", "ra ", "r.a.", "work-study", "workstudy")
-        lower_groups = [g.lower() for g in self.groups]
-        return any(
-            ("faculty" in g or "staff" in g)
-            and g != operator_group
-            and not any(ex in g for ex in student_exclusions)
-            for g in lower_groups
-        )
+        Only matches explicit groups in FACULTY_STAFF_OKTA_GROUPS — no fuzzy matching
+        to prevent students in groups like 'Student Staff' from getting access."""
+        return bool(set(self.groups) & FACULTY_STAFF_OKTA_GROUPS)
 
     @property
     def role(self) -> str:
