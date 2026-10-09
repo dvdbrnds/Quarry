@@ -28,8 +28,9 @@ def _call_hold_proc(id_num: str, hold_flag: str) -> bool:
             timeout=10,
         )
         cur = conn.cursor()
+        proc = settings.sis_hold_procedure
         cur.execute(
-            "EXEC Mor_CUS_ParkingHold @id_num=%s, @hold=%s",
+            f"EXEC {proc} @id_num=%s, @hold=%s",
             (id_num, hold_flag),
         )
         conn.commit()

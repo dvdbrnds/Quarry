@@ -137,6 +137,7 @@ class Settings(BaseSettings):
     sis_hold_enabled: bool = True
     sis_hold_api_url: str = ""
     sis_hold_api_key: str = ""
+    sis_hold_procedure: str = "Mor_CUS_ParkingHold"
 
     # SIS SQL Server (Jenzabar) — student data lookup
     sis_mssql_host: str = ""
