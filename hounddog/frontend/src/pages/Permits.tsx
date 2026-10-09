@@ -334,10 +334,10 @@ function CancelPermitModal({
 }
 
 function PermitForm({
-  initial, permitTypes, lots, onSave, onCancel,
+  initial, permitTypes, lots, onSave, onCancel, onDelete,
 }: {
   initial?: Permit; permitTypes: PermitTypeOption[]; lots: LotOption[];
-  onSave: () => void; onCancel: () => void;
+  onSave: () => void; onCancel: () => void; onDelete?: (permit: Permit) => void;
 }) {
   const { message } = App.useApp();
   const { vouchersEnabled } = useBranding();
@@ -800,7 +800,13 @@ function PermitForm({
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
+        <div className="flex items-center gap-3">
+          {initial && onDelete && (
+            <Popconfirm title="Delete this permit?" description="This permanently removes it from all views." onConfirm={() => onDelete(initial)} okText="Delete" okButtonProps={{ danger: true }}>
+              <Button danger size="small">Delete Permit</Button>
+            </Popconfirm>
+          )}
+          <div className="flex-1" />
           <Button onClick={onCancel}>Cancel</Button>
           <Button type="primary" htmlType="submit" loading={saving}>
             {initial ? "Update" : hasFee ? `Create & Send Payment Link` : "Create"}
@@ -1256,20 +1262,17 @@ export default function Permits() {
       ),
     },
     ...(isAdmin ? [{
-      title: "Actions", key: "actions", width: 120, fixed: "right" as const,
+      title: "Actions", key: "actions", width: 180, fixed: "right" as const,
       render: (_: unknown, p: Permit) => (
-        <Space size={0} wrap onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+        <Space onClick={(e: React.MouseEvent) => e.stopPropagation()}>
           {p.is_tag_only && (
             <Button type="link" size="small" style={{ color: "#0891b2", padding: "0 4px" }} onClick={() => {
               setConvertTarget(p);
               convertForm.setFieldsValue({ convert_type: undefined });
             }}>Convert</Button>
           )}
-          <Button type="link" size="small" style={{ padding: "0 4px" }} onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
-          <Button type="link" size="small" danger style={{ padding: "0 4px" }} disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
-          <Popconfirm title="Delete this permit?" description="This permanently removes it from all views." onConfirm={() => handleDelete(p)} okText="Delete" okButtonProps={{ danger: true }}>
-            <Button type="link" size="small" style={{ color: "#9ca3af", padding: "0 4px" }}>Delete</Button>
-          </Popconfirm>
+          <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
+          <Button type="link" size="small" danger disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
         </Space>
       ),
     }] : []),
@@ -1393,6 +1396,7 @@ export default function Permits() {
                   <PermitForm initial={editing ?? undefined} permitTypes={permitTypes} lots={lots}
                     onSave={() => { setCreating(false); setEditing(null); load(); loadMeta(); }}
                     onCancel={() => { setCreating(false); setEditing(null); }}
+                    onDelete={(p) => { handleDelete(p); setEditing(null); }}
                   />
                 )}
 
