@@ -1185,7 +1185,7 @@ export default function Permits() {
   async function handleDelete(permit: Permit) {
     try {
       const headers = await authHeaders();
-      const res = await fetch(`/api/permits/${permit.id}`, { method: "DELETE", headers });
+      const res = await fetch(`/api/permits/${permit.id}/delete`, { method: "POST", headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || "Delete failed");

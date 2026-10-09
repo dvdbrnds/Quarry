@@ -1501,7 +1501,7 @@ def remaining_term_ok(end: date) -> bool:
     return end > today_local()
 
 
-@router.delete("/{permit_id}")
+@router.post("/{permit_id}/delete")
 async def delete_permit(
     permit_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
