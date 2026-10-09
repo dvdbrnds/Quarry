@@ -4,7 +4,7 @@ import { api, Permit } from "../api";
 import { authHeaders, isAdminRole, isOfficeRole } from "../auth";
 import {
   Table, Button, Input, Select, Tag, Card, Statistic, Modal, Form, DatePicker,
-  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography, Spin,
+  Space, Tabs, Alert, App, Checkbox, InputNumber, Typography, Spin, Popconfirm,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -1182,6 +1182,22 @@ export default function Permits() {
     setCancelTarget(permit);
   }
 
+  async function handleDelete(permit: Permit) {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/permits/${permit.id}`, { method: "DELETE", headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Delete failed");
+      }
+      message.success(`Permit ${permit.permit_number || permit.id} deleted`);
+      load();
+      loadMeta();
+    } catch (e: any) {
+      message.error(e.message || "Delete failed");
+    }
+  }
+
   function handleBulkAction() {
     if (!bulkAction || selected.size === 0) return;
     modal.confirm({
@@ -1251,6 +1267,9 @@ export default function Permits() {
           )}
           <Button type="link" size="small" onClick={() => { setEditing(p); setCreating(false); }}>Edit</Button>
           <Button type="link" size="small" danger disabled={p.status === "cancelled"} onClick={() => handleCancel(p)}>Cancel</Button>
+          <Popconfirm title="Delete this permit?" description="This permanently removes it from all views." onConfirm={() => handleDelete(p)} okText="Delete" okButtonProps={{ danger: true }}>
+            <Button type="link" size="small" style={{ color: "#9ca3af" }}>Delete</Button>
+          </Popconfirm>
         </Space>
       ),
     }] : []),
