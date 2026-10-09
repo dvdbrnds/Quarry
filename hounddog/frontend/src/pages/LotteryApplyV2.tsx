@@ -1297,6 +1297,15 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <a href="/pay" className="block no-underline mb-6">
+          <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-all">
+            <div>
+              <div className="text-sm font-semibold text-gray-800">Have a parking ticket?</div>
+              <div className="text-xs text-gray-500">View and pay any outstanding citations online.</div>
+            </div>
+            <span className="text-sm font-medium text-blue-600">Pay Now →</span>
+          </div>
+        </a>
         {(() => {
           // Compute permit map data outside the grid to avoid hook issues
           const _assignedLotNames: string[] = [];
