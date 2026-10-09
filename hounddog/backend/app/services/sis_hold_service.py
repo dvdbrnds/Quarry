@@ -30,7 +30,7 @@ def _call_hold_proc(id_num: str, hold_flag: str) -> bool:
         cur = conn.cursor()
         proc = settings.sis_hold_procedure
         cur.execute(
-            f"EXEC {proc} @id_num=%s, @hold=%s",
+            f"EXEC {proc} @id_num=%s, @flag=%s",
             (id_num, hold_flag),
         )
         conn.commit()
