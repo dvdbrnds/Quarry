@@ -47,8 +47,6 @@
 	<string>Bird Dog uses your location to determine which parking lot you are in for permit verification.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Bird Dog uses motion data to adapt scanning speed — slower when walking, faster in a vehicle.</string>
-	<key>SENTRY_DSN</key>
-	<string>https://39ea80c1bf211e27ef8ed4ac5805d668@o4511224468275200.ingest.us.sentry.io/4511877191827456</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

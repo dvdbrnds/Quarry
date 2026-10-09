@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 import UIKit
-import Sentry
 
 @main
 struct BirdDogApp: App {
@@ -95,13 +94,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        SentrySDK.start { options in
-            options.dsn = Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String ?? ""
-            options.tracesSampleRate = 0.2
-            options.enableAutoPerformanceTracing = true
-            options.attachScreenshot = true
-            options.environment = "production"
-        }
         UIApplication.shared.registerForRemoteNotifications()
         return true
     }
