@@ -517,6 +517,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   const [accepting, setAccepting] = useState(false);
   const [lots, setLots] = useState<Lot[]>([]);
   const [myPermits, setMyPermits] = useState<any[]>([]);
+  const [unpaidTicketCount, setUnpaidTicketCount] = useState(0);
   const [highlightedLots, setHighlightedLots] = useState<string[]>([]);
   const [hoveredTierId, setHoveredTierId] = useState<string | null>(null);
   const [focusedLot, setFocusedLot] = useState<string | null>(null);
@@ -554,6 +555,19 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
   }, [impersonateEmail]);
 
   useEffect(() => { loadGuests(); }, [loadGuests]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await authHeadersAs(impersonateEmail);
+        const res = await fetch("/api/payments/my-tickets", { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setUnpaidTicketCount(data.length);
+        }
+      } catch {}
+    })();
+  }, [impersonateEmail]);
 
   async function submitGuest(values: any) {
     setGuestSubmitting(true);
@@ -1297,15 +1311,19 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <a href="/pay" className="block no-underline mb-6">
-          <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-all">
-            <div>
-              <div className="text-sm font-semibold text-gray-800">Have a parking ticket?</div>
-              <div className="text-xs text-gray-500">View and pay any outstanding citations online.</div>
+        {unpaidTicketCount > 0 && (
+          <a href="/pay" className="block no-underline mb-6">
+            <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-4 flex items-center justify-between hover:border-red-300 hover:shadow-sm transition-all">
+              <div>
+                <div className="text-sm font-semibold text-red-800">
+                  You have {unpaidTicketCount} unpaid citation{unpaidTicketCount !== 1 ? "s" : ""}
+                </div>
+                <div className="text-xs text-red-600">Pay online to avoid registration holds and additional penalties.</div>
+              </div>
+              <span className="text-sm font-medium text-red-700">Pay Now →</span>
             </div>
-            <span className="text-sm font-medium text-blue-600">Pay Now →</span>
-          </div>
-        </a>
+          </a>
+        )}
         {(() => {
           // Compute permit map data outside the grid to avoid hook issues
           const _assignedLotNames: string[] = [];
