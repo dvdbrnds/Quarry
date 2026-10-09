@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { Button, Card, Input, Form, Modal, Alert, Spin, Empty, Space, App, Divider } from "antd";
 import { SearchOutlined, LoginOutlined } from "@ant-design/icons";
 import { useBranding } from "../useBranding";
-import { initAuth, isAuthenticated, login, authHeaders } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, authHeadersAs, getImpersonateEmail } from "../auth";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
 
@@ -68,7 +68,8 @@ export default function Pay() {
 
   async function loadMyTickets() {
     try {
-      const headers = await authHeaders();
+      const imp = getImpersonateEmail();
+      const headers = imp ? await authHeadersAs(imp) : await authHeaders();
       if (!headers.Authorization) return;
       setIsLoggedIn(true);
       setLoading(true);
