@@ -1279,23 +1279,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
     <div className="min-h-screen bg-gray-50">
       <PublicPageNav subtitle="Parking Permits" />
 
-      {impersonateEmail && (
-        <div style={{ background: "#FEF3C7", borderBottom: "2px solid #F59E0B", padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 600, color: "#92400E" }}>
-            Viewing as: {impersonateEmail} ({user.role})
-          </span>
-          <Button
-            size="small"
-            onClick={() => {
-              const url = new URL(window.location.href);
-              url.searchParams.delete("impersonate");
-              window.location.href = url.toString();
-            }}
-          >
-            Exit Impersonation
-          </Button>
-        </div>
-      )}
+      {/* Impersonation bar is now in PublicPageNav */}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {(() => {

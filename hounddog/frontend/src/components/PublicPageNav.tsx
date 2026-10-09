@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBranding } from "../useBranding";
-import { authHeadersAs, getImpersonateEmail } from "../auth";
+import { authHeadersAs, getImpersonateEmail, clearImpersonation } from "../auth";
 import BrandMark from "./BrandMark";
 
 const PUBLIC_LINKS = [
@@ -33,6 +33,7 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
   const location = useLocation();
   const unpaidCount = useUnpaidTicketCount();
   const isPayPage = location.pathname.startsWith("/pay");
+  const impersonateEmail = getImpersonateEmail();
 
   return (
     <>
@@ -105,6 +106,19 @@ export default function PublicPageNav({ subtitle, hideLinks }: { subtitle: strin
           {hideLinks && <a href="/regulations" target="_blank" rel="noopener noreferrer" className="ml-auto text-xs font-medium px-3 py-1 rounded no-underline" style={{ background: "rgba(255,255,255,0.2)", color: brand.accentColor }}>📋 Parking Regulations</a>}
         </div>
       </nav>
+      {impersonateEmail && (
+        <div className="bg-amber-50 border-b-2 border-amber-400 px-6 py-2 flex items-center justify-between">
+          <span className="text-sm font-semibold text-amber-800">
+            Viewing as: {impersonateEmail}
+          </span>
+          <button
+            onClick={() => { clearImpersonation(); window.location.href = "/dashboard"; }}
+            className="text-xs font-medium text-amber-700 bg-amber-200 hover:bg-amber-300 px-3 py-1 rounded transition-colors"
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      )}
       {unpaidCount > 0 && !isPayPage && (
         <a href="/pay" className="block no-underline">
           <div className="bg-red-50 border-b border-red-200 px-6 py-3 flex items-center justify-center gap-3 hover:bg-red-100 transition-colors">

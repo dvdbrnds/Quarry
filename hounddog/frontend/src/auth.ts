@@ -162,6 +162,25 @@ export async function isAuthenticated(): Promise<boolean> {
   return oktaAuth.isAuthenticated();
 }
 
+export function getImpersonateEmail(): string | null {
+  // Check URL first (entering impersonation), then sessionStorage (persisted)
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get("impersonate");
+  if (fromUrl) {
+    sessionStorage.setItem("quarry_impersonate", fromUrl);
+    return fromUrl;
+  }
+  return sessionStorage.getItem("quarry_impersonate");
+}
+
+export function clearImpersonation(): void {
+  sessionStorage.removeItem("quarry_impersonate");
+}
+
+export function isImpersonating(): boolean {
+  return !!getImpersonateEmail();
+}
+
 export async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAccessToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -175,11 +194,6 @@ export async function authHeadersAs(impersonateEmail?: string | null): Promise<R
     headers["X-Impersonate"] = impersonateEmail;
   }
   return headers;
-}
-
-export function getImpersonateEmail(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("impersonate");
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
