@@ -340,7 +340,7 @@ async def check_and_resolve_on_payment(db: AsyncSession, plate: str):
     )
     for (student_id,) in result.fetchall():
         remaining = await _count_unpaid_tickets_for_student(db, student_id)
-        if remaining < settings.registration_hold_threshold:
+        if remaining == 0:
             resolved = await resolve_escalation(db, student_id, "registration_hold", "system:payment")
             if resolved:
                 moravian_id = await _get_moravian_id(db, student_id)
@@ -348,8 +348,8 @@ async def check_and_resolve_on_payment(db: AsyncSession, plate: str):
                     from .sis_hold_service import set_jenzabar_hold
                     await set_jenzabar_hold(moravian_id, apply=False)
                     logger.info(
-                        "Jenzabar hold removed for %s (moravian_id=%s, %d tickets remaining)",
-                        student_id, moravian_id, remaining,
+                        "Jenzabar hold removed for %s (moravian_id=%s, all tickets paid)",
+                        student_id, moravian_id,
                     )
         if remaining < settings.conduct_referral_threshold:
             await resolve_escalation(db, student_id, "conduct_referral", "system:payment")
