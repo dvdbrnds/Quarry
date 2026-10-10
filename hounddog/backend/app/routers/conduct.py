@@ -538,7 +538,7 @@ async def _ensure_escalation_log(case_id: str, db: AsyncSession) -> str:
     permit = p_result.scalars().first()
     sid = permit.student_id if permit else ""
     email = permit.email if permit else ""
-    name = permit.name or name or ""
+    name = (permit.name if permit else None) or name or ""
     new_id = str(uuid.uuid4())
     await db.execute(text("""
         INSERT INTO escalation_log (id, student_id, student_name, student_email, plate,
