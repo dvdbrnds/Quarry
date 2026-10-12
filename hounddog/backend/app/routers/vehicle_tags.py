@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, require_office
+from ..auth.okta import OktaUser, get_current_user, require_office, require_admin
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.ticket import Ticket
@@ -400,3 +400,41 @@ async def delete_vehicle_tag(
         raise HTTPException(404, "Vehicle tag not found")
     tag.deleted_at = datetime.now(timezone.utc)
     await db.flush()
+
+
+@router.post("/cleanup/clear-student-ids")
+async def clear_tag_student_ids(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """One-time cleanup: clear student_id from all vehicle tags.
+
+    Vehicle tags should never have a student_id — a prior bug in the
+    BirdDog tag form let officers search for and attach students to
+    tags, causing ticket misattribution and false escalations.
+    """
+    from sqlalchemy import update
+
+    result = await db.execute(
+        update(Permit)
+        .where(
+            Permit.is_tag_only.is_(True),
+            Permit.student_id.isnot(None),
+            Permit.student_id != "",
+        )
+        .values(student_id="")
+        .returning(Permit.id)
+    )
+    cleared_ids = result.scalars().all()
+    await db.flush()
+
+    logger.info(
+        "Cleared student_id from %d vehicle tags (admin: %s)",
+        len(cleared_ids),
+        user.email,
+    )
+
+    return {
+        "cleared": len(cleared_ids),
+        "message": f"Cleared student_id from {len(cleared_ids)} vehicle tag(s).",
+    }
