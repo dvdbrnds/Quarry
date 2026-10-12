@@ -514,7 +514,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
 
-        let maxSkip = isUsingExternalCamera ? 6 : 8
+        let maxSkip = 6
         let minSkip = max(isUsingExternalCamera ? 1 : 2, motionMinFrameSkip)
 
         if elapsed > 0.20 {

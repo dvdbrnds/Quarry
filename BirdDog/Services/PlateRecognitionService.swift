@@ -281,8 +281,43 @@ final class PlateRecognitionService {
                     pathUsed = .fastOnly
                 }
             } else {
-                observations = runOCR(on: pixelBuffer)
-                pathUsed = .builtIn
+                // Built-in camera: same fast→accurate pipeline as external.
+                // Previously ran a single .accurate pass on full-res which
+                // was 3-5x slower and caused UI lag on handheld devices.
+                let detectBuffer = self.downscaleForDetection(pixelBuffer) ?? pixelBuffer
+                let fastObs = runOCR(on: detectBuffer, level: .fast)
+
+                let fastPlateConf: Float = fastObs.compactMap { obs -> Float? in
+                    guard let cand = obs.topCandidates(1).first else { return nil }
+                    let norm = PlatePatternMatcher.normalize(cand.string)
+                    return PlatePatternMatcher.evaluatePlate(norm) == nil ? cand.confidence : nil
+                }.max() ?? 0
+
+                let fastHasPlate = fastPlateConf > 0
+
+                if fastHasPlate && fastPlateConf >= 0.90 {
+                    // High confidence plate match on .fast — good enough
+                    observations = fastObs
+                    pathUsed = .fastOnly
+                } else if fastHasPlate {
+                    // Plate found but needs .accurate verification on full-res
+                    let accurateObs = runOCR(on: pixelBuffer, level: .accurate)
+                    observations = mergeObservations(primary: accurateObs, secondary: fastObs)
+                    pathUsed = .fastAccurateMerge
+                } else if !fastObs.isEmpty {
+                    // Text found but no plate match — try .accurate
+                    let accurateObs = runOCR(on: pixelBuffer, level: .accurate)
+                    observations = mergeObservations(primary: fastObs, secondary: accurateObs)
+                    pathUsed = .fastAccurateMerge
+                } else if forceAccurate {
+                    // Periodic .accurate pass to catch missed plates
+                    let accurateObs = runOCR(on: pixelBuffer, level: .accurate)
+                    observations = accurateObs
+                    pathUsed = .accurateOnly
+                } else {
+                    observations = fastObs
+                    pathUsed = .fastOnly
+                }
             }
 
             guard !observations.isEmpty else {
