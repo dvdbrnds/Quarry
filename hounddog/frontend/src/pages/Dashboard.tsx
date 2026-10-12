@@ -11,6 +11,7 @@ interface NeedsAction {
   appealed: number;
   escalated: number;
   overdue: number;
+  past_due: number;
 }
 
 interface IssuedCount {
@@ -119,7 +120,9 @@ function eventDescription(e: ActivityEvent): string {
     case "appealed":
       return `Appeal filed on ${num}`;
     case "escalated":
-      return `${num} escalated`;
+      return `${num} escalated to committee`;
+    case "past_due":
+      return `${num} past due — ${fine}`;
     case "voided":
       return `${num} voided`;
     case "pending_payment":
@@ -136,6 +139,7 @@ const STATUS_DOTS: Record<string, string> = {
   paid: "bg-green-500",
   appealed: "bg-amber-500",
   escalated: "bg-amber-500",
+  past_due: "bg-red-800",
   voided: "bg-gray-400",
   pending_payment: "bg-orange-400",
   resolved_permit: "bg-green-400",
@@ -216,9 +220,17 @@ export default function Dashboard() {
                     {data.needs_action.escalated} escalation{data.needs_action.escalated !== 1 ? "s" : ""}
                   </span>
                 )}
-                {data.needs_action.overdue > 0 && (
+                {data.needs_action.past_due > 0 && (
                   <>
                     {(data.needs_action.appealed > 0 || data.needs_action.escalated > 0) && <span>·</span>}
+                    <span className="cursor-pointer underline" onClick={() => navigate("/tickets?status=past_due")}>
+                      {data.needs_action.past_due} past due
+                    </span>
+                  </>
+                )}
+                {data.needs_action.overdue > 0 && (
+                  <>
+                    {(data.needs_action.appealed > 0 || data.needs_action.escalated > 0 || data.needs_action.past_due > 0) && <span>·</span>}
                     <span className="cursor-pointer underline" onClick={() => navigate("/tickets?status=overdue")}>
                       {data.needs_action.overdue} overdue
                     </span>
@@ -226,7 +238,7 @@ export default function Dashboard() {
                 )}
                 {data.pending_vehicle_requests > 0 && (
                   <>
-                    {(data.needs_action.appealed > 0 || data.needs_action.escalated > 0 || data.needs_action.overdue > 0) && <span>·</span>}
+                    {(data.needs_action.appealed > 0 || data.needs_action.escalated > 0 || data.needs_action.past_due > 0 || data.needs_action.overdue > 0) && <span>·</span>}
                     <span className="cursor-pointer underline" onClick={() => navigate("/permits#vehicle-requests")}>
                       {data.pending_vehicle_requests} vehicle request{data.pending_vehicle_requests !== 1 ? "s" : ""}
                     </span>
@@ -302,7 +314,7 @@ export default function Dashboard() {
                             <p className="text-xs text-ink-mute mt-0.5 line-clamp-2">{item.appeal_note}</p>
                           ) : (
                             <p className="text-xs text-ink-mute mt-0.5 italic">
-                              {item.status === "escalated" ? "Escalated for review" : "Appeal pending"}
+                              {item.status === "escalated" ? "Escalated for review" : item.status === "past_due" ? "Past due" : "Appeal pending"}
                             </p>
                           )}
                         </div>

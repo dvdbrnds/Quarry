@@ -41,7 +41,7 @@ from ..schemas.ticket import (
 router = SafeRouter(dependencies=[Depends(get_current_user)])
 public_router = SafeRouter()
 
-VALID_STATUSES = {"issued", "warning", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue"}
+VALID_STATUSES = {"issued", "warning", "pending_payment", "paid", "appealed", "escalated", "voided", "resolved_permit", "overdue", "past_due"}
 
 VISITOR_PERMIT_TYPES = {"visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"}
 
@@ -878,6 +878,7 @@ async def ticket_pipeline(
         paid=counts.get("paid", 0),
         appealed=counts.get("appealed", 0),
         escalated=counts.get("escalated", 0),
+        past_due=counts.get("past_due", 0),
         voided=counts.get("voided", 0),
         resolved_permit=counts.get("resolved_permit", 0),
         total=total,
@@ -908,7 +909,7 @@ async def dashboard(
     # Needs action (all time — these are currently open)
     action_q = await db.execute(
         select(Ticket.status, func.count())
-        .where(Ticket.status.in_(["appealed", "escalated", "overdue"]))
+        .where(Ticket.status.in_(["appealed", "escalated", "overdue", "past_due"]))
         .group_by(Ticket.status)
     )
     action_counts = dict(action_q.all())
@@ -917,6 +918,7 @@ async def dashboard(
         appealed=action_counts.get("appealed", 0),
         escalated=action_counts.get("escalated", 0),
         overdue=action_counts.get("overdue", 0),
+        past_due=action_counts.get("past_due", 0),
     )
 
     # Issued count within period (all tickets created, regardless of current status)
@@ -974,7 +976,7 @@ async def dashboard(
     # Action items (appealed/escalated, oldest first)
     items_q = await db.execute(
         select(Ticket)
-        .where(Ticket.status.in_(["appealed", "escalated"]))
+        .where(Ticket.status.in_(["appealed", "escalated", "past_due"]))
         .options(defer(Ticket.photo_data))
         .order_by(Ticket.issued_at.asc())
         .limit(20)
@@ -1313,7 +1315,7 @@ async def pending_mail_notices(
 
     unmailed_q = await db.execute(
         select(Ticket).where(
-            Ticket.status.in_(["overdue", "escalated"]),
+            Ticket.status.in_(["overdue", "escalated", "past_due"]),
             Ticket.mailed_at.is_(None),
         ).order_by(Ticket.issued_at.asc())
     )

@@ -192,7 +192,8 @@ export default function Appeals() {
     if (t.status === "warning") return <Tag color="orange">Warning</Tag>;
     if (t.status === "resolved_permit") return <Tag color="default">Resolved</Tag>;
     if (t.status === "overdue") return <Tag color="orange">Overdue</Tag>;
-    if (t.status === "escalated") return <Tag color="red">Escalated</Tag>;
+    if (t.status === "escalated") return <Tag color="purple">Escalated</Tag>;
+    if (t.status === "past_due") return <Tag color="red">Past Due</Tag>;
     return <Tag color="gold">Issued</Tag>;
   }
 

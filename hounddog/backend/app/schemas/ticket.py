@@ -126,6 +126,7 @@ class TicketPipeline(BaseModel):
     paid: int = 0
     appealed: int = 0
     escalated: int = 0
+    past_due: int = 0
     voided: int = 0
     resolved_permit: int = 0
     total: int = 0
@@ -143,6 +144,7 @@ class NeedsAction(BaseModel):
     appealed: int = 0
     escalated: int = 0
     overdue: int = 0
+    past_due: int = 0
 
 
 class IssuedCount(BaseModel):

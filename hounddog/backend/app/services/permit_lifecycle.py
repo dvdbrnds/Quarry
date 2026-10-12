@@ -62,7 +62,7 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
     fix_result = await db.execute(
         select(Ticket).where(
             Ticket.fine_amount <= 0,
-            Ticket.status.in_(["issued", "overdue", "escalated"]),
+            Ticket.status.in_(["issued", "overdue", "escalated", "past_due"]),
         )
     )
     fixed_tickets = fix_result.scalars().all()
@@ -94,7 +94,7 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
     )
     overdue_tickets = overdue_result.scalars().all()
     for t in overdue_tickets:
-        t.status = "escalated"
+        t.status = "past_due"
     escalated_count = len(overdue_tickets)
 
     if overdue_count or escalated_count or fixed_tickets:

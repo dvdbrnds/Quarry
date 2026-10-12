@@ -72,6 +72,7 @@ const STATUS_COLORS: Record<string, string> = {
   paid: "green",
   appealed: "gold",
   escalated: "purple",
+  past_due: "red",
   voided: "default",
   expired_magistrate: "magenta",
 };
@@ -79,7 +80,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_BAR_COLORS: Record<string, string> = {
   issued: "#ef4444", warning: "#f97316", paid: "#22c55e",
   voided: "#9ca3af", appealed: "#eab308", escalated: "#a855f7",
-  overdue: "#dc2626", pending_payment: "#f97316",
+  past_due: "#991b1b", overdue: "#dc2626", pending_payment: "#f97316",
 };
 
 interface FullStatsData {
@@ -1197,6 +1198,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   .status-voided { color: #9ca3af; }
   .status-appealed { color: #2563eb; }
   .status-escalated { color: #7c3aed; }
+  .status-past_due { color: #991b1b; }
   .total { margin-top: 12px; font-size: 12px; color: #64748b; }
   @media print { body { margin: 12px; } }
 </style></head><body>
@@ -1331,6 +1333,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     .status-voided { background: #f3f4f6; color: #6b7280; }
     .status-appealed { background: #fef9c3; color: #854d0e; }
     .status-escalated { background: #f3e8ff; color: #6b21a8; }
+    .status-past_due { background: #fee2e2; color: #991b1b; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 11px; color: #777; text-align: center; }
     @media print { body { padding: 20px; } }
   </style>
@@ -1827,6 +1830,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             { label: "Paid", value: "paid" },
             { label: "Appealed", value: "appealed" },
             { label: "Escalated (Committee)", value: "escalated" },
+            { label: "Past Due", value: "past_due" },
             { label: "Voided", value: "voided" },
             { label: "Magistrate Referral", value: "expired_magistrate" },
           ]}
