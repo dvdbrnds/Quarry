@@ -1654,7 +1654,7 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               </Card>
             )}
 
-            {(step === "done" || (!application && myPermits.length > 0) || (!application && !cycle && !isCommuterPath)) && (
+            {(step === "done" || step === "intake" || (!application && myPermits.length > 0)) && (
               <Card className="mt-4 border-indigo-200 shadow-md">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
