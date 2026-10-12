@@ -893,27 +893,37 @@ async def _upload_ticket_impl(
     notification_sent = False
     notification_email: str | None = None
 
-    # Resolve notification email with multiple fallback strategies:
-    # 1. permit.email directly
-    # 2. Other permits with the same student_id
-    # 3. Other permits with the same plate (handles imports without student_id)
-    # 4. customer_email from Stripe sessions for this plate
+    # Resolve notification email — must belong to the SAME vehicle/owner.
+    # Fallbacks are scoped to prevent cross-contamination (e.g., vehicle
+    # tags created under student X should not email student X for someone
+    # else's vehicle).
+    #
+    # Strategy:
+    # 1. permit.email directly (the matched permit/tag for this plate)
+    # 2. For real permits ONLY (not tags): other permits with same student_id
+    # 3. Other permits with the exact same plate (same vehicle, different record)
     recipient_email: str | None = None
     if permit:
         _raw_email = getattr(permit, "email", None) or ""
         if "@" in _raw_email:
             recipient_email = _raw_email
 
-        if not recipient_email and getattr(permit, "student_id", None):
-            fallback_result = await db.execute(
-                select(Permit.email).where(
-                    Permit.student_id == permit.student_id,
-                    Permit.email.isnot(None),
-                    Permit.email != "",
-                    Permit.email.contains("@"),
-                ).limit(1)
-            )
-            recipient_email = fallback_result.scalar()
+        # student_id cross-reference ONLY for real permits (not vehicle tags).
+        # Tags are for unknown/external vehicles — their student_id may point
+        # to the officer's student search result, not the actual vehicle owner.
+        if not recipient_email and not getattr(permit, "is_tag_only", False):
+            _sid = getattr(permit, "student_id", None)
+            if _sid:
+                fallback_result = await db.execute(
+                    select(Permit.email).where(
+                        Permit.student_id == _sid,
+                        Permit.is_tag_only.is_(False),
+                        Permit.email.isnot(None),
+                        Permit.email != "",
+                        Permit.email.contains("@"),
+                    ).limit(1)
+                )
+                recipient_email = fallback_result.scalar()
 
     if not recipient_email:
         plate_email_result = await db.execute(
@@ -973,7 +983,10 @@ async def _upload_ticket_impl(
         await db.flush()
 
     try:
-        if permit and getattr(permit, 'student_id', None):
+        # Only escalate for real permits — vehicle tags should not count
+        # against a student's escalation threshold (the tag's student_id
+        # may reference a student who doesn't own the tagged vehicle).
+        if permit and getattr(permit, 'student_id', None) and not getattr(permit, 'is_tag_only', False):
             from ..services.escalation import check_and_escalate
             await check_and_escalate(
                 db=db,
