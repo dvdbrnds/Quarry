@@ -121,7 +121,8 @@ async def list_cases(
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(require_conduct),
 ):
-    # Find ALL plates with 3+ unpaid tickets — this is the source of truth
+    # Find ALL plates with 3+ unpaid tickets — this is the source of truth.
+    # Don't group by owner_name — officer name typos cause duplicate rows.
     plate_rows = await db.execute(text("""
         SELECT
             UPPER(REPLACE(REPLACE(t.plate, ' ', ''), '-', '')) AS plate_norm,
@@ -129,15 +130,16 @@ async def list_cases(
             COUNT(*) AS ticket_count,
             MIN(t.issued_at) AS first_ticket,
             MAX(t.issued_at) AS latest_ticket,
-            t.owner_name
+            MAX(t.owner_name) AS owner_name
         FROM tickets t
         WHERE t.status NOT IN ('paid', 'voided', 'resolved_permit')
-        GROUP BY plate_norm, t.plate, t.owner_name
+        GROUP BY plate_norm, t.plate
         HAVING COUNT(*) >= 3
         ORDER BY MAX(t.issued_at) DESC
     """))
 
-    cases = []
+    # Build one case per plate, then deduplicate by student identity
+    plate_cases: list[dict] = []
     for row in plate_rows.mappings():
         plate = row["plate"]
         plate_norm = row["plate_norm"]
@@ -194,12 +196,13 @@ async def list_cases(
             moravian_id, student_email, student_name, okta_sub=okta_sub
         )
 
-        cases.append({
+        plate_cases.append({
             "id": str(esc["id"]) if esc else f"plate:{plate_norm}",
             "student_id": moravian_id,
             "student_name": student_name,
             "student_email": student_email,
             "plate": plate,
+            "plate_norm": plate_norm,
             "ticket_count": row["ticket_count"],
             "ticket_ids": [],
             "status": esc_status,
@@ -210,6 +213,43 @@ async def list_cases(
             "resolved_by": esc["resolved_by"] if esc else None,
             "permit": permit_info,
         })
+
+    # Deduplicate: merge cases that share the same student identity.
+    # A student with two plates (e.g. switched cars) should appear once with
+    # combined ticket counts and plates shown.
+    cases: list[dict] = []
+    seen_students: dict[str, int] = {}  # identity key → index in cases
+
+    for c in plate_cases:
+        # Build a stable identity key from email or student_id (Okta sub)
+        identity = (c["student_email"] or "").strip().lower()
+        if not identity:
+            identity = (c["student_id"] or "").strip()
+
+        if identity and identity in seen_students:
+            # Merge into existing case
+            idx = seen_students[identity]
+            existing = cases[idx]
+            existing["ticket_count"] += c["ticket_count"]
+            # Keep the plate with more tickets as primary; list others
+            other_plates = existing.get("other_plates", [])
+            other_plates.append(c["plate"])
+            existing["other_plates"] = other_plates
+            # Use the most recent created_at
+            if c["created_at"] and (not existing["created_at"] or c["created_at"] > existing["created_at"]):
+                existing["created_at"] = c["created_at"]
+            # Prefer non-resolved status
+            if existing["status"] == "resolved" and c["status"] != "resolved":
+                existing["status"] = c["status"]
+        else:
+            c["other_plates"] = []
+            cases.append(c)
+            if identity:
+                seen_students[identity] = len(cases) - 1
+
+    # Strip internal fields before returning
+    for c in cases:
+        c.pop("plate_norm", None)
 
     return cases
 
@@ -232,14 +272,18 @@ async def get_case(
 
 
 async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
-    """Build a case detail from tickets for a plate that has no escalation_log entry."""
+    """Build a case detail from tickets for a plate that has no escalation_log entry.
+
+    Also pulls in tickets from other plates belonging to the same student
+    (via permit student_id or email) so multi-vehicle students aren't fragmented.
+    """
     # Get all tickets for this plate
     t_result = await db.execute(
         select(Ticket).where(
             text("UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :p")
         ).params(p=plate_norm).order_by(Ticket.issued_at.desc())
     )
-    all_tickets = t_result.scalars().all()
+    all_tickets = list(t_result.scalars().all())
     if not all_tickets:
         raise HTTPException(404, "No tickets found for this plate")
 
@@ -251,6 +295,7 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
     permit_info = None
     moravian_id = ""
     okta_sub = ""
+    other_plates: list[str] = []
     p_result = await db.execute(
         select(Permit).where(
             Permit.deleted_at.is_(None),
@@ -275,6 +320,33 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
             "name": permit.name,
             "email": permit.email,
         }
+
+        # Find tickets on other plates belonging to this same student
+        seen_ids = {t.id for t in all_tickets}
+        if okta_sub:
+            other_p_result = await db.execute(
+                select(Permit).where(
+                    Permit.student_id == okta_sub,
+                    Permit.deleted_at.is_(None),
+                    Permit.is_tag_only.is_(False),
+                )
+            )
+            for op in other_p_result.scalars().all():
+                for op_plate in (op.plates or []):
+                    op_norm = op_plate.upper().replace(" ", "").replace("-", "")
+                    if op_norm == plate_norm:
+                        continue
+                    extra_result = await db.execute(
+                        select(Ticket).where(
+                            text("UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :p")
+                        ).params(p=op_norm).order_by(Ticket.issued_at.desc())
+                    )
+                    for et in extra_result.scalars().all():
+                        if et.id not in seen_ids:
+                            all_tickets.append(et)
+                            seen_ids.add(et.id)
+                            if op_plate not in other_plates:
+                                other_plates.append(op_plate)
 
     unpaid = [t for t in all_tickets if t.status not in ("paid", "voided", "resolved_permit")]
     tickets = []
@@ -314,6 +386,7 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
         "student_name": sname,
         "student_email": semail,
         "plate": plate,
+        "other_plates": other_plates,
         "ticket_count": len(unpaid),
         "status": "sent",
         "details": None,

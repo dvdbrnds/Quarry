@@ -287,7 +287,7 @@ function ConductPage() {
         <dt>Name</dt><dd>${selected.student_name || "—"}</dd>
         <dt>Email</dt><dd>${selected.student_email || "—"}</dd>
         <dt>Student ID</dt><dd>${selected.student_id || "—"}</dd>
-        <dt>Plate</dt><dd class="mono">${selected.plate || "—"}</dd>
+        <dt>Plate${selected.other_plates?.length ? "s" : ""}</dt><dd class="mono">${selected.plate || "—"}${selected.other_plates?.length ? ", " + selected.other_plates.join(", ") : ""}</dd>
         ${p ? `<dt>Permit</dt><dd>${p.is_tag_only ? "Vehicle Tag" : (p.permit_type || "").replace(/_/g, " ")} ${p.permit_number ? "#" + p.permit_number : ""}</dd>
         <dt>Lot</dt><dd>${p.lot_zone || "—"}</dd>` : ""}
       </dl>
@@ -317,7 +317,7 @@ function ConductPage() {
       "Student Name": c.student_name || "",
       "Student Email": c.student_email || "",
       "Student ID": c.student_id || "",
-      "Plate": c.plate || "",
+      "Plate": [c.plate, ...(c.other_plates || [])].filter(Boolean).join(", ") || "",
       "Ticket Count": c.ticket_count,
       "Permit Type": c.permit ? (c.permit.is_tag_only ? "Vehicle Tag" : c.permit.permit_type) : "",
       "Referred": c.created_at || "",
@@ -390,7 +390,12 @@ function ConductPage() {
       dataIndex: "plate",
       key: "plate",
       width: 110,
-      render: (v: string) => <span className="font-mono">{v || "—"}</span>,
+      render: (v: string, rec: any) => (
+        <span className="font-mono">
+          {v || "—"}
+          {rec.other_plates?.length > 0 && <span className="text-gray-400 text-xs"> +{rec.other_plates.length}</span>}
+        </span>
+      ),
     },
     {
       title: "Permit / Tag",
@@ -629,7 +634,12 @@ function ConductPage() {
                 <Descriptions.Item label="Student Name">{selected.student_name || "—"}</Descriptions.Item>
                 <Descriptions.Item label="Email">{selected.student_email || "—"}</Descriptions.Item>
                 <Descriptions.Item label="Student ID">{selected.student_id || "—"}</Descriptions.Item>
-                <Descriptions.Item label="Plate"><span className="font-mono">{selected.plate || "—"}</span></Descriptions.Item>
+                <Descriptions.Item label={selected.other_plates?.length ? "Plates" : "Plate"}>
+                  <span className="font-mono">{selected.plate || "—"}</span>
+                  {selected.other_plates?.map((p: string, i: number) => (
+                    <span key={i} className="font-mono ml-2 text-gray-500">, {p}</span>
+                  ))}
+                </Descriptions.Item>
                 {selected.permit && (
                   <>
                     <Descriptions.Item label="Permit Type">
