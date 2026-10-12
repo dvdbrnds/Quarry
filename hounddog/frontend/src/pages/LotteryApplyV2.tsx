@@ -1366,21 +1366,27 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
               }
             }
 
-            // Pass 2: lots NOT in assignment but whose access_schedule allows the permit type
-            for (const lot of lots) {
-              if (_allPermitLotNames.some(n => normalizeLotKey(n) === normalizeLotKey(lot.name))) continue;
-              if (lot.lot_type === "external") continue;
-              const { allowed, daytimeAccess, ruleLabel } = lotAllowsType(lot);
-              if (allowed) {
-                if (daytimeAccess) {
-                  _permitColors[lot.name] = "#16a34a";
-                  _anytimeLots.push(lot.name);
-                } else {
-                  _permitColors[lot.name] = "#eab308";
-                  _afterHoursLots.push(lot.name);
-                  if (ruleLabel) _afterHoursLabel = ruleLabel;
+            // Pass 2: lots NOT in assignment but whose access_schedule allows the permit type.
+            // Only for regular student permits (commuter/resident) — guest and visitor
+            // permits should only see their explicitly assigned lots.
+            const _guestTypes = new Set(["student_guest", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"]);
+            const _isGuestOnly = _permitTypes.every(pt => _guestTypes.has(pt));
+            if (!_isGuestOnly) {
+              for (const lot of lots) {
+                if (_allPermitLotNames.some(n => normalizeLotKey(n) === normalizeLotKey(lot.name))) continue;
+                if (lot.lot_type === "external") continue;
+                const { allowed, daytimeAccess, ruleLabel } = lotAllowsType(lot);
+                if (allowed) {
+                  if (daytimeAccess) {
+                    _permitColors[lot.name] = "#16a34a";
+                    _anytimeLots.push(lot.name);
+                  } else {
+                    _permitColors[lot.name] = "#eab308";
+                    _afterHoursLots.push(lot.name);
+                    if (ruleLabel) _afterHoursLabel = ruleLabel;
+                  }
+                  _allPermitLotNames.push(lot.name);
                 }
-                _allPermitLotNames.push(lot.name);
               }
             }
           }
@@ -1579,11 +1585,14 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                           const assignedNames = permit.lot_assignment
                             ? (permit.lot_assignment as string).split(",").map((s: string) => s.trim()).filter(Boolean)
                             : [];
-                          // Add after-hours lots not already in assignment
+                          // Add after-hours lots only for non-guest permits
                           const allLotNames = [...assignedNames];
-                          for (const n of _afterHoursLots) {
-                            if (!allLotNames.some(a => normalizeLotKey(a) === normalizeLotKey(n))) {
-                              allLotNames.push(n);
+                          const isGuest = _guestTypes.has(permit.permit_type);
+                          if (!isGuest) {
+                            for (const n of _afterHoursLots) {
+                              if (!allLotNames.some(a => normalizeLotKey(a) === normalizeLotKey(n))) {
+                                allLotNames.push(n);
+                              }
                             }
                           }
                           if (allLotNames.length === 0) return null;
