@@ -11,7 +11,6 @@ struct VehicleTagFormView: View {
     @State private var plates: String = ""
     @State private var ownerName = ""
     @State private var ownerAddress = ""
-    @State private var studentName = ""
     @State private var studentEmail = ""
     @State private var vehicleMake = ""
     @State private var vehicleModel = ""
@@ -23,12 +22,6 @@ struct VehicleTagFormView: View {
     @State private var isSubmitting = false
     @State private var submitted = false
     @State private var errorMessage: String?
-
-    // Student search
-    @State private var studentSearch = ""
-    @State private var studentResults: [HoundDogSyncService.StudentSearchResult] = []
-    @State private var isSearching = false
-    @State private var searchTask: Task<Void, Never>?
 
     private let sources = [
         ("officer", "Officer Observation"),
@@ -89,69 +82,15 @@ struct VehicleTagFormView: View {
                     .textInputAutocapitalization(.words)
             }
 
-            Section("Student (if identified)") {
-                TextField("Search by name, email, or ID…", text: $studentSearch)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onChange(of: studentSearch) { _, newVal in
-                        searchTask?.cancel()
-                        let trimmed = newVal.trimmingCharacters(in: .whitespaces)
-                        guard trimmed.count >= 2 else {
-                            studentResults = []
-                            return
-                        }
-                        searchTask = Task {
-                            isSearching = true
-                            defer { isSearching = false }
-                            try? await Task.sleep(for: .milliseconds(300))
-                            guard !Task.isCancelled else { return }
-                            let results = (try? await HoundDogSyncService.shared.searchStudents(query: trimmed)) ?? []
-                            guard !Task.isCancelled else { return }
-                            await MainActor.run { studentResults = results }
-                        }
-                    }
-
-                if isSearching {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Searching…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                ForEach(studentResults) { result in
-                    Button {
-                        studentName = result.name
-                        studentEmail = result.email
-                        studentSearch = ""
-                        studentResults = []
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(result.name)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                            HStack(spacing: 8) {
-                                Text(result.email)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if !result.plates.isEmpty {
-                                    Text(result.plates.joined(separator: ", "))
-                                        .font(.caption)
-                                        .foregroundStyle(.cyan)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                TextField("Student name", text: $studentName)
-                    .textInputAutocapitalization(.words)
-                TextField("Student email", text: $studentEmail)
+            Section {
+                TextField("Contact email (if known)", text: $studentEmail)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+            } header: {
+                Text("Contact")
+            } footer: {
+                Text("Optional. If provided, citation emails for this plate will go to this address.")
             }
 
             Section("Source") {
@@ -215,19 +154,10 @@ struct VehicleTagFormView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if !studentName.isEmpty || !studentEmail.isEmpty {
-                VStack(spacing: 2) {
-                    if !studentName.isEmpty {
-                        Text("Student: \(studentName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !studentEmail.isEmpty {
-                        Text(studentEmail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            if !studentEmail.isEmpty {
+                Text("Contact: \(studentEmail)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Text("This vehicle will now appear as\n\"Known Vehicle — No Permit\"\nwhen scanned.")
@@ -270,7 +200,7 @@ struct VehicleTagFormView: View {
                     plates: plateList,
                     ownerName: ownerName.trimmingCharacters(in: .whitespaces),
                     ownerAddress: ownerAddress.trimmingCharacters(in: .whitespaces),
-                    studentName: studentName.trimmingCharacters(in: .whitespaces),
+                    studentName: "",
                     studentEmail: studentEmail.trimmingCharacters(in: .whitespaces),
                     vehicleMake: vehicleMake.trimmingCharacters(in: .whitespaces),
                     vehicleModel: vehicleModel.trimmingCharacters(in: .whitespaces),

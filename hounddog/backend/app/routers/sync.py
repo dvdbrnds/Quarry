@@ -1135,17 +1135,13 @@ async def create_vehicle_tag_from_device(
             officer_info += f" ({data.officer_email})"
     notes = "\n".join(filter(None, [data.notes, officer_info])).strip()
 
-    meta_parts = []
-    if data.student_name:
-        meta_parts.append(f"student_name:{data.student_name.strip()[:128]}")
-
     tag = Permit(
         name=data.owner_name or f"Unknown — {', '.join(normalized)}",
         plates=normalized,
         email=data.student_email.strip()[:256] if data.student_email else "",
         phone="",
         home_address=data.owner_address.strip()[:512] if data.owner_address else None,
-        student_id="|".join(meta_parts) if meta_parts else "",
+        student_id="",
         permit_type="vehicle_tag",
         status="active",
         lot_assignment="",
