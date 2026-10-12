@@ -356,8 +356,10 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
                 if tid:
                     prior_resolved_ids.add(tid)
 
-    # Fetch ALL tickets for this student via multiple strategies
-    all_ids: set[str] = set(referral_ids)
+    # Fetch ALL tickets for this student via live strategies only.
+    # Do NOT seed with stored referral_ids — those may be contaminated
+    # from the old tag cross-reference bug.
+    all_ids: set[str] = set()
 
     # Strategy 1: by student_id on real permits (exclude vehicle tags)
     if case_row["student_id"]:
