@@ -96,6 +96,7 @@ async def _count_unpaid_tickets_for_student(db: AsyncSession, student_id: str) -
                 SELECT UPPER(unnest(p.plates))
             )
             WHERE p.student_id = :student_id
+              AND p.is_tag_only = false
               AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
         """),
         {"student_id": student_id},
@@ -126,6 +127,7 @@ async def _get_ticket_ids_for_student(db: AsyncSession, student_id: str) -> list
                 SELECT UPPER(unnest(p.plates))
             )
             WHERE p.student_id = :student_id
+              AND p.is_tag_only = false
               AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
             ORDER BY t.issued_at DESC
         """),
@@ -335,6 +337,7 @@ async def check_and_resolve_on_payment(db: AsyncSession, plate: str):
                 SELECT UPPER(unnest(p.plates))
             )
               AND p.student_id IS NOT NULL
+              AND p.is_tag_only = false
         """),
         {"plate": plate},
     )
