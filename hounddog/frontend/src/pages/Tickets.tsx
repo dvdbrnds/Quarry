@@ -1661,17 +1661,17 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       width: 120,
       render: (_: unknown, t: Ticket) => {
         if (["paid", "voided"].includes(t.status)) return null;
-        const appealed = t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"));
+        const hasAppeal = t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"));
         return (
           <div style={{ display: "flex", gap: 2 }}>
-            {appealed && (
+            <Button size="small" type="primary" title="Approve (void ticket)" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "approved") : handleVoid(t.id); }}>✓</Button>
+            {hasAppeal && (
               <>
-                <Button size="small" type="primary" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "approved"); }}>✓</Button>
-                <Button size="small" danger style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "denied"); }}>✗</Button>
-                <Button size="small" style={{ background: "#a855f7", borderColor: "#a855f7", color: "#fff", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>↑</Button>
+                <Button size="small" danger title="Deny appeal" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "denied"); }}>✗</Button>
+                <Button size="small" title="Escalate to committee" style={{ background: "#a855f7", borderColor: "#a855f7", color: "#fff", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>↑</Button>
               </>
             )}
-            <Button size="small" type="text" danger style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>Void</Button>
+            <Button size="small" type="text" danger title="Void ticket" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>Void</Button>
           </div>
         );
       },
@@ -1942,22 +1942,27 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <Button onClick={() => handlePrintTicket(selected)}>Print</Button>
             )}
             <div className="flex-1" />
-            {isOffice && (selected?.appeal_decision === "pending" || (selected?.status === "appealed" && (!selected?.appeal_decision || selected?.appeal_decision === "pending"))) && (
-              <>
-                <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => handleAppealDecision(selected!.id, "approved")}>
-                  Approve
-                </Button>
-                <Button size="small" danger onClick={() => handleAppealDecision(selected!.id, "denied")}>
-                  Deny
-                </Button>
-                <Button size="small" style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected!.id)}>
-                  Escalate
-                </Button>
-              </>
-            )}
-            {isOffice && selected && !["paid", "voided"].includes(selected.status) && (
-              <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
-            )}
+            {isOffice && selected && !["paid", "voided"].includes(selected.status) && (() => {
+              const hasAppeal = selected.appeal_decision === "pending" || (selected.status === "appealed" && (!selected.appeal_decision || selected.appeal_decision === "pending"));
+              return (
+                <>
+                  <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => hasAppeal ? handleAppealDecision(selected.id, "approved") : handleVoid(selected.id)}>
+                    Approve
+                  </Button>
+                  {hasAppeal && (
+                    <>
+                      <Button size="small" danger onClick={() => handleAppealDecision(selected.id, "denied")}>
+                        Deny
+                      </Button>
+                      <Button size="small" style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected.id)}>
+                        Escalate
+                      </Button>
+                    </>
+                  )}
+                  <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
+                </>
+              );
+            })()}
           </div>
         }
         width="80vw"
