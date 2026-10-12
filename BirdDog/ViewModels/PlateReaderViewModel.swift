@@ -80,6 +80,7 @@ final class PlateReaderViewModel: ObservableObject {
     private var rectangleFilterDropCount: Int = 0
 
     private var alertPlayer: AVAudioPlayer?
+    private var retiredPlayers: [AVAudioPlayer] = []
     private var currentDayStart: Date = Calendar.current.startOfDay(for: Date())
 
     private var engineObserver: Any?
@@ -441,6 +442,7 @@ final class PlateReaderViewModel: ObservableObject {
     }
 
     private static let maxDiagnosticEntries = 500
+    private static let maxScanLogEntries = 2000
 
     private func handleResult(_ result: RecognitionResult) {
         currentPlates = result.plates
@@ -652,6 +654,11 @@ final class PlateReaderViewModel: ObservableObject {
                 at: 0
             )
 
+            // Cap scan log to prevent unbounded memory growth on long sessions
+            if scanLog.count > Self.maxScanLogEntries {
+                scanLog.removeLast(scanLog.count - Self.maxScanLogEntries)
+            }
+
             triggerFeedback(for: authResult.status)
             persistScanLog()
 
@@ -749,6 +756,13 @@ final class PlateReaderViewModel: ObservableObject {
             wav = Self.generateWAV(frequency: frequency, duration: duration)
             toneCache[cacheKey] = wav
         }
+        // Keep a reference to the old player until it finishes.
+        // Deallocating mid-playback causes EXC_BAD_ACCESS in the
+        // AVAudioPlayer completion callback (QUARRY-2J).
+        if let old = alertPlayer, old.isPlaying {
+            retiredPlayers.append(old)
+        }
+        retiredPlayers.removeAll { !$0.isPlaying }
         alertPlayer = try? AVAudioPlayer(data: wav)
         alertPlayer?.play()
     }
