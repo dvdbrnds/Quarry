@@ -359,13 +359,14 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
     # Fetch ALL tickets for this student via multiple strategies
     all_ids: set[str] = set(referral_ids)
 
-    # Strategy 1: by student_id on permits
+    # Strategy 1: by student_id on real permits (exclude vehicle tags)
     if case_row["student_id"]:
         sid = case_row["student_id"]
         sid_result = await db.execute(text("""
             SELECT DISTINCT t.id::text FROM tickets t
             JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
             WHERE p.student_id = :sid AND p.deleted_at IS NULL
+              AND p.is_tag_only = false
         """), {"sid": sid})
         all_ids.update(r[0] for r in sid_result.fetchall())
 
@@ -377,6 +378,7 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
                     SELECT DISTINCT t.id::text FROM tickets t
                     JOIN permits p ON UPPER(t.plate) = ANY(SELECT UPPER(unnest(p.plates)))
                     WHERE p.student_id = :sid AND p.deleted_at IS NULL
+                      AND p.is_tag_only = false
                 """), {"sid": email})
                 all_ids.update(r[0] for r in email_result.fetchall())
 
@@ -480,13 +482,17 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
         okta_sub=okta_sub,
     )
 
+    # Use live ticket count instead of the stale snapshot stored at creation
+    unpaid_tickets = [t for t in tickets if t["status"] not in ("paid", "voided", "resolved_permit")]
+    live_count = len(unpaid_tickets) if tickets else case_row["ticket_count"]
+
     return {
         "id": str(case_row["id"]),
         "student_id": mid,
         "student_name": sname,
         "student_email": semail,
         "plate": case_row["plate"],
-        "ticket_count": case_row["ticket_count"],
+        "ticket_count": live_count,
         "status": case_row["status"],
         "details": case_row["details"],
         "created_at": case_row["created_at"].isoformat() if case_row["created_at"] else None,
