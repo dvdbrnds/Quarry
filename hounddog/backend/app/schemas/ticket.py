@@ -142,6 +142,7 @@ class NeedsAction(BaseModel):
     total: int = 0
     appealed: int = 0
     escalated: int = 0
+    overdue: int = 0
 
 
 class IssuedCount(BaseModel):

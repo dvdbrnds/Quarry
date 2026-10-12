@@ -908,7 +908,7 @@ async def dashboard(
     # Needs action (all time — these are currently open)
     action_q = await db.execute(
         select(Ticket.status, func.count())
-        .where(Ticket.status.in_(["appealed", "escalated"]))
+        .where(Ticket.status.in_(["appealed", "escalated", "overdue"]))
         .group_by(Ticket.status)
     )
     action_counts = dict(action_q.all())
@@ -916,6 +916,7 @@ async def dashboard(
         total=sum(action_counts.values()),
         appealed=action_counts.get("appealed", 0),
         escalated=action_counts.get("escalated", 0),
+        overdue=action_counts.get("overdue", 0),
     )
 
     # Issued count within period (all tickets created, regardless of current status)

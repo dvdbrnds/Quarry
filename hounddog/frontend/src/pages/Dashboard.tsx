@@ -10,6 +10,7 @@ interface NeedsAction {
   total: number;
   appealed: number;
   escalated: number;
+  overdue: number;
 }
 
 interface IssuedCount {
@@ -197,19 +198,39 @@ export default function Dashboard() {
 
         {data && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card size="small" className="!bg-red-50 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/tickets?status=appealed")}>
+            <Card size="small" className="!bg-red-50">
               <Statistic
                 title={<span className="text-red-700">Needs action</span>}
                 value={data.needs_action.total + (data.pending_vehicle_requests || 0)}
                 valueStyle={{ color: "#b91c1c", fontWeight: 700 }}
               />
-              <div className="text-xs text-red-600/70 mt-1">
-                {data.needs_action.appealed} appeal{data.needs_action.appealed !== 1 ? "s" : ""},
-                {" "}{data.needs_action.escalated} escalation{data.needs_action.escalated !== 1 ? "s" : ""}
-                {data.pending_vehicle_requests > 0 && (
-                  <span className="ml-1 cursor-pointer underline" onClick={(e) => { e.stopPropagation(); navigate("/permits#vehicle-requests"); }}>
-                    , {data.pending_vehicle_requests} vehicle request{data.pending_vehicle_requests !== 1 ? "s" : ""}
+              <div className="text-xs text-red-600/70 mt-1 flex flex-wrap gap-x-1">
+                {data.needs_action.appealed > 0 && (
+                  <span className="cursor-pointer underline" onClick={() => navigate("/tickets?status=appealed")}>
+                    {data.needs_action.appealed} appeal{data.needs_action.appealed !== 1 ? "s" : ""}
                   </span>
+                )}
+                {data.needs_action.appealed > 0 && data.needs_action.escalated > 0 && <span>·</span>}
+                {data.needs_action.escalated > 0 && (
+                  <span className="cursor-pointer underline" onClick={() => navigate("/tickets?status=escalated")}>
+                    {data.needs_action.escalated} escalation{data.needs_action.escalated !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {data.needs_action.overdue > 0 && (
+                  <>
+                    {(data.needs_action.appealed > 0 || data.needs_action.escalated > 0) && <span>·</span>}
+                    <span className="cursor-pointer underline" onClick={() => navigate("/tickets?status=overdue")}>
+                      {data.needs_action.overdue} overdue
+                    </span>
+                  </>
+                )}
+                {data.pending_vehicle_requests > 0 && (
+                  <>
+                    {(data.needs_action.appealed > 0 || data.needs_action.escalated > 0 || data.needs_action.overdue > 0) && <span>·</span>}
+                    <span className="cursor-pointer underline" onClick={() => navigate("/permits#vehicle-requests")}>
+                      {data.pending_vehicle_requests} vehicle request{data.pending_vehicle_requests !== 1 ? "s" : ""}
+                    </span>
+                  </>
                 )}
               </div>
             </Card>
