@@ -96,7 +96,7 @@ async def _count_unpaid_tickets_for_student(db: AsyncSession, student_id: str) -
                 SELECT UPPER(unnest(p.plates))
             )
             WHERE p.student_id = :student_id
-              AND t.status NOT IN ('paid', 'voided', 'resolved_permit')
+              AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
         """),
         {"student_id": student_id},
     )
@@ -126,7 +126,7 @@ async def _get_ticket_ids_for_student(db: AsyncSession, student_id: str) -> list
                 SELECT UPPER(unnest(p.plates))
             )
             WHERE p.student_id = :student_id
-              AND t.status NOT IN ('paid', 'voided', 'resolved_permit')
+              AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
             ORDER BY t.issued_at DESC
         """),
         {"student_id": student_id},
