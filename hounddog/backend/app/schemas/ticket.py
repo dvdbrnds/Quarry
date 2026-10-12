@@ -147,6 +147,22 @@ class NeedsAction(BaseModel):
     past_due: int = 0
 
 
+class OutstandingBalance(BaseModel):
+    total_unpaid: Decimal = Decimal("0.00")
+    ticket_count: int = 0
+    contactable_count: int = 0
+    contactable_amount: Decimal = Decimal("0.00")
+    uncollectable_count: int = 0
+    uncollectable_amount: Decimal = Decimal("0.00")
+
+
+class EnforcementSnapshot(BaseModel):
+    active_permits: int = 0
+    active_tags: int = 0
+    conduct_cases: int = 0
+    registration_holds: int = 0
+
+
 class IssuedCount(BaseModel):
     total: int = 0
     daily_avg: float = 0.0
@@ -202,6 +218,8 @@ class DashboardData(BaseModel):
     issued_count: IssuedCount
     revenue: Revenue
     resolution_rate: ResolutionRate
+    outstanding: OutstandingBalance = OutstandingBalance()
+    enforcement: EnforcementSnapshot = EnforcementSnapshot()
     action_items: list[ActionItem]
     activity: list[ActivityEvent]
     trend: list[TrendDay]

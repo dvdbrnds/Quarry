@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from ..utils.safe_router import SafeRouter
-from sqlalchemy import select, func, or_, cast, Date, String, text
+from sqlalchemy import select, func, or_, cast, Date, String, text, bindparam
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -1024,11 +1024,66 @@ async def dashboard(
         select(func.count()).select_from(VehicleRequest).where(VehicleRequest.status == "pending")
     )).scalar() or 0
 
+    # Outstanding balance — unpaid tickets with breakdown
+    from ..schemas.ticket import OutstandingBalance, EnforcementSnapshot
+    unpaid_statuses = ["issued", "overdue", "past_due", "appealed", "escalated"]
+    outstanding_q = await db.execute(
+        text("""
+            SELECT
+                COUNT(*) AS cnt,
+                COALESCE(SUM(fine_amount), 0) AS total,
+                COUNT(*) FILTER (WHERE notification_email IS NOT NULL AND notification_email != '') AS contactable_cnt,
+                COALESCE(SUM(fine_amount) FILTER (WHERE notification_email IS NOT NULL AND notification_email != ''), 0) AS contactable_amt
+            FROM tickets
+            WHERE status IN :statuses
+        """).bindparams(bindparam("statuses", expanding=True)),
+        {"statuses": unpaid_statuses},
+    )
+    orow = outstanding_q.mappings().first()
+    outstanding = OutstandingBalance(
+        total_unpaid=orow["total"],
+        ticket_count=orow["cnt"],
+        contactable_count=orow["contactable_cnt"],
+        contactable_amount=orow["contactable_amt"],
+        uncollectable_count=orow["cnt"] - orow["contactable_cnt"],
+        uncollectable_amount=orow["total"] - orow["contactable_amt"],
+    )
+
+    # Enforcement snapshot
+    active_permits_q = (await db.execute(
+        select(func.count()).select_from(Permit).where(
+            Permit.status == "active", Permit.deleted_at.is_(None), Permit.is_tag_only.is_(False)
+        )
+    )).scalar() or 0
+
+    active_tags_q = (await db.execute(
+        select(func.count()).select_from(Permit).where(
+            Permit.status == "active", Permit.deleted_at.is_(None), Permit.is_tag_only.is_(True)
+        )
+    )).scalar() or 0
+
+    conduct_q = (await db.execute(text(
+        "SELECT COUNT(*) FROM escalation_log WHERE escalation_type = 'conduct_referral' AND resolved_at IS NULL"
+    ))).scalar() or 0
+
+    holds_q = (await db.execute(text(
+        "SELECT COUNT(*) FROM escalation_log WHERE escalation_type = 'registration_hold' AND resolved_at IS NULL"
+    ))).scalar() or 0
+
+    enforcement = EnforcementSnapshot(
+        active_permits=active_permits_q,
+        active_tags=active_tags_q,
+        conduct_cases=conduct_q,
+        registration_holds=holds_q,
+    )
+
     return DashboardData(
         needs_action=needs_action,
         issued_count=issued_count,
         revenue=revenue,
         resolution_rate=resolution_rate,
+        outstanding=outstanding,
+        enforcement=enforcement,
         action_items=action_items,
         activity=activity,
         trend=trend,
