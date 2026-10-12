@@ -73,7 +73,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var frameCount: UInt64 = 0
     private var frameSkip: Int = 2
     private var isProcessing = false
-    private var cachedOrientation: CGImagePropertyOrientation = .left
+    private var cachedOrientation: CGImagePropertyOrientation = .right
 
     /// Thread-safe cached rotation degrees for built-in camera photos.
     /// Updated on the main thread whenever orientation changes; read from
@@ -919,6 +919,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         if isExternal {
             cachedOrientation = externalCameraOrientation
             frameSkip = 2
+        } else {
+            // Set the correct OCR orientation for built-in camera at startup.
+            // Without this, cachedOrientation stays at the default value
+            // and Vision may not read plates until the device rotates.
+            updateOrientationFromDevice()
         }
 
         let output = AVCaptureVideoDataOutput()
