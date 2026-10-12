@@ -1285,6 +1285,80 @@ async def bulk_void_tickets(
     return {"voided": voided, "skipped": skipped}
 
 
+class DenyRequest(BaseModel):
+    reason: str = ""
+
+
+@router.post("/{ticket_id}/deny", response_model=TicketRead)
+async def deny_ticket(
+    ticket_id: uuid.UUID,
+    body: DenyRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_role("admin", "operator")),
+):
+    """Deny/uphold a ticket — confirms the citation stands.
+
+    For appealed tickets: denies the appeal and moves to pending_payment.
+    For non-appealed tickets: marks as reviewed/upheld and moves to pending_payment.
+    """
+    ticket = await db.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    if ticket.status in ("paid", "voided"):
+        raise HTTPException(400, f"Cannot deny a {ticket.status} ticket")
+
+    if ticket.appeal_decision == "pending":
+        ticket.appeal_decision = "denied"
+        ticket.appeal_decided_by = admin.email
+        if body.reason:
+            ticket.appeal_decision_reason = body.reason.strip()[:1024]
+
+    ticket.status = "pending_payment"
+    await db.flush()
+    await db.refresh(ticket)
+    return ticket
+
+
+@router.post("/bulk-deny")
+async def bulk_deny_tickets(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_role("admin", "operator")),
+):
+    """Deny/uphold multiple tickets — confirms citations stand."""
+    ids = data.get("ids", [])
+    reason = data.get("reason", "")
+    if not ids:
+        raise HTTPException(400, "No ticket IDs provided")
+
+    denied = 0
+    skipped = 0
+    for tid in ids:
+        try:
+            ticket = await db.get(Ticket, uuid.UUID(tid))
+        except (ValueError, AttributeError):
+            skipped += 1
+            continue
+        if not ticket:
+            skipped += 1
+            continue
+        if ticket.status in ("paid", "voided"):
+            skipped += 1
+            continue
+
+        if ticket.appeal_decision == "pending":
+            ticket.appeal_decision = "denied"
+            ticket.appeal_decided_by = admin.email
+            if reason:
+                ticket.appeal_decision_reason = reason.strip()[:1024]
+
+        ticket.status = "pending_payment"
+        denied += 1
+
+    await db.flush()
+    return {"denied": denied, "skipped": skipped}
+
+
 @router.post("/{ticket_id}/appeal", response_model=TicketRead)
 async def appeal_ticket(
     ticket_id: uuid.UUID, appeal: AppealRequest, db: AsyncSession = Depends(get_db)

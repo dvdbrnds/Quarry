@@ -1471,6 +1471,79 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     finally { setBulkVoiding(false); }
   }
 
+  async function handleDeny(id: string) {
+    if (!isOffice) return;
+    let denyReason = "";
+    modal.confirm({
+      title: "Deny — uphold this ticket?",
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            The ticket will move to pending payment. The citation stands.
+          </p>
+          <Input.TextArea
+            placeholder="Reason (optional)"
+            rows={2}
+            onChange={(e) => { denyReason = e.target.value; }}
+          />
+        </div>
+      ),
+      okText: "Deny",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await fetch(`/api/tickets/${id}/deny`, {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ reason: denyReason }),
+          });
+          message.success("Ticket upheld — moved to pending payment");
+          load();
+        } catch { message.error("Failed to deny ticket"); }
+      },
+    });
+  }
+
+  const [bulkDenying, setBulkDenying] = useState(false);
+
+  async function handleBulkDeny() {
+    if (selectedRowKeys.length === 0) return;
+    let bulkReason = "";
+    modal.confirm({
+      title: `Deny ${selectedRowKeys.length} ticket(s)?`,
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            All selected tickets will be upheld and moved to pending payment.
+          </p>
+          <Input.TextArea
+            placeholder="Reason for denial (optional)"
+            rows={2}
+            onChange={(e) => { bulkReason = e.target.value; }}
+          />
+        </div>
+      ),
+      okText: `Deny All (${selectedRowKeys.length})`,
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setBulkDenying(true);
+        try {
+          const res = await fetch("/api/tickets/bulk-deny", {
+            method: "POST",
+            headers: await authHeaders(),
+            body: JSON.stringify({ ids: selectedRowKeys, reason: bulkReason }),
+          });
+          if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Bulk deny failed"); }
+          const { denied, skipped } = await res.json();
+          message.success(`${denied} ticket(s) denied${skipped > 0 ? `, ${skipped} skipped` : ""}`);
+          setSelectedRowKeys([]);
+          load();
+        } catch (e: any) { message.error(e.message); }
+        finally { setBulkDenying(false); }
+      },
+    });
+  }
+
   async function handleAppealDecision(id: string, decision: string) {
     if (!isOffice) return;
     const decided_by = user?.email || "admin";
@@ -1665,13 +1738,10 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         return (
           <div style={{ display: "flex", gap: 2 }}>
             <Button size="small" type="primary" title="Approve (void ticket)" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "approved") : handleVoid(t.id); }}>✓</Button>
+            <Button size="small" danger title="Deny (uphold ticket)" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "denied") : handleDeny(t.id); }}>✗</Button>
             {hasAppeal && (
-              <>
-                <Button size="small" danger title="Deny appeal" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAppealDecision(t.id, "denied"); }}>✗</Button>
-                <Button size="small" title="Escalate to committee" style={{ background: "#a855f7", borderColor: "#a855f7", color: "#fff", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>↑</Button>
-              </>
+              <Button size="small" title="Escalate to committee" style={{ background: "#a855f7", borderColor: "#a855f7", color: "#fff", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>↑</Button>
             )}
-            <Button size="small" type="text" danger title="Void ticket" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleVoid(t.id); }}>Void</Button>
           </div>
         );
       },
@@ -1782,17 +1852,22 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         <h2 className="text-2xl font-bold">Tickets</h2>
         <Space>
           {isOffice && selectedRowKeys.length > 0 && (
-            <Popconfirm
-              title={`Void ${selectedRowKeys.length} ticket(s)?`}
-              description="This will void all selected tickets. Paid and already-voided tickets will be skipped."
-              onConfirm={handleBulkVoid}
-              okText="Void All"
-              okButtonProps={{ danger: true, loading: bulkVoiding }}
-            >
-              <Button danger loading={bulkVoiding}>
-                Void Selected ({selectedRowKeys.length})
+            <>
+              <Button danger loading={bulkDenying} onClick={handleBulkDeny}>
+                Deny Selected ({selectedRowKeys.length})
               </Button>
-            </Popconfirm>
+              <Popconfirm
+                title={`Void ${selectedRowKeys.length} ticket(s)?`}
+                description="This will void all selected tickets. Paid and already-voided tickets will be skipped."
+                onConfirm={handleBulkVoid}
+                okText="Void All"
+                okButtonProps={{ danger: true, loading: bulkVoiding }}
+              >
+                <Button danger type="primary" loading={bulkVoiding}>
+                  Void Selected ({selectedRowKeys.length})
+                </Button>
+              </Popconfirm>
+            </>
           )}
           {isOffice && (
             <Button onClick={() => { setMailNoticesOpen(true); loadPendingNotices(); }}>
@@ -1949,15 +2024,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => hasAppeal ? handleAppealDecision(selected.id, "approved") : handleVoid(selected.id)}>
                     Approve
                   </Button>
+                  <Button size="small" danger onClick={() => hasAppeal ? handleAppealDecision(selected.id, "denied") : handleDeny(selected.id)}>
+                    Deny
+                  </Button>
                   {hasAppeal && (
-                    <>
-                      <Button size="small" danger onClick={() => handleAppealDecision(selected.id, "denied")}>
-                        Deny
-                      </Button>
-                      <Button size="small" style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected.id)}>
-                        Escalate
-                      </Button>
-                    </>
+                    <Button size="small" style={{ background: "#a855f7", color: "#fff", borderColor: "#a855f7" }} onClick={() => handleEscalateToCommittee(selected.id)}>
+                      Escalate
+                    </Button>
                   )}
                   <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
                 </>
