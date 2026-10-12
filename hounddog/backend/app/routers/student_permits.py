@@ -60,18 +60,18 @@ ALL_ALERT_CATEGORIES = ["emergency", "weather", "campus_closing", "parking", "ge
 PERMIT_OPT_IN_CATEGORIES = ["emergency", "parking"]
 
 
-async def _get_housing_status(user, db: AsyncSession | None = None) -> str | None:
-    """Look up housing status. Checks manual overrides first (by email, then
-    moravian_id), then falls back to Jenzabar SIS.
-    Returns 'R', 'C', 'O', or None."""
+async def _get_classification_status(user, db: AsyncSession | None = None) -> str | None:
+    """Look up classification status. Checks manual overrides first (by email,
+    then moravian_id), then falls back to Jenzabar SIS for housing.
+    Returns 'R', 'C', 'O', 'F', 'S', or None."""
     email = getattr(user, "email", None)
 
     # Check email-based override first — works even without a moravian_id
     if db and email:
-        from .housing_overrides import get_housing_override_by_email
-        override = await get_housing_override_by_email(email, db)
+        from .housing_overrides import get_classification_override_by_email
+        override = await get_classification_override_by_email(email, db)
         if override:
-            _logger.info("Housing override (email) active for %s → %s", email, override)
+            _logger.info("Classification override (email) active for %s → %s", email, override)
             return override
 
     moravian_id = _extract_moravian_id(user)
@@ -100,15 +100,15 @@ async def _get_housing_status(user, db: AsyncSession | None = None) -> str | Non
                 _logger.debug("Fell back to permit-stored moravian_id=%s for %s", moravian_id, email)
 
     if not moravian_id:
-        _logger.debug("No moravian_id for user %s — housing filter skipped", email or "?")
+        _logger.debug("No moravian_id for user %s — classification filter skipped", email or "?")
         return None
 
     # Check moravian_id-based override
     if db:
-        from .housing_overrides import get_housing_override
-        override = await get_housing_override(moravian_id, db)
+        from .housing_overrides import get_classification_override
+        override = await get_classification_override(moravian_id, db)
         if override:
-            _logger.info("Housing override (moravian_id) active for %s → %s", moravian_id, override)
+            _logger.info("Classification override (moravian_id) active for %s → %s", moravian_id, override)
             return override
 
     from ..services.sis_student_data import lookup_student_parking_data
@@ -116,11 +116,11 @@ async def _get_housing_status(user, db: AsyncSession | None = None) -> str | Non
         data = await lookup_student_parking_data(moravian_id)
         if data:
             return data.housing_status
-        _logger.warning("SIS returned no data for moravian_id=%s — housing filter skipped", moravian_id)
+        _logger.warning("SIS returned no data for moravian_id=%s — classification filter skipped", moravian_id)
         return None
     except Exception as e:
         sentry_sdk.capture_exception(e)
-        _logger.warning("SIS housing lookup failed for %s: %s — housing filter skipped", moravian_id, e)
+        _logger.warning("SIS classification lookup failed for %s: %s — filter skipped", moravian_id, e)
         return None
 
 
@@ -129,14 +129,17 @@ async def housing_status(
     user: OktaUser = Depends(get_current_user_or_impersonated),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the student's housing classification from Jenzabar SIS."""
-    status = await _get_housing_status(user, db)
+    """Return the person's parking classification."""
+    status = await _get_classification_status(user, db)
     from ..services.sis_student_data import HOUSING_LABELS
+    from .housing_overrides import STATUS_LABELS, override_is_faculty_staff
+    label = STATUS_LABELS.get(status or "", HOUSING_LABELS.get(status or "", status or "unknown"))
     return {
         "housing_status": status,
-        "housing_label": HOUSING_LABELS.get(status or "", status or "unknown"),
+        "housing_label": label,
         "is_commuter": status == "C",
         "is_resident": status == "R",
+        "is_faculty_staff": override_is_faculty_staff(status) if status else False,
     }
 
 
@@ -247,18 +250,26 @@ async def available_permit_types(
 
     # Filter by eligible_groups: if a permit type has eligible_groups set,
     # the user must belong to at least one of those groups to see it.
+    # Classification overrides (F/S) inject faculty/staff groups so they
+    # can see faculty/staff permit types.
+    from .housing_overrides import get_injected_groups, override_is_faculty_staff
     user_groups = set(user.groups)
+    classification = await _get_classification_status(user, db)
+    if classification:
+        user_groups |= set(get_injected_groups(classification))
     types = [
         pt for pt in all_types
         if not pt.eligible_groups or user_groups & set(pt.eligible_groups)
     ]
 
-    # Enforce housing status from Jenzabar: commuters only see commuter permits,
-    # residents only see resident permits. Unknown housing sees everything.
-    housing = await _get_housing_status(user, db)
-    if housing == "C":
+    # Enforce housing status: commuters only see commuter permits,
+    # residents only see resident permits. Faculty/Staff overrides skip
+    # housing filtering entirely. Unknown classification sees everything.
+    if classification and override_is_faculty_staff(classification):
+        pass
+    elif classification == "C":
         types = [pt for pt in types if pt.code not in RESIDENT_CODES]
-    elif housing == "R":
+    elif classification == "R":
         types = [pt for pt in types if pt.code not in COMMUTER_CODES]
 
     lot_lookup = await _load_lot_lookup(db)
@@ -709,12 +720,14 @@ async def direct_purchase(
     if not pt.is_purchasable_online or pt.requires_lottery:
         raise HTTPException(400, "This permit type cannot be purchased directly")
 
-    # Enforce housing eligibility from Jenzabar
-    housing = await _get_housing_status(user, db)
-    if housing == "C" and pt.code in RESIDENT_CODES:
-        raise HTTPException(403, "Commuter students cannot purchase resident parking permits.")
-    if housing == "R" and pt.code in COMMUTER_CODES:
-        raise HTTPException(403, "Resident students cannot purchase commuter parking permits.")
+    # Enforce classification eligibility
+    from .housing_overrides import override_is_faculty_staff
+    classification = await _get_classification_status(user, db)
+    if classification and not override_is_faculty_staff(classification):
+        if classification == "C" and pt.code in RESIDENT_CODES:
+            raise HTTPException(403, "Commuter students cannot purchase resident parking permits.")
+        if classification == "R" and pt.code in COMMUTER_CODES:
+            raise HTTPException(403, "Resident students cannot purchase commuter parking permits.")
 
     active_count = (await db.execute(
         select(func.count()).select_from(Permit).where(

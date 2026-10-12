@@ -1,7 +1,11 @@
-"""Admin endpoints for managing housing status overrides."""
+"""Admin endpoints for managing classification overrides.
+
+Allows admins to override a person's parking classification when Okta
+groups or SIS data are wrong. Supports both housing status overrides
+(R/C/O for students) and role reclassification (F/S for faculty/staff).
+"""
 
 import logging
-import sentry_sdk
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,13 +14,13 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import require_office, OktaUser, get_current_user
+from ..auth.okta import require_office, OktaUser, get_current_user, FACULTY_STAFF_OKTA_GROUPS
 from ..database import get_db
-from ..models.housing_override import HousingOverride
+from ..models.housing_override import ClassificationOverride
 from ..models.permit_application import PermitApplication
 from ..models.permit_type import PermitType
 
-_logger = logging.getLogger("quarry.housing_overrides")
+_logger = logging.getLogger("quarry.classification_overrides")
 
 # Must stay in sync with student_permits.py
 _COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
@@ -28,7 +32,18 @@ _RESIDENT_CODES = {
 
 router = SafeRouter(dependencies=[Depends(require_office())])
 
-VALID_STATUSES = {"R", "C", "O"}
+VALID_STATUSES = {"R", "C", "O", "F", "S"}
+
+STATUS_LABELS = {
+    "R": "Student (Resident)",
+    "C": "Student (Commuter)",
+    "O": "Student (Off Campus)",
+    "F": "Faculty",
+    "S": "Staff",
+}
+
+# Statuses that represent student housing classifications
+HOUSING_STATUSES = {"R", "C", "O"}
 
 
 class OverrideCreate(BaseModel):
@@ -50,7 +65,7 @@ class OverrideUpdate(BaseModel):
 async def list_overrides(db: AsyncSession = Depends(get_db)):
     rows = (
         await db.execute(
-            select(HousingOverride).order_by(HousingOverride.created_at.desc())
+            select(ClassificationOverride).order_by(ClassificationOverride.created_at.desc())
         )
     ).scalars().all()
     return [
@@ -60,7 +75,7 @@ async def list_overrides(db: AsyncSession = Depends(get_db)):
             "student_name": o.student_name,
             "student_email": o.student_email,
             "override_status": o.override_status,
-            "override_label": {"R": "Resident", "C": "Commuter", "O": "Off Campus"}.get(o.override_status, o.override_status),
+            "override_label": STATUS_LABELS.get(o.override_status, o.override_status),
             "reason": o.reason,
             "created_by": o.created_by,
             "created_at": o.created_at.isoformat() if o.created_at else "",
@@ -82,14 +97,14 @@ async def create_override(
         raise HTTPException(400, "student_email is required")
 
     existing = (
-        await db.execute(select(HousingOverride).where(func.lower(HousingOverride.student_email) == email))
+        await db.execute(select(ClassificationOverride).where(func.lower(ClassificationOverride.student_email) == email))
     ).scalar_one_or_none()
     if existing:
         _logger.warning("Duplicate override blocked for %s — existing id=%s, status=%s", email, existing.id, existing.override_status)
         raise HTTPException(409, f"[EMAIL CHECK] Override already exists for {email} (id={existing.id}). Edit or delete the existing one.")
 
     try:
-        override = HousingOverride(
+        override = ClassificationOverride(
             moravian_id=data.moravian_id.strip(),
             student_name=data.student_name.strip(),
             student_email=email,
@@ -103,8 +118,7 @@ async def create_override(
     except HTTPException:
         raise
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        _logger.error("Failed to create housing override for %s: %s", email, e)
+        _logger.error("Failed to create classification override for %s: %s", email, e)
         raise HTTPException(409, f"[DB ERROR] {str(e)[:300]}")
 
     cancelled = await _cancel_conflicting_applications(db, email, data.override_status)
@@ -121,7 +135,7 @@ async def update_override(
     data: OverrideUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    override = await db.get(HousingOverride, override_id)
+    override = await db.get(ClassificationOverride, override_id)
     if not override:
         raise HTTPException(404, "Override not found")
     status_changed = False
@@ -154,7 +168,7 @@ async def delete_override(
     override_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    override = await db.get(HousingOverride, override_id)
+    override = await db.get(ClassificationOverride, override_id)
     if not override:
         raise HTTPException(404, "Override not found")
     await db.delete(override)
@@ -164,21 +178,23 @@ async def delete_override(
 async def _cancel_conflicting_applications(
     db: AsyncSession, student_email: str, new_status: str
 ) -> int:
-    """Cancel pending/waitlisted lottery applications that conflict with the new housing status.
+    """Cancel pending/waitlisted lottery applications that conflict with the new status.
 
     If overriding to Commuter, cancel resident applications.
     If overriding to Resident, cancel commuter applications.
+    If overriding to Faculty/Staff, cancel all student applications.
     Returns the count of cancelled applications.
     """
     if new_status == "C":
         conflicting_codes = _RESIDENT_CODES
     elif new_status == "R":
         conflicting_codes = _COMMUTER_CODES
+    elif new_status in ("F", "S"):
+        conflicting_codes = _COMMUTER_CODES | _RESIDENT_CODES
     else:
         return 0
 
     try:
-        # Find permit_type IDs for conflicting codes
         pt_result = await db.execute(
             select(PermitType.id).where(PermitType.code.in_(conflicting_codes))
         )
@@ -186,7 +202,6 @@ async def _cancel_conflicting_applications(
         if not conflicting_type_ids:
             return 0
 
-        # Find active applications for this student that match conflicting types
         apps_result = await db.execute(
             select(PermitApplication).where(
                 func.lower(PermitApplication.student_email) == student_email.lower(),
@@ -200,7 +215,7 @@ async def _cancel_conflicting_applications(
             old_status = app.status
             app.status = "expired"
             _logger.info(
-                "Auto-cancelled %s application %s for %s (was %s, housing override → %s)",
+                "Auto-cancelled %s application %s for %s (was %s, classification override → %s)",
                 app.permit_type_id, app.id, student_email, old_status, new_status,
             )
 
@@ -209,32 +224,52 @@ async def _cancel_conflicting_applications(
 
         return len(apps)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
         _logger.error("Failed to cancel conflicting applications for %s: %s", student_email, e)
         return 0
 
 
-async def get_housing_override_by_email(email: str, db: AsyncSession) -> str | None:
-    """Check if a manual housing override exists by email. Returns status code or None."""
+async def get_classification_override_by_email(email: str, db: AsyncSession) -> str | None:
+    """Check if a classification override exists by email. Returns status code or None."""
     if not email:
         return None
     row = (
         await db.execute(
-            select(HousingOverride.override_status)
-            .where(HousingOverride.student_email == email.lower())
+            select(ClassificationOverride.override_status)
+            .where(ClassificationOverride.student_email == email.lower())
         )
     ).scalar_one_or_none()
     return row
 
 
-async def get_housing_override(moravian_id: str, db: AsyncSession) -> str | None:
-    """Check if a manual housing override exists by moravian_id. Returns status code or None."""
+async def get_classification_override(moravian_id: str, db: AsyncSession) -> str | None:
+    """Check if a classification override exists by moravian_id. Returns status code or None."""
     if not moravian_id:
         return None
     row = (
         await db.execute(
-            select(HousingOverride.override_status)
-            .where(HousingOverride.moravian_id == moravian_id, HousingOverride.moravian_id != "")
+            select(ClassificationOverride.override_status)
+            .where(ClassificationOverride.moravian_id == moravian_id, ClassificationOverride.moravian_id != "")
         )
     ).scalar_one_or_none()
     return row
+
+
+def override_is_faculty_staff(status: str) -> bool:
+    """True if the override reclassifies someone as faculty or staff."""
+    return status in ("F", "S")
+
+
+def get_injected_groups(status: str) -> list[str]:
+    """Return Okta groups to inject for a classification override.
+
+    Faculty/Staff overrides inject the canonical faculty/staff groups
+    so that eligible_groups filtering on permit types works correctly.
+    """
+    if status in ("F", "S"):
+        return list(FACULTY_STAFF_OKTA_GROUPS)
+    return []
+
+
+# Backwards compat aliases
+get_housing_override_by_email = get_classification_override_by_email
+get_housing_override = get_classification_override

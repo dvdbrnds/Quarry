@@ -16,10 +16,20 @@ interface Override {
 }
 
 const STATUS_OPTIONS = [
-  { value: "C", label: "Commuter" },
-  { value: "R", label: "Resident" },
-  { value: "O", label: "Off Campus Release" },
+  { value: "C", label: "Student (Commuter)" },
+  { value: "R", label: "Student (Resident)" },
+  { value: "O", label: "Student (Off Campus)" },
+  { value: "F", label: "Faculty" },
+  { value: "S", label: "Staff" },
 ];
+
+const STATUS_COLORS: Record<string, string> = {
+  C: "blue",
+  R: "green",
+  O: "orange",
+  F: "purple",
+  S: "cyan",
+};
 
 class ApiError extends Error {
   status: number;
@@ -57,7 +67,7 @@ export default function HousingOverrides() {
     try {
       setOverrides(await apiRequest<Override[]>(""));
     } catch {
-      message.error("Failed to load housing overrides");
+      message.error("Failed to load classification overrides");
     } finally {
       setLoading(false);
     }
@@ -97,13 +107,13 @@ export default function HousingOverrides() {
         });
         const cancelled = result.cancelled_applications || 0;
         message.success(cancelled > 0
-          ? `Override updated — ${cancelled} conflicting waitlist application${cancelled > 1 ? "s" : ""} cancelled`
+          ? `Override updated — ${cancelled} conflicting application${cancelled > 1 ? "s" : ""} cancelled`
           : "Override updated");
       } else {
         const result = await apiRequest<{ cancelled_applications?: number }>("", { method: "POST", body: JSON.stringify(values) });
         const cancelled = result.cancelled_applications || 0;
         message.success(cancelled > 0
-          ? `Override created — ${cancelled} conflicting waitlist application${cancelled > 1 ? "s" : ""} cancelled`
+          ? `Override created — ${cancelled} conflicting application${cancelled > 1 ? "s" : ""} cancelled`
           : "Override created");
       }
       setModalOpen(false);
@@ -112,7 +122,7 @@ export default function HousingOverrides() {
     } catch (e: any) {
       if (e.errorFields) return;
       if (e instanceof ApiError && e.status === 409) {
-        message.warning("An override already exists for this student. Delete it first to change it.");
+        message.warning("An override already exists for this person. Delete it first to change it.");
         load();
         setModalOpen(false);
       } else {
@@ -126,7 +136,7 @@ export default function HousingOverrides() {
   const handleDelete = async (override: Override) => {
     try {
       await apiRequest(`/${override.id}`, { method: "DELETE" });
-      message.success("Override removed — student will use SIS data again");
+      message.success("Override removed — will use Okta/SIS data again");
       load();
     } catch {
       message.error("Failed to delete");
@@ -136,9 +146,9 @@ export default function HousingOverrides() {
   return (
     <div>
       <p className="text-sm text-gray-500 mb-4">
-        Override a student&apos;s housing classification when the SIS feed is wrong. Overrides take
-        priority — the student will see permit types matching the overridden status instead of
-        what Jenzabar reports.
+        Override a person&apos;s parking classification when Okta groups or SIS data are wrong.
+        Student overrides (Commuter/Resident/Off Campus) control which student permit types they see.
+        Faculty/Staff overrides give access to employee permit types regardless of Okta group membership.
       </p>
 
       <Card
@@ -156,10 +166,10 @@ export default function HousingOverrides() {
           rowKey="id"
           pagination={false}
           size="small"
-          locale={{ emptyText: "No active overrides — all students using SIS feed data" }}
+          locale={{ emptyText: "No active overrides — everyone using Okta/SIS data" }}
           columns={[
             {
-              title: "Student",
+              title: "Name",
               key: "student",
               render: (_: unknown, row: Override) => (
                 <div>
@@ -172,9 +182,9 @@ export default function HousingOverrides() {
               title: "Override To",
               dataIndex: "override_label",
               key: "override_label",
-              width: 140,
+              width: 180,
               render: (label: string, row: Override) => (
-                <Tag color={row.override_status === "C" ? "blue" : row.override_status === "R" ? "green" : "orange"}>
+                <Tag color={STATUS_COLORS[row.override_status] || "default"}>
                   {label}
                 </Tag>
               ),
@@ -201,7 +211,7 @@ export default function HousingOverrides() {
                   <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(row)} />
                   <Popconfirm
                     title="Remove this override?"
-                    description="Student will revert to their SIS housing status."
+                    description="This person will revert to their Okta/SIS classification."
                     onConfirm={() => handleDelete(row)}
                     okText="Remove"
                     okType="danger"
@@ -216,7 +226,7 @@ export default function HousingOverrides() {
       </Card>
 
       <Modal
-        title={editing ? "Edit Housing Override" : "Add Housing Override"}
+        title={editing ? "Edit Classification Override" : "Add Classification Override"}
         open={modalOpen}
         onCancel={() => { setModalOpen(false); setEditing(null); }}
         onOk={handleSave}
@@ -227,18 +237,18 @@ export default function HousingOverrides() {
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="student_email"
-            label="Student email"
+            label="Email"
             rules={[{ required: true, message: "Required" }, { type: "email", message: "Enter a valid email" }]}
-            extra="The student's Moravian email address (used as the lookup key)"
+            extra="The person's Moravian email address (used as the lookup key)"
           >
-            <Input placeholder="lauricob@moravian.edu" disabled={!!editing} />
+            <Input placeholder="smithj@moravian.edu" disabled={!!editing} />
           </Form.Item>
-          <Form.Item name="student_name" label="Student name">
-            <Input placeholder="Brandon Laurico" />
+          <Form.Item name="student_name" label="Name">
+            <Input placeholder="Jane Smith" />
           </Form.Item>
           <Form.Item
             name="override_status"
-            label="Override to"
+            label="Classify as"
             rules={[{ required: true, message: "Required" }]}
           >
             <Select options={STATUS_OPTIONS} placeholder="Select classification" />
@@ -246,9 +256,9 @@ export default function HousingOverrides() {
           <Form.Item
             name="reason"
             label="Reason"
-            extra="Brief note on why SIS data is being overridden"
+            extra="Brief note on why this override is needed"
           >
-            <Input.TextArea rows={2} placeholder="SIS shows resident but student is a commuter" />
+            <Input.TextArea rows={2} placeholder="Okta groups don't include faculty group but they teach classes" />
           </Form.Item>
         </Form>
       </Modal>

@@ -757,11 +757,12 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
       const cycleData: Cycle | null = cycleRes.ok ? await cycleRes.json() : null;
       setCycle(cycleData);
 
-      // Auto-route based on Jenzabar housing classification
+      // Auto-route based on classification (housing or faculty/staff)
       if (housingRes.ok) {
         const h = await housingRes.json();
         setHousingStatus(h.housing_status);
-        if (h.is_commuter) setCampus("commuter");
+        if (h.is_faculty_staff) setCampus("commuter");
+        else if (h.is_commuter) setCampus("commuter");
         else if (h.is_resident) setCampus("north");
       }
 
@@ -1942,8 +1943,17 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
                 <Form layout="vertical" onFinish={continueToRank}>
                   {housingStatus && (
                     <div className="mb-3 text-sm">
-                      <Tag color={housingStatus === "C" ? "blue" : "green"}>
-                        {housingStatus === "C" ? "Commuter Student" : "Resident Student"}
+                      <Tag color={
+                        housingStatus === "C" ? "blue" :
+                        housingStatus === "R" ? "green" :
+                        housingStatus === "F" || housingStatus === "S" ? "purple" :
+                        "orange"
+                      }>
+                        {housingStatus === "C" ? "Commuter Student" :
+                         housingStatus === "R" ? "Resident Student" :
+                         housingStatus === "F" ? "Faculty" :
+                         housingStatus === "S" ? "Staff" :
+                         "Off Campus"}
                       </Tag>
                       <span className="text-gray-500 ml-1">per university records</span>
                     </div>

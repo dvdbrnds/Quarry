@@ -187,6 +187,13 @@ enum PlatePatternMatcher {
         "QMC5883", "BME280", "BMP280", "MPU6050",
         // Garbled reads from scan logs — confirmed non-plates
         "800URRF", "660JPLU", "ILBC611",
+        // "$200 FINE" / "FINE $200" signs (handicap spots, fire lanes, tow-away zones)
+        "FINE200", "F1NE200", "FINE2OO", "F1NE2OO",
+        "200FINE", "2OOFINE", "200F1NE", "2OOF1NE",
+        "FINE100", "F1NE100", "FINE1OO", "F1NE1OO",
+        "100FINE", "1OOFINE", "100F1NE",
+        "FINE300", "FINE500", "FINE50",
+        "300FINE", "500FINE",
     ]
 
     enum RejectionReason: String {

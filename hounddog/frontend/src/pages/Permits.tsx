@@ -1453,7 +1453,7 @@ export default function Permits() {
           },
           {
             key: "housing-overrides",
-            label: "Housing Overrides",
+            label: "Classification Overrides",
             children: <HousingOverrides />,
           },
           {

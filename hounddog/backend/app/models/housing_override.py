@@ -8,7 +8,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..database import Base
 
 
-class HousingOverride(Base):
+class ClassificationOverride(Base):
+    """Manual override for a person's parking classification.
+
+    override_status values:
+      R  = Student (Resident)
+      C  = Student (Commuter)
+      O  = Student (Off Campus)
+      F  = Faculty
+      S  = Staff
+    """
     __tablename__ = "housing_overrides"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
@@ -19,3 +28,7 @@ class HousingOverride(Base):
     reason: Mapped[str] = mapped_column(String(512), default="")
     created_by: Mapped[str] = mapped_column(String(256), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# Backwards compat alias
+HousingOverride = ClassificationOverride
