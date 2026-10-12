@@ -2,6 +2,7 @@ import uuid
 import sentry_sdk
 from datetime import datetime, timedelta, timezone
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from ..utils.safe_router import SafeRouter
 from sqlalchemy import select, func, or_, cast, Date, String, text, bindparam
