@@ -462,10 +462,9 @@ async def _expire_guest_permits():
             for reg in expired_regs:
                 reg.status = "expired"
 
-            # Expire guest permits past end_date
+            # Expire ALL permits past end_date (guest, visitor, and regular)
             permits_result = await db.execute(
                 select(Permit).where(
-                    Permit.permit_type == "student_guest",
                     Permit.status == "active",
                     Permit.deleted_at.is_(None),
                     Permit.end_date.isnot(None),

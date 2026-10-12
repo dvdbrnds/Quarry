@@ -1258,7 +1258,7 @@ export default function Permits() {
             {isExpiringSoon(p) && <Tag color="gold" style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>EXPIRING</Tag>}
             {p.active_ticket_count > 0 && <Tag color="red" style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>{p.active_ticket_count} cit.</Tag>}
             {(p as any).never_ticket && <Tag color="green" style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>No Ticket</Tag>}
-            {p.hc_status && <Tag color={p.hc_status === "temporary" && p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"} style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>♿</Tag>}
+            {p.hc_status && p.hc_status !== "none" && <Tag color={p.hc_status === "temporary" && p.hc_expiry && dayjs(p.hc_expiry).isBefore(dayjs()) ? "red" : "blue"} style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>♿</Tag>}
           </div>
         </div>
       ),
