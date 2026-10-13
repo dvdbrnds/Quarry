@@ -2234,14 +2234,20 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <div className="font-mono text-[10px] text-gray-400 select-all">ID: {selected.id}</div>
             </div>
 
-            {selected.ticket_category === "moving" && (
+            {selected.officer_notes && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm">
+                <div className="font-medium text-gray-700 mb-1">Officer Notes</div>
+                <p className="whitespace-pre-wrap text-gray-600">{selected.officer_notes}</p>
+              </div>
+            )}
+
+            {selected.ticket_category === "moving" && (selected.driver_name || selected.driver_license || selected.vehicle_description) && (
               <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm">
                 <div className="font-medium text-red-800 mb-2">Driver & Vehicle</div>
                 <Descriptions size="small" column={2}>
                   {selected.driver_name && <Descriptions.Item label="Driver">{selected.driver_name}</Descriptions.Item>}
                   {selected.driver_license && <Descriptions.Item label="License"><span className="font-mono">{selected.driver_license}</span></Descriptions.Item>}
                   {selected.vehicle_description && <Descriptions.Item label="Vehicle" span={2}>{selected.vehicle_description}</Descriptions.Item>}
-                  {selected.officer_notes && <Descriptions.Item label="Notes" span={2}>{selected.officer_notes}</Descriptions.Item>}
                 </Descriptions>
               </div>
             )}

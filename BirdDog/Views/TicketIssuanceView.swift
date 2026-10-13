@@ -24,6 +24,7 @@ struct TicketIssuanceView: View {
     @State private var warningDetail = ""
     @State private var plateMisread = false
     @State private var correctedPlate = ""
+    @State private var otherReason = ""
 
     private static let commonWarningReasons = [
         "No permit displayed",
@@ -475,6 +476,17 @@ struct TicketIssuanceView: View {
                 Text("Photo is captured automatically. Tap + Add Photo to capture additional angles.")
             }
 
+            if selectedViolations.contains("other") {
+                Section {
+                    TextField("Describe the violation", text: $otherReason, axis: .vertical)
+                        .lineLimit(2...4)
+                } header: {
+                    Text("\"Other\" Violation Reason")
+                } footer: {
+                    Text("Required — explain what the violation is.")
+                }
+            }
+
             Section("Notes") {
                 TextEditor(text: $officerNotes)
                     .frame(minHeight: 80)
@@ -496,7 +508,7 @@ struct TicketIssuanceView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(isWarning ? "Issue Warning" : "Issue") { submitTicket() }
-                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolations.isEmpty || (isWarning && selectedWarningReason.isEmpty) || isSubmitting)
+                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolations.isEmpty || (isWarning && selectedWarningReason.isEmpty) || (selectedViolations.contains("other") && otherReason.trimmingCharacters(in: .whitespaces).isEmpty) || isSubmitting)
                     .bold()
             }
         }
@@ -641,6 +653,10 @@ struct TicketIssuanceView: View {
         let db = PlateDatabase.shared
 
         var composedNotes = officerNotes
+        if selectedViolations.contains("other") && !otherReason.trimmingCharacters(in: .whitespaces).isEmpty {
+            let otherText = "[OTHER VIOLATION] \(otherReason.trimmingCharacters(in: .whitespaces))"
+            composedNotes = composedNotes.isEmpty ? otherText : "\(otherText)\n\(composedNotes)"
+        }
         if isWarning {
             var warningText = "[WARNING] \(selectedWarningReason)"
             if !warningDetail.trimmingCharacters(in: .whitespaces).isEmpty {
