@@ -1337,6 +1337,8 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             return { allowed: inAny, daytimeAccess: inDaytime, ruleLabel: label };
           }
 
+          const _guestTypes = new Set(["student_guest", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"]);
+
           if (_permitTypes.length > 0) {
             // Pass 1: lots directly assigned to the permit
             for (const lot of lots) {
@@ -1370,7 +1372,6 @@ function LotteryV2Page({ user, impersonateEmail }: { user: AuthUser; impersonate
             // Pass 2: lots NOT in assignment but whose access_schedule allows the permit type.
             // Only for regular student permits (commuter/resident) — guest and visitor
             // permits should only see their explicitly assigned lots.
-            const _guestTypes = new Set(["student_guest", "visitor_day", "visitor_vendor", "visitor_vendor_longterm", "visitor_contracted_staff", "contracted_staff"]);
             const _isGuestOnly = _permitTypes.every(pt => _guestTypes.has(pt));
             if (!_isGuestOnly) {
               for (const lot of lots) {
