@@ -49,7 +49,7 @@ RUN mkdir -p /app/uploads && \
 
 EXPOSE 3200
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
     CMD curl -f http://127.0.0.1:8000/health || exit 1
 
 # Start as root so entrypoint can fix DNS, then drop to appuser via gosu
