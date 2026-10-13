@@ -225,13 +225,10 @@ final class PlateAuthService: PlateCheckable {
                 if !isDiverted && !allowedBySchedule {
                     return .wrongLot(permit: info, expectedLot: record.lotZone, actualLot: currentLot)
                 }
-            } else {
-                // Zone matches, but still check time-of-day restrictions
-                if let lot, !lot.accessSchedule.isEmpty,
-                   !lot.isPermitTypeAllowed(record.permitType) {
-                    return .wrongLot(permit: info, expectedLot: "\(currentLot) (time-restricted)", actualLot: currentLot)
-                }
             }
+            // If zone matches (permit is explicitly assigned to this lot),
+            // the permit holder is always authorized — access schedule
+            // restrictions only apply to permits NOT assigned to this lot.
         }
 
         // Allowed to park in this lot at this time
