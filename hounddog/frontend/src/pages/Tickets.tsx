@@ -949,14 +949,7 @@ ${d.open_tickets.length === 0 ? "<p style='color:#888;'>No open tickets in this 
   );
 }
 
-const _OPERATOR_REPORT_EMAILS = new Set(["dillardv@moravian.edu", "brandsesd@moravian.edu"]);
-const _OPERATOR_REPORT_PREFIXES = new Set(["dillardv", "brandsesd"]);
-
 function ReportingContainer() {
-  const user = useCurrentUser();
-  const emailLower = (user?.email || "").toLowerCase();
-  const prefix = emailLower.split("@")[0];
-  const canSeeOperatorReport = _OPERATOR_REPORT_EMAILS.has(emailLower) || _OPERATOR_REPORT_PREFIXES.has(prefix);
   const [subTab, setSubTab] = useState("officers");
   return (
     <Tabs
@@ -964,7 +957,7 @@ function ReportingContainer() {
       onChange={setSubTab}
       items={[
         { key: "officers", label: "Officer Performance", children: <OfficerReport /> },
-        ...(canSeeOperatorReport ? [{ key: "operators", label: "Operator Activity", children: <OperatorReport /> }] : []),
+        { key: "operators", label: "Operator Activity", children: <OperatorReport /> },
       ]}
     />
   );
@@ -994,12 +987,15 @@ function OperatorReport() {
   const [range, setRange] = useState("30d");
   const [expandedOp, setExpandedOp] = useState<string | null>(null);
 
+  const [denied, setDenied] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
         const res = await fetch(`/api/tickets/operator-report?time_range=${range}`, { headers: await authHeaders() });
+        if (res.status === 403) { if (!cancelled) setDenied(true); return; }
         if (res.ok && !cancelled) setData(await res.json());
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
@@ -1008,6 +1004,7 @@ function OperatorReport() {
   }, [range]);
 
   if (loading) return <div className="text-center py-12"><Spin size="large" /><p className="mt-3 text-gray-500">Loading operator data...</p></div>;
+  if (denied) return <Empty description="This report is restricted to authorized personnel." className="py-12" />;
   if (!data || data.operators.length === 0) return <Empty description="No operator activity found" className="py-12" />;
 
   const maxTotal = Math.max(...data.operators.map(o => o.total), 1);
