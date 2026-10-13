@@ -1164,6 +1164,8 @@ async def update_ticket(
         propagate_fields["owner_name"] = ticket.owner_name
     if "notification_email" in updated_fields and ticket.notification_email:
         propagate_fields["notification_email"] = ticket.notification_email
+    if "owner_address" in updated_fields and ticket.owner_address:
+        propagate_fields["owner_address"] = ticket.owner_address
 
     if propagate_fields:
         plate_norm = ticket.plate.upper().replace(" ", "").replace("-", "")

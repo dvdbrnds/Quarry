@@ -1338,6 +1338,8 @@ async def lifespan(app: FastAPI):
             # ── v42: Rename time-based "escalated" ticket status → "past_due"
             # Preserve committee-escalated tickets (escalated_by IS NOT NULL)
             "UPDATE tickets SET status = 'past_due' WHERE status = 'escalated' AND escalated_by IS NULL",
+            # ── v43: Add owner_address to tickets for mailing physical notices
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS owner_address TEXT",
             ]
             for migration in migrations:
                 try:

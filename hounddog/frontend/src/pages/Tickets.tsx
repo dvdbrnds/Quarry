@@ -27,6 +27,7 @@ interface Ticket {
   officer_email: string | null;
   owner_name: string | null;
   notification_email: string | null;
+  owner_address: string | null;
   permit_number: string | null;
   permit_type_label: string | null;
   permit_lot_zone: string | null;
@@ -1104,17 +1105,17 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     }
   }
 
-  async function handleSaveRO(ticketId: string, ownerName: string, email: string) {
+  async function handleSaveRO(ticketId: string, ownerName: string, email: string, address: string) {
     setRoSaving(true);
     try {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-        body: JSON.stringify({ owner_name: ownerName || null, notification_email: email || null }),
+        body: JSON.stringify({ owner_name: ownerName || null, notification_email: email || null, owner_address: address || null }),
       });
       if (!res.ok) throw new Error("Save failed");
       const updated = await res.json();
-      setSelected((prev) => prev ? { ...prev, owner_name: updated.owner_name, notification_email: updated.notification_email } : null);
+      setSelected((prev) => prev ? { ...prev, owner_name: updated.owner_name, notification_email: updated.notification_email, owner_address: updated.owner_address } : null);
       setTickets((prev) => prev.map((t) =>
         t.plate === updated.plate ? { ...t, owner_name: updated.owner_name } : t
       ));
@@ -2148,6 +2149,16 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                     />
                   </div>
                 </div>
+                <div className="mt-2">
+                  <label className="text-xs text-gray-500 block mb-1">Mailing Address</label>
+                  <Input
+                    size="small"
+                    defaultValue={(selected as any).owner_address || ""}
+                    key={`ro-addr-${selected.id}`}
+                    id={`ro-addr-${selected.id}`}
+                    placeholder="e.g. 123 Main St, Bethlehem, PA 18018"
+                  />
+                </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Button
                     size="small"
@@ -2156,7 +2167,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                     onClick={() => {
                       const nameEl = document.getElementById(`ro-name-${selected.id}`) as HTMLInputElement;
                       const emailEl = document.getElementById(`ro-email-${selected.id}`) as HTMLInputElement;
-                      handleSaveRO(selected.id, nameEl?.value || "", emailEl?.value || "");
+                      const addrEl = document.getElementById(`ro-addr-${selected.id}`) as HTMLInputElement;
+                      handleSaveRO(selected.id, nameEl?.value || "", emailEl?.value || "", addrEl?.value || "");
                     }}
                   >
                     Save & Apply to All Tickets

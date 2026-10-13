@@ -44,6 +44,7 @@ class TicketUpdate(BaseModel):
     driver_license: str | None = None
     owner_name: str | None = None
     notification_email: str | None = None
+    owner_address: str | None = None
 
 
 class TicketRead(BaseModel):
@@ -64,6 +65,7 @@ class TicketRead(BaseModel):
     officer_email: str | None = None
     owner_name: str | None = None
     notification_email: str | None = None
+    owner_address: str | None = None
     permit_number: str | None = None
     permit_type_label: str | None = None
     permit_lot_zone: str | None = None
