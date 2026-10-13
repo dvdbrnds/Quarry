@@ -949,7 +949,11 @@ ${d.open_tickets.length === 0 ? "<p style='color:#888;'>No open tickets in this 
   );
 }
 
+const _OPERATOR_REPORT_EMAILS = new Set(["dillardv@moravian.edu", "brandsesd@moravian.edu"]);
+
 function ReportingContainer() {
+  const user = useCurrentUser();
+  const canSeeOperatorReport = user?.email && _OPERATOR_REPORT_EMAILS.has(user.email.toLowerCase());
   const [subTab, setSubTab] = useState("officers");
   return (
     <Tabs
@@ -957,7 +961,7 @@ function ReportingContainer() {
       onChange={setSubTab}
       items={[
         { key: "officers", label: "Officer Performance", children: <OfficerReport /> },
-        { key: "operators", label: "Operator Activity", children: <OperatorReport /> },
+        ...(canSeeOperatorReport ? [{ key: "operators", label: "Operator Activity", children: <OperatorReport /> }] : []),
       ]}
     />
   );

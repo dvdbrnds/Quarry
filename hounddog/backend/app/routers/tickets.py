@@ -670,13 +670,19 @@ async def officer_report(
     }
 
 
+_OPERATOR_REPORT_EMAILS = {"dillardv@moravian.edu", "brandsesd@moravian.edu"}
+
+
 @router.get("/operator-report")
 async def operator_report(
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    user: OktaUser = Depends(require_admin()),
     time_range: str = Query("30d"),
 ):
-    """Admin-only: operator activity report from the audit log."""
+    """Restricted to chief and system admin only."""
+    if user.email.lower() not in _OPERATOR_REPORT_EMAILS:
+        raise HTTPException(403, "This report is restricted")
+
     now = datetime.now(timezone.utc)
     cutoff = _resolve_range(time_range, now)
 
