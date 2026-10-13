@@ -132,7 +132,7 @@ async def list_cases(
             MAX(t.issued_at) AS latest_ticket,
             MAX(t.owner_name) AS owner_name
         FROM tickets t
-        WHERE t.status NOT IN ('paid', 'voided', 'resolved_permit')
+        WHERE t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
         GROUP BY plate_norm, t.plate
         HAVING COUNT(*) >= 3
         ORDER BY MAX(t.issued_at) DESC
@@ -348,7 +348,7 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
                             if op_plate not in other_plates:
                                 other_plates.append(op_plate)
 
-    unpaid = [t for t in all_tickets if t.status not in ("paid", "voided", "resolved_permit")]
+    unpaid = [t for t in all_tickets if t.status not in ("paid", "voided", "resolved_permit", "warning")]
     tickets = []
     for t in all_tickets:
         tickets.append({
@@ -371,7 +371,7 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
             "location_text": getattr(t, "location_text", None),
             "location_lat": getattr(t, "location_lat", None),
             "location_lng": getattr(t, "location_lng", None),
-            "_tag": "referral" if t.status not in ("paid", "voided", "resolved_permit") else "history",
+            "_tag": "referral" if t.status not in ("paid", "voided", "resolved_permit", "warning") else "history",
             "_prior_conduct": False,
         })
 
@@ -482,7 +482,7 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
             for t in t_result.scalars().all():
                 tid_str = str(t.id)
                 tag = "referral" if tid_str in referral_ids else "history"
-                if tag == "history" and t.status not in ("paid", "voided", "resolved_permit"):
+                if tag == "history" and t.status not in ("paid", "voided", "resolved_permit", "warning"):
                     tag = "extra"  # unpaid ticket added after referral
                 tickets.append({
                     "id": tid_str,
@@ -558,7 +558,7 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
     )
 
     # Use live ticket count instead of the stale snapshot stored at creation
-    unpaid_tickets = [t for t in tickets if t["status"] not in ("paid", "voided", "resolved_permit")]
+    unpaid_tickets = [t for t in tickets if t["status"] not in ("paid", "voided", "resolved_permit", "warning")]
     live_count = len(unpaid_tickets) if tickets else case_row["ticket_count"]
 
     return {
@@ -601,7 +601,7 @@ async def _ensure_escalation_log(case_id: str, db: AsyncSession) -> str:
                array_agg(id::text) as tids
         FROM tickets
         WHERE UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :plate
-          AND status NOT IN ('paid', 'voided', 'resolved_permit')
+          AND status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
         GROUP BY plate, owner_name LIMIT 1
     """), {"plate": plate_norm})
     t_row = t_result.mappings().first()
