@@ -670,7 +670,7 @@ async def officer_report(
     }
 
 
-_OPERATOR_REPORT_EMAILS = {"dillardv@moravian.edu", "brandsesd@moravian.edu"}
+_OPERATOR_REPORT_PREFIXES = {"dillardv", "brandsesd"}
 
 
 @router.get("/operator-report")
@@ -680,7 +680,8 @@ async def operator_report(
     time_range: str = Query("30d"),
 ):
     """Restricted to chief and system admin only."""
-    if user.email.lower() not in _OPERATOR_REPORT_EMAILS:
+    email_prefix = user.email.lower().split("@")[0]
+    if email_prefix not in _OPERATOR_REPORT_PREFIXES:
         raise HTTPException(403, "This report is restricted")
 
     now = datetime.now(timezone.utc)

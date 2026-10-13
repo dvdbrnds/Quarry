@@ -950,10 +950,13 @@ ${d.open_tickets.length === 0 ? "<p style='color:#888;'>No open tickets in this 
 }
 
 const _OPERATOR_REPORT_EMAILS = new Set(["dillardv@moravian.edu", "brandsesd@moravian.edu"]);
+const _OPERATOR_REPORT_PREFIXES = new Set(["dillardv", "brandsesd"]);
 
 function ReportingContainer() {
   const user = useCurrentUser();
-  const canSeeOperatorReport = user?.email && _OPERATOR_REPORT_EMAILS.has(user.email.toLowerCase());
+  const emailLower = (user?.email || "").toLowerCase();
+  const prefix = emailLower.split("@")[0];
+  const canSeeOperatorReport = _OPERATOR_REPORT_EMAILS.has(emailLower) || _OPERATOR_REPORT_PREFIXES.has(prefix);
   const [subTab, setSubTab] = useState("officers");
   return (
     <Tabs
