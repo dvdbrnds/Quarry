@@ -12,12 +12,12 @@ RUN npm run build:docker
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev nginx supervisor curl tzdata gnupg lsb-release && \
+    gcc libpq-dev nginx supervisor curl tzdata gnupg lsb-release gosu && \
     echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list && \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
         | gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg && \
-    apt-get update && apt-get install -y --no-install-recommends postgresql-client-16 && \
+        apt-get update && apt-get install -y --no-install-recommends postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/*
 
 ENV TZ=America/New_York
@@ -45,15 +45,13 @@ RUN mkdir -p /app/uploads && \
     sed -i 's|/run/nginx.pid|/run/nginx.pid|' /etc/nginx/nginx.conf && \
     sed -i 's|pid /var/run/nginx.pid|pid /run/nginx.pid|' /etc/nginx/nginx.conf && \
     chown -R appuser:appuser /app /var/www/html /var/log/nginx /var/lib/nginx /run /etc/nginx && \
-    chmod 755 /var/log/nginx /var/lib/nginx /run && \
-    chmod 666 /etc/resolv.conf
+    chmod 755 /var/log/nginx /var/lib/nginx /run
 
 EXPOSE 3200
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 \
     CMD curl -f http://127.0.0.1:8000/health || exit 1
 
-USER appuser
-
+# Start as root so entrypoint can fix DNS, then drop to appuser via gosu
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/quarry.conf"]

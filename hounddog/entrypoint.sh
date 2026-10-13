@@ -1,11 +1,13 @@
 #!/bin/sh
-# Ensure reliable DNS resolvers are available at runtime.
-# Docker overwrites /etc/resolv.conf at container start, so we can't
-# set this at build time. We append public resolvers as fallbacks so
-# external lookups (Okta, SMTP, Sentry, etc.) survive transient Docker
-# DNS failures on Coolify/VPS hosts.
+# Runs as root at container start. Fixes DNS, then drops to appuser.
+#
+# Docker overwrites /etc/resolv.conf at container start with its own
+# embedded DNS (127.0.0.11). On some Coolify/VPS hosts this resolver
+# intermittently fails, causing ConnectError on Okta/SMTP/Sentry calls.
+# We append public resolvers as fallback.
+
 if ! grep -q '8.8.8.8' /etc/resolv.conf 2>/dev/null; then
-  printf '\nnameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4\n' >> /etc/resolv.conf 2>/dev/null || true
+  printf '\nnameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 8.8.4.4\n' >> /etc/resolv.conf
 fi
 
-exec "$@"
+exec gosu appuser "$@"
