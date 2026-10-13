@@ -1903,7 +1903,6 @@ async def lifespan(app: FastAPI):
         logger.warning("Backup schedule disk->DB migration skipped: %s", e)
 
     # Launch moravian_id backfill as a background task (doesn't block startup)
-    import asyncio
     _backfill_task = asyncio.create_task(_backfill_moravian_ids())
 
     # Backfill preset_id into existing visitor permits that came from presets
