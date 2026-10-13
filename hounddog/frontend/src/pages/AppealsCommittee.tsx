@@ -234,6 +234,38 @@ function CommitteePage() {
     });
   }
 
+  async function handleQuickAction(ticketId: string, decision: "upheld" | "denied" | "void") {
+    try {
+      const res = await fetch(`/api/appeal-committee/cases/${ticketId}/close`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          decision: decision === "void" ? "upheld" : decision,
+          reason: decision === "void"
+            ? "Ticket voided by committee admin"
+            : decision === "upheld"
+            ? "Appeal approved by committee"
+            : "Appeal denied by committee",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Action failed");
+      }
+      message.success(
+        decision === "void"
+          ? "Ticket voided"
+          : decision === "upheld"
+          ? "Appeal approved — ticket voided"
+          : "Appeal denied — ticket stands"
+      );
+      await loadCases();
+      if (selectedId === ticketId) await loadDetail(ticketId);
+    } catch (e: any) {
+      message.error(e.message);
+    }
+  }
+
   const filtered = cases.filter(c => {
     if (filter === "voting") return c.committee_status === "voting";
     if (filter === "decided") return c.committee_status === "decided";
@@ -326,7 +358,37 @@ function CommitteePage() {
                       </div>
                       <div className="shrink-0 text-right">
                         <VoteTally uphold={c.votes_uphold} deny={c.votes_deny} total={c.total_members} />
-                        {!c.has_voted && c.committee_status === "voting" && (
+                        {c.committee_status === "voting" && isAdmin && (
+                          <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
+                            <Popconfirm
+                              title="Void this ticket?"
+                              description="The ticket will be voided and the appeal closed."
+                              onConfirm={() => handleQuickAction(c.id, "void")}
+                              okText="Void"
+                              okButtonProps={{ danger: true }}
+                            >
+                              <Button size="small" danger>Void</Button>
+                            </Popconfirm>
+                            <Popconfirm
+                              title="Approve this appeal?"
+                              description="The ticket will be voided and the appeal marked as upheld."
+                              onConfirm={() => handleQuickAction(c.id, "upheld")}
+                              okText="Approve"
+                            >
+                              <Button size="small" type="primary" style={{ background: "#22C55E", borderColor: "#22C55E" }}>Approve</Button>
+                            </Popconfirm>
+                            <Popconfirm
+                              title="Deny this appeal?"
+                              description="The ticket will stand and the appeal will be marked as denied."
+                              onConfirm={() => handleQuickAction(c.id, "denied")}
+                              okText="Deny"
+                              okButtonProps={{ danger: true }}
+                            >
+                              <Button size="small" danger type="primary">Deny</Button>
+                            </Popconfirm>
+                          </div>
+                        )}
+                        {!c.has_voted && c.committee_status === "voting" && !isAdmin && (
                           <div className="mt-1">
                             <Badge status="warning" text={<span className="text-xs">Needs your vote</span>} />
                           </div>
