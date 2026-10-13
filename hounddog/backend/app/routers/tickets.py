@@ -670,6 +670,174 @@ async def officer_report(
     }
 
 
+@router.get("/operator-report")
+async def operator_report(
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+    time_range: str = Query("30d"),
+):
+    """Admin-only: operator activity report from the audit log."""
+    now = datetime.now(timezone.utc)
+    cutoff = _resolve_range(time_range, now)
+
+    from ..models.audit_log import AuditLog
+
+    base = select(AuditLog).where(
+        AuditLog.user_email.notlike("device:%"),
+        AuditLog.user_email != "anonymous",
+        AuditLog.user_email != "diagnostic-test",
+        AuditLog.action != "GET",
+    )
+    if cutoff:
+        base = base.where(AuditLog.timestamp >= cutoff)
+
+    rows = (await db.execute(base.order_by(AuditLog.timestamp.desc()))).scalars().all()
+
+    # Classify each action into a meaningful category
+    def _classify(entry: AuditLog) -> str | None:
+        ep = entry.endpoint or ""
+        method = entry.action or ""
+        if ep.startswith("/api/sync/"):
+            return None  # Device sync, not operator work
+        if ep in ("/api/auth/me", "/api/auth/config", "/api/auth/config/public"):
+            return None
+        if "/tickets/" in ep and method == "PUT":
+            return "ticket_update"
+        if "/tickets/" in ep and "void" in ep:
+            return "ticket_void"
+        if "/tickets/" in ep and "bulk" in ep:
+            return "bulk_action"
+        if "appeal" in ep and "committee" in ep:
+            return "appeal_committee"
+        if "appeal" in ep or "deny" in ep:
+            return "appeal_decision"
+        if "/permits/" in ep and method == "POST":
+            return "permit_create"
+        if "/permits/" in ep and method in ("PUT", "PATCH"):
+            return "permit_update"
+        if "/permits/" in ep and "cancel" in ep:
+            return "permit_cancel"
+        if "/permits/" in ep and method == "DELETE":
+            return "permit_delete"
+        if "conduct" in ep:
+            return "conduct"
+        if "escalat" in ep:
+            return "escalation"
+        if "/payments/" in ep:
+            return "payment"
+        if "/lottery" in ep:
+            return "lottery"
+        if "/vehicle-tags" in ep:
+            return "vehicle_tag"
+        if "/mail-notices" in ep or "mail" in ep:
+            return "mail_notice"
+        if "/settings" in ep or "/config" in ep:
+            return "settings"
+        if "/lots/" in ep:
+            return "lot_management"
+        if method in ("POST", "PUT", "PATCH", "DELETE"):
+            return "other"
+        return None
+
+    CATEGORY_LABELS = {
+        "ticket_update": "Ticket Updates",
+        "ticket_void": "Tickets Voided",
+        "bulk_action": "Bulk Actions",
+        "appeal_decision": "Appeal Decisions",
+        "appeal_committee": "Committee Actions",
+        "permit_create": "Permits Created",
+        "permit_update": "Permits Updated",
+        "permit_cancel": "Permits Cancelled",
+        "permit_delete": "Permits Deleted",
+        "conduct": "Conduct Cases",
+        "escalation": "Escalations",
+        "payment": "Payment Actions",
+        "lottery": "Lottery Management",
+        "vehicle_tag": "Vehicle Tags",
+        "mail_notice": "Mail Notices",
+        "settings": "Settings Changes",
+        "lot_management": "Lot Management",
+        "other": "Other Actions",
+    }
+
+    # Aggregate by operator
+    operators: dict[str, dict] = {}
+    daily_map: dict[str, int] = {}
+    category_totals: dict[str, int] = {}
+
+    for entry in rows:
+        cat = _classify(entry)
+        if cat is None:
+            continue
+
+        email = entry.user_email
+        if email not in operators:
+            operators[email] = {
+                "email": email,
+                "total": 0,
+                "categories": {},
+                "daily": {},
+                "first_action": entry.timestamp.isoformat(),
+                "last_action": entry.timestamp.isoformat(),
+                "recent_actions": [],
+            }
+
+        op = operators[email]
+        op["total"] += 1
+        op["categories"][cat] = op["categories"].get(cat, 0) + 1
+
+        day_str = entry.timestamp.strftime("%Y-%m-%d")
+        op["daily"][day_str] = op["daily"].get(day_str, 0) + 1
+        daily_map[day_str] = daily_map.get(day_str, 0) + 1
+
+        category_totals[cat] = category_totals.get(cat, 0) + 1
+
+        # Update first/last
+        ts_iso = entry.timestamp.isoformat()
+        if ts_iso < op["first_action"]:
+            op["first_action"] = ts_iso
+        if ts_iso > op["last_action"]:
+            op["last_action"] = ts_iso
+
+        # Keep last 10 recent actions
+        if len(op["recent_actions"]) < 10:
+            op["recent_actions"].append({
+                "timestamp": ts_iso,
+                "category": cat,
+                "summary": entry.summary,
+                "endpoint": entry.endpoint,
+            })
+
+    # Convert to sorted lists
+    operator_list = sorted(operators.values(), key=lambda o: o["total"], reverse=True)
+
+    # Build daily timeline
+    if cutoff:
+        timeline_days = max(1, (now - cutoff).days)
+    else:
+        timeline_days = 90
+    timeline_start = (now - timedelta(days=timeline_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    daily_activity = []
+    for i in range(timeline_days + 1):
+        d = (timeline_start + timedelta(days=i)).strftime("%Y-%m-%d")
+        daily_activity.append({"date": d, "count": daily_map.get(d, 0)})
+
+    # Category breakdown with labels
+    categories = [
+        {"key": k, "label": CATEGORY_LABELS.get(k, k), "count": v}
+        for k, v in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    return {
+        "total_actions": sum(o["total"] for o in operator_list),
+        "operator_count": len(operator_list),
+        "operators": operator_list,
+        "daily_activity": daily_activity,
+        "categories": categories,
+        "category_labels": CATEGORY_LABELS,
+    }
+
+
 @router.get("/officer-report/export")
 async def officer_report_export(
     db: AsyncSession = Depends(get_db),

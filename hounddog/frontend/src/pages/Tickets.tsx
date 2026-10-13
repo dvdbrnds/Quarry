@@ -949,6 +949,212 @@ ${d.open_tickets.length === 0 ? "<p style='color:#888;'>No open tickets in this 
   );
 }
 
+function ReportingContainer() {
+  const [subTab, setSubTab] = useState("officers");
+  return (
+    <Tabs
+      activeKey={subTab}
+      onChange={setSubTab}
+      items={[
+        { key: "officers", label: "Officer Performance", children: <OfficerReport /> },
+        { key: "operators", label: "Operator Activity", children: <OperatorReport /> },
+      ]}
+    />
+  );
+}
+
+interface OperatorData {
+  total_actions: number;
+  operator_count: number;
+  operators: {
+    email: string;
+    total: number;
+    categories: Record<string, number>;
+    daily: Record<string, number>;
+    first_action: string;
+    last_action: string;
+    recent_actions: { timestamp: string; category: string; summary: string; endpoint: string }[];
+  }[];
+  daily_activity: { date: string; count: number }[];
+  categories: { key: string; label: string; count: number }[];
+  category_labels: Record<string, string>;
+}
+
+function OperatorReport() {
+  const { message } = App.useApp();
+  const [data, setData] = useState<OperatorData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState("30d");
+  const [expandedOp, setExpandedOp] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/tickets/operator-report?time_range=${range}`, { headers: await authHeaders() });
+        if (res.ok && !cancelled) setData(await res.json());
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [range]);
+
+  if (loading) return <div className="text-center py-12"><Spin size="large" /><p className="mt-3 text-gray-500">Loading operator data...</p></div>;
+  if (!data || data.operators.length === 0) return <Empty description="No operator activity found" className="py-12" />;
+
+  const maxTotal = Math.max(...data.operators.map(o => o.total), 1);
+  const rangeLabel = RANGE_OPTIONS.find(r => r.value === range)?.label ?? "Last 30 Days";
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Operator Activity Report</h2>
+          <p className="text-sm text-gray-500">{data.operator_count} operator{data.operator_count !== 1 ? "s" : ""} &middot; {data.total_actions} total actions ({rangeLabel.toLowerCase()})</p>
+        </div>
+        <Select
+          value={range}
+          onChange={setRange}
+          options={RANGE_OPTIONS}
+          style={{ width: 170 }}
+        />
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card size="small" className="shadow-sm"><Statistic title="Total Actions" value={data.total_actions} /></Card>
+        <Card size="small" className="shadow-sm"><Statistic title="Active Operators" value={data.operator_count} /></Card>
+        <Card size="small" className="shadow-sm">
+          <Statistic title="Avg per Operator" value={data.operator_count ? Math.round(data.total_actions / data.operator_count) : 0} />
+        </Card>
+        <Card size="small" className="shadow-sm">
+          <Statistic title="Avg per Day" value={data.daily_activity.length ? Math.round(data.total_actions / Math.max(data.daily_activity.filter(d => d.count > 0).length, 1)) : 0} />
+        </Card>
+      </div>
+
+      {/* Activity timeline */}
+      <Card size="small" title={`${rangeLabel} System Activity`} className="shadow-sm">
+        <DailyTimeline data={data.daily_activity} height={140} color="#8b5cf6" />
+      </Card>
+
+      {/* Action type breakdown + Operator leaderboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card size="small" title="Actions by Category" className="shadow-sm">
+          {data.categories.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> : (
+            <div className="space-y-2">
+              {data.categories.map(cat => {
+                const maxCat = data.categories[0]?.count || 1;
+                return (
+                  <div key={cat.key}>
+                    <div className="flex justify-between text-xs mb-0.5">
+                      <span className="text-gray-600">{cat.label}</span>
+                      <span className="font-semibold text-gray-800">{cat.count}</span>
+                    </div>
+                    <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                      <div className="h-full bg-purple-500 rounded transition-all" style={{ width: `${(cat.count / maxCat) * 100}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        <Card size="small" title="Top Operators" className="shadow-sm">
+          <div className="space-y-2">
+            {data.operators.slice(0, 10).map((op, i) => (
+              <div key={op.email}>
+                <div className="flex justify-between text-xs mb-0.5">
+                  <span className="text-gray-700">
+                    <span className="font-semibold text-gray-400 mr-1">#{i + 1}</span>
+                    {op.email.split("@")[0]}
+                  </span>
+                  <span className="font-semibold text-gray-800">{op.total}</span>
+                </div>
+                <div className="h-4 bg-gray-100 rounded overflow-hidden">
+                  <div className="h-full bg-purple-500 rounded transition-all" style={{ width: `${(op.total / maxTotal) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Detailed operator table */}
+      <Card size="small" title="All Operators" className="shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-gray-500 uppercase">
+                <th className="py-2 pr-3">#</th>
+                <th className="py-2 pr-3">Operator</th>
+                <th className="py-2 pr-3 text-right">Total</th>
+                {data.categories.slice(0, 6).map(c => (
+                  <th key={c.key} className="py-2 pr-3 text-right whitespace-nowrap">{c.label.replace(/ /g, "\u00A0")}</th>
+                ))}
+                <th className="py-2 pr-3">Last Active</th>
+                <th className="py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.operators.map((op, i) => (
+                <>
+                  <tr
+                    key={op.email}
+                    className="border-b hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setExpandedOp(expandedOp === op.email ? null : op.email)}
+                  >
+                    <td className="py-2 pr-3 text-gray-400 font-bold">{i + 1}</td>
+                    <td className="py-2 pr-3">
+                      <div className="font-medium">{op.email.split("@")[0]}</div>
+                      <div className="text-[10px] text-gray-400">{op.email}</div>
+                    </td>
+                    <td className="py-2 pr-3 text-right font-bold">{op.total}</td>
+                    {data.categories.slice(0, 6).map(c => (
+                      <td key={c.key} className="py-2 pr-3 text-right text-gray-600">
+                        {op.categories[c.key] || "—"}
+                      </td>
+                    ))}
+                    <td className="py-2 pr-3 text-xs text-gray-500 whitespace-nowrap">
+                      {new Date(op.last_action).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </td>
+                    <td className="py-2 text-gray-400">{expandedOp === op.email ? "▲" : "▼"}</td>
+                  </tr>
+                  {expandedOp === op.email && (
+                    <tr key={`${op.email}-detail`}>
+                      <td colSpan={4 + Math.min(data.categories.length, 6)} className="py-3 px-4 bg-gray-50">
+                        <div className="text-xs font-medium text-gray-500 mb-2">Recent Actions</div>
+                        <div className="space-y-1">
+                          {op.recent_actions.map((a, j) => (
+                            <div key={j} className="flex items-start gap-2 text-xs">
+                              <span className="text-gray-400 whitespace-nowrap shrink-0">
+                                {new Date(a.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                              </span>
+                              <Tag className="shrink-0 !text-[10px] !px-1 !py-0">
+                                {data.category_labels[a.category] || a.category}
+                              </Tag>
+                              <span className="text-gray-600 truncate">{a.summary}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-200 text-[10px] text-gray-400">
+                          First action: {new Date(op.first_action).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} &middot;
+                          Total categories: {Object.keys(op.categories).length}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function OfficerDetail({ officer: o, totalAll }: { officer: OfficerRow; totalAll: number }) {
   const qualityScore = Math.round((1 - (o.appeal_void_rate?.void_rate || 0) / 100) * 100);
   const qualityColor = qualityScore >= 85 ? "#22c55e" : qualityScore >= 70 ? "#eab308" : "#ef4444";
@@ -2578,7 +2784,7 @@ export default function Tickets() {
   const tabItems = [
     { key: "tickets", label: "Tickets", children: <TicketsList /> },
     ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
-    ...(isAdmin ? [{ key: "officer-report", label: "Reporting", children: <OfficerReport /> }] : []),
+    ...(isAdmin ? [{ key: "officer-report", label: "Reporting", children: <ReportingContainer /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
     ...(isAdmin ? [{ key: "audit", label: "Enforcement Audit", children: <EnforcementAudit /> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
