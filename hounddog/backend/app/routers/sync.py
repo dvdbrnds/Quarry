@@ -518,6 +518,7 @@ class RecentTicketEntry(BaseModel):
     lot: str
     issued_at: datetime
     officer_email: str | None = None
+    violation_type: str | None = None
 
 
 class SyncRecentTicketsResponse(BaseModel):
@@ -546,6 +547,7 @@ async def sync_recent_tickets(
                 lot=t.lot or "",
                 issued_at=t.issued_at,
                 officer_email=t.officer_email,
+                violation_type=t.violation_type,
             )
             for t in tickets
         ],
@@ -741,18 +743,19 @@ async def _upload_ticket_impl(
 
     officer_id = ticket.officer_email or ticket.officer_name or device.name
 
-    # Duplicate ticket prevention: reject if same plate has an open ticket
-    # within the last 24 hours (any lot — prevents re-ticketing residents
-    # and vehicles that moved between lots)
+    # 24-hour grace period: same plate + same violation type can't be cited
+    # twice within 24 hours. Different violations on the same plate are
+    # allowed (e.g. "No Permit" at 9am and "Nose In" at 10am are fine).
     from datetime import timedelta as _td
     dupe_cutoff = datetime.now(timezone.utc) - _td(hours=24)
-    dupe_result = await db.execute(
-        select(Ticket).where(
-            Ticket.plate == ticket.plate.upper(),
-            Ticket.issued_at >= dupe_cutoff,
-            Ticket.status.notin_(["voided", "paid"]),
-        ).limit(1)
+    dupe_query = select(Ticket).where(
+        Ticket.plate == ticket.plate.upper(),
+        Ticket.issued_at >= dupe_cutoff,
+        Ticket.status.notin_(["voided", "paid"]),
     )
+    if primary_code:
+        dupe_query = dupe_query.where(Ticket.violation_type == primary_code)
+    dupe_result = await db.execute(dupe_query.limit(1))
     existing_ticket = dupe_result.scalar()
     if existing_ticket:
         payment_url = f"{settings.student_facing_url}/pay?ticket={existing_ticket.id}" if settings.student_facing_url else ""
