@@ -670,7 +670,7 @@ async def officer_report(
     }
 
 
-_OPERATOR_REPORT_PREFIXES = {"dillardv", "brandsesd"}
+_OPERATOR_REPORT_PREFIXES = {"dillardv", "brandesd"}
 
 
 @router.get("/operator-report")
@@ -679,10 +679,12 @@ async def operator_report(
     user: OktaUser = Depends(require_admin()),
     time_range: str = Query("30d"),
 ):
-    """Restricted to chief and system admin only."""
-    email_prefix = user.email.lower().split("@")[0]
-    if email_prefix not in _OPERATOR_REPORT_PREFIXES:
-        raise HTTPException(403, "This report is restricted")
+    """Restricted to chief and super admin only."""
+    # Super admins always have access; otherwise check the allowlist
+    if not user.is_admin:
+        email_prefix = user.email.lower().split("@")[0]
+        if email_prefix not in _OPERATOR_REPORT_PREFIXES:
+            raise HTTPException(403, "This report is restricted")
 
     now = datetime.now(timezone.utc)
     cutoff = _resolve_range(time_range, now)
