@@ -38,11 +38,15 @@ COPY --from=frontend-build /app/dist /var/www/html
 COPY nginx.conf /etc/nginx/sites-available/default
 COPY supervisord.conf /etc/supervisor/conf.d/quarry.conf
 
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 RUN mkdir -p /app/uploads && \
     sed -i 's|/run/nginx.pid|/run/nginx.pid|' /etc/nginx/nginx.conf && \
     sed -i 's|pid /var/run/nginx.pid|pid /run/nginx.pid|' /etc/nginx/nginx.conf && \
     chown -R appuser:appuser /app /var/www/html /var/log/nginx /var/lib/nginx /run /etc/nginx && \
-    chmod 755 /var/log/nginx /var/lib/nginx /run
+    chmod 755 /var/log/nginx /var/lib/nginx /run && \
+    chmod 666 /etc/resolv.conf
 
 EXPOSE 3200
 
@@ -51,4 +55,5 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 \
 
 USER appuser
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/quarry.conf"]
