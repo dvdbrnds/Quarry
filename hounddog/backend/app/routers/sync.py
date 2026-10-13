@@ -743,15 +743,17 @@ async def _upload_ticket_impl(
 
     officer_id = ticket.officer_email or ticket.officer_name or device.name
 
-    # 24-hour grace period: same plate + same violation type can't be cited
-    # twice within 24 hours. Different violations on the same plate are
-    # allowed (e.g. "No Permit" at 9am and "Nose In" at 10am are fine).
+    # Duplicate prevention: same plate + same violation type + same lot
+    # within 24 hours = the car hasn't moved, don't double-ticket.
+    # Different lot = the car moved and re-parked, allow a new ticket.
+    # Different violation type = always allowed.
     from datetime import timedelta as _td
     dupe_cutoff = datetime.now(timezone.utc) - _td(hours=24)
     dupe_query = select(Ticket).where(
         Ticket.plate == ticket.plate.upper(),
         Ticket.issued_at >= dupe_cutoff,
         Ticket.status.notin_(["voided", "paid"]),
+        Ticket.lot == (ticket.lot or ""),
     )
     if primary_code:
         dupe_query = dupe_query.where(Ticket.violation_type == primary_code)
