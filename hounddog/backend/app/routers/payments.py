@@ -2443,6 +2443,50 @@ async def export_payments(
             p.created_at.isoformat() if p.created_at else "",
         ])
 
+    # ── Append Stripe refunds ──────────────────────────────────────────
+    import stripe as _stripe_csv
+    if settings.stripe_secret_key:
+        _stripe_csv.api_key = settings.stripe_secret_key
+        try:
+            refund_params: dict = {"limit": 100, "expand": ["data.charge"]}
+            all_refunds: list = []
+            has_more = True
+            while has_more:
+                refund_list = _stripe_csv.Refund.list(**refund_params)
+                all_refunds.extend(refund_list.data)
+                has_more = refund_list.has_more
+                if has_more and refund_list.data:
+                    refund_params["starting_after"] = refund_list.data[-1].id
+
+            for ref in all_refunds:
+                ref_amount = Decimal(ref.amount) / 100
+                ref_dt = datetime.fromtimestamp(ref.created, tz=timezone.utc)
+                charge = getattr(ref, "charge", None)
+                charge_id = charge.id if hasattr(charge, "id") else (ref.charge if isinstance(ref.charge, str) else "")
+                charge_md = charge.metadata.to_dict() if hasattr(charge, "metadata") and charge.metadata else {}
+                ref_ptype = charge_md.get("type", "")
+                is_permit_refund = ref_ptype in PERMIT_PAYMENT_TYPES
+
+                writer.writerow([
+                    ref.id,
+                    charge_md.get("ticket_id", ""),
+                    f"-{ref_amount}",
+                    "refund",
+                    f"refund_{ref_ptype}" if ref_ptype else "refund",
+                    charge_id,
+                    "",
+                    charge_md.get("payer_name", charge_md.get("student_name", "")),
+                    charge_md.get("student_email", charge_md.get("email", "")),
+                    charge_md.get("plate", ""),
+                    f"Refund — {ref.reason or 'requested_by_customer'}",
+                    _revenue_gl(is_permit_refund),
+                    ref_dt.isoformat(),
+                    ref_dt.isoformat(),
+                ])
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            logger.error("Failed to fetch Stripe refunds for CSV export: %s", e)
+
     output.seek(0)
     from fastapi.responses import StreamingResponse
     return StreamingResponse(
@@ -2994,6 +3038,77 @@ async def export_oracle_gl(
             revenue_string, "", f"{gross:.2f}",
             description, ref_id, ticket_ref, line_method, pid_str, tid_str,
         )
+
+    # ── Refund entries (reverse journal lines) ────────────────────────────
+    # Fetch refunds from Stripe for the date range and write reverse entries:
+    #   1. Credit: Net cash (reduce bank balance)
+    #   2. Credit: Stripe fee reversal (fee returned by Stripe, negative)
+    #   3. Debit: Revenue reversal (reduce revenue)
+    import stripe as _stripe_mod
+    if settings.stripe_secret_key:
+        _stripe_mod.api_key = settings.stripe_secret_key
+        try:
+            refund_params: dict = {"limit": 100}
+            if since:
+                refund_params["created"] = {"gte": int(datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc).timestamp())}
+            if until:
+                until_ts = int(datetime.combine(until + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp())
+                if "created" in refund_params:
+                    refund_params["created"]["lte"] = until_ts
+                else:
+                    refund_params["created"] = {"lte": until_ts}
+            refund_params["expand"] = ["data.charge", "data.charge.balance_transaction"]
+
+            all_refunds = []
+            has_more = True
+            while has_more:
+                refund_list = _stripe_mod.Refund.list(**refund_params)
+                all_refunds.extend(refund_list.data)
+                has_more = refund_list.has_more
+                if has_more and refund_list.data:
+                    refund_params["starting_after"] = refund_list.data[-1].id
+
+            for ref in all_refunds:
+                ref_amount = Decimal(ref.amount) / 100
+                ref_date = datetime.fromtimestamp(ref.created, tz=timezone.utc).strftime("%Y-%m-%d")
+                ref_id = ref.id  # re_xxx
+                charge = getattr(ref, "charge", None)
+                charge_id = charge.id if hasattr(charge, "id") else (ref.charge if isinstance(ref.charge, str) else "")
+
+                # Determine if this was a permit or citation refund from charge metadata
+                charge_md = charge.metadata.to_dict() if hasattr(charge, "metadata") and charge.metadata else {}
+                ref_ptype = charge_md.get("type", "")
+                is_permit_refund = ref_ptype in PERMIT_PAYMENT_TYPES
+                category = "Permit Refund" if is_permit_refund else "Citation Refund"
+                description = f"Refund — {charge_md.get('description', category)}"
+                header_name = f"{settings.gl_source}-{ref_date}"
+
+                revenue_acct = settings.gl_account_permits if is_permit_refund else settings.gl_account_citations
+                revenue_activity = settings.gl_activity_permits if is_permit_refund else settings.gl_activity_citations
+                revenue_string = _revenue_gl(is_permit_refund)
+
+                # Line 1: Credit — Net cash (money leaving the bank)
+                _write_row(
+                    ref_date, header_name, f"CR-REFUND-CASH-{ref_id[:12]}",
+                    settings.gl_fund, settings.gl_org_net_cash,
+                    settings.gl_account_net_cash, settings.gl_activity_zero,
+                    net_cash_string, "", f"{ref_amount:.2f}",
+                    description, ref_id, charge_id,
+                    "refund", ref_id, "",
+                )
+
+                # Line 2: Debit — Revenue reversal
+                _write_row(
+                    ref_date, header_name, f"DR-REFUND-REV-{ref_id[:12]}",
+                    settings.gl_fund, settings.gl_org,
+                    revenue_acct, revenue_activity,
+                    revenue_string, f"{ref_amount:.2f}", "",
+                    description, ref_id, charge_id,
+                    "refund", ref_id, "",
+                )
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            logger.error("Failed to fetch Stripe refunds for GL export: %s", e)
 
     output.seek(0)
     filename = f"quarry_gl_journal_{batch_date}.csv"
