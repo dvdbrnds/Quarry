@@ -333,9 +333,37 @@ async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Dep
         total_fine_cents * settings.citation_processing_fee_pct / 100
     ) + settings.citation_processing_fee_fixed_cents
 
-    ticket_ids_str = ",".join(str(t.id) for t in tickets)
+    all_ticket_ids = [str(t.id) for t in tickets]
     ticket_refs = ", ".join(t.ticket_number or str(t.id)[:8].upper() for t in tickets)
     plates = ", ".join(sorted(set(t.plate for t in tickets)))
+    if len(plates) > 500:
+        plates = plates[:497] + "..."
+
+    # Stripe metadata values max 500 chars — split ticket IDs across
+    # multiple keys if needed (each UUID is 36 chars + comma)
+    def _chunk_ids(ids: list[str], max_len: int = 500) -> dict[str, str]:
+        chunks: dict[str, str] = {}
+        current: list[str] = []
+        current_len = 0
+        chunk_idx = 0
+        for tid in ids:
+            add_len = len(tid) + (1 if current else 0)  # +1 for comma
+            if current_len + add_len > max_len and current:
+                key = "ticket_ids" if chunk_idx == 0 else f"ticket_ids_{chunk_idx}"
+                chunks[key] = ",".join(current)
+                current = [tid]
+                current_len = len(tid)
+                chunk_idx += 1
+            else:
+                current.append(tid)
+                current_len += add_len
+        if current:
+            key = "ticket_ids" if chunk_idx == 0 else f"ticket_ids_{chunk_idx}"
+            chunks[key] = ",".join(current)
+        return chunks
+
+    ticket_id_chunks = _chunk_ids(all_ticket_ids)
+    ticket_ids_str = ",".join(all_ticket_ids)
 
     line_items = []
     for t in tickets:
@@ -377,7 +405,7 @@ async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Dep
                     settings.gl_fund, settings.gl_org,
                     settings.gl_account_citations, settings.gl_activity_citations,
                 ),
-                "ticket_ids": ticket_ids_str,
+                **ticket_id_chunks,
                 "ticket_count": str(len(tickets)),
                 "total_fines": str(sum(t.fine_amount for t in tickets)),
                 "plates": plates,
@@ -386,7 +414,7 @@ async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Dep
         },
         success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}{data.cancel_url}",
-        metadata={"ticket_ids": ticket_ids_str, "type": "bulk_ticket_payment"},
+        metadata={**ticket_id_chunks, "type": "bulk_ticket_payment"},
     )
 
     for t in tickets:
@@ -891,7 +919,13 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
 
 async def _handle_bulk_ticket_payment(session: dict, metadata: dict, db: AsyncSession) -> bool:
     """Handle payment for multiple tickets in a single checkout session."""
-    ticket_ids_str = metadata.get("ticket_ids", "")
+    # Reassemble ticket IDs that may be split across ticket_ids, ticket_ids_1, etc.
+    parts = [metadata.get("ticket_ids", "")]
+    idx = 1
+    while f"ticket_ids_{idx}" in metadata:
+        parts.append(metadata[f"ticket_ids_{idx}"])
+        idx += 1
+    ticket_ids_str = ",".join(p for p in parts if p)
     if not ticket_ids_str:
         return False
 
