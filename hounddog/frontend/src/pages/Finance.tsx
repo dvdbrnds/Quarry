@@ -76,8 +76,8 @@ const METHOD_LABELS: Record<string, string> = {
 
 const fmtDollars = (val: string | number) => `$${Number(val).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
-function exportStripeGl(transactions: StripeTransaction[]) {
-  const batchDate = dayjs().format("YYYY-MM-DD");
+function exportStripeGl(transactions: StripeTransaction[], fromDate?: string | null, toDate?: string | null) {
+    const batchDate = dayjs().format("YYYY-MM-DD");
   const batchName = `QUARRY-${batchDate}`;
   const LEDGER = "Moravian Primary Ledger";
   const SOURCE = "QUARRY";
@@ -167,12 +167,59 @@ function exportStripeGl(transactions: StripeTransaction[]) {
     ]);
   }
 
+  // Refund reverse entries — for transactions with amount_refunded > 0
+  for (const t of transactions) {
+    const refunded = Number(t.amount_refunded);
+    if (!refunded || refunded <= 0) continue;
+
+    const m = t.metadata || {};
+    const acctDate = dayjs(t.created).format("YYYY-MM-DD");
+    const headerName = `${SOURCE}-${acctDate}`;
+    const refId = `REF-${t.id.slice(0, 12)}`;
+
+    const glFund = m.gl_fund || "1110000";
+    const glOrg = m.gl_org || "3006";
+    const glAccount = m.gl_account || "43002";
+    const glActivity = m.gl_activity || "1068";
+    const seg5 = "0000000";
+    const seg6 = "00000";
+
+    const ptype = m.type || "";
+    const isPermit = ptype.includes("permit");
+    const description = isPermit
+      ? `REFUND — Parking permit — ${m.permit_type_label || m.permit_type_code || "permit"} ${m.plate || ""}`.trim()
+      : `REFUND — Citation #${m.ticket_ref || t.id.slice(0, 8).toUpperCase()} — ${m.plate || ""}`.trim();
+
+    const netCashString = [glFund, "0000", "10005", "0000", seg5, seg6].join("-");
+    const glString = m.gl_string || [glFund, glOrg, glAccount, glActivity, seg5, seg6].join("-");
+
+    // Reverse Line 1: Credit — Net cash (money leaving bank)
+    rows.push([
+      LEDGER, acctDate, SOURCE, CATEGORY, "USD", batchName, headerName,
+      `CR-REFUND-CASH-${refId}`,
+      glFund, "0000", "10005", "0000", seg5, seg6,
+      netCashString, "", refunded.toFixed(2),
+      description, refId, m.ticket_ref || "", ptype, t.id, "",
+    ]);
+
+    // Reverse Line 2: Debit — Revenue reversal
+    rows.push([
+      LEDGER, acctDate, SOURCE, CATEGORY, "USD", batchName, headerName,
+      `DR-REFUND-REV-${refId}`,
+      glFund, glOrg, glAccount, glActivity, seg5, seg6,
+      glString, refunded.toFixed(2), "",
+      description, refId, m.ticket_ref || "", ptype, t.id, "",
+    ]);
+  }
+
   // Generate and download CSV
   const csv = rows.map(r => r.map(c => `"${(c || "").replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `quarry_gl_journal_${batchDate}.csv`;
+  const fromStr = fromDate || "start";
+  const toStr = toDate || batchDate;
+  a.download = `quarry_gl_journal_${fromStr}_to_${toStr}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -334,7 +381,11 @@ export default function Finance() {
       message.warning("No transactions in the selected date range");
       return;
     }
-    exportStripeGl(txns);
+    exportStripeGl(
+      txns,
+      glFrom ? glFrom.format("YYYY-MM-DD") : null,
+      glTo ? glTo.format("YYYY-MM-DD") : null,
+    );
   }
 
   const citationRevenue = report?.by_payment_type?.ticket_payment;
