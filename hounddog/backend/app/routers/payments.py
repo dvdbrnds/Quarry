@@ -3111,7 +3111,9 @@ async def export_oracle_gl(
             logger.error("Failed to fetch Stripe refunds for GL export: %s", e)
 
     output.seek(0)
-    filename = f"quarry_gl_journal_{batch_date}.csv"
+    since_str = since.isoformat() if since else "start"
+    until_str = until.isoformat() if until else batch_date
+    filename = f"quarry_gl_journal_{since_str}_to_{until_str}.csv"
     return StreamingResponse(
         output,
         media_type="text/csv",
