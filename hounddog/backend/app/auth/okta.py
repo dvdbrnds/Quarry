@@ -112,9 +112,20 @@ class OktaUser:
     @property
     def is_staff(self) -> bool:
         """True for Moravian faculty/staff employees (permit buyers), not operators.
-        Only matches explicit groups in FACULTY_STAFF_OKTA_GROUPS — no fuzzy matching
-        to prevent students in groups like 'Student Staff' from getting access."""
-        return bool(set(self.groups) & FACULTY_STAFF_OKTA_GROUPS)
+        Matches explicit groups in FACULTY_STAFF_OKTA_GROUPS first, then falls back
+        to checking for 'faculty' or 'staff' in group names — but excludes student
+        groups that contain 'staff' (e.g. 'Student Staff', 'Work-Study Staff')."""
+        if set(self.groups) & FACULTY_STAFF_OKTA_GROUPS:
+            return True
+        # Fuzzy fallback — catches groups like "_MU - Adjunct Faculty" etc.
+        _STUDENT_NOISE = {"student", "work-study", "workstudy"}
+        for g in self.groups:
+            gl = g.lower()
+            if any(noise in gl for noise in _STUDENT_NOISE):
+                continue
+            if "faculty" in gl or "staff" in gl:
+                return True
+        return False
 
     @property
     def role(self) -> str:

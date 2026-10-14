@@ -1,5 +1,6 @@
 """Staff/faculty self-service vehicle enrollment — no lottery, no cost."""
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 
@@ -9,7 +10,9 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated
+from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, FACULTY_STAFF_OKTA_GROUPS
+
+logger = logging.getLogger(__name__)
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -86,6 +89,11 @@ async def enroll_vehicle(
 ):
     """Register a vehicle — creates a permit immediately (no lottery, no cost)."""
     if not user.is_staff and not user.is_office:
+        logger.warning(
+            "Staff permit denied for %s (sub=%s) — groups: %s | matched faculty/staff: %s",
+            user.email, user.sub, user.groups,
+            set(user.groups) & FACULTY_STAFF_OKTA_GROUPS,
+        )
         raise HTTPException(
             403,
             "Faculty/staff permits are only available to Moravian employees. "
