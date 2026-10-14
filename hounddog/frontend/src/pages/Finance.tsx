@@ -249,6 +249,7 @@ export default function Finance() {
   const [glTo, setGlTo] = useState<dayjs.Dayjs | null>(null);
   const [stripeType, setStripeType] = useState("");
   const [stripePermitType, setStripePermitType] = useState("");
+  const [stripeViolationType, setStripeViolationType] = useState("");
   const [stripeSearch, setStripeSearch] = useState("");
   const [stripeStatus, setStripeStatus] = useState("succeeded");
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
@@ -525,6 +526,10 @@ export default function Finance() {
         const label = t.metadata?.permit_type_label || t.metadata?.permit_type_code || "";
         if (label !== stripePermitType) return false;
       }
+      if (stripeViolationType) {
+        const vc = t.metadata?.violation_code || "";
+        if (vc !== stripeViolationType) return false;
+      }
       if (q) {
         const hay = [
           t.customer_name, t.customer_email, t.description, t.id,
@@ -535,7 +540,7 @@ export default function Finance() {
       }
       return true;
     });
-  }, [stripe, glFrom, glTo, stripeType, stripePermitType, stripeSearch, stripeStatus]);
+  }, [stripe, glFrom, glTo, stripeType, stripePermitType, stripeViolationType, stripeSearch, stripeStatus]);
 
   const permitTypeOptions = useMemo(() => {
     const labels = new Set<string>();
@@ -546,11 +551,20 @@ export default function Finance() {
     return [...labels].sort().map((v) => ({ label: v, value: v }));
   }, [stripe]);
 
+  const violationTypeOptions = useMemo(() => {
+    const codes = new Set<string>();
+    for (const t of stripe?.transactions || []) {
+      const vc = t.metadata?.violation_code;
+      if (vc) codes.add(vc);
+    }
+    return [...codes].sort().map((v) => ({ label: v.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), value: v }));
+  }, [stripe]);
+
   const bulkRefundIds = selectedRowKeys.length > 0
     ? selectedRowKeys
     : filteredStripe.map((t) => t.id);
 
-  const stripeFiltersActive = !!(glFrom || glTo || stripeType || stripePermitType || stripeSearch || (stripeStatus && stripeStatus !== "succeeded"));
+  const stripeFiltersActive = !!(glFrom || glTo || stripeType || stripePermitType || stripeViolationType || stripeSearch || (stripeStatus && stripeStatus !== "succeeded"));
 
   const ov = stripe?.overview;
 
@@ -603,7 +617,7 @@ export default function Finance() {
                 <Space className="mb-4" wrap>
                   <Select
                     value={stripeType || undefined}
-                    onChange={(v) => setStripeType(v || "")}
+                    onChange={(v) => { setStripeType(v || ""); setStripePermitType(""); setStripeViolationType(""); }}
                     placeholder="All types"
                     allowClear
                     style={{ width: 140 }}
@@ -613,6 +627,7 @@ export default function Finance() {
                       { label: "Citation", value: "ticket_payment" },
                     ]}
                   />
+                  {(!stripeType || stripeType === "permit" || stripeType === "lottery") && (
                   <Select
                     value={stripePermitType || undefined}
                     onChange={(v) => setStripePermitType(v || "")}
@@ -623,6 +638,19 @@ export default function Finance() {
                     style={{ width: 220 }}
                     options={permitTypeOptions}
                   />
+                  )}
+                  {(!stripeType || stripeType === "ticket_payment") && (
+                  <Select
+                    value={stripeViolationType || undefined}
+                    onChange={(v) => setStripeViolationType(v || "")}
+                    placeholder="All violation types"
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    style={{ width: 220 }}
+                    options={violationTypeOptions}
+                  />
+                  )}
                   <Select
                     value={stripeStatus || undefined}
                     onChange={(v) => setStripeStatus(v || "")}
@@ -651,6 +679,7 @@ export default function Finance() {
                       onClick={() => {
                         setStripeType("");
                         setStripePermitType("");
+                        setStripeViolationType("");
                         setStripeSearch("");
                         setStripeStatus("succeeded");
                         setGlFrom(null);
