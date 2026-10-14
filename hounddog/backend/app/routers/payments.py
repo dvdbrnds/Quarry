@@ -1500,13 +1500,23 @@ async def revenue_report(
         await db.execute(select(func.sum(Ticket.fine_amount)))
     ).scalar() or Decimal(0)
 
+    # Total collected across all payment types (citations + permits)
     total_collected = (
         await db.execute(select(func.sum(Payment.amount)))
     ).scalar() or Decimal(0)
 
-    total_outstanding = total_fines - total_collected
+    # Citation-only collection for rate and outstanding calculations
+    citation_collected = (
+        await db.execute(
+            select(func.sum(Payment.amount)).where(
+                Payment.payment_type == "ticket_payment"
+            )
+        )
+    ).scalar() or Decimal(0)
 
-    rate = float(total_collected / total_fines * 100) if total_fines > 0 else 0.0
+    total_outstanding = total_fines - citation_collected
+
+    rate = float(citation_collected / total_fines * 100) if total_fines > 0 else 0.0
 
     method_result = await db.execute(
         select(Payment.method, func.sum(Payment.amount)).group_by(Payment.method)
