@@ -431,8 +431,15 @@ export default function Finance() {
         const plate = t.metadata?.plate;
         const permitLabel = t.metadata?.permit_type_label;
         const ticketRef = t.metadata?.ticket_ref;
+        const violationCode = t.metadata?.violation_code;
         if (ptype === "ticket_payment") {
-          return <span>{ticketRef ? `Citation #${ticketRef}` : "Citation"}{plate ? <span className="text-ink-mute"> — {plate}</span> : ""}</span>;
+          return (
+            <span>
+              {ticketRef ? `Citation #${ticketRef}` : "Citation"}
+              {violationCode ? <Tag color="red" style={{ fontSize: 10, marginLeft: 4, lineHeight: "14px", padding: "0 4px" }}>{violationCode.replace(/_/g, " ")}</Tag> : ""}
+              {plate ? <span className="text-ink-mute"> — {plate}</span> : ""}
+            </span>
+          );
         }
         if (ptype === "permit_purchase" || ptype === "standalone_permit_purchase" || ptype === "lottery_permit" || ptype === "lottery_v2_permit" || ptype === "direct_permit_purchase") {
           return <span>{permitLabel || "Permit"}{plate ? <span className="text-ink-mute"> — {plate}</span> : ""}</span>;
@@ -446,8 +453,20 @@ export default function Finance() {
       render: (_, t) => t.metadata?.plate ? <span className="font-mono text-xs font-semibold">{t.metadata.plate}</span> : <span className="text-ink-mute">—</span>,
     },
     {
-      title: "Amount", dataIndex: "amount", key: "amount", align: "right",
-      render: v => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
+      title: "Amount", dataIndex: "amount", key: "amount", align: "right", width: 120,
+      render: (v: string, t: StripeTransaction) => {
+        const refunded = Number(t.amount_refunded);
+        return (
+          <span>
+            <span className="font-mono font-medium">{fmtDollars(v)}</span>
+            {refunded > 0 && (
+              <Tooltip title={`${fmtDollars(refunded)} refunded`}>
+                <Tag color="orange" style={{ fontSize: 10, lineHeight: "14px", padding: "0 4px", marginLeft: 4 }}>R</Tag>
+              </Tooltip>
+            )}
+          </span>
+        );
+      },
     },
     {
       title: <Tooltip title="Stripe charges 2.9% + $0.30 per successful card transaction"><span className="cursor-help border-b border-dotted border-gray-400">Fee</span></Tooltip>,
@@ -490,17 +509,22 @@ export default function Finance() {
       render: d => fmtDateTimeCompact(d),
     },
     {
-      title: "Type", dataIndex: "payment_type", key: "payment_type",
+      title: "Type", dataIndex: "payment_type", key: "payment_type", width: 110,
       render: ptype => <Tag color={TYPE_COLORS[ptype] || "default"}>{TYPE_LABELS[ptype] || ptype || "—"}</Tag>,
     },
     { title: "Description", dataIndex: "description", key: "description", ellipsis: true, render: v => v || "—" },
-    { title: "Payer", dataIndex: "payer_name", key: "payer_name", ellipsis: true, render: v => v || "—" },
+    { title: "Payer", dataIndex: "payer_name", key: "payer_name", ellipsis: true, width: 160, render: v => v || "—" },
+    { title: "Email", dataIndex: "payer_email", key: "payer_email", ellipsis: true, width: 200, render: v => v ? <span className="text-xs">{v}</span> : <span className="text-gray-300">—</span> },
     {
-      title: "Amount", dataIndex: "amount", key: "amount", align: "right",
+      title: "Plate", dataIndex: "plate", key: "plate", width: 100,
+      render: v => v ? <span className="font-mono text-xs font-semibold">{v}</span> : <span className="text-gray-300">—</span>,
+    },
+    {
+      title: "Amount", dataIndex: "amount", key: "amount", align: "right", width: 100,
       render: v => <span className="font-mono font-medium">{fmtDollars(v)}</span>,
     },
     {
-      title: "Method", dataIndex: "method", key: "method",
+      title: "Method", dataIndex: "method", key: "method", width: 90,
       render: m => <Tag color={m?.startsWith("online") ? "purple" : "gold"}>{METHOD_LABELS[m] || m}</Tag>,
     },
     {
@@ -568,14 +592,31 @@ export default function Finance() {
 
   const ov = stripe?.overview;
 
+  // Filtered summary — recalculates when filters change
+  const filteredSummary = useMemo(() => {
+    const txns = filteredStripe;
+    let volume = 0, fees = 0, net = 0, refunded = 0, succeeded = 0, refundedCount = 0, failed = 0;
+    for (const t of txns) {
+      const amt = Number(t.amount);
+      const fee = Number(t.fee);
+      const n = Number(t.net) || (amt - fee);
+      const ref = Number(t.amount_refunded);
+      volume += amt;
+      fees += fee;
+      net += n;
+      if (ref > 0) { refunded += ref; refundedCount++; }
+      if (t.status === "succeeded") succeeded++;
+      if (t.status === "failed") failed++;
+    }
+    return { volume, fees, net, refunded, refundedCount, succeeded, failed, total: txns.length };
+  }, [filteredStripe]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Finance & Reconciliation</h2>
         <Space>
           <Button onClick={() => downloadWithAuth("/api/payments/export/csv", "payments.csv")}>Export CSV</Button>
-          <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} size="small" />
-          <DatePicker placeholder="To" value={glTo} onChange={setGlTo} size="small" />
           <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
         </Space>
       </div>
@@ -614,88 +655,126 @@ export default function Finance() {
                     <Button size="small" onClick={() => loadStripe(true)} loading={stripeLoading}>Full Sync</Button>
                   </Space>
                 </div>
-                <Space className="mb-4" wrap>
-                  <Select
-                    value={stripeType || undefined}
-                    onChange={(v) => { setStripeType(v || ""); setStripePermitType(""); setStripeViolationType(""); }}
-                    placeholder="All types"
-                    allowClear
-                    style={{ width: 140 }}
-                    options={[
-                      { label: "Permit", value: "permit" },
-                      { label: "Lottery", value: "lottery" },
-                      { label: "Citation", value: "ticket_payment" },
-                    ]}
-                  />
-                  {(!stripeType || stripeType === "permit" || stripeType === "lottery") && (
-                  <Select
-                    value={stripePermitType || undefined}
-                    onChange={(v) => setStripePermitType(v || "")}
-                    placeholder="All permit types"
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    style={{ width: 220 }}
-                    options={permitTypeOptions}
-                  />
-                  )}
-                  {(!stripeType || stripeType === "ticket_payment") && (
-                  <Select
-                    value={stripeViolationType || undefined}
-                    onChange={(v) => setStripeViolationType(v || "")}
-                    placeholder="All violation types"
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    style={{ width: 220 }}
-                    options={violationTypeOptions}
-                  />
-                  )}
-                  <Select
-                    value={stripeStatus || undefined}
-                    onChange={(v) => setStripeStatus(v || "")}
-                    placeholder="All statuses"
-                    allowClear
-                    style={{ width: 140 }}
-                    options={[
-                      { label: "Succeeded", value: "succeeded" },
-                      { label: "Failed", value: "failed" },
-                      { label: "Pending", value: "pending" },
-                      { label: "Canceled", value: "canceled" },
-                    ]}
-                  />
-                  <Input
-                    placeholder="Search name, email, plate"
-                    value={stripeSearch}
-                    onChange={(e) => setStripeSearch(e.target.value)}
-                    allowClear
-                    style={{ width: 220 }}
-                  />
-                  {stripeFiltersActive && (
-                    <Button
-                      type="link"
-                      danger
+
+                {/* Filter bar */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <Space className="w-full" wrap>
+                    <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} size="small" />
+                    <DatePicker placeholder="To" value={glTo} onChange={setGlTo} size="small" />
+                    <span className="border-l border-gray-300 h-5 mx-1" />
+                    <Select
+                      value={stripeType || undefined}
+                      onChange={(v) => { setStripeType(v || ""); setStripePermitType(""); setStripeViolationType(""); }}
+                      placeholder="All types"
+                      allowClear
                       size="small"
-                      onClick={() => {
-                        setStripeType("");
-                        setStripePermitType("");
-                        setStripeViolationType("");
-                        setStripeSearch("");
-                        setStripeStatus("succeeded");
-                        setGlFrom(null);
-                        setGlTo(null);
-                        setSelectedRowKeys([]);
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  )}
-                  {selectedRowKeys.length > 0 && (
-                    <Button type="link" size="small" onClick={() => setSelectedRowKeys([])}>
-                      Clear selection ({selectedRowKeys.length})
-                    </Button>
-                  )}
-                </Space>
+                      style={{ width: 130 }}
+                      options={[
+                        { label: "Permit", value: "permit" },
+                        { label: "Lottery", value: "lottery" },
+                        { label: "Citation", value: "ticket_payment" },
+                      ]}
+                    />
+                    {stripeType === "permit" || stripeType === "lottery" ? (
+                    <Select
+                      value={stripePermitType || undefined}
+                      onChange={(v) => setStripePermitType(v || "")}
+                      placeholder="All permit types"
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      size="small"
+                      style={{ width: 200 }}
+                      options={permitTypeOptions}
+                    />
+                    ) : stripeType === "ticket_payment" ? (
+                    <Select
+                      value={stripeViolationType || undefined}
+                      onChange={(v) => setStripeViolationType(v || "")}
+                      placeholder="All violation types"
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      size="small"
+                      style={{ width: 200 }}
+                      options={violationTypeOptions}
+                    />
+                    ) : null}
+                    <Select
+                      value={stripeStatus || undefined}
+                      onChange={(v) => setStripeStatus(v || "")}
+                      placeholder="All statuses"
+                      allowClear
+                      size="small"
+                      style={{ width: 130 }}
+                      options={[
+                        { label: "Succeeded", value: "succeeded" },
+                        { label: "Failed", value: "failed" },
+                        { label: "Pending", value: "pending" },
+                        { label: "Canceled", value: "canceled" },
+                      ]}
+                    />
+                    <Input.Search
+                      placeholder="Search name, email, plate…"
+                      value={stripeSearch}
+                      onChange={(e) => setStripeSearch(e.target.value)}
+                      allowClear
+                      size="small"
+                      style={{ width: 220 }}
+                    />
+                    {stripeFiltersActive && (
+                      <Button
+                        type="link"
+                        danger
+                        size="small"
+                        onClick={() => {
+                          setStripeType("");
+                          setStripePermitType("");
+                          setStripeViolationType("");
+                          setStripeSearch("");
+                          setStripeStatus("succeeded");
+                          setGlFrom(null);
+                          setGlTo(null);
+                          setSelectedRowKeys([]);
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
+                    {selectedRowKeys.length > 0 && (
+                      <Button type="link" size="small" onClick={() => setSelectedRowKeys([])}>
+                        Clear selection ({selectedRowKeys.length})
+                      </Button>
+                    )}
+                  </Space>
+                </div>
+
+                {/* Filtered summary strip — shows totals for current filter */}
+                {stripeFiltersActive && (
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+                    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-center">
+                      <div className="text-xs text-gray-500">Filtered Volume</div>
+                      <div className="font-mono font-bold text-green-700">{fmtDollars(filteredSummary.volume)}</div>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-center">
+                      <div className="text-xs text-gray-500">Fees</div>
+                      <div className="font-mono font-medium text-red-700">{fmtDollars(filteredSummary.fees)}</div>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-center">
+                      <div className="text-xs text-gray-500">Net</div>
+                      <div className="font-mono font-bold text-green-700">{fmtDollars(filteredSummary.net)}</div>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-center">
+                      <div className="text-xs text-gray-500">Refunded</div>
+                      <div className="font-mono font-medium">{fmtDollars(filteredSummary.refunded)}{filteredSummary.refundedCount > 0 ? <span className="text-xs text-gray-400 ml-1">({filteredSummary.refundedCount})</span> : ""}</div>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded px-3 py-2 text-center">
+                      <div className="text-xs text-gray-500">Transactions</div>
+                      <div className="font-mono font-bold">{filteredSummary.total}</div>
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-xs text-ink-mute mb-3">
                   This list is Stripe payments, not issued permits. Duplicate Charge / PaymentIntent / Checkout Session rows for the same payment are collapsed so a bulk refund cannot hit one student twice.
                 </p>
@@ -790,23 +869,27 @@ export default function Finance() {
           key: "quarry", label: "Quarry Payments (DB)",
           children: (
             <Card>
-              <Space className="mb-4" wrap>
-                <Select value={filterType || undefined} onChange={v => { setFilterType(v || ""); setListPage(1); }}
-                  placeholder="All Types" allowClear style={{ width: 140 }}
-                  options={[
-                    { label: "Citation", value: "ticket_payment" }, { label: "Permit", value: "permit_purchase" },
-                    { label: "Standalone Permit", value: "standalone_permit_purchase" }, { label: "Lottery", value: "lottery_permit" },
-                  ]} />
-                <Select value={filterMethod || undefined} onChange={v => { setFilterMethod(v || ""); setListPage(1); }}
-                  placeholder="All Methods" allowClear style={{ width: 130 }}
-                  options={[{ label: "Stripe", value: "online_card" }, { label: "Bursar", value: "bursar" }]} />
-                <DatePicker placeholder="From" value={filterDateFrom} onChange={v => { setFilterDateFrom(v); setListPage(1); }} />
-                <DatePicker placeholder="To" value={filterDateTo} onChange={v => { setFilterDateTo(v); setListPage(1); }} />
-                {(filterType || filterMethod || filterDateFrom || filterDateTo) && (
-                  <Button type="link" danger size="small"
-                    onClick={() => { setFilterType(""); setFilterMethod(""); setFilterDateFrom(null); setFilterDateTo(null); setListPage(1); }}>Clear filters</Button>
-                )}
-              </Space>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                <Space wrap>
+                  <DatePicker placeholder="From" value={filterDateFrom} onChange={v => { setFilterDateFrom(v); setListPage(1); }} size="small" />
+                  <DatePicker placeholder="To" value={filterDateTo} onChange={v => { setFilterDateTo(v); setListPage(1); }} size="small" />
+                  <span className="border-l border-gray-300 h-5 mx-1" />
+                  <Select value={filterType || undefined} onChange={v => { setFilterType(v || ""); setListPage(1); }}
+                    placeholder="All Types" allowClear size="small" style={{ width: 140 }}
+                    options={[
+                      { label: "Citation", value: "ticket_payment" }, { label: "Permit", value: "permit_purchase" },
+                      { label: "Standalone Permit", value: "standalone_permit_purchase" }, { label: "Lottery", value: "lottery_permit" },
+                      { label: "Lottery V2", value: "lottery_v2_permit" },
+                    ]} />
+                  <Select value={filterMethod || undefined} onChange={v => { setFilterMethod(v || ""); setListPage(1); }}
+                    placeholder="All Methods" allowClear size="small" style={{ width: 130 }}
+                    options={[{ label: "Stripe", value: "online_card" }, { label: "Bursar", value: "bursar" }]} />
+                  {(filterType || filterMethod || filterDateFrom || filterDateTo) && (
+                    <Button type="link" danger size="small"
+                      onClick={() => { setFilterType(""); setFilterMethod(""); setFilterDateFrom(null); setFilterDateTo(null); setListPage(1); }}>Clear filters</Button>
+                  )}
+                </Space>
+              </div>
               <Table dataSource={payments?.items || []} columns={paymentColumns} rowKey="id" size="small"
                 pagination={{ current: listPage, total: payments?.total || 0, pageSize: 15, onChange: setListPage, showSizeChanger: false, showTotal: t => `${t} payments` }}
                 locale={{ emptyText: <Empty description="No payments found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }} />
@@ -825,11 +908,11 @@ export default function Finance() {
                     <Card size="small"><Statistic title="Outstanding" value={Number(report.total_outstanding)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
                     <Card size="small"><Statistic title="Collection Rate" value={report.collection_rate} suffix="%" precision={1} /></Card>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 mb-8">
+                  <div className="grid grid-cols-2 gap-4 mb-6">
                     <Card size="small"><Statistic title="Citation Revenue" value={Number(citationRevenue || 0)} prefix="$" precision={2} valueStyle={{ color: "#b91c1c" }} /></Card>
                     <Card size="small"><Statistic title="Permit Revenue" value={permitRevenue} prefix="$" precision={2} valueStyle={{ color: "#15803d" }} /></Card>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <Card title="Revenue by Payment Method">
                       {(() => {
                         const txns = stripe?.transactions || [];
@@ -844,25 +927,106 @@ export default function Finance() {
                         }
                         const sorted = Object.entries(byBrand).sort((a, b) => b[1] - a[1]);
                         if (sorted.length === 0) return <Empty description="No Stripe data" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+                        const maxBrand = sorted[0]?.[1] || 1;
                         return <div className="space-y-2">{sorted.map(([brand, amount]) => (
-                          <div key={brand} className="flex justify-between items-center">
-                            <span className="text-sm">{brand}</span>
-                            <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
+                          <div key={brand}>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-sm">{brand}</span>
+                              <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width: `${(amount / maxBrand) * 100}%` }} />
+                            </div>
                           </div>
                         ))}</div>;
                       })()}
                     </Card>
-                    <Card title="Tickets by Status">
-                      {Object.entries(report.by_status).length === 0
-                        ? <Empty description="No tickets yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                        : <div className="space-y-2">{Object.entries(report.by_status).map(([status, count]) => (
-                            <div key={status} className="flex justify-between items-center">
-                              <span className="capitalize text-sm">{status.replace("_", " ")}</span>
-                              <span className="font-mono text-sm font-medium">{count}</span>
+                    <Card title="Revenue by Violation Type">
+                      {(() => {
+                        const txns = stripe?.transactions || [];
+                        const byViolation: Record<string, { amount: number; count: number }> = {};
+                        for (const t of txns) {
+                          if (t.status !== "succeeded") continue;
+                          const ptype = t.metadata?.type || "";
+                          if (ptype !== "ticket_payment") continue;
+                          const vc = t.metadata?.violation_code || "unknown";
+                          if (!byViolation[vc]) byViolation[vc] = { amount: 0, count: 0 };
+                          byViolation[vc].amount += Number(t.amount);
+                          byViolation[vc].count++;
+                        }
+                        const sorted = Object.entries(byViolation).sort((a, b) => b[1].amount - a[1].amount);
+                        if (sorted.length === 0) return <Empty description="No citation data" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+                        const maxV = sorted[0]?.[1].amount || 1;
+                        return <div className="space-y-2">{sorted.map(([vc, { amount, count }]) => (
+                          <div key={vc}>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-sm capitalize">{vc.replace(/_/g, " ")}<span className="text-gray-400 ml-1 text-xs">({count})</span></span>
+                              <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
                             </div>
-                          ))}</div>}
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="bg-red-400 h-1.5 rounded-full" style={{ width: `${(amount / maxV) * 100}%` }} />
+                            </div>
+                          </div>
+                        ))}</div>;
+                      })()}
+                    </Card>
+                    <Card title="Revenue by Permit Type">
+                      {(() => {
+                        const txns = stripe?.transactions || [];
+                        const byPermit: Record<string, { amount: number; count: number }> = {};
+                        for (const t of txns) {
+                          if (t.status !== "succeeded") continue;
+                          const ptype = t.metadata?.type || "";
+                          if (!PERMIT_TYPES.has(ptype) && !LOTTERY_TYPES.has(ptype)) continue;
+                          const label = t.metadata?.permit_type_label || t.metadata?.permit_type_code || "Unknown";
+                          if (!byPermit[label]) byPermit[label] = { amount: 0, count: 0 };
+                          byPermit[label].amount += Number(t.amount);
+                          byPermit[label].count++;
+                        }
+                        const sorted = Object.entries(byPermit).sort((a, b) => b[1].amount - a[1].amount);
+                        if (sorted.length === 0) return <Empty description="No permit data" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+                        const maxP = sorted[0]?.[1].amount || 1;
+                        return <div className="space-y-2">{sorted.map(([label, { amount, count }]) => (
+                          <div key={label}>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-sm">{label}<span className="text-gray-400 ml-1 text-xs">({count})</span></span>
+                              <span className="font-mono text-sm font-medium">{fmtDollars(amount)}</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="bg-blue-400 h-1.5 rounded-full" style={{ width: `${(amount / maxP) * 100}%` }} />
+                            </div>
+                          </div>
+                        ))}</div>;
+                      })()}
                     </Card>
                   </div>
+                  <Card title="Tickets by Status" className="mb-8">
+                    {Object.entries(report.by_status).length === 0
+                      ? <Empty description="No tickets yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                      : (() => {
+                          const entries = Object.entries(report.by_status).sort((a, b) => b[1] - a[1]);
+                          const maxCount = entries[0]?.[1] || 1;
+                          const STATUS_COLORS: Record<string, string> = {
+                            paid: "#15803d", open: "#b91c1c", voided: "#6b7280", appealed: "#d97706",
+                            escalated: "#dc2626", sent_to_collections: "#7c3aed",
+                          };
+                          return (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {entries.map(([status, count]) => (
+                                <div key={status} className="bg-gray-50 rounded-lg p-3">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="capitalize text-sm font-medium" style={{ color: STATUS_COLORS[status] || "#374151" }}>{status.replace(/_/g, " ")}</span>
+                                    <span className="font-mono text-sm font-bold">{count}</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div className="h-1.5 rounded-full" style={{ width: `${(count / maxCount) * 100}%`, backgroundColor: STATUS_COLORS[status] || "#9ca3af" }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                  </Card>
                 </>
               )}
               <Card title="Revenue Timeline" extra={
