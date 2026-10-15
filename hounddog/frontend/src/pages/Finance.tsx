@@ -617,13 +617,13 @@ export default function Finance() {
         <h2 className="text-2xl font-bold">Finance & Reconciliation</h2>
         <Space>
           <Button onClick={() => downloadWithAuth("/api/payments/export/csv", "payments.csv")}>Export CSV</Button>
-          <Button onClick={() => {
+          <Button type="primary" onClick={() => {
             const params = new URLSearchParams();
             if (glFrom) params.set("since", glFrom.format("YYYY-MM-DD"));
             if (glTo) params.set("until", glTo.format("YYYY-MM-DD"));
-            downloadWithAuth(`/api/payments/export/refunds?${params}`, `quarry_refunds.csv`);
-          }}>Export Refunds</Button>
-          <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
+            downloadWithAuth(`/api/payments/export/reconciliation?${params}`, `quarry_reconciliation.csv`);
+          }}>Export Reconciliation</Button>
+          <Button onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
         </Space>
       </div>
 
@@ -1053,11 +1053,26 @@ export default function Finance() {
           key: "tools", label: "Import / Export",
           children: (
             <div className="space-y-6">
+              <Card title="Reconciliation Export">
+                <p className="text-sm text-ink-mute mb-4">
+                  Exports all Stripe payments and refunds for bank deposit reconciliation. Refunds appear as separate rows with the actual refund date and negative amounts — matches Stripe's payout report line by line.
+                </p>
+                <Space>
+                  <DatePicker placeholder="From" value={glFrom} onChange={setGlFrom} size="small" />
+                  <DatePicker placeholder="To" value={glTo} onChange={setGlTo} size="small" />
+                  <Button type="primary" onClick={() => {
+                    const params = new URLSearchParams();
+                    if (glFrom) params.set("since", glFrom.format("YYYY-MM-DD"));
+                    if (glTo) params.set("until", glTo.format("YYYY-MM-DD"));
+                    downloadWithAuth(`/api/payments/export/reconciliation?${params}`, `quarry_reconciliation.csv`);
+                  }}>Export Reconciliation</Button>
+                </Space>
+              </Card>
               <Card title="Oracle GL Journal Export">
                 <p className="text-sm text-ink-mute mb-4">
-                  Exports the live Stripe transactions as a balanced Oracle GL journal. Use the date pickers in the page header to filter by date range.
+                  Exports the live Stripe transactions as a balanced Oracle GL journal (3-line debit/credit entries). Does not include refunds with correct dates — use the Reconciliation Export above for bank matching.
                 </p>
-                <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
+                <Button onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
               </Card>
               <Card title="Stripe Payment Backfill">
                 <p className="text-sm text-ink-mute mb-4">Pull all succeeded PaymentIntents from Stripe into the local payments table. Skips any already imported.</p>

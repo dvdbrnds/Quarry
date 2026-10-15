@@ -3165,6 +3165,163 @@ async def export_oracle_gl(
     )
 
 
+@router.get("/export/reconciliation")
+async def export_reconciliation(
+    since: date | None = None,
+    until: date | None = None,
+    user: OktaUser = Depends(require_admin()),
+):
+    """Export Stripe payments AND refunds for bank deposit reconciliation.
+
+    One unified CSV matching Stripe's payout report format:
+    - Payments as positive amounts with gross/fee/net
+    - Refunds as separate rows with negative amounts and the actual refund date
+    - Sorted by date so it lines up with bank deposits
+    """
+    import stripe as _stripe_recon
+    from fastapi.responses import StreamingResponse
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+    _stripe_recon.api_key = settings.stripe_secret_key
+
+    since_ts = int(datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc).timestamp()) if since else None
+    until_ts = int(datetime.combine(until + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp()) if until else None
+
+    # Fetch charges (payments)
+    rows: list[dict] = []
+    charge_params: dict = {"limit": 100, "expand": ["data.balance_transaction"]}
+    if since_ts:
+        charge_params["created"] = {"gte": since_ts}
+    if until_ts:
+        charge_params.setdefault("created", {})["lte"] = until_ts
+
+    has_more = True
+    while has_more:
+        charge_list = _stripe_recon.Charge.list(**charge_params)
+        for ch in charge_list.data:
+            if ch.status != "succeeded":
+                continue
+            bt = getattr(ch, "balance_transaction", None)
+            bt_id = bt.id if hasattr(bt, "id") else ""
+            fee = Decimal(str(bt.fee)) / 100 if hasattr(bt, "fee") else Decimal("0")
+            net = Decimal(str(bt.net)) / 100 if hasattr(bt, "net") else Decimal("0")
+            gross = Decimal(str(ch.amount)) / 100
+            md = ch.metadata.to_dict() if ch.metadata else {}
+            ptype = md.get("type", "")
+            plate = md.get("plate", "")
+            ticket_ref = md.get("ticket_ref", "")
+            permit_label = md.get("permit_type_label", md.get("permit_type_code", ""))
+
+            if "ticket" in ptype:
+                desc = f"Citation #{ticket_ref}" if ticket_ref else "Citation payment"
+            elif "permit" in ptype:
+                desc = f"Permit — {permit_label}" if permit_label else "Permit payment"
+            else:
+                desc = ch.description or "Payment"
+
+            rows.append({
+                "date": datetime.fromtimestamp(ch.created, tz=timezone.utc).strftime("%Y-%m-%d"),
+                "type": "payment",
+                "stripe_id": ch.id,
+                "balance_transaction_id": bt_id,
+                "gross": f"{gross:.2f}",
+                "fee": f"{fee:.2f}",
+                "net": f"{net:.2f}",
+                "category": "permit" if "permit" in ptype else "citation" if "ticket" in ptype else "other",
+                "description": desc,
+                "plate": plate,
+                "customer_email": ch.receipt_email or md.get("student_email", md.get("email", "")),
+                "customer_name": md.get("payer_name", md.get("student_name", "")),
+            })
+        has_more = charge_list.has_more
+        if has_more and charge_list.data:
+            charge_params["starting_after"] = charge_list.data[-1].id
+
+    # Fetch refunds (with correct refund dates)
+    refund_params: dict = {"limit": 100, "expand": ["data.charge", "data.balance_transaction"]}
+    if since_ts:
+        refund_params["created"] = {"gte": since_ts}
+    if until_ts:
+        refund_params.setdefault("created", {})["lte"] = until_ts
+
+    has_more = True
+    while has_more:
+        refund_list = _stripe_recon.Refund.list(**refund_params)
+        for ref in refund_list.data:
+            ref_amount = Decimal(ref.amount) / 100
+            charge = getattr(ref, "charge", None)
+            charge_id = charge.id if hasattr(charge, "id") else ""
+            charge_md = charge.metadata.to_dict() if hasattr(charge, "metadata") and charge.metadata else {}
+            bt = getattr(ref, "balance_transaction", None)
+            bt_id = bt.id if hasattr(bt, "id") else ""
+
+            ref_ptype = charge_md.get("type", "")
+            plate = charge_md.get("plate", "")
+            ticket_ref = charge_md.get("ticket_ref", "")
+            permit_label = charge_md.get("permit_type_label", charge_md.get("permit_type_code", ""))
+
+            if "ticket" in ref_ptype:
+                desc = f"REFUND — Citation #{ticket_ref}" if ticket_ref else "REFUND — Citation"
+            elif "permit" in ref_ptype:
+                desc = f"REFUND — Permit — {permit_label}" if permit_label else "REFUND — Permit"
+            else:
+                desc = f"REFUND — {getattr(ref, 'reason', '') or 'requested'}"
+
+            customer_email = ""
+            if hasattr(charge, "receipt_email"):
+                customer_email = charge.receipt_email or ""
+            if not customer_email:
+                customer_email = charge_md.get("student_email", charge_md.get("email", ""))
+
+            rows.append({
+                "date": datetime.fromtimestamp(ref.created, tz=timezone.utc).strftime("%Y-%m-%d"),
+                "type": "refund",
+                "stripe_id": ref.id,
+                "balance_transaction_id": bt_id,
+                "gross": f"-{ref_amount:.2f}",
+                "fee": "0.00",
+                "net": f"-{ref_amount:.2f}",
+                "category": "permit" if "permit" in ref_ptype else "citation" if "ticket" in ref_ptype else "other",
+                "description": desc,
+                "plate": plate,
+                "customer_email": customer_email,
+                "customer_name": charge_md.get("payer_name", charge_md.get("student_name", "")),
+            })
+        has_more = refund_list.has_more
+        if has_more and refund_list.data:
+            refund_params["starting_after"] = refund_list.data[-1].id
+
+    # Sort by date
+    rows.sort(key=lambda r: r["date"])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "date", "type", "stripe_id", "balance_transaction_id",
+        "gross", "fee", "net",
+        "category", "description", "plate",
+        "customer_email", "customer_name",
+    ])
+    for r in rows:
+        writer.writerow([
+            r["date"], r["type"], r["stripe_id"], r["balance_transaction_id"],
+            r["gross"], r["fee"], r["net"],
+            r["category"], r["description"], r["plate"],
+            r["customer_email"], r["customer_name"],
+        ])
+
+    output.seek(0)
+    since_str = since.isoformat() if since else "all"
+    until_str = until.isoformat() if until else date.today().isoformat()
+    filename = f"quarry_reconciliation_{since_str}_to_{until_str}.csv"
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/export/refunds")
 async def export_refunds(
     since: date | None = None,
