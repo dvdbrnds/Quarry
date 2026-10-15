@@ -1429,6 +1429,14 @@ async def void_ticket(
     if body and body.reason:
         ticket.void_reason = body.reason.strip()[:1024]
     await db.flush()
+
+    if ticket.plate:
+        try:
+            from ..services.escalation import check_and_resolve_on_payment
+            await check_and_resolve_on_payment(db, ticket.plate)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+
     await db.refresh(ticket)
     return ticket
 
@@ -1446,6 +1454,7 @@ async def bulk_void_tickets(
 
     voided = 0
     skipped = 0
+    plates_seen: set[str] = set()
     for tid in ids:
         try:
             ticket = await db.get(Ticket, uuid.UUID(tid))
@@ -1460,8 +1469,18 @@ async def bulk_void_tickets(
             continue
         ticket.status = "voided"
         voided += 1
+        if ticket.plate:
+            plates_seen.add(ticket.plate)
 
     await db.flush()
+
+    for plate in plates_seen:
+        try:
+            from ..services.escalation import check_and_resolve_on_payment
+            await check_and_resolve_on_payment(db, plate)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+
     return {"voided": voided, "skipped": skipped}
 
 
@@ -1604,6 +1623,14 @@ async def decide_appeal(
         ticket.status = "pending_payment"
 
     await db.flush()
+
+    if decision.decision == "approved" and ticket.plate:
+        try:
+            from ..services.escalation import check_and_resolve_on_payment
+            await check_and_resolve_on_payment(db, ticket.plate)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+
     await db.refresh(ticket)
     return ticket
 
