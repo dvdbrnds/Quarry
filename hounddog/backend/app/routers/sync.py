@@ -280,6 +280,120 @@ async def mark_emails_sent(
     return {"marked": marked, "submitted": len(ids)}
 
 
+@diagnostic_router.get("/email-reconcile-script")
+async def email_reconcile_script(
+    _user: OktaUser = Depends(require_admin()),
+):
+    """Return a Google Apps Script that extracts sent Citation IDs from Gmail
+    and POSTs them to the mark-sent endpoint."""
+    import secrets
+    # Generate a one-time token valid for this reconciliation
+    token = secrets.token_urlsafe(32)
+    # Store in module-level dict with expiry
+    _reconcile_tokens[token] = datetime.now(timezone.utc) + timedelta(minutes=30)
+    base_url = settings.public_url.rstrip("/")
+
+    script = f'''// === Quarry Email Reconciliation — Google Apps Script ===
+// Paste this into https://script.google.com and run extractAndPost()
+// This script searches your Sent folder for citation emails and
+// tells Quarry which ones were actually delivered.
+
+function extractAndPost() {{
+  var query = 'in:sent subject:"Parking Citation Issued" after:2026/09/18 before:2026/10/16';
+  var allIds = [];
+  var start = 0;
+  var batchSize = 500;
+
+  // Gmail search in batches (max 500 per call)
+  while (true) {{
+    var threads = GmailApp.search(query, start, batchSize);
+    if (threads.length === 0) break;
+    for (var i = 0; i < threads.length; i++) {{
+      var msgs = threads[i].getMessages();
+      for (var j = 0; j < msgs.length; j++) {{
+        var subject = msgs[j].getSubject();
+        var body = msgs[j].getPlainBody();
+        // Extract UUIDs from subject and body
+        var uuidPattern = /[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}/gi;
+        var matches = (subject + " " + body).match(uuidPattern);
+        if (matches) {{
+          for (var k = 0; k < matches.length; k++) {{
+            allIds.push(matches[k].toLowerCase());
+          }}
+        }}
+      }}
+    }}
+    start += batchSize;
+    Logger.log("Processed " + start + " threads so far, found " + allIds.length + " IDs...");
+  }}
+
+  // Deduplicate
+  var unique = allIds.filter(function(v, i, a) {{ return a.indexOf(v) === i; }});
+  Logger.log("Found " + unique.length + " unique Citation IDs in Gmail sent folder");
+
+  // POST to Quarry in chunks of 200
+  var chunkSize = 200;
+  var totalMarked = 0;
+  for (var c = 0; c < unique.length; c += chunkSize) {{
+    var chunk = unique.slice(c, c + chunkSize);
+    var response = UrlFetchApp.fetch("{base_url}/api/sync/email-mark-sent-token", {{
+      method: "POST",
+      contentType: "application/json",
+      payload: JSON.stringify({{ ids: chunk, token: "{token}" }}),
+      muteHttpExceptions: true
+    }});
+    var result = JSON.parse(response.getContentText());
+    Logger.log("Chunk " + (Math.floor(c/chunkSize)+1) + ": marked " + (result.marked || 0));
+    totalMarked += (result.marked || 0);
+  }}
+
+  Logger.log("=== DONE === Marked " + totalMarked + " of " + unique.length + " emails as sent");
+}}
+'''
+    return {"script": script, "token": token, "expires_in_minutes": 30}
+
+
+# One-time reconciliation tokens (module-level, in-memory)
+_reconcile_tokens: dict[str, datetime] = {}
+
+
+@diagnostic_router.post("/email-mark-sent-token")
+async def mark_emails_sent_by_token(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Token-authenticated version of email-mark-sent for Google Apps Script."""
+    token = data.get("token", "")
+
+    # Clean expired tokens
+    now = datetime.now(timezone.utc)
+    expired = [k for k, v in _reconcile_tokens.items() if v < now]
+    for k in expired:
+        del _reconcile_tokens[k]
+
+    if token not in _reconcile_tokens:
+        raise HTTPException(403, "Invalid or expired reconciliation token")
+
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(400, "No IDs provided")
+
+    marked = 0
+    for tid_str in ids:
+        try:
+            tid = uuid_mod.UUID(tid_str)
+        except ValueError:
+            continue
+        result = await db.execute(
+            text("UPDATE tickets SET email_sent_at = issued_at WHERE id = :tid AND email_sent_at IS NULL"),
+            {"tid": tid},
+        )
+        marked += result.rowcount
+
+    await db.commit()
+    return {"marked": marked, "submitted": len(ids)}
+
+
 @diagnostic_router.post("/email-resend-all")
 async def resend_all_unsent_emails(
     db: AsyncSession = Depends(get_db),

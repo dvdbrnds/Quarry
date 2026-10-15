@@ -46,7 +46,8 @@ export default function EmailAudit() {
   const [markingAll, setMarkingAll] = useState(false);
   const [pasteIds, setPasteIds] = useState("");
   const [markingPaste, setMarkingPaste] = useState(false);
-  const { message } = App.useApp();
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const { message, modal } = App.useApp();
 
   const load = async () => {
     setLoading(true);
@@ -150,6 +151,51 @@ export default function EmailAudit() {
       message.error(`Error: ${e.message}`);
     } finally {
       setMarkingPaste(false);
+    }
+  };
+
+  const generateScript = async () => {
+    setGeneratingScript(true);
+    try {
+      const res = await fetch("/api/sync/email-reconcile-script", { headers: await authHeaders() });
+      if (!res.ok) { message.error("Failed to generate script"); return; }
+      const result = await res.json();
+      modal.info({
+        title: "Gmail Reconciliation — Google Apps Script",
+        width: 720,
+        content: (
+          <div>
+            <p className="mb-2">This script searches the parking mailbox's Sent folder for citation emails and tells Quarry which ones were actually delivered.</p>
+            <ol className="list-decimal ml-5 mb-3 text-sm space-y-1">
+              <li>Open <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">script.google.com</a> while logged in as the parking email account</li>
+              <li>Click <strong>New Project</strong></li>
+              <li>Delete the default code and paste the script below</li>
+              <li>Click <strong>Run</strong> → authorize when prompted</li>
+              <li>Check the <strong>Execution Log</strong> for results</li>
+              <li>Come back here and refresh — the numbers will update</li>
+            </ol>
+            <p className="text-xs text-amber-600 mb-2">⏱ Token expires in {result.expires_in_minutes} minutes</p>
+            <Input.TextArea
+              rows={12}
+              value={result.script}
+              readOnly
+              className="font-mono text-xs"
+              onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+            />
+            <Button
+              className="mt-2"
+              size="small"
+              onClick={() => { navigator.clipboard.writeText(result.script); message.success("Script copied to clipboard"); }}
+            >
+              Copy to Clipboard
+            </Button>
+          </div>
+        ),
+      });
+    } catch (e: any) {
+      message.error(`Error: ${e.message}`);
+    } finally {
+      setGeneratingScript(false);
     }
   };
 
@@ -274,22 +320,34 @@ export default function EmailAudit() {
           message="Reconciliation Required"
           description={
             <div>
-              <p className="mb-2">
-                All {data.emails_intended} emails show as "unsent" because the <code>email_sent_at</code> tracking
-                column was just added. You need to mark the 628 confirmed-sent emails first before resending the rest.
+              <p className="mb-3">
+                All {data.emails_intended} emails show as "unsent" because the tracking column was just added.
+                Run the Gmail reconciliation to automatically match which emails were actually delivered.
               </p>
-              <p className="mb-3 font-medium">
-                Gmail search: <code>in:sent subject:"Parking Citation Issued" after:2026/09/18 before:2026/10/16</code> → 628 results
-              </p>
-              <Space direction="vertical" className="w-full">
+
+              <Space direction="vertical" className="w-full" size="middle">
                 <div>
-                  <p className="text-sm mb-1">
-                    <strong>Option A:</strong> Paste email subjects/text from Gmail containing Citation IDs (UUIDs) to mark specific tickets as sent:
+                  <p className="text-sm font-medium mb-2">Option A — Automatic (recommended):</p>
+                  <Button
+                    type="primary"
+                    size="large"
+                    loading={generatingScript}
+                    onClick={generateScript}
+                  >
+                    🔍 Run Gmail Reconciliation
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Generates a Google Apps Script that scans the parking mailbox's Sent folder,
+                    extracts all Citation IDs, and marks them as sent — fully automated.
                   </p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium mb-1">Option B — Paste Citation IDs manually:</p>
                   <Space.Compact className="w-full">
                     <Input.TextArea
-                      rows={3}
-                      placeholder="Paste Gmail email subjects here — Citation IDs (UUIDs) will be auto-extracted..."
+                      rows={2}
+                      placeholder="Paste email subjects or text containing Citation IDs (UUIDs)..."
                       value={pasteIds}
                       onChange={(e) => setPasteIds(e.target.value)}
                     />
@@ -305,17 +363,16 @@ export default function EmailAudit() {
                     </Button>
                   )}
                 </div>
+
                 <div>
-                  <p className="text-sm mb-1">
-                    <strong>Option B:</strong> Mark ALL {data.emails_intended} as sent (if you've confirmed via Gmail that most went through), then manually resend specific missing ones:
-                  </p>
+                  <p className="text-sm font-medium mb-1">Option C — Mark all as sent:</p>
                   <Popconfirm
                     title={`Mark all ${data.emails_intended} as sent?`}
-                    description="Do this only if you've confirmed most emails were delivered. You can then individually resend any you identify as missing."
+                    description="Only use this if you've confirmed via Gmail that most emails were delivered."
                     onConfirm={markAllSent}
                     okText="Mark All Sent"
                   >
-                    <Button loading={markingAll}>Mark All as Sent</Button>
+                    <Button loading={markingAll} size="small">Mark All as Sent</Button>
                   </Popconfirm>
                 </div>
               </Space>
