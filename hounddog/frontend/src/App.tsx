@@ -35,6 +35,7 @@ import CJISAlerts from "./pages/CJISAlerts";
 import CJISUsers from "./pages/CJISUsers";
 import JNETSettings from "./pages/JNETSettings";
 import AuthCallback from "./pages/AuthCallback";
+import EmailAudit from "./pages/EmailAudit";
 import AuthGuard from "./components/AuthGuard";
 import { logout, isAuthenticated, fetchCurrentUser, initAuth, isOfficeRole, isAdminRole } from "./auth";
 import type { AuthUser } from "./auth";
@@ -144,6 +145,7 @@ function AdminShell({ user }: { user: AuthUser }) {
         <NavItem to="/calendar">Calendar</NavItem>
         {isAdminRole(user.role) && <NavItem to="/finance">Finance</NavItem>}
         {isAdminRole(user.role) && <NavItem to="/alerts">Alerts</NavItem>}
+        {isAdminRole(user.role) && <NavItem to="/email-audit">Email Audit</NavItem>}
         <NavItem to="/settings">Settings</NavItem>
         {isCjisAdmin && <NavItem to="/cjis">CJIS</NavItem>}
 
@@ -283,6 +285,7 @@ function AdminShell({ user }: { user: AuthUser }) {
           <Route path="/finance" element={isAdminRole(user.role) ? <Finance /> : <Navigate to="/dashboard" replace />} />
           <Route path="/alerts" element={isAdminRole(user.role) ? <Alerts /> : <Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/email-audit" element={isAdminRole(user.role) ? <EmailAudit /> : <Navigate to="/dashboard" replace />} />
           <Route path="/cjis" element={isCjisAdmin ? <CJISDashboard /> : <Navigate to="/dashboard" replace />} />
           <Route path="/cjis/audit" element={isCjisAdmin ? <CJISAuditLog /> : <Navigate to="/dashboard" replace />} />
           <Route path="/cjis/alerts" element={isCjisAdmin ? <CJISAlerts /> : <Navigate to="/dashboard" replace />} />

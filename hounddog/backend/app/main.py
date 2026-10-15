@@ -418,7 +418,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 44
+    SCHEMA_VERSION = 45
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1416,6 +1416,16 @@ async def lifespan(app: FastAPI):
                     UPDATE permits SET plates = current_plates WHERE id = primary_id;
                 END LOOP;
             END $$
+            """,
+            # v45: Track when citation email was actually delivered
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ",
+            # Backfill: for tickets BEFORE the Sep 18 bug, email was sent inline (synchronous),
+            # so if notification_email is set, the email definitely went out.
+            """
+            UPDATE tickets SET email_sent_at = issued_at
+            WHERE email_sent_at IS NULL
+              AND notification_email IS NOT NULL
+              AND issued_at < '2026-09-18T00:00:00Z'
             """,
             ]
             for migration in migrations:

@@ -13,7 +13,7 @@ logger = logging.getLogger("quarry.sync")
 from fastapi import APIRouter, Depends, HTTPException, Query
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,17 +65,12 @@ async def email_audit(
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(require_admin()),
 ):
-    """Audit citation emails since the Sep 18 fire-and-forget bug.
+    """Audit citation emails — shows confirmed sent vs unsent for the bug window and beyond."""
 
-    Counts tickets that had notification_email set (system intended to send)
-    vs tickets with no notification_email (no email attempted).
-    The fire-and-forget bug means some 'intended' emails were silently dropped.
-    """
-    # The bug was introduced on Sep 18 2026 in commit 4222e2f and fixed Oct 15.
     bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
-    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)  # ~5pm ET today
+    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)
 
-    # Total tickets created during bug window (excluding warnings and dupes)
+    # --- Bug window stats ---
     total_result = await db.execute(
         text("""
             SELECT COUNT(*) FROM tickets
@@ -86,7 +81,6 @@ async def email_audit(
     )
     total = total_result.scalar() or 0
 
-    # Tickets where system intended to send email (notification_email is set)
     intended_result = await db.execute(
         text("""
             SELECT COUNT(*) FROM tickets
@@ -98,72 +92,213 @@ async def email_audit(
     )
     intended = intended_result.scalar() or 0
 
-    # Tickets with NO email (no permit found, or no email on permit)
+    confirmed_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+              AND email_sent_at IS NOT NULL
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    confirmed_sent = confirmed_result.scalar() or 0
+
+    unsent_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+              AND notification_email IS NOT NULL
+              AND email_sent_at IS NULL
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    unsent = unsent_result.scalar() or 0
+
     no_email = total - intended
 
-    # Breakdown by status for the intended-email tickets
-    status_result = await db.execute(
-        text("""
-            SELECT status, COUNT(*) as cnt FROM tickets
-            WHERE issued_at >= :start AND issued_at < :end
-              AND status != 'warning'
-              AND notification_email IS NOT NULL
-            GROUP BY status ORDER BY cnt DESC
-        """),
-        {"start": bug_start, "end": bug_end},
-    )
-    by_status = [{"status": r[0], "count": r[1]} for r in status_result.fetchall()]
-
-    # Unique students affected (by notification_email)
-    students_result = await db.execute(
-        text("""
-            SELECT COUNT(DISTINCT notification_email) FROM tickets
-            WHERE issued_at >= :start AND issued_at < :end
-              AND status != 'warning'
-              AND notification_email IS NOT NULL
-        """),
-        {"start": bug_start, "end": bug_end},
-    )
-    unique_students = students_result.scalar() or 0
-
-    # Per-student breakdown
+    # Per-student breakdown of UNSENT
     per_student_result = await db.execute(
         text("""
-            SELECT notification_email, COUNT(*) as cnt,
-                   MIN(issued_at) as first_ticket, MAX(issued_at) as last_ticket
+            SELECT notification_email,
+                   COUNT(*) as total_tickets,
+                   SUM(CASE WHEN email_sent_at IS NOT NULL THEN 1 ELSE 0 END) as sent,
+                   SUM(CASE WHEN email_sent_at IS NULL THEN 1 ELSE 0 END) as unsent,
+                   MIN(issued_at) as first_ticket,
+                   MAX(issued_at) as last_ticket
             FROM tickets
             WHERE issued_at >= :start AND issued_at < :end
               AND status != 'warning'
               AND notification_email IS NOT NULL
             GROUP BY notification_email
-            ORDER BY cnt DESC
+            ORDER BY SUM(CASE WHEN email_sent_at IS NULL THEN 1 ELSE 0 END) DESC
         """),
         {"start": bug_start, "end": bug_end},
     )
     per_student = [
         {
-            "email": r[0], "ticket_count": r[1],
-            "first_ticket": r[2].isoformat() if r[2] else None,
-            "last_ticket": r[3].isoformat() if r[3] else None,
+            "email": r[0], "total_tickets": r[1], "sent": r[2], "unsent": r[3],
+            "first_ticket": r[4].isoformat() if r[4] else None,
+            "last_ticket": r[5].isoformat() if r[5] else None,
         }
         for r in per_student_result.fetchall()
     ]
 
+    # Individual unsent tickets
+    unsent_tickets_result = await db.execute(
+        text("""
+            SELECT t.id, t.ticket_number, t.plate, t.notification_email,
+                   t.violation_type, t.fine_amount, t.status, t.issued_at
+            FROM tickets t
+            WHERE t.issued_at >= :start AND t.issued_at < :end
+              AND t.status NOT IN ('warning', 'voided')
+              AND t.notification_email IS NOT NULL
+              AND t.email_sent_at IS NULL
+            ORDER BY t.issued_at DESC
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    unsent_tickets = [
+        {
+            "id": str(r[0]), "ticket_number": r[1], "plate": r[2],
+            "email": r[3], "violation_type": r[4],
+            "fine_amount": str(r[5]) if r[5] else "0.00",
+            "status": r[6],
+            "issued_at": r[7].isoformat() if r[7] else None,
+        }
+        for r in unsent_tickets_result.fetchall()
+    ]
+
     return {
         "bug_window": {"start": "2026-09-18", "end": "2026-10-15"},
-        "total_tickets_in_window": total,
-        "tickets_with_email_intended": intended,
-        "tickets_with_no_email": no_email,
-        "unique_students_affected": unique_students,
-        "by_status": by_status,
+        "total_tickets": total,
+        "emails_intended": intended,
+        "emails_confirmed_sent": confirmed_sent,
+        "emails_unsent": unsent,
+        "no_email_on_file": no_email,
+        "unique_students_affected": len([s for s in per_student if s["unsent"] > 0]),
         "per_student": per_student,
-        "note": (
-            "notification_email was set BEFORE the background task ran, "
-            "so all 'intended' emails may not have actually been delivered. "
-            "The GC bug means some fraction of these were silently dropped. "
-            "Cross-reference with Gmail sent folder to find the gap."
-        ),
+        "unsent_tickets": unsent_tickets,
     }
+
+
+@diagnostic_router.post("/email-resend/{ticket_id}")
+async def resend_single_citation_email(
+    ticket_id: uuid_mod.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
+):
+    """Resend a citation email for a specific ticket."""
+    ticket = await db.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    if not ticket.notification_email:
+        raise HTTPException(400, "No email address on this ticket")
+    if ticket.status in ("voided", "warning"):
+        raise HTTPException(400, f"Cannot email a {ticket.status} ticket")
+
+    vtype_label = ticket.violation_type or "Parking Violation"
+    if ticket.violation_type:
+        vt_row = await db.execute(
+            select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+        )
+        vt_lbl = vt_row.scalar()
+        if vt_lbl:
+            vtype_label = vt_lbl
+
+    payment_url = f"{settings.student_facing_url}/pay?ticket={ticket.id}"
+    try:
+        ok = await send_citation_email(
+            recipient_email=ticket.notification_email,
+            plate=ticket.plate,
+            lot=ticket.lot or "",
+            violation_label=vtype_label,
+            fine_amount=str(ticket.fine_amount),
+            payment_url=payment_url,
+            officer_name=ticket.officer_name,
+            issued_at=to_local(ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if ticket.issued_at else "",
+            ticket_id=ticket.ticket_number or str(ticket.id),
+        )
+        if ok:
+            ticket.email_sent_at = datetime.now(timezone.utc)
+            await db.flush()
+            await db.commit()
+            return {"status": "sent", "email": ticket.notification_email, "ticket_id": str(ticket.id)}
+        else:
+            return {"status": "failed", "email": ticket.notification_email, "ticket_id": str(ticket.id)}
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        raise HTTPException(500, f"Email send failed: {e}")
+
+
+@diagnostic_router.post("/email-resend-all")
+async def resend_all_unsent_emails(
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
+):
+    """Resend citation emails for ALL unsent tickets in the bug window."""
+    bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
+    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)
+
+    result = await db.execute(
+        text("""
+            SELECT id FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status NOT IN ('warning', 'voided')
+              AND notification_email IS NOT NULL
+              AND email_sent_at IS NULL
+            ORDER BY issued_at ASC
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    ticket_ids = [r[0] for r in result.fetchall()]
+
+    sent = 0
+    failed = 0
+    results = []
+    for tid in ticket_ids:
+        ticket = await db.get(Ticket, tid)
+        if not ticket or not ticket.notification_email:
+            failed += 1
+            continue
+
+        vtype_label = ticket.violation_type or "Parking Violation"
+        if ticket.violation_type:
+            vt_row = await db.execute(
+                select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+            )
+            vt_lbl = vt_row.scalar()
+            if vt_lbl:
+                vtype_label = vt_lbl
+
+        payment_url = f"{settings.student_facing_url}/pay?ticket={ticket.id}"
+        try:
+            ok = await send_citation_email(
+                recipient_email=ticket.notification_email,
+                plate=ticket.plate,
+                lot=ticket.lot or "",
+                violation_label=vtype_label,
+                fine_amount=str(ticket.fine_amount),
+                payment_url=payment_url,
+                officer_name=ticket.officer_name,
+                issued_at=to_local(ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if ticket.issued_at else "",
+                ticket_id=ticket.ticket_number or str(ticket.id),
+            )
+            if ok:
+                ticket.email_sent_at = datetime.now(timezone.utc)
+                await db.flush()
+                sent += 1
+                results.append({"ticket": str(tid), "email": ticket.notification_email, "status": "sent"})
+            else:
+                failed += 1
+                results.append({"ticket": str(tid), "email": ticket.notification_email, "status": "failed"})
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            failed += 1
+            results.append({"ticket": str(tid), "email": ticket.notification_email, "status": "error", "error": str(e)})
+
+    await db.commit()
+    return {"sent": sent, "failed": failed, "total": len(ticket_ids), "results": results}
 
 
 @diagnostic_router.get("/ticket-test")
@@ -1087,6 +1222,7 @@ async def _upload_ticket_impl(
         import asyncio as _asyncio
 
         _ticket_id_for_email = str(new_ticket.id)
+        _ticket_uuid_for_email = new_ticket.id
 
         async def _send_citation_bg():
             try:
@@ -1103,6 +1239,16 @@ async def _upload_ticket_impl(
                 )
                 if ok:
                     logger.info("Citation email sent for ticket %s to %s", _ticket_id_for_email, recipient_email)
+                    try:
+                        from ..database import async_session
+                        async with async_session() as stamp_db:
+                            await stamp_db.execute(
+                                text("UPDATE tickets SET email_sent_at = NOW() WHERE id = :tid"),
+                                {"tid": _ticket_uuid_for_email},
+                            )
+                            await stamp_db.commit()
+                    except Exception as stamp_err:
+                        logger.warning("Failed to stamp email_sent_at for %s: %s", _ticket_id_for_email, stamp_err)
                 else:
                     logger.warning("Citation email returned False for ticket %s to %s", _ticket_id_for_email, recipient_email)
             except Exception as e:
