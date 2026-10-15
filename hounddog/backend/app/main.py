@@ -1356,14 +1356,23 @@ async def lifespan(app: FastAPI):
             BEGIN
                 -- For each email with multiple active faculty_staff permits
                 FOR rec IN
-                    SELECT LOWER(email) AS email, MIN(id) AS primary_id
+                    SELECT DISTINCT ON (LOWER(email))
+                           LOWER(email) AS email, id AS primary_id
                     FROM permits
                     WHERE permit_type = 'faculty_staff'
                       AND status = 'active'
                       AND deleted_at IS NULL
                       AND email IS NOT NULL
-                    GROUP BY LOWER(email)
-                    HAVING COUNT(*) > 1
+                      AND LOWER(email) IN (
+                          SELECT LOWER(email) FROM permits
+                          WHERE permit_type = 'faculty_staff'
+                            AND status = 'active'
+                            AND deleted_at IS NULL
+                            AND email IS NOT NULL
+                          GROUP BY LOWER(email)
+                          HAVING COUNT(*) > 1
+                      )
+                    ORDER BY LOWER(email), created_at ASC
                 LOOP
                     primary_id := rec.primary_id;
 
