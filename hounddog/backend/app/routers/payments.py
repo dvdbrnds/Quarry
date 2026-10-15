@@ -3177,6 +3177,8 @@ async def export_reconciliation(
     - Payments as positive amounts with gross/fee/net
     - Refunds as separate rows with negative amounts and the actual refund date
     - Sorted by date so it lines up with bank deposits
+
+    Date range defaults to the current month if not provided.
     """
     import stripe as _stripe_recon
     from fastapi.responses import StreamingResponse
@@ -3185,16 +3187,21 @@ async def export_reconciliation(
         raise HTTPException(503, "Stripe not configured")
     _stripe_recon.api_key = settings.stripe_secret_key
 
-    since_ts = int(datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc).timestamp()) if since else None
-    until_ts = int(datetime.combine(until + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp()) if until else None
+    if not since:
+        since = date.today().replace(day=1)
+    if not until:
+        until = date.today()
+
+    since_ts = int(datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc).timestamp())
+    until_ts = int(datetime.combine(until + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp())
 
     # Fetch charges (payments)
     rows: list[dict] = []
-    charge_params: dict = {"limit": 100, "expand": ["data.balance_transaction"]}
-    if since_ts:
-        charge_params["created"] = {"gte": since_ts}
-    if until_ts:
-        charge_params.setdefault("created", {})["lte"] = until_ts
+    charge_params: dict = {
+        "limit": 100,
+        "expand": ["data.balance_transaction"],
+        "created": {"gte": since_ts, "lte": until_ts},
+    }
 
     has_more = True
     while has_more:
@@ -3239,11 +3246,11 @@ async def export_reconciliation(
             charge_params["starting_after"] = charge_list.data[-1].id
 
     # Fetch refunds (with correct refund dates)
-    refund_params: dict = {"limit": 100, "expand": ["data.charge", "data.balance_transaction"]}
-    if since_ts:
-        refund_params["created"] = {"gte": since_ts}
-    if until_ts:
-        refund_params.setdefault("created", {})["lte"] = until_ts
+    refund_params: dict = {
+        "limit": 100,
+        "expand": ["data.charge", "data.balance_transaction"],
+        "created": {"gte": since_ts, "lte": until_ts},
+    }
 
     has_more = True
     while has_more:
