@@ -10,14 +10,26 @@ import ChargebackLog from "./ChargebackLog";
 import BulkRefundModal from "./BulkRefundModal";
 
 async function downloadWithAuth(url: string, filename: string) {
-  const res = await fetch(url, { headers: await authHeaders() });
-  if (!res.ok) return;
-  const blob = await res.blob();
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  try {
+    const res = await fetch(url, { headers: await authHeaders() });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      console.error(`Download failed ${res.status}: ${text}`);
+      alert(`Export failed (${res.status}): ${text}`);
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  } catch (err: any) {
+    console.error("Download error:", err);
+    alert(`Export failed: ${err.message || err}`);
+  }
 }
 
 interface RevenueReport {
