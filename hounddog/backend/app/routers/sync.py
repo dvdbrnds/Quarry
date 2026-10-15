@@ -60,6 +60,112 @@ _background_tasks: set = set()
 
 
 
+@diagnostic_router.get("/email-audit")
+async def email_audit(
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
+):
+    """Audit citation emails since the Sep 18 fire-and-forget bug.
+
+    Counts tickets that had notification_email set (system intended to send)
+    vs tickets with no notification_email (no email attempted).
+    The fire-and-forget bug means some 'intended' emails were silently dropped.
+    """
+    # The bug was introduced on Sep 18 2026 in commit 4222e2f and fixed Oct 15.
+    bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
+    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)  # ~5pm ET today
+
+    # Total tickets created during bug window (excluding warnings and dupes)
+    total_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    total = total_result.scalar() or 0
+
+    # Tickets where system intended to send email (notification_email is set)
+    intended_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+              AND notification_email IS NOT NULL
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    intended = intended_result.scalar() or 0
+
+    # Tickets with NO email (no permit found, or no email on permit)
+    no_email = total - intended
+
+    # Breakdown by status for the intended-email tickets
+    status_result = await db.execute(
+        text("""
+            SELECT status, COUNT(*) as cnt FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+              AND notification_email IS NOT NULL
+            GROUP BY status ORDER BY cnt DESC
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    by_status = [{"status": r[0], "count": r[1]} for r in status_result.fetchall()]
+
+    # Unique students affected (by notification_email)
+    students_result = await db.execute(
+        text("""
+            SELECT COUNT(DISTINCT notification_email) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+              AND notification_email IS NOT NULL
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    unique_students = students_result.scalar() or 0
+
+    # Per-student breakdown
+    per_student_result = await db.execute(
+        text("""
+            SELECT notification_email, COUNT(*) as cnt,
+                   MIN(issued_at) as first_ticket, MAX(issued_at) as last_ticket
+            FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              AND status != 'warning'
+              AND notification_email IS NOT NULL
+            GROUP BY notification_email
+            ORDER BY cnt DESC
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    per_student = [
+        {
+            "email": r[0], "ticket_count": r[1],
+            "first_ticket": r[2].isoformat() if r[2] else None,
+            "last_ticket": r[3].isoformat() if r[3] else None,
+        }
+        for r in per_student_result.fetchall()
+    ]
+
+    return {
+        "bug_window": {"start": "2026-09-18", "end": "2026-10-15"},
+        "total_tickets_in_window": total,
+        "tickets_with_email_intended": intended,
+        "tickets_with_no_email": no_email,
+        "unique_students_affected": unique_students,
+        "by_status": by_status,
+        "per_student": per_student,
+        "note": (
+            "notification_email was set BEFORE the background task ran, "
+            "so all 'intended' emails may not have actually been delivered. "
+            "The GC bug means some fraction of these were silently dropped. "
+            "Cross-reference with Gmail sent folder to find the gap."
+        ),
+    }
+
+
 @diagnostic_router.get("/ticket-test")
 async def ticket_creation_test(
     db: AsyncSession = Depends(get_db),
