@@ -1262,47 +1262,29 @@ async def _upload_ticket_impl(
             if vt_label_row:
                 vtype_label = vt_label_row
 
-        # Fire-and-forget: send citation email in a background task so
-        # BirdDog gets its response immediately (QUARRY-P, QUARRY-2).
-        import asyncio as _asyncio
-
-        _ticket_id_for_email = str(new_ticket.id)
-        _ticket_uuid_for_email = new_ticket.id
-
-        async def _send_citation_bg():
-            try:
-                ok = await send_citation_email(
-                    recipient_email=recipient_email,
-                    plate=new_ticket.plate,
-                    lot=new_ticket.lot or "",
-                    violation_label=vtype_label,
-                    fine_amount=str(fine_amount),
-                    payment_url=payment_url,
-                    officer_name=new_ticket.officer_name,
-                    issued_at=to_local(new_ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if new_ticket.issued_at else "",
-                    ticket_id=_ticket_id_for_email,
-                )
-                if ok:
-                    logger.info("Citation email sent for ticket %s to %s", _ticket_id_for_email, recipient_email)
-                    try:
-                        from ..database import async_session
-                        async with async_session() as stamp_db:
-                            await stamp_db.execute(
-                                text("UPDATE tickets SET email_sent_at = NOW() WHERE id = :tid"),
-                                {"tid": _ticket_uuid_for_email},
-                            )
-                            await stamp_db.commit()
-                    except Exception as stamp_err:
-                        logger.warning("Failed to stamp email_sent_at for %s: %s", _ticket_id_for_email, stamp_err)
-                else:
-                    logger.warning("Citation email returned False for ticket %s to %s", _ticket_id_for_email, recipient_email)
-            except Exception as e:
-                sentry_sdk.capture_exception(e)
-                logger.error("Citation email FAILED for ticket %s to %s: %s", _ticket_id_for_email, recipient_email, e)
-
-        task = _asyncio.create_task(_send_citation_bg())
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        # Send citation email inline — guaranteed delivery, no background task risk.
+        # send_email() has a 10s timeout and 1 built-in retry, so BirdDog won't hang.
+        try:
+            ok = await send_citation_email(
+                recipient_email=recipient_email,
+                plate=new_ticket.plate,
+                lot=new_ticket.lot or "",
+                violation_label=vtype_label,
+                fine_amount=str(fine_amount),
+                payment_url=payment_url,
+                officer_name=new_ticket.officer_name,
+                issued_at=to_local(new_ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if new_ticket.issued_at else "",
+                ticket_id=str(new_ticket.id),
+            )
+            if ok:
+                new_ticket.email_sent_at = datetime.now(timezone.utc)
+                await db.flush()
+                logger.info("Citation email sent for ticket %s to %s", new_ticket.id, recipient_email)
+            else:
+                logger.warning("Citation email returned False for ticket %s to %s", new_ticket.id, recipient_email)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            logger.error("Citation email FAILED for ticket %s to %s: %s", new_ticket.id, recipient_email, e)
         notification_sent = True
         notification_email = recipient_email
 
