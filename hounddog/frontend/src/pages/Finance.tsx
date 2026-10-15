@@ -617,6 +617,12 @@ export default function Finance() {
         <h2 className="text-2xl font-bold">Finance & Reconciliation</h2>
         <Space>
           <Button onClick={() => downloadWithAuth("/api/payments/export/csv", "payments.csv")}>Export CSV</Button>
+          <Button onClick={() => {
+            const params = new URLSearchParams();
+            if (glFrom) params.set("since", glFrom.format("YYYY-MM-DD"));
+            if (glTo) params.set("until", glTo.format("YYYY-MM-DD"));
+            downloadWithAuth(`/api/payments/export/refunds?${params}`, `quarry_refunds.csv`);
+          }}>Export Refunds</Button>
           <Button type="primary" onClick={handleGlExport} disabled={!stripe?.transactions?.length}>Export GL Journal</Button>
         </Space>
       </div>

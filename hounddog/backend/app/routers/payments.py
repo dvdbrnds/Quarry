@@ -3163,3 +3163,120 @@ async def export_oracle_gl(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/export/refunds")
+async def export_refunds(
+    since: date | None = None,
+    until: date | None = None,
+    user: OktaUser = Depends(require_admin()),
+):
+    """Export Stripe refunds as CSV for bank deposit reconciliation.
+
+    Each row matches a Stripe refund with its own date (when the money
+    left the bank), amount, and balance_transaction_id — so it can be
+    matched against the Stripe payout report line by line.
+    """
+    import stripe as _stripe_ref
+    from fastapi.responses import StreamingResponse
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(503, "Stripe not configured")
+    _stripe_ref.api_key = settings.stripe_secret_key
+
+    refund_params: dict = {"limit": 100, "expand": ["data.charge", "data.balance_transaction"]}
+    if since:
+        refund_params["created"] = {"gte": int(datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc).timestamp())}
+    if until:
+        until_ts = int(datetime.combine(until + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp())
+        if "created" in refund_params:
+            refund_params["created"]["lte"] = until_ts
+        else:
+            refund_params["created"] = {"lte": until_ts}
+
+    all_refunds = []
+    has_more = True
+    while has_more:
+        refund_list = _stripe_ref.Refund.list(**refund_params)
+        all_refunds.extend(refund_list.data)
+        has_more = refund_list.has_more
+        if has_more and refund_list.data:
+            refund_params["starting_after"] = refund_list.data[-1].id
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "refund_id", "refund_date", "charge_id", "balance_transaction_id",
+        "amount", "status", "reason",
+        "type", "description", "plate", "ticket_ref", "permit_type",
+        "customer_email", "customer_name",
+        "payout_id", "payout_date",
+    ])
+
+    for ref in all_refunds:
+        ref_amount = Decimal(ref.amount) / 100
+        ref_dt = datetime.fromtimestamp(ref.created, tz=timezone.utc)
+        charge = getattr(ref, "charge", None)
+        charge_id = charge.id if hasattr(charge, "id") else (ref.charge if isinstance(ref.charge, str) else "")
+        charge_md = charge.metadata.to_dict() if hasattr(charge, "metadata") and charge.metadata else {}
+
+        bt = getattr(ref, "balance_transaction", None)
+        bt_id = bt.id if hasattr(bt, "id") else (ref.balance_transaction if isinstance(ref.balance_transaction, str) else "")
+
+        # Try to get payout info from balance_transaction
+        payout_id = ""
+        payout_date = ""
+        if hasattr(bt, "reporting_category"):
+            pass  # payout info not directly on bt
+        # Stripe doesn't include payout directly on refund bt, but the
+        # balance_transaction_id is what links to the payout in Stripe's report
+
+        ref_ptype = charge_md.get("type", "")
+        plate = charge_md.get("plate", "")
+        ticket_ref = charge_md.get("ticket_ref", "")
+        permit_label = charge_md.get("permit_type_label", charge_md.get("permit_type_code", ""))
+        description = charge_md.get("description", "")
+        if not description:
+            if "ticket" in ref_ptype:
+                description = f"Citation #{ticket_ref}" if ticket_ref else "Citation refund"
+            elif "permit" in ref_ptype:
+                description = f"Permit refund — {permit_label}" if permit_label else "Permit refund"
+            else:
+                description = "Refund"
+
+        customer_email = ""
+        customer_name = ""
+        if hasattr(charge, "receipt_email"):
+            customer_email = charge.receipt_email or ""
+        if not customer_email:
+            customer_email = charge_md.get("student_email", charge_md.get("email", ""))
+        customer_name = charge_md.get("payer_name", charge_md.get("student_name", ""))
+
+        writer.writerow([
+            ref.id,
+            ref_dt.strftime("%Y-%m-%d"),
+            charge_id,
+            bt_id,
+            f"-{ref_amount:.2f}",
+            getattr(ref, "status", ""),
+            getattr(ref, "reason", "") or "",
+            ref_ptype or "unknown",
+            description,
+            plate,
+            ticket_ref,
+            permit_label,
+            customer_email,
+            customer_name,
+            payout_id,
+            payout_date,
+        ])
+
+    output.seek(0)
+    since_str = since.isoformat() if since else "all"
+    until_str = until.isoformat() if until else date.today().isoformat()
+    filename = f"quarry_refunds_{since_str}_to_{until_str}.csv"
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
