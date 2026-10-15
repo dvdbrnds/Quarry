@@ -418,7 +418,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 43
+    SCHEMA_VERSION = 44
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1340,6 +1340,74 @@ async def lifespan(app: FastAPI):
             "UPDATE tickets SET status = 'past_due' WHERE status = 'escalated' AND escalated_by IS NULL",
             # ── v43: Add owner_address to tickets for mailing physical notices
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS owner_address TEXT",
+            # ── v44: Merge duplicate faculty/staff permits
+            # Faculty registering multiple vehicles created separate permits.
+            # This consolidates plates onto the oldest permit per person and
+            # reassigns tickets, then soft-deletes the duplicates.
+            """
+            DO $$
+            DECLARE
+                rec RECORD;
+                primary_id UUID;
+                dup_id UUID;
+                dup_plates TEXT[];
+                p TEXT;
+                current_plates TEXT[];
+            BEGIN
+                -- For each email with multiple active faculty_staff permits
+                FOR rec IN
+                    SELECT LOWER(email) AS email, MIN(id) AS primary_id
+                    FROM permits
+                    WHERE permit_type = 'faculty_staff'
+                      AND status = 'active'
+                      AND deleted_at IS NULL
+                      AND email IS NOT NULL
+                    GROUP BY LOWER(email)
+                    HAVING COUNT(*) > 1
+                LOOP
+                    primary_id := rec.primary_id;
+
+                    -- Get current plates on primary
+                    SELECT plates INTO current_plates FROM permits WHERE id = primary_id;
+
+                    -- Process each duplicate (everything except the oldest)
+                    FOR dup_id, dup_plates IN
+                        SELECT id, plates FROM permits
+                        WHERE LOWER(email) = rec.email
+                          AND permit_type = 'faculty_staff'
+                          AND status = 'active'
+                          AND deleted_at IS NULL
+                          AND id != primary_id
+                        ORDER BY created_at ASC
+                    LOOP
+                        -- Merge plates from duplicate to primary
+                        IF dup_plates IS NOT NULL THEN
+                            FOREACH p IN ARRAY dup_plates LOOP
+                                IF NOT (p = ANY(current_plates)) THEN
+                                    current_plates := array_append(current_plates, p);
+                                END IF;
+                            END LOOP;
+                        END IF;
+
+                        -- Reassign tickets from duplicate to primary
+                        UPDATE tickets SET permit_id = primary_id
+                        WHERE permit_id = dup_id;
+
+                        -- Soft-delete the duplicate
+                        UPDATE permits SET
+                            status = 'cancelled',
+                            cancel_reason = 'merged',
+                            cancel_notes = 'Auto-merged into primary permit (v44 migration)',
+                            cancelled_at = NOW(),
+                            deleted_at = NOW()
+                        WHERE id = dup_id;
+                    END LOOP;
+
+                    -- Update primary with consolidated plates
+                    UPDATE permits SET plates = current_plates WHERE id = primary_id;
+                END LOOP;
+            END $$
+            """,
             ]
             for migration in migrations:
                 try:
