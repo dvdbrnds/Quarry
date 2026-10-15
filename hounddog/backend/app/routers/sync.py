@@ -81,19 +81,22 @@ async def email_audit(
     )
     total = total_result.scalar() or 0
 
+    # Only count real email addresses (contains @), not mailing addresses
+    _email_filter = "AND notification_email IS NOT NULL AND notification_email LIKE '%@%'"
+
     intended_result = await db.execute(
-        text("""
+        text(f"""
             SELECT COUNT(*) FROM tickets
             WHERE issued_at >= :start AND issued_at < :end
               AND status != 'warning'
-              AND notification_email IS NOT NULL
+              {_email_filter}
         """),
         {"start": bug_start, "end": bug_end},
     )
     intended = intended_result.scalar() or 0
 
     confirmed_result = await db.execute(
-        text("""
+        text(f"""
             SELECT COUNT(*) FROM tickets
             WHERE issued_at >= :start AND issued_at < :end
               AND status != 'warning'
@@ -104,11 +107,11 @@ async def email_audit(
     confirmed_sent = confirmed_result.scalar() or 0
 
     unsent_result = await db.execute(
-        text("""
+        text(f"""
             SELECT COUNT(*) FROM tickets
             WHERE issued_at >= :start AND issued_at < :end
               AND status != 'warning'
-              AND notification_email IS NOT NULL
+              {_email_filter}
               AND email_sent_at IS NULL
         """),
         {"start": bug_start, "end": bug_end},
@@ -117,9 +120,8 @@ async def email_audit(
 
     no_email = total - intended
 
-    # Per-student breakdown of UNSENT
     per_student_result = await db.execute(
-        text("""
+        text(f"""
             SELECT notification_email,
                    COUNT(*) as total_tickets,
                    SUM(CASE WHEN email_sent_at IS NOT NULL THEN 1 ELSE 0 END) as sent,
@@ -129,7 +131,7 @@ async def email_audit(
             FROM tickets
             WHERE issued_at >= :start AND issued_at < :end
               AND status != 'warning'
-              AND notification_email IS NOT NULL
+              {_email_filter}
             GROUP BY notification_email
             ORDER BY SUM(CASE WHEN email_sent_at IS NULL THEN 1 ELSE 0 END) DESC
         """),
@@ -144,15 +146,14 @@ async def email_audit(
         for r in per_student_result.fetchall()
     ]
 
-    # Individual unsent tickets
     unsent_tickets_result = await db.execute(
-        text("""
+        text(f"""
             SELECT t.id, t.ticket_number, t.plate, t.notification_email,
                    t.violation_type, t.fine_amount, t.status, t.issued_at
             FROM tickets t
             WHERE t.issued_at >= :start AND t.issued_at < :end
               AND t.status NOT IN ('warning', 'voided')
-              AND t.notification_email IS NOT NULL
+              {_email_filter.replace('notification_email', 't.notification_email')}
               AND t.email_sent_at IS NULL
             ORDER BY t.issued_at DESC
         """),
@@ -192,8 +193,8 @@ async def resend_single_citation_email(
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    if not ticket.notification_email:
-        raise HTTPException(400, "No email address on this ticket")
+    if not ticket.notification_email or "@" not in ticket.notification_email:
+        raise HTTPException(400, "No valid email address on this ticket")
     if ticket.status in ("voided", "warning"):
         raise HTTPException(400, f"Cannot email a {ticket.status} ticket")
 
@@ -253,6 +254,7 @@ async def mark_emails_sent(
                 UPDATE tickets SET email_sent_at = issued_at
                 WHERE issued_at >= :start AND issued_at < :end
                   AND notification_email IS NOT NULL
+                  AND notification_email LIKE '%@%'
                   AND email_sent_at IS NULL
             """),
             {"start": bug_start, "end": bug_end},
@@ -409,6 +411,7 @@ async def resend_all_unsent_emails(
             WHERE issued_at >= :start AND issued_at < :end
               AND status NOT IN ('warning', 'voided')
               AND notification_email IS NOT NULL
+              AND notification_email LIKE '%@%'
               AND email_sent_at IS NULL
             ORDER BY issued_at ASC
         """),

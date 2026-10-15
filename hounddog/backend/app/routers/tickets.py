@@ -985,7 +985,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                 ).limit(1)
             )
             permit = permit_result.scalar()
-            if permit and getattr(permit, "email", None):
+            if permit and getattr(permit, "email", None) and "@" in permit.email:
                 ticket.notification_email = permit.email
                 vtype_label = ticket.violation_type or "Parking Violation"
                 if ticket.violation_type:
@@ -1322,7 +1322,7 @@ async def update_ticket(
                 updated_fields["permit_id"] = new_permit.id
                 if new_permit.name:
                     updated_fields["owner_name"] = new_permit.name
-                if new_permit.email:
+                if new_permit.email and "@" in new_permit.email:
                     updated_fields["notification_email"] = new_permit.email
             else:
                 updated_fields["permit_id"] = None
