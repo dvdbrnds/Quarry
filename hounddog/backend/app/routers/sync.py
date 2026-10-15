@@ -118,6 +118,32 @@ async def email_audit(
     )
     unsent = unsent_result.scalar() or 0
 
+    # Tickets that didn't get the email but student paid/resolved anyway
+    unsent_but_resolved_result = await db.execute(
+        text(f"""
+            SELECT COUNT(*) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              {_email_filter}
+              AND email_sent_at IS NULL
+              AND status IN ('paid', 'voided', 'resolved_permit')
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    unsent_but_resolved = unsent_but_resolved_result.scalar() or 0
+
+    # Tickets that truly need action — no email sent AND still unpaid
+    unsent_and_unpaid_result = await db.execute(
+        text(f"""
+            SELECT COUNT(*) FROM tickets
+            WHERE issued_at >= :start AND issued_at < :end
+              {_email_filter}
+              AND email_sent_at IS NULL
+              AND status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
+        """),
+        {"start": bug_start, "end": bug_end},
+    )
+    unsent_and_unpaid = unsent_and_unpaid_result.scalar() or 0
+
     no_email = total - intended
 
     per_student_result = await db.execute(
@@ -126,6 +152,8 @@ async def email_audit(
                    COUNT(*) as total_tickets,
                    SUM(CASE WHEN email_sent_at IS NOT NULL THEN 1 ELSE 0 END) as sent,
                    SUM(CASE WHEN email_sent_at IS NULL THEN 1 ELSE 0 END) as unsent,
+                   SUM(CASE WHEN email_sent_at IS NULL AND status IN ('paid', 'voided', 'resolved_permit') THEN 1 ELSE 0 END) as unsent_resolved,
+                   SUM(CASE WHEN email_sent_at IS NULL AND status NOT IN ('paid', 'voided', 'resolved_permit', 'warning') THEN 1 ELSE 0 END) as unsent_unpaid,
                    MIN(issued_at) as first_ticket,
                    MAX(issued_at) as last_ticket
             FROM tickets
@@ -133,26 +161,28 @@ async def email_audit(
               AND status != 'warning'
               {_email_filter}
             GROUP BY notification_email
-            ORDER BY SUM(CASE WHEN email_sent_at IS NULL THEN 1 ELSE 0 END) DESC
+            ORDER BY SUM(CASE WHEN email_sent_at IS NULL AND status NOT IN ('paid', 'voided', 'resolved_permit', 'warning') THEN 1 ELSE 0 END) DESC
         """),
         {"start": bug_start, "end": bug_end},
     )
     per_student = [
         {
             "email": r[0], "total_tickets": r[1], "sent": r[2], "unsent": r[3],
-            "first_ticket": r[4].isoformat() if r[4] else None,
-            "last_ticket": r[5].isoformat() if r[5] else None,
+            "unsent_resolved": r[4], "unsent_unpaid": r[5],
+            "first_ticket": r[6].isoformat() if r[6] else None,
+            "last_ticket": r[7].isoformat() if r[7] else None,
         }
         for r in per_student_result.fetchall()
     ]
 
+    # Only show truly actionable tickets — unsent AND still unpaid
     unsent_tickets_result = await db.execute(
         text(f"""
             SELECT t.id, t.ticket_number, t.plate, t.notification_email,
                    t.violation_type, t.fine_amount, t.status, t.issued_at
             FROM tickets t
             WHERE t.issued_at >= :start AND t.issued_at < :end
-              AND t.status NOT IN ('warning', 'voided')
+              AND t.status NOT IN ('warning', 'voided', 'paid', 'resolved_permit')
               {_email_filter.replace('notification_email', 't.notification_email')}
               AND t.email_sent_at IS NULL
             ORDER BY t.issued_at DESC
@@ -176,8 +206,10 @@ async def email_audit(
         "emails_intended": intended,
         "emails_confirmed_sent": confirmed_sent,
         "emails_unsent": unsent,
+        "emails_unsent_but_resolved": unsent_but_resolved,
+        "emails_unsent_and_unpaid": unsent_and_unpaid,
         "no_email_on_file": no_email,
-        "unique_students_affected": len([s for s in per_student if s["unsent"] > 0]),
+        "unique_students_affected": len([s for s in per_student if s.get("unsent_unpaid", 0) > 0]),
         "per_student": per_student,
         "unsent_tickets": unsent_tickets,
     }
@@ -409,7 +441,7 @@ async def resend_all_unsent_emails(
         text("""
             SELECT id FROM tickets
             WHERE issued_at >= :start AND issued_at < :end
-              AND status NOT IN ('warning', 'voided')
+              AND status NOT IN ('warning', 'voided', 'paid', 'resolved_permit')
               AND notification_email IS NOT NULL
               AND notification_email LIKE '%@%'
               AND email_sent_at IS NULL

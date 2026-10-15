@@ -11,6 +11,8 @@ interface PerStudent {
   total_tickets: number;
   sent: number;
   unsent: number;
+  unsent_resolved: number;
+  unsent_unpaid: number;
   first_ticket: string | null;
   last_ticket: string | null;
 }
@@ -32,6 +34,8 @@ interface AuditData {
   emails_intended: number;
   emails_confirmed_sent: number;
   emails_unsent: number;
+  emails_unsent_but_resolved: number;
+  emails_unsent_and_unpaid: number;
   no_email_on_file: number;
   unique_students_affected: number;
   per_student: PerStudent[];
@@ -223,9 +227,14 @@ export default function EmailAudit() {
       render: (v: number) => <Tag color={v > 0 ? "green" : "default"}>{v}</Tag>,
     },
     {
-      title: "Emails Unsent", dataIndex: "unsent", key: "unsent",
+      title: "Unsent (Paid)", dataIndex: "unsent_resolved", key: "resolved",
+      render: (v: number) => v > 0 ? <Tag color="orange">{v}</Tag> : <Tag>0</Tag>,
+      sorter: (a, b) => (a.unsent_resolved || 0) - (b.unsent_resolved || 0),
+    },
+    {
+      title: "Unsent (Unpaid)", dataIndex: "unsent_unpaid", key: "unpaid",
       render: (v: number) => v > 0 ? <Tag color="red">{v}</Tag> : <Tag color="green">0</Tag>,
-      sorter: (a, b) => a.unsent - b.unsent,
+      sorter: (a, b) => (a.unsent_unpaid || 0) - (b.unsent_unpaid || 0),
       defaultSortOrder: "descend",
     },
     {
@@ -291,13 +300,13 @@ export default function EmailAudit() {
           {data.unsent_tickets.length > 0 && !needsReconciliation && (
             <Popconfirm
               title={`Resend ${data.unsent_tickets.length} citation emails?`}
-              description="This will email every student who missed a citation notification."
+              description="Only unpaid/unresolved tickets — students who already paid won't be emailed."
               onConfirm={resendAll}
               okText="Resend All"
               okType="danger"
             >
               <Button type="primary" danger loading={resendingAll}>
-                Resend All Unsent ({data.unsent_tickets.length})
+                Resend All Unpaid ({data.unsent_tickets.length})
               </Button>
             </Popconfirm>
           )}
@@ -381,24 +390,26 @@ export default function EmailAudit() {
         />
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <Card size="small"><Statistic title="Total Tickets" value={data.total_tickets} /></Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card size="small"><Statistic title="Emails Intended" value={data.emails_intended} /></Card>
         <Card size="small">
-          <Statistic
-            title="Confirmed Sent"
-            value={data.emails_confirmed_sent}
-            valueStyle={data.emails_confirmed_sent > 0 ? { color: "#3f8600" } : {}}
-          />
+          <Statistic title="Confirmed Sent" value={data.emails_confirmed_sent} valueStyle={data.emails_confirmed_sent > 0 ? { color: "#3f8600" } : {}} />
         </Card>
         <Card size="small">
-          <Statistic
-            title={needsReconciliation ? "Unreconciled" : "Unsent"}
-            value={data.emails_unsent}
-            valueStyle={data.emails_unsent > 0 ? { color: needsReconciliation ? "#d4880f" : "#cf1322" } : {}}
-          />
+          <Tooltip title="Didn't get the email, but already paid/voided/resolved — no action needed">
+            <Statistic title="Unsent but Resolved" value={data.emails_unsent_but_resolved || 0} valueStyle={{ color: "#d4880f" }} />
+          </Tooltip>
         </Card>
+        <Card size="small">
+          <Tooltip title="Never got the email AND ticket is still unpaid — these need resending">
+            <Statistic title="Need Resend" value={data.emails_unsent_and_unpaid || 0} valueStyle={(data.emails_unsent_and_unpaid || 0) > 0 ? { color: "#cf1322" } : {}} />
+          </Tooltip>
+        </Card>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        <Card size="small"><Statistic title="Total Tickets" value={data.total_tickets} /></Card>
         <Card size="small"><Statistic title="No Email on File" value={data.no_email_on_file} /></Card>
+        <Card size="small"><Statistic title="Students Affected" value={data.unique_students_affected} /></Card>
       </div>
 
       {!needsReconciliation && (
@@ -432,7 +443,7 @@ export default function EmailAudit() {
 
       {!needsReconciliation && (
         <Card
-          title={<Space>Unsent Tickets <Tag color="red">{data.unsent_tickets.length}</Tag></Space>}
+          title={<Space>Unsent & Unpaid — Need Resend <Tag color="red">{data.unsent_tickets.length}</Tag></Space>}
           size="small"
         >
           {data.unsent_tickets.length === 0 ? (
