@@ -53,6 +53,12 @@ from ..services.email import send_citation_email
 router = SafeRouter()
 diagnostic_router = SafeRouter()
 
+# Prevent fire-and-forget tasks from being garbage-collected before completion.
+# asyncio.create_task() returns a Task that must be retained — if the only
+# reference is discarded, the GC can cancel the task before it finishes.
+_background_tasks: set = set()
+
+
 
 @diagnostic_router.get("/ticket-test")
 async def ticket_creation_test(
@@ -760,6 +766,11 @@ async def _upload_ticket_impl(
     dupe_result = await db.execute(dupe_query.limit(1))
     existing_ticket = dupe_result.scalar()
     if existing_ticket:
+        logger.info(
+            "Duplicate ticket suppressed: plate=%s lot=%s violation=%s (matched ticket %s from %s)",
+            ticket.plate, ticket.lot, primary_code, existing_ticket.id,
+            existing_ticket.issued_at.isoformat() if existing_ticket.issued_at else "?",
+        )
         payment_url = f"{settings.student_facing_url}/pay?ticket={existing_ticket.id}" if settings.student_facing_url else ""
         return TicketUploadResponse(
             status="duplicate",
@@ -948,6 +959,13 @@ async def _upload_ticket_impl(
         )
         recipient_email = plate_email_result.scalar()
 
+    if not recipient_email:
+        logger.warning(
+            "No email address found for ticket %s (plate=%s, permit=%s) — citation email NOT sent",
+            new_ticket.id, new_ticket.plate,
+            f"id={permit.id} is_tag={getattr(permit, 'is_tag_only', '?')}" if permit else "no permit found",
+        )
+
     if recipient_email:
         vtype_label = primary_code or "Parking Violation"
         if primary_code:
@@ -962,6 +980,8 @@ async def _upload_ticket_impl(
         # BirdDog gets its response immediately (QUARRY-P, QUARRY-2).
         import asyncio as _asyncio
 
+        _ticket_id_for_email = str(new_ticket.id)
+
         async def _send_citation_bg():
             try:
                 ok = await send_citation_email(
@@ -973,15 +993,19 @@ async def _upload_ticket_impl(
                     payment_url=payment_url,
                     officer_name=new_ticket.officer_name,
                     issued_at=to_local(new_ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if new_ticket.issued_at else "",
-                    ticket_id=str(new_ticket.id),
+                    ticket_id=_ticket_id_for_email,
                 )
                 if ok:
-                    logger.info("Citation email sent for ticket %s", new_ticket.id)
+                    logger.info("Citation email sent for ticket %s to %s", _ticket_id_for_email, recipient_email)
+                else:
+                    logger.warning("Citation email returned False for ticket %s to %s", _ticket_id_for_email, recipient_email)
             except Exception as e:
                 sentry_sdk.capture_exception(e)
-                logger.warning("Citation email failed (non-fatal): %s", e)
+                logger.error("Citation email FAILED for ticket %s to %s: %s", _ticket_id_for_email, recipient_email, e)
 
-        _asyncio.create_task(_send_citation_bg())
+        task = _asyncio.create_task(_send_citation_bg())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
         notification_sent = True
         notification_email = recipient_email
 
