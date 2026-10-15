@@ -231,12 +231,61 @@ async def resend_single_citation_email(
         raise HTTPException(500, f"Email send failed: {e}")
 
 
+@diagnostic_router.post("/email-mark-sent")
+async def mark_emails_sent(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
+):
+    """Mark tickets as email-sent by providing their UUIDs (from Gmail Citation ID subjects).
+
+    Accepts:
+      {"ids": ["uuid1", "uuid2", ...]}
+    or
+      {"mark_all": true}  — marks ALL bug-window tickets with notification_email as sent
+    """
+    bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
+    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)
+
+    if data.get("mark_all"):
+        result = await db.execute(
+            text("""
+                UPDATE tickets SET email_sent_at = issued_at
+                WHERE issued_at >= :start AND issued_at < :end
+                  AND notification_email IS NOT NULL
+                  AND email_sent_at IS NULL
+            """),
+            {"start": bug_start, "end": bug_end},
+        )
+        await db.commit()
+        return {"marked": result.rowcount}
+
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(400, "Provide 'ids' list or 'mark_all': true")
+
+    marked = 0
+    for tid_str in ids:
+        try:
+            tid = uuid_mod.UUID(tid_str)
+        except ValueError:
+            continue
+        result = await db.execute(
+            text("UPDATE tickets SET email_sent_at = issued_at WHERE id = :tid AND email_sent_at IS NULL"),
+            {"tid": tid},
+        )
+        marked += result.rowcount
+
+    await db.commit()
+    return {"marked": marked, "submitted": len(ids)}
+
+
 @diagnostic_router.post("/email-resend-all")
 async def resend_all_unsent_emails(
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(require_admin()),
 ):
-    """Resend citation emails for ALL unsent tickets in the bug window."""
+    """Resend citation emails for tickets that are CONFIRMED unsent (email_sent_at IS NULL)."""
     bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
     bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)
 
@@ -255,7 +304,6 @@ async def resend_all_unsent_emails(
 
     sent = 0
     failed = 0
-    results = []
     for tid in ticket_ids:
         ticket = await db.get(Ticket, tid)
         if not ticket or not ticket.notification_email:
@@ -288,17 +336,14 @@ async def resend_all_unsent_emails(
                 ticket.email_sent_at = datetime.now(timezone.utc)
                 await db.flush()
                 sent += 1
-                results.append({"ticket": str(tid), "email": ticket.notification_email, "status": "sent"})
             else:
                 failed += 1
-                results.append({"ticket": str(tid), "email": ticket.notification_email, "status": "failed"})
         except Exception as e:
             sentry_sdk.capture_exception(e)
             failed += 1
-            results.append({"ticket": str(tid), "email": ticket.notification_email, "status": "error", "error": str(e)})
 
     await db.commit()
-    return {"sent": sent, "failed": failed, "total": len(ticket_ids), "results": results}
+    return {"sent": sent, "failed": failed, "total": len(ticket_ids)}
 
 
 @diagnostic_router.get("/ticket-test")

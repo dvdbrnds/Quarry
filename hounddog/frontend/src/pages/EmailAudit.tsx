@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { authHeaders } from "../auth";
 import {
-  Card, Table, Tag, Button, Statistic, Space, Alert, App, Popconfirm, Tooltip, Progress,
+  Card, Table, Tag, Button, Statistic, Space, Alert, App, Popconfirm, Tooltip, Progress, Input,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -43,6 +43,9 @@ export default function EmailAudit() {
   const [loading, setLoading] = useState(true);
   const [resending, setResending] = useState<Set<string>>(new Set());
   const [resendingAll, setResendingAll] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [pasteIds, setPasteIds] = useState("");
+  const [markingPaste, setMarkingPaste] = useState(false);
   const { message } = App.useApp();
 
   const load = async () => {
@@ -99,6 +102,57 @@ export default function EmailAudit() {
     }
   };
 
+  const markAllSent = async () => {
+    setMarkingAll(true);
+    try {
+      const res = await fetch("/api/sync/email-mark-sent", {
+        method: "POST",
+        headers: { ...await authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ mark_all: true }),
+      });
+      const result = await res.json();
+      if (res.ok) {
+        message.success(`Marked ${result.marked} tickets as sent`);
+        load();
+      } else {
+        message.error(`Failed: ${result.detail || "unknown error"}`);
+      }
+    } catch (e: any) {
+      message.error(`Error: ${e.message}`);
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  const markPastedIds = async () => {
+    const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+    const ids = pasteIds.match(uuidRegex) || [];
+    if (ids.length === 0) {
+      message.error("No Citation IDs (UUIDs) found in pasted text");
+      return;
+    }
+    setMarkingPaste(true);
+    try {
+      const res = await fetch("/api/sync/email-mark-sent", {
+        method: "POST",
+        headers: { ...await authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const result = await res.json();
+      if (res.ok) {
+        message.success(`Marked ${result.marked} of ${ids.length} tickets as sent`);
+        setPasteIds("");
+        load();
+      } else {
+        message.error(`Failed: ${result.detail || "unknown error"}`);
+      }
+    } catch (e: any) {
+      message.error(`Error: ${e.message}`);
+    } finally {
+      setMarkingPaste(false);
+    }
+  };
+
   if (loading || !data) {
     return <div className="p-6"><Card loading /></div>;
   }
@@ -106,7 +160,8 @@ export default function EmailAudit() {
   const sentPct = data.emails_intended > 0
     ? Math.round((data.emails_confirmed_sent / data.emails_intended) * 100)
     : 100;
-  const unsentPct = 100 - sentPct;
+
+  const needsReconciliation = data.emails_unsent === data.emails_intended && data.emails_intended > 0;
 
   const studentColumns: ColumnsType<PerStudent> = [
     {
@@ -141,6 +196,10 @@ export default function EmailAudit() {
     {
       title: "Ticket #", dataIndex: "ticket_number", key: "num",
       render: (v: string | null, r: UnsentTicket) => v || r.id.slice(0, 8),
+    },
+    {
+      title: "Citation ID", dataIndex: "id", key: "id",
+      render: (v: string) => <span className="text-xs font-mono text-gray-400">{v.slice(0, 13)}…</span>,
     },
     { title: "Plate", dataIndex: "plate", key: "plate" },
     { title: "Student Email", dataIndex: "email", key: "email" },
@@ -182,19 +241,21 @@ export default function EmailAudit() {
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Citation Email Audit</h2>
-        {data.unsent_tickets.length > 0 && (
-          <Popconfirm
-            title={`Resend ${data.unsent_tickets.length} citation emails?`}
-            description="This will email every student who missed a citation notification."
-            onConfirm={resendAll}
-            okText="Resend All"
-            okType="danger"
-          >
-            <Button type="primary" danger loading={resendingAll}>
-              Resend All Unsent ({data.unsent_tickets.length})
-            </Button>
-          </Popconfirm>
-        )}
+        <Space>
+          {data.unsent_tickets.length > 0 && !needsReconciliation && (
+            <Popconfirm
+              title={`Resend ${data.unsent_tickets.length} citation emails?`}
+              description="This will email every student who missed a citation notification."
+              onConfirm={resendAll}
+              okText="Resend All"
+              okType="danger"
+            >
+              <Button type="primary" danger loading={resendingAll}>
+                Resend All Unsent ({data.unsent_tickets.length})
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
       </div>
 
       <Alert
@@ -202,44 +263,105 @@ export default function EmailAudit() {
         showIcon
         className="mb-6"
         message="Email Delivery Bug — Sep 18 to Oct 15, 2026"
-        description={
-          <span>
-            A background task bug caused some citation emails to be silently dropped.
-            Emails were queued but the task reference wasn't retained, so Python's garbage
-            collector could cancel them before delivery. This page shows which emails were
-            confirmed sent vs. which need to be resent.
-          </span>
-        }
+        description="A background task bug caused some citation emails to be silently dropped. 628 of 942 intended emails were confirmed sent via Gmail. The remaining 314 were never delivered."
       />
+
+      {needsReconciliation && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-6"
+          message="Reconciliation Required"
+          description={
+            <div>
+              <p className="mb-2">
+                All {data.emails_intended} emails show as "unsent" because the <code>email_sent_at</code> tracking
+                column was just added. You need to mark the 628 confirmed-sent emails first before resending the rest.
+              </p>
+              <p className="mb-3 font-medium">
+                Gmail search: <code>in:sent subject:"Parking Citation Issued" after:2026/09/18 before:2026/10/16</code> → 628 results
+              </p>
+              <Space direction="vertical" className="w-full">
+                <div>
+                  <p className="text-sm mb-1">
+                    <strong>Option A:</strong> Paste email subjects/text from Gmail containing Citation IDs (UUIDs) to mark specific tickets as sent:
+                  </p>
+                  <Space.Compact className="w-full">
+                    <Input.TextArea
+                      rows={3}
+                      placeholder="Paste Gmail email subjects here — Citation IDs (UUIDs) will be auto-extracted..."
+                      value={pasteIds}
+                      onChange={(e) => setPasteIds(e.target.value)}
+                    />
+                  </Space.Compact>
+                  {pasteIds && (
+                    <Button
+                      className="mt-2"
+                      type="primary"
+                      loading={markingPaste}
+                      onClick={markPastedIds}
+                    >
+                      Mark Matched as Sent ({(pasteIds.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || []).length} UUIDs found)
+                    </Button>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm mb-1">
+                    <strong>Option B:</strong> Mark ALL {data.emails_intended} as sent (if you've confirmed via Gmail that most went through), then manually resend specific missing ones:
+                  </p>
+                  <Popconfirm
+                    title={`Mark all ${data.emails_intended} as sent?`}
+                    description="Do this only if you've confirmed most emails were delivered. You can then individually resend any you identify as missing."
+                    onConfirm={markAllSent}
+                    okText="Mark All Sent"
+                  >
+                    <Button loading={markingAll}>Mark All as Sent</Button>
+                  </Popconfirm>
+                </div>
+              </Space>
+            </div>
+          }
+        />
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <Card size="small"><Statistic title="Total Tickets" value={data.total_tickets} /></Card>
         <Card size="small"><Statistic title="Emails Intended" value={data.emails_intended} /></Card>
         <Card size="small">
-          <Statistic title="Confirmed Sent" value={data.emails_confirmed_sent} valueStyle={{ color: "#3f8600" }} />
+          <Statistic
+            title="Confirmed Sent"
+            value={data.emails_confirmed_sent}
+            valueStyle={data.emails_confirmed_sent > 0 ? { color: "#3f8600" } : {}}
+          />
         </Card>
         <Card size="small">
-          <Statistic title="Unsent" value={data.emails_unsent} valueStyle={data.emails_unsent > 0 ? { color: "#cf1322" } : {}} />
+          <Statistic
+            title={needsReconciliation ? "Unreconciled" : "Unsent"}
+            value={data.emails_unsent}
+            valueStyle={data.emails_unsent > 0 ? { color: needsReconciliation ? "#d4880f" : "#cf1322" } : {}}
+          />
         </Card>
         <Card size="small"><Statistic title="No Email on File" value={data.no_email_on_file} /></Card>
       </div>
 
-      <Card size="small" className="mb-6">
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium w-28">Delivery Rate</span>
-          <Progress
-            percent={sentPct}
-            success={{ percent: sentPct }}
-            format={() => `${sentPct}% sent`}
-            style={{ flex: 1 }}
-          />
-          {unsentPct > 0 && (
-            <Tooltip title={`${data.emails_unsent} emails need to be resent`}>
-              <Tag color="red">{unsentPct}% missed</Tag>
-            </Tooltip>
-          )}
-        </div>
-      </Card>
+      {!needsReconciliation && (
+        <Card size="small" className="mb-6">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium w-28">Delivery Rate</span>
+            <Progress
+              percent={sentPct}
+              success={{ percent: sentPct }}
+              format={() => `${sentPct}% sent`}
+              style={{ flex: 1 }}
+            />
+            {data.emails_unsent > 0 && (
+              <Tooltip title={`${data.emails_unsent} emails need to be resent`}>
+                <Tag color="red">{data.emails_unsent} missed</Tag>
+              </Tooltip>
+            )}
+          </div>
+        </Card>
+      )}
 
       <Card title="By Student" size="small" className="mb-6">
         <Table
@@ -251,22 +373,24 @@ export default function EmailAudit() {
         />
       </Card>
 
-      <Card
-        title={<Space>Unsent Tickets <Tag color="red">{data.unsent_tickets.length}</Tag></Space>}
-        size="small"
-      >
-        {data.unsent_tickets.length === 0 ? (
-          <Alert type="success" message="All citation emails have been sent!" showIcon />
-        ) : (
-          <Table
-            dataSource={data.unsent_tickets}
-            columns={ticketColumns}
-            rowKey="id"
-            size="small"
-            pagination={{ pageSize: 50 }}
-          />
-        )}
-      </Card>
+      {!needsReconciliation && (
+        <Card
+          title={<Space>Unsent Tickets <Tag color="red">{data.unsent_tickets.length}</Tag></Space>}
+          size="small"
+        >
+          {data.unsent_tickets.length === 0 ? (
+            <Alert type="success" message="All citation emails have been sent!" showIcon />
+          ) : (
+            <Table
+              dataSource={data.unsent_tickets}
+              columns={ticketColumns}
+              rowKey="id"
+              size="small"
+              pagination={{ pageSize: 50 }}
+            />
+          )}
+        </Card>
+      )}
     </div>
   );
 }
