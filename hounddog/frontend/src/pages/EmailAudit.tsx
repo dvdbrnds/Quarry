@@ -297,6 +297,38 @@ export default function EmailAudit() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Citation Email Audit</h2>
         <Space>
+          {!needsReconciliation && data.unsent_tickets.length > 0 && (
+            <Button
+              onClick={() => {
+                const emails = [...new Set(data.unsent_tickets.map(t => t.email))].sort();
+                const csv = "email,plate,ticket_number,violation_type,fine_amount,status,issued_at\n" +
+                  data.unsent_tickets.map(t =>
+                    `${t.email},${t.plate},${t.ticket_number || ""},${t.violation_type},${t.fine_amount},${t.status},${t.issued_at || ""}`
+                  ).join("\n");
+                const blob = new Blob([csv], { type: "text/csv" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "unsent_citations_contact_list.csv";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+              }}
+            >
+              Export Contact List ({[...new Set(data.unsent_tickets.map(t => t.email))].length} people)
+            </Button>
+          )}
+          {!needsReconciliation && data.unsent_tickets.length > 0 && (
+            <Button
+              onClick={() => {
+                const emails = [...new Set(data.unsent_tickets.map(t => t.email))].sort();
+                navigator.clipboard.writeText(emails.join("\n"));
+                message.success(`${emails.length} email addresses copied to clipboard`);
+              }}
+            >
+              Copy Emails
+            </Button>
+          )}
           {data.unsent_tickets.length > 0 && !needsReconciliation && (
             <Popconfirm
               title={`Resend ${data.unsent_tickets.length} citation emails?`}
