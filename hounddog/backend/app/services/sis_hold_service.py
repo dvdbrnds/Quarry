@@ -47,6 +47,58 @@ def _call_hold_proc(id_num: str, hold_flag: str) -> bool:
         return False
 
 
+def _check_hold(id_num: str) -> bool | None:
+    """Check if a parking hold currently exists in Jenzabar. Returns True/False/None (error)."""
+    import pymssql  # type: ignore
+
+    try:
+        conn = pymssql.connect(
+            server=settings.sis_mssql_host,
+            port=settings.sis_mssql_port,
+            user=settings.sis_mssql_user,
+            password=settings.sis_mssql_password,
+            database=settings.sis_mssql_database,
+            login_timeout=5,
+            timeout=10,
+        )
+        cur = conn.cursor(as_dict=True)
+        # Jenzabar stores holds in the HOLD table.
+        hold_type = settings.sis_hold_type or "PK"
+        cur.execute(
+            """
+            SELECT TOP 1 1 AS has_hold
+            FROM HOLD
+            WHERE id_num = %s
+              AND hold_type = %s
+              AND (end_dt IS NULL OR end_dt > GETDATE())
+            """,
+            (id_num, hold_type),
+        )
+        row = cur.fetchone()
+        conn.close()
+        has_hold = row is not None
+        logger.debug("Jenzabar hold check: id_num=%s has_hold=%s", id_num, has_hold)
+        return has_hold
+    except Exception as e:
+        logger.error("Jenzabar hold check FAILED: id_num=%s error=%s", id_num, e)
+        return None
+
+
+async def check_jenzabar_hold(id_num: str) -> bool | None:
+    """Check if a parking hold exists in Jenzabar.
+
+    Returns:
+        True if hold is active, False if no hold, None if check failed.
+    """
+    if not settings.sis_hold_enabled:
+        return None
+    if not settings.sis_mssql_host or not settings.sis_mssql_password:
+        return None
+    if not id_num or not id_num.strip().isdigit():
+        return None
+    return await asyncio.to_thread(_check_hold, id_num)
+
+
 async def set_jenzabar_hold(id_num: str, apply: bool) -> bool:
     """Set or remove a registration hold in Jenzabar.
 

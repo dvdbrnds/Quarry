@@ -1285,6 +1285,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [violationOptions, setViolationOptions] = useState<{ label: string; value: string }[]>([]);
   const [lotOptions, setLotOptions] = useState<{ label: string; value: string }[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
+  const [holdStatus, setHoldStatus] = useState<{ quarry_hold_active: boolean; jenzabar_hold_active: boolean | null; synced: boolean | null } | null>(null);
+  const [holdChecking, setHoldChecking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [bulkVoiding, setBulkVoiding] = useState(false);
@@ -2195,7 +2197,18 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             disabled: ["paid", "voided"].includes(t.status),
           }),
         } : undefined}
-        onRow={(t) => ({ onClick: () => setSelected(t), className: "cursor-pointer" })}
+        onRow={(t) => ({ onClick: async () => {
+          setSelected(t);
+          setHoldStatus(null);
+          if (t.conduct_escalation?.escalation_type === "registration_hold" && t.permit_id) {
+            setHoldChecking(true);
+            try {
+              const r = await fetch(`/api/tickets/hold-check/${t.permit_id}`, { headers: await authHeaders() });
+              if (r.ok) setHoldStatus(await r.json());
+            } catch {}
+            setHoldChecking(false);
+          }
+        }, className: "cursor-pointer" })}
         onChange={(_pagination, _filters, sorter) => {
           if (!Array.isArray(sorter) && sorter.columnKey) {
             const newSortBy = String(sorter.columnKey);
@@ -2562,6 +2575,41 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                     )}
                     {isHold && esc.conduct_resolved && (
                       <div className="text-green-600 mt-1">✓ Conduct meeting scheduled/completed</div>
+                    )}
+                    {isHold && (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <div className="font-medium text-gray-700 mb-1">Live Jenzabar Status</div>
+                        {holdChecking ? (
+                          <div className="text-gray-400 text-xs">Checking Jenzabar...</div>
+                        ) : holdStatus ? (
+                          <div className="space-y-1">
+                            <div>
+                              Quarry: <Tag color={holdStatus.quarry_hold_active ? "red" : "green"}>
+                                {holdStatus.quarry_hold_active ? "Hold Active" : "No Hold"}
+                              </Tag>
+                            </div>
+                            <div>
+                              Jenzabar: {holdStatus.jenzabar_hold_active === null ? (
+                                <Tag color="default">Check failed</Tag>
+                              ) : (
+                                <Tag color={holdStatus.jenzabar_hold_active ? "red" : "green"}>
+                                  {holdStatus.jenzabar_hold_active ? "Hold Active" : "No Hold"}
+                                </Tag>
+                              )}
+                            </div>
+                            {holdStatus.synced === false && (
+                              <div className="text-amber-600 font-medium">
+                                ⚠️ Out of sync — Quarry and Jenzabar disagree
+                              </div>
+                            )}
+                            {holdStatus.synced === true && (
+                              <div className="text-green-600">✓ In sync</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-gray-400 text-xs">No student ID to check</div>
+                        )}
+                      </div>
                     )}
                     {!isHold && isActive && (
                       <div className="text-orange-600/70">Auto-escalated (unpaid ticket threshold)</div>

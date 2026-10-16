@@ -138,6 +138,7 @@ class Settings(BaseSettings):
     sis_hold_api_url: str = ""
     sis_hold_api_key: str = ""
     sis_hold_procedure: str = "Mor_CUS_ParkingHold"
+    sis_hold_type: str = "PK"  # hold_type code in Jenzabar HOLD table
 
     # SIS SQL Server (Jenzabar) — student data lookup
     sis_mssql_host: str = ""

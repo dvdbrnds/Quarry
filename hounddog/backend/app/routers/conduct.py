@@ -561,6 +561,20 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
     unpaid_tickets = [t for t in tickets if t["status"] not in ("paid", "voided", "resolved_permit", "warning")]
     live_count = len(unpaid_tickets) if tickets else case_row["ticket_count"]
 
+    # Live check: is the hold actually active in Jenzabar right now?
+    jenzabar_hold_active = None
+    if mid and mid.strip().isdigit():
+        from ..services.sis_hold_service import check_jenzabar_hold
+        jenzabar_hold_active = await check_jenzabar_hold(mid)
+
+    # Check if Quarry thinks a hold is active
+    quarry_hold_result = await db.execute(text("""
+        SELECT 1 FROM escalation_log
+        WHERE student_id = :sid AND escalation_type = 'registration_hold' AND resolved_at IS NULL
+        LIMIT 1
+    """), {"sid": case_row["student_id"] or okta_sub})
+    quarry_hold_active = quarry_hold_result.scalar() is not None
+
     return {
         "id": str(case_row["id"]),
         "student_id": mid,
@@ -575,6 +589,11 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
         "resolved_by": case_row["resolved_by"],
         "permit": permit_info,
         "tickets": tickets,
+        "hold_status": {
+            "quarry": quarry_hold_active,
+            "jenzabar": jenzabar_hold_active,
+            "synced": jenzabar_hold_active == quarry_hold_active if jenzabar_hold_active is not None else None,
+        },
     }
 
 

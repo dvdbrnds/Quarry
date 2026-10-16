@@ -992,6 +992,88 @@ async def officer_report_export(
     }
 
 
+@router.get("/hold-check/{lookup_id}")
+async def check_hold_status(
+    lookup_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_office()),
+):
+    """Live check of registration hold status — compares Quarry's record to Jenzabar.
+
+    lookup_id can be: student_id (Okta sub), moravian_id (numeric), or permit_id (UUID).
+    """
+    moravian_id: str | None = None
+    student_id: str | None = None
+
+    # Try as permit_id (UUID)
+    try:
+        permit_uuid = uuid.UUID(lookup_id)
+        permit_row = await db.execute(
+            select(Permit.moravian_id, Permit.student_id).where(Permit.id == permit_uuid)
+        )
+        pr = permit_row.first()
+        if pr:
+            moravian_id = pr[0] if pr[0] else None
+            student_id = pr[1] if pr[1] else None
+    except ValueError:
+        pass
+
+    # Try as student_id (Okta sub) or moravian_id (numeric)
+    if not moravian_id:
+        result = await db.execute(
+            select(Permit.moravian_id, Permit.student_id).where(
+                Permit.student_id == lookup_id,
+                Permit.deleted_at.is_(None),
+                Permit.moravian_id.isnot(None),
+                Permit.moravian_id != "",
+            ).limit(1)
+        )
+        row = result.first()
+        if row:
+            moravian_id = row[0]
+            student_id = row[1]
+
+    if not moravian_id and lookup_id.strip().isdigit():
+        moravian_id = lookup_id
+
+    if not moravian_id:
+        raise HTTPException(404, "No Moravian ID found for this student")
+
+    # Quarry's record — search by both student_id and moravian_id
+    search_ids = [i for i in [student_id, moravian_id, lookup_id] if i]
+    quarry_result = await db.execute(
+        text("""
+            SELECT id, status, created_at, resolved_at, resolved_by, ticket_count
+            FROM escalation_log
+            WHERE student_id = ANY(:sids)
+              AND escalation_type = 'registration_hold'
+            ORDER BY created_at DESC LIMIT 1
+        """),
+        {"sids": search_ids},
+    )
+    quarry_row = quarry_result.mappings().first()
+    quarry_active = quarry_row["resolved_at"] is None if quarry_row else False
+
+    # Live Jenzabar check
+    from ..services.sis_hold_service import check_jenzabar_hold
+    jenzabar_active = await check_jenzabar_hold(moravian_id)
+
+    synced = jenzabar_active == quarry_active if jenzabar_active is not None else None
+
+    return {
+        "moravian_id": moravian_id,
+        "quarry_hold_active": quarry_active,
+        "jenzabar_hold_active": jenzabar_active,
+        "synced": synced,
+        "quarry_record": {
+            "status": quarry_row["status"],
+            "created_at": quarry_row["created_at"].isoformat() if quarry_row and quarry_row["created_at"] else None,
+            "resolved_at": quarry_row["resolved_at"].isoformat() if quarry_row and quarry_row["resolved_at"] else None,
+            "resolved_by": quarry_row["resolved_by"] if quarry_row else None,
+        } if quarry_row else None,
+    }
+
+
 @router.post("", response_model=TicketRead, status_code=201)
 async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
     from ..services.ticket_numbering import next_ticket_number
