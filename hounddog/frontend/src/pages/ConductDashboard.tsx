@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { App, Button, Descriptions, Empty, Input, Modal, Segmented, Space, Spin, Table, Tag } from "antd";
+import { Alert, App, Button, Descriptions, Empty, Input, Modal, Segmented, Space, Spin, Table, Tag } from "antd";
 import { PrinterOutlined, DownloadOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, type AuthUser } from "../auth";
@@ -26,6 +26,9 @@ interface CaseRow {
   student_email: string;
   plate: string;
   ticket_count: number;
+  unpaid_amount?: number;
+  hold_active?: boolean;
+  other_plates?: string[];
   ticket_ids: string[];
   status: string;
   details: string | null;
@@ -33,6 +36,12 @@ interface CaseRow {
   resolved_at: string | null;
   resolved_by: string | null;
   permit: PermitInfo | null;
+}
+
+interface HoldStatus {
+  quarry: boolean;
+  jenzabar: boolean | null;
+  synced: boolean | null;
 }
 
 interface TicketDetail {
@@ -61,6 +70,7 @@ interface TicketDetail {
 
 interface CaseDetail extends CaseRow {
   tickets: TicketDetail[];
+  hold_status?: HoldStatus;
 }
 
 type StatusFilter = "all" | "active" | "resolved";
@@ -319,9 +329,11 @@ function ConductPage() {
       "Student ID": c.student_id || "",
       "Plate": [c.plate, ...(c.other_plates || [])].filter(Boolean).join(", ") || "",
       "Ticket Count": c.ticket_count,
+      "Unpaid Amount": (c.unpaid_amount ?? 0).toFixed(2),
+      "Registration Hold": c.hold_active ? "Yes" : "No",
       "Permit Type": c.permit ? (c.permit.is_tag_only ? "Vehicle Tag" : c.permit.permit_type) : "",
       "Referred": c.created_at || "",
-      "Status": c.status || "",
+      "Conduct Status": c.status || "",
       "Resolved At": c.resolved_at || "",
       "Resolved By": c.resolved_by || "",
     }));
@@ -433,11 +445,25 @@ function ConductPage() {
       defaultSortOrder: "descend",
     },
     {
-      title: "Status",
+      title: "Conduct",
       dataIndex: "status",
       key: "status",
       width: 100,
       render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag>,
+    },
+    {
+      title: "Unpaid / Hold",
+      key: "hold",
+      width: 120,
+      render: (_: unknown, r: CaseRow) => (
+        <div>
+          <div className="text-xs font-semibold text-red-600">${(r.unpaid_amount ?? 0).toFixed(2)}</div>
+          {r.hold_active
+            ? <Tag color="red" style={{ fontSize: 10 }}>Reg Hold</Tag>
+            : <Tag color="orange" style={{ fontSize: 10 }}>No hold</Tag>}
+        </div>
+      ),
+      sorter: (a, b) => (a.unpaid_amount ?? 0) - (b.unpaid_amount ?? 0),
     },
     {
       title: "Resolved By",
@@ -522,7 +548,7 @@ function ConductPage() {
 
   const totalFines = selected?.tickets.reduce((sum, t) => sum + Number(t.fine_amount), 0) ?? 0;
   const unpaidFines = selected?.tickets
-    .filter(t => !["paid", "voided", "resolved_permit"].includes(t.status))
+    .filter(t => !["paid", "voided", "resolved_permit", "warning"].includes(t.status))
     .reduce((sum, t) => sum + Number(t.fine_amount), 0) ?? 0;
 
   return (
@@ -662,6 +688,33 @@ function ConductPage() {
               </Descriptions>
             )}
 
+            {selected.status === "resolved" && unpaidFines > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                message={`Conduct resolved — $${unpaidFines.toFixed(2)} in tickets still unpaid`}
+                description="Resolving the conduct case does not clear the balance. The registration hold stays until the tickets are paid or voided."
+              />
+            )}
+
+            {selected.hold_status && (
+              <div className="flex items-center gap-4 text-sm border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-xs font-medium text-gray-500">Registration Hold</span>
+                <span>
+                  Quarry:{" "}
+                  {selected.hold_status.quarry ? <Tag color="red">Active</Tag> : <Tag color="orange">None</Tag>}
+                </span>
+                <span>
+                  Jenzabar:{" "}
+                  {selected.hold_status.jenzabar === null
+                    ? <Tag>Unavailable</Tag>
+                    : selected.hold_status.jenzabar ? <Tag color="red">Active</Tag> : <Tag color="orange">None</Tag>}
+                </span>
+                {selected.hold_status.synced === false && <span className="text-xs text-orange-600">⚠️ Out of sync</span>}
+                {selected.hold_status.synced === true && <span className="text-xs text-green-600">✓ In sync</span>}
+              </div>
+            )}
+
             {/* Notes */}
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
               <div className="text-xs font-medium text-gray-600 mb-2">Case Notes</div>
@@ -778,6 +831,9 @@ function ConductPage() {
       >
         <p className="text-sm text-gray-600 mb-3">
           Mark this case as resolved. Add an optional note about the outcome.
+        </p>
+        <p className="text-xs text-gray-500 mb-3">
+          This closes the conduct referral only. Unpaid tickets and the registration hold are not affected.
         </p>
         <Input.TextArea
           rows={3}

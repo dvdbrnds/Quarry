@@ -130,13 +130,30 @@ async def list_cases(
             COUNT(*) AS ticket_count,
             MIN(t.issued_at) AS first_ticket,
             MAX(t.issued_at) AS latest_ticket,
-            MAX(t.owner_name) AS owner_name
+            MAX(t.owner_name) AS owner_name,
+            COALESCE(SUM(t.fine_amount), 0) AS unpaid_amount
         FROM tickets t
         WHERE t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
         GROUP BY plate_norm, t.plate
         HAVING COUNT(*) >= 3
         ORDER BY MAX(t.issued_at) DESC
     """))
+
+    # Registration holds are tracked separately from conduct referrals and are
+    # only lifted by payment — a resolved conduct case can still carry a hold.
+    hold_rows = await db.execute(text("""
+        SELECT student_id,
+               UPPER(REPLACE(REPLACE(COALESCE(plate, ''), ' ', ''), '-', '')) AS plate_norm
+        FROM escalation_log
+        WHERE escalation_type = 'registration_hold' AND resolved_at IS NULL
+    """))
+    held_student_ids: set[str] = set()
+    held_plates: set[str] = set()
+    for h in hold_rows.mappings():
+        if h["student_id"]:
+            held_student_ids.add(h["student_id"])
+        if h["plate_norm"]:
+            held_plates.add(h["plate_norm"])
 
     # Build one case per plate, then deduplicate by student identity
     plate_cases: list[dict] = []
@@ -204,6 +221,8 @@ async def list_cases(
             "plate": plate,
             "plate_norm": plate_norm,
             "ticket_count": row["ticket_count"],
+            "unpaid_amount": float(row["unpaid_amount"] or 0),
+            "hold_active": plate_norm in held_plates or bool(okta_sub and okta_sub in held_student_ids),
             "ticket_ids": [],
             "status": esc_status,
             "details": esc["details"] if esc else None,
@@ -231,6 +250,8 @@ async def list_cases(
             idx = seen_students[identity]
             existing = cases[idx]
             existing["ticket_count"] += c["ticket_count"]
+            existing["unpaid_amount"] += c["unpaid_amount"]
+            existing["hold_active"] = existing["hold_active"] or c["hold_active"]
             # Keep the plate with more tickets as primary; list others
             other_plates = existing.get("other_plates", [])
             other_plates.append(c["plate"])
@@ -380,6 +401,8 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
         okta_sub=okta_sub,
     )
 
+    hold_status = await _hold_status(db, mid, okta_sub, plate_norm)
+
     return {
         "id": f"plate:{plate_norm}",
         "student_id": mid,
@@ -395,6 +418,7 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
         "resolved_by": None,
         "permit": permit_info,
         "tickets": tickets,
+        "hold_status": hold_status,
     }
 
 
@@ -561,19 +585,10 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
     unpaid_tickets = [t for t in tickets if t["status"] not in ("paid", "voided", "resolved_permit", "warning")]
     live_count = len(unpaid_tickets) if tickets else case_row["ticket_count"]
 
-    # Live check: is the hold actually active in Jenzabar right now?
-    jenzabar_hold_active = None
-    if mid and mid.strip().isdigit():
-        from ..services.sis_hold_service import check_jenzabar_hold
-        jenzabar_hold_active = await check_jenzabar_hold(mid)
-
-    # Check if Quarry thinks a hold is active
-    quarry_hold_result = await db.execute(text("""
-        SELECT 1 FROM escalation_log
-        WHERE student_id = :sid AND escalation_type = 'registration_hold' AND resolved_at IS NULL
-        LIMIT 1
-    """), {"sid": case_row["student_id"] or okta_sub})
-    quarry_hold_active = quarry_hold_result.scalar() is not None
+    hold_status = await _hold_status(
+        db, mid, case_row["student_id"] or okta_sub,
+        (case_row["plate"] or "").upper().replace(" ", "").replace("-", ""),
+    )
 
     return {
         "id": str(case_row["id"]),
@@ -589,11 +604,33 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
         "resolved_by": case_row["resolved_by"],
         "permit": permit_info,
         "tickets": tickets,
-        "hold_status": {
-            "quarry": quarry_hold_active,
-            "jenzabar": jenzabar_hold_active,
-            "synced": jenzabar_hold_active == quarry_hold_active if jenzabar_hold_active is not None else None,
-        },
+        "hold_status": hold_status,
+    }
+
+
+async def _hold_status(db: AsyncSession, moravian_id: str, student_id: str, plate_norm: str) -> dict:
+    """Registration hold state in Quarry and (live) in Jenzabar.
+
+    Independent of the conduct case — the hold stays until tickets are paid.
+    """
+    jenzabar_hold_active = None
+    if moravian_id and moravian_id.strip().isdigit():
+        from ..services.sis_hold_service import check_jenzabar_hold
+        jenzabar_hold_active = await check_jenzabar_hold(moravian_id)
+
+    quarry_hold_result = await db.execute(text("""
+        SELECT 1 FROM escalation_log
+        WHERE escalation_type = 'registration_hold' AND resolved_at IS NULL
+          AND ((:sid <> '' AND student_id = :sid)
+               OR (:plate <> '' AND UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :plate))
+        LIMIT 1
+    """), {"sid": student_id or "", "plate": plate_norm or ""})
+    quarry_hold_active = quarry_hold_result.scalar() is not None
+
+    return {
+        "quarry": quarry_hold_active,
+        "jenzabar": jenzabar_hold_active,
+        "synced": jenzabar_hold_active == quarry_hold_active if jenzabar_hold_active is not None else None,
     }
 
 
