@@ -114,6 +114,16 @@ export default function EmailAudit() {
     }
   };
 
+  const testSmtp = async () => {
+    const res = await fetch("/api/sync/smtp-check", { headers: await authHeaders() });
+    const result = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    modal[result.ok ? "success" : "error"]({
+      title: result.ok ? "Mail server login works" : "Mail server check failed",
+      width: 640,
+      content: <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>,
+    });
+  };
+
   const resendAll = async () => {
     setResendingAll(true);
     try {
@@ -334,6 +344,7 @@ export default function EmailAudit() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Citation Email Audit</h2>
         <Space>
+          <Button onClick={testSmtp}>Test Mail Server</Button>
           {!needsReconciliation && data.unsent_tickets.length > 0 && (
             <Button
               onClick={() => {

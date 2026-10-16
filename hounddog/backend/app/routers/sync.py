@@ -525,6 +525,37 @@ async def resend_all_status(_user: OktaUser = Depends(require_admin())):
     return _resend_job
 
 
+@diagnostic_router.get("/smtp-check")
+async def smtp_check(_user: OktaUser = Depends(require_admin())):
+    """Connect and log in to the SMTP server without sending anything; report each step."""
+    import aiosmtplib
+    steps: list[dict] = []
+    cfg = {
+        "host": settings.smtp_host, "port": settings.smtp_port, "use_tls": settings.smtp_use_tls,
+        "user": settings.smtp_user, "password_set": bool(settings.smtp_password),
+        "from_address": settings.smtp_from_address, "citation_from_address": settings.citation_from_address,
+    }
+    client = aiosmtplib.SMTP(
+        hostname=settings.smtp_host, port=settings.smtp_port, use_tls=settings.smtp_use_tls,
+        start_tls=False, timeout=10,
+    )
+    try:
+        r = await client.connect()
+        steps.append({"step": "connect", "ok": True, "reply": f"{r.code} {r.message}"})
+        if not settings.smtp_use_tls:
+            r = await client.starttls()
+            steps.append({"step": "starttls", "ok": True, "reply": f"{r.code} {r.message}"})
+        if settings.smtp_user:
+            r = await client.login(settings.smtp_user, settings.smtp_password)
+            steps.append({"step": "login", "ok": True, "reply": f"{r.code} {r.message}"})
+        await client.quit()
+        return {"ok": True, "config": cfg, "steps": steps}
+    except Exception as e:
+        steps.append({"step": "error", "ok": False, "type": type(e).__name__,
+                      "code": getattr(e, "code", None), "reply": str(e)})
+        return {"ok": False, "config": cfg, "steps": steps}
+
+
 @diagnostic_router.get("/ticket-test")
 async def ticket_creation_test(
     db: AsyncSession = Depends(get_db),
