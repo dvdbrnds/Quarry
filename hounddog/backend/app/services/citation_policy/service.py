@@ -161,19 +161,37 @@ async def close_pauses(
 
 # ── Appeals ────────────────────────────────────────────────────────────────
 
+# email_sent_at is only tracked from here on; earlier tickets have it NULL.
+EMAIL_TRACKING_START = datetime(2026, 9, 18, tzinfo=timezone.utc)
+LATE_EMAIL_GRACE = timedelta(hours=1)
+
+
+def appeal_window_start(ticket: Ticket) -> datetime:
+    """When the appeal clock starts: issuance, unless the citation email went out late (or not
+    at all), in which case the student gets a full window from when they were actually told."""
+    issued = ticket.issued_at if ticket.issued_at.tzinfo else ticket.issued_at.replace(tzinfo=timezone.utc)
+    emailed = bool(ticket.notification_email and "@" in ticket.notification_email)
+    if not emailed or issued < EMAIL_TRACKING_START:
+        return issued
+    if ticket.email_sent_at is None:
+        return max(issued, datetime.now(timezone.utc))
+    sent = ticket.email_sent_at if ticket.email_sent_at.tzinfo else ticket.email_sent_at.replace(tzinfo=timezone.utc)
+    return sent if sent > issued + LATE_EMAIL_GRACE else issued
+
+
 def appeal_deadline(ticket: Ticket, cfg: tl.PolicyConfig, legacy_window_days: int) -> tuple[datetime | None, int]:
     """(deadline as an aware datetime, window days). v2 citations: end of day 10, campus time.
-    Everything else keeps the old window counted from the issuance timestamp."""
+    Everything else keeps the old window. Both count from appeal_window_start."""
     version, _ = ticket_policy(ticket, cfg)
     if not ticket.issued_at:
         return None, cfg.due_day if version == tl.V2 else legacy_window_days
+    start = appeal_window_start(ticket)
     if version == tl.V2:
-        last_day = tl.appeal_deadline(local_date(ticket.issued_at), cfg)
-        tz = to_local(ticket.issued_at).tzinfo
+        last_day = tl.appeal_deadline(local_date(start), cfg)
+        tz = to_local(start).tzinfo
         end_local = datetime.combine(last_day + timedelta(days=1), datetime.min.time(), tzinfo=tz)
         return end_local - timedelta(microseconds=1), cfg.due_day
-    issued = ticket.issued_at if ticket.issued_at.tzinfo else ticket.issued_at.replace(tzinfo=timezone.utc)
-    return issued + timedelta(days=legacy_window_days), legacy_window_days
+    return start + timedelta(days=legacy_window_days), legacy_window_days
 
 
 async def appeal_deadline_for(db: AsyncSession, ticket: Ticket) -> tuple[datetime | None, int]:

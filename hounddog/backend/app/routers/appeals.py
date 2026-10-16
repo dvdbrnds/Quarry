@@ -132,7 +132,7 @@ async def _validate_and_appeal(db: AsyncSession, ticket: "Ticket", explanation: 
         raise HTTPException(
             400,
             f"The appeal window for this citation has closed. "
-            f"Appeals must be submitted within {window_days} day(s) of issuance.",
+            f"Appeals must be submitted within {window_days} day(s) of the citation notice.",
         )
 
     ticket.status = "appealed"

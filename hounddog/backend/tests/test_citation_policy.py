@@ -121,6 +121,26 @@ def test_appeal_deadline_is_10_days():
     assert tl.appeal_deadline(D, CFG) == day(10)
 
 
+def _t(issued, sent, email="s@moravian.edu"):
+    from types import SimpleNamespace
+    return SimpleNamespace(issued_at=issued, email_sent_at=sent, notification_email=email,
+                           policy_version="legacy", timeline_start_date=None)
+
+
+def test_appeal_window_counts_from_late_email():
+    from datetime import datetime, timezone
+    from app.services.citation_policy.service import appeal_deadline
+    issued = datetime(2026, 9, 25, 14, 0, tzinfo=timezone.utc)
+    resent = datetime(2026, 10, 16, 21, 0, tzinfo=timezone.utc)
+    cfg = PolicyConfig()
+    assert appeal_deadline(_t(issued, issued), cfg, 5)[0] == issued + timedelta(days=5)
+    assert appeal_deadline(_t(issued, resent), cfg, 5)[0] == resent + timedelta(days=5)
+    assert appeal_deadline(_t(issued, None), cfg, 5)[0] > datetime.now(timezone.utc)
+    assert appeal_deadline(_t(issued, None, email=None), cfg, 5)[0] == issued + timedelta(days=5)
+    old = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    assert appeal_deadline(_t(old, None), cfg, 5)[0] == old + timedelta(days=5)
+
+
 # ── Barnacle eligibility ───────────────────────────────────────────────────
 
 def cit(tid: str, elapsed: int, *, state="PA", unpaid=True, paused=None) -> CitationState:

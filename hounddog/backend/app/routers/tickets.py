@@ -1757,7 +1757,7 @@ async def appeal_ticket(
         raise HTTPException(
             400,
             f"Appeal window has closed. Appeals must be submitted within "
-            f"{appeal_window_days} day(s) of issuance.",
+            f"{appeal_window_days} day(s) of the citation notice.",
         )
 
     ticket.status = "appealed"

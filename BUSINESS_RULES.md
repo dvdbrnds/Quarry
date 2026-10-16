@@ -96,6 +96,7 @@ Implemented in `backend/app/services/citation_policy/`. Every number below is a 
 
 **Appeals**
 - v2 citations can be appealed through the end of day 10 (local). Legacy citations keep the old window.
+- The appeal window starts when the student was actually notified. For citations issued on or after Sep 18, 2026 with an email address on file: if the citation email went out more than an hour after issuance (e.g. resent after the Sep 18 – Oct 16 email failures), the full window counts from the send time; if it was never sent, the window stays open until it is.
 - A pending appeal pauses the clock. A denied appeal starts a 10-day grace period from the decision date. If still unpaid when it ends, the citation is delinquent immediately (day-11 stage) and later stages follow on the normal schedule.
 - Every appeal decision path (approve/deny, quick deny, bulk deny, committee) goes through one shared function so they behave the same.
 - Dismissal (approved appeal or void) voids every open fee on the citation. A fee shared with other citations (owner notification, deployment) is voided only once all of its citations are dismissed.
