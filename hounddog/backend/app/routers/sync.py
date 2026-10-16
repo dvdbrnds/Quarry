@@ -1278,6 +1278,7 @@ async def _upload_ticket_impl(
     ticket_kwargs: dict = dict(
         ticket_number=await next_ticket_number(db),
         plate=ticket.plate.upper(),
+        plate_state=(ticket.plate_state or "").strip().upper()[:2] or None,
         permit_id=permit_id,
         lot=ticket.lot,
         zone=ticket.zone,

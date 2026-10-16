@@ -57,6 +57,7 @@ from .routers import (
     auth,
     backup,
     branding,
+    citation_policy,
     conduct,
     vouchers,
     devices,
@@ -435,7 +436,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 47
+    SCHEMA_VERSION = 48
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1465,6 +1466,36 @@ async def lifespan(app: FastAPI):
             "CREATE INDEX IF NOT EXISTS idx_hold_exemptions_plate ON hold_exemptions(plate)",
             "CREATE INDEX IF NOT EXISTS idx_hold_exemptions_email ON hold_exemptions(LOWER(email))",
             _hold_exemption_seed_sql(),
+            # v48: Citation policy v2 (new tables come from create_all)
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS plate_state VARCHAR(2)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS policy_version VARCHAR(16)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS timeline_start_date DATE",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS stage VARCHAR(16)",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS delinquent_since DATE",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_submitted_at TIMESTAMPTZ",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_decided_at TIMESTAMPTZ",
+            "CREATE INDEX IF NOT EXISTS idx_tickets_policy_version ON tickets(policy_version)",
+            "CREATE INDEX IF NOT EXISTS idx_tickets_plate_state ON tickets(plate, plate_state)",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS policy_effective_date DATE",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS legacy_resolution_deadline DATE",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS policy_reminder_day INTEGER NOT NULL DEFAULT 7",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS policy_due_day INTEGER NOT NULL DEFAULT 10",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS policy_late_fee_1_day INTEGER NOT NULL DEFAULT 11",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS policy_late_fee_2_day INTEGER NOT NULL DEFAULT 31",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS late_fee_1_amount NUMERIC(8,2) NOT NULL DEFAULT 15.00",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS late_fee_2_amount NUMERIC(8,2) NOT NULL DEFAULT 20.00",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS late_fee_cap NUMERIC(8,2) NOT NULL DEFAULT 35.00",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS denied_appeal_grace_days INTEGER NOT NULL DEFAULT 10",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS owner_notification_fee NUMERIC(8,2) NOT NULL DEFAULT 25.00",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS policy_job_hour INTEGER NOT NULL DEFAULT 6",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_enabled BOOLEAN NOT NULL DEFAULT false",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_min_citations INTEGER NOT NULL DEFAULT 3",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_delinquent_days INTEGER NOT NULL DEFAULT 30",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_warning_wait_days INTEGER NOT NULL DEFAULT 10",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_warning_lookahead_days INTEGER NOT NULL DEFAULT 10",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_deployment_fee NUMERIC(8,2) NOT NULL DEFAULT 100.00",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS removal_phone_daytime VARCHAR(64) NOT NULL DEFAULT ''",
+            "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS removal_phone_after_hours VARCHAR(64) NOT NULL DEFAULT ''",
             ]
             for migration in migrations:
                 try:
@@ -2128,6 +2159,8 @@ app.include_router(permit_types.router, prefix="/api/permit-types", tags=["permi
 app.include_router(academic_calendar.router, prefix="/api/academic-calendar", tags=["academic-calendar"])
 app.include_router(enforcement_settings.router, prefix="/api/settings/enforcement", tags=["settings"])
 app.include_router(conduct.router, prefix="/api/conduct", tags=["conduct"])
+app.include_router(citation_policy.router, prefix="/api/citation-policy", tags=["citation-policy"])
+app.include_router(citation_policy.public_router, prefix="/api/citation-policy", tags=["citation-policy-public"])
 app.include_router(audit.diagnostic_router, prefix="/api/audit", tags=["audit"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(messaging.router, prefix="/api/messaging", tags=["messaging"])

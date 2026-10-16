@@ -11,6 +11,8 @@ from ..auth.okta import get_current_user, get_current_user_or_impersonated, Okta
 from ..database import get_db
 from ..models.enforcement_settings import EnforcementSettings
 from ..models.ticket import Ticket
+from ..services.citation_policy import timeline as tl
+from ..services.citation_policy.service import appeal_deadline, load_config, on_appeal_submitted
 
 
 router = SafeRouter(dependencies=[Depends(get_current_user)])
@@ -61,12 +63,9 @@ class PublicLookupResponse(BaseModel):
     appeal_window_days: int
 
 
-def _ticket_to_summary(t: "Ticket", appeal_window_days: int) -> TicketSummary:
+def _ticket_to_summary(t: "Ticket", cfg: tl.PolicyConfig, legacy_window_days: int) -> TicketSummary:
     now = datetime.now(timezone.utc)
-    issued = t.issued_at
-    if issued and issued.tzinfo is None:
-        issued = issued.replace(tzinfo=timezone.utc)
-    deadline = issued + timedelta(days=appeal_window_days) if issued else None
+    deadline, _ = appeal_deadline(t, cfg, legacy_window_days)
 
     not_final = t.status not in ("paid", "voided", "resolved_permit")
     no_pending = t.appeal_decision != "pending"
@@ -98,7 +97,17 @@ async def _get_appeal_window(db: AsyncSession) -> int:
     return es.appeal_window_days if es else 5
 
 
-async def _validate_and_appeal(ticket: "Ticket", explanation: str, appeal_window_days: int):
+async def _summaries(db: AsyncSession, tickets: list[Ticket]) -> MyTicketsResponse:
+    legacy_days = await _get_appeal_window(db)
+    cfg = await load_config(db)
+    window = cfg.due_day if cfg.active else legacy_days
+    return MyTicketsResponse(
+        tickets=[_ticket_to_summary(t, cfg, legacy_days) for t in tickets],
+        appeal_window_days=window,
+    )
+
+
+async def _validate_and_appeal(db: AsyncSession, ticket: "Ticket", explanation: str, actor: str):
     """Shared validation logic for both authenticated and public appeals."""
     if ticket.status in ("paid", "voided", "resolved_permit"):
         raise HTTPException(
@@ -117,21 +126,19 @@ async def _validate_and_appeal(ticket: "Ticket", explanation: str, appeal_window
     if ticket.appeal_decision == "pending":
         raise HTTPException(400, "An appeal has already been submitted for this ticket.")
 
-    if ticket.issued_at:
-        issued = ticket.issued_at
-        if issued.tzinfo is None:
-            issued = issued.replace(tzinfo=timezone.utc)
-        deadline = issued + timedelta(days=appeal_window_days)
-        if datetime.now(timezone.utc) > deadline:
-            raise HTTPException(
-                400,
-                f"The appeal window for this citation has closed. "
-                f"Appeals must be submitted within {appeal_window_days} day(s) of issuance.",
-            )
+    cfg = await load_config(db)
+    deadline, window_days = appeal_deadline(ticket, cfg, await _get_appeal_window(db))
+    if deadline and datetime.now(timezone.utc) > deadline:
+        raise HTTPException(
+            400,
+            f"The appeal window for this citation has closed. "
+            f"Appeals must be submitted within {window_days} day(s) of issuance.",
+        )
 
     ticket.status = "appealed"
     ticket.appeal_note = explanation
     ticket.appeal_decision = "pending"
+    await on_appeal_submitted(db, ticket, actor)
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +153,7 @@ async def my_tickets(
     from ..services.ticket_lookup import find_tickets_for_user
 
     tickets = await find_tickets_for_user(db, user.email)
-
-    appeal_window_days = await _get_appeal_window(db)
-    summaries = [_ticket_to_summary(t, appeal_window_days) for t in tickets]
-    return MyTicketsResponse(tickets=summaries, appeal_window_days=appeal_window_days)
+    return await _summaries(db, tickets)
 
 
 class PlateClaimRequest(BaseModel):
@@ -181,9 +185,7 @@ async def claim_plate_tickets(
     if linked > 0:
         await db.flush()
 
-    appeal_window_days = await _get_appeal_window(db)
-    summaries = [_ticket_to_summary(t, appeal_window_days) for t in tickets]
-    return MyTicketsResponse(tickets=summaries, appeal_window_days=appeal_window_days)
+    return await _summaries(db, tickets)
 
 
 @router.post("/submit", response_model=AppealResult)
@@ -196,8 +198,7 @@ async def submit_appeal(
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
-    appeal_window_days = await _get_appeal_window(db)
-    await _validate_and_appeal(ticket, data.explanation, appeal_window_days)
+    await _validate_and_appeal(db, ticket, data.explanation, user.email)
 
     ticket.dispute_name = user.display_name or f"{user.given_name} {user.family_name}".strip()
     ticket.dispute_email = user.email
@@ -224,9 +225,8 @@ async def public_lookup(
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
-    appeal_window_days = await _get_appeal_window(db)
-    summary = _ticket_to_summary(ticket, appeal_window_days)
-    return PublicLookupResponse(ticket=summary, appeal_window_days=appeal_window_days)
+    resp = await _summaries(db, [ticket])
+    return PublicLookupResponse(ticket=resp.tickets[0], appeal_window_days=resp.appeal_window_days)
 
 
 class GuestLookupRequest(BaseModel):
@@ -246,10 +246,7 @@ async def guest_lookup(
         raise HTTPException(400, "Please enter a license plate, ticket number, or ticket ID")
 
     tickets = await find_tickets_by_plate_or_number(db, data.query)
-
-    appeal_window_days = await _get_appeal_window(db)
-    summaries = [_ticket_to_summary(t, appeal_window_days) for t in tickets]
-    return MyTicketsResponse(tickets=summaries, appeal_window_days=appeal_window_days)
+    return await _summaries(db, tickets)
 
 
 @public_router.post("/public-submit", response_model=AppealResult)
@@ -262,8 +259,7 @@ async def public_submit_appeal(
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
-    appeal_window_days = await _get_appeal_window(db)
-    await _validate_and_appeal(ticket, data.explanation, appeal_window_days)
+    await _validate_and_appeal(db, ticket, data.explanation, data.email or "public")
 
     ticket.dispute_name = data.name
     ticket.dispute_email = data.email

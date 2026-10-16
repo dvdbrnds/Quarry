@@ -72,6 +72,10 @@ class TicketLookup(BaseModel):
     vehicle_description: str | None = None
     is_commuter_lot: bool = False
     processing_fee: str = "0.00"
+    plate_state: str | None = None
+    stage: str | None = None
+    fees: list[dict] = []
+    balance: str | None = None
 
 
 class TicketLookupList(BaseModel):

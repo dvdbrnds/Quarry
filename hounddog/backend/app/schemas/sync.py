@@ -67,6 +67,7 @@ class PushTokenRegister(BaseModel):
 
 class TicketUpload(BaseModel):
     plate: str
+    plate_state: str | None = None
     lot: str = ""
     zone: str | None = None
     violation_type: str = ""

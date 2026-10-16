@@ -560,6 +560,16 @@ async def _run_loop():
                 pass
 
         try:
+            from .citation_policy.job import run_daily_job
+            await run_daily_job(async_session)
+        except Exception as e:
+            logger.error("Scheduler tick (citation policy) failed: %s", e, exc_info=True)
+            try:
+                import sentry_sdk; sentry_sdk.capture_exception(e)
+            except Exception as e:
+                pass
+
+        try:
             await _expire_lottery_offers()
         except Exception as e:
             logger.error("Scheduler tick (lottery offers) failed: %s", e, exc_info=True)

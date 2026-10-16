@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -9,6 +9,7 @@ from ..config import settings
 
 class TicketCreate(BaseModel):
     plate: str
+    plate_state: str | None = None
     permit_id: uuid.UUID | None = None
     lot: str = ""
     zone: str | None = None
@@ -33,6 +34,7 @@ class TicketCreate(BaseModel):
 
 class TicketUpdate(BaseModel):
     plate: str | None = None
+    plate_state: str | None = None
     status: str | None = None
     fine_amount: Decimal | None = None
     photo_url: str | None = None
@@ -53,6 +55,7 @@ class TicketRead(BaseModel):
     id: uuid.UUID
     ticket_number: str | None = None
     plate: str
+    plate_state: str | None = None
     permit_id: uuid.UUID | None = None
     lot: str
     zone: str | None = None
@@ -98,6 +101,12 @@ class TicketRead(BaseModel):
     dispute_email: str | None = None
     dispute_phone: str | None = None
     enforcement_warning: str | None = None
+    policy_version: str | None = None
+    timeline_start_date: date | None = None
+    stage: str | None = None
+    delinquent_since: date | None = None
+    appeal_submitted_at: datetime | None = None
+    appeal_decided_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

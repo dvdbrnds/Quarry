@@ -75,6 +75,62 @@ Implemented in `backend/app/services/escalation.py`.
 - Hold exemptions (`hold_exemptions` table, by plate or email) block new registration holds until they expire. When an exemption starts, existing holds for matching students are lifted in Quarry and Jenzabar. When it expires, students still at or over the threshold get the hold back automatically.
 - Current exemption: the 180 plates on the Oct 16, 2026 unsent-citation contact list (citation email outage, Sep 18 to Oct 15) are exempt through Oct 26, 2026 11:59 PM ET.
 
+## Citation Policy v2 (Timeline, Late Fees, Barnacle)
+
+Implemented in `backend/app/services/citation_policy/`. Every number below is a setting on Enforcement Settings, not hard-coded.
+
+**Rollout**
+- Nothing changes until an admin sets the policy effective date. Citations issued on or after that date (America/New_York) are `v2`.
+- Citations issued before it are `legacy`. They never get retroactive fees. They stay on the old 5/10-day status flow until the legacy resolution deadline, then enter the v2 timeline as if issued on the deadline date.
+- Once the legacy deadline is set, everyone with an unpaid legacy citation gets one rollout notice explaining the deadline.
+- Only parking citations with a fine above $0 are on the timeline. Warnings and moving violations are not.
+
+**Timeline** (calendar days from issuance, counted as *effective elapsed days*, which skip paused time)
+- Day 0 issued. Due (paid or appealed) by end of day 10.
+- Day 7: reminder notice.
+- Day 11: DELINQUENT. LATE_FEE_1 ($15) plus first delinquency notice.
+- Day 31: LATE_FEE_2 ($20) plus final delinquency notice.
+- Late fees are capped at $35 per citation. The cap is re-checked against existing fees before every insert, not just by schedule.
+- `status` stays the payment state. The new `stage` field (current / delinquent / final) tracks the timeline. `overdue` and `past_due` are no longer set on v2 citations.
+- Citations on the Oct 2026 hold-exemption list get no v2 fees or notices while the exemption is active.
+
+**Appeals**
+- v2 citations can be appealed through the end of day 10 (local). Legacy citations keep the old window.
+- A pending appeal pauses the clock. A denied appeal starts a 10-day grace period from the decision date. If still unpaid when it ends, the citation is delinquent immediately (day-11 stage) and later stages follow on the normal schedule.
+- Every appeal decision path (approve/deny, quick deny, bulk deny, committee) goes through one shared function so they behave the same.
+- Dismissal (approved appeal or void) voids every open fee on the citation. A fee shared with other citations (owner notification, deployment) is voided only once all of its citations are dismissed.
+
+**Payment plans**
+- Staff create a plan covering specific citations, with scheduled installments. Covered citations are paused while the plan is current. New citations are not covered unless staff add them.
+- An unpaid installment past its due date defaults the plan. Each covered citation's clock resumes where it was paused.
+- Installments are recorded by staff (cash, check, bursar). They are applied oldest item first; a citation is paid once its fine is fully covered.
+
+**Fees** — each its own line item, never folded into `fine_amount`
+- LATE_FEE_1 $15 (day 11), LATE_FEE_2 $20 (day 31), automatic.
+- BARNACLE_DEPLOYMENT $100, only when an officer records a deployment.
+- BARNACLE_DAMAGE (staff amount, documentation required), OWNER_NOTIFICATION $25 (one per mailed registered-owner letter, covering all that vehicle's outstanding citations), COLLECTION_COST (staff amount, reason required).
+- Every fee records type, amount, creator (system or user), time and linked citations. Staff can waive or void with a reason.
+- The online processing fee applies to the whole online total (fines plus fees).
+
+**Barnacle** — behind a feature flag, off until counsel approves
+- On only when the `BARNACLE_ENABLED` env var AND the Enforcement Settings toggle are both on. While off: no final warnings, no eligibility runs, Barnacle endpoints return 404, Barnacle fees can't be created, and notices leave out Barnacle wording.
+- A vehicle is plate + issuing state. Citations without a state never count; staff fill the state in first.
+- Eligible only when all are true: (1) 3+ delinquent citations not under a pending appeal or current plan; (2) the oldest has been delinquent 30+ effective days; (3) a final warning was sent (mailed warnings count once staff mark them mailed); (4) 10+ days have passed since that warning and the balance is unresolved.
+- The final warning is generated when conditions 1 and 2 are met or will be within 10 days. Earliest date = the later of the day conditions 1 and 2 are met and warning date + 10. It includes, word for word: "Your vehicle may be immobilized with a Barnacle on or after [date] if your qualifying unpaid citations remain unresolved. Actual deployment will result in an additional $100 fee."
+- A warning stays valid while it covers at least 3 of the vehicle's currently qualifying citations; otherwise a new one is generated.
+- Officers must run a live checklist and confirm the location is authorized property. Deployment is refused if eligibility fails at that moment.
+- Removal requires a zero balance across all of the person's parking citations and fees, or an admin (supervisor) release override with a reason.
+
+**Non-affiliated vehicles (MUPD review)**
+- Non-affiliated = no non-visitor, non-tag permit on the plate and no staff-verified tag owner.
+- A delinquent citation on a non-affiliated vehicle opens a MUPD review. Nothing is filed automatically.
+- The review keeps registered owner and responsible-person evidence as separate fields. Court fines live only on the review and are never recorded as payments.
+
+**Notices and audit**
+- Every notice records type, channel, recipient, sent time, and an HTML/text snapshot. Recipients without an email go to the notice mail queue and count as sent only when staff mark them mailed.
+- The daily job runs once per local day after the configured hour, under an advisory lock. Each fee and notice has a unique idempotency key, so a rerun can never double-charge or double-send.
+- Every policy state change (fee added/waived, pause opened/closed, plan created/defaulted, warning, deployment, removal, override) is written to `audit_log` with the actor (`system` for the job) and reason.
+
 ## Sponsor Permits
 
 - Deletion uses POST /revoke (not HTTP DELETE — WAF blocks it).

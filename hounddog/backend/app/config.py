@@ -73,6 +73,21 @@ class Settings(BaseSettings):
     gl_org_net_cash: str = "0000"
     gl_account_stripe_fees: str = "60164"
     gl_segment_separator: str = "-"
+    # Citation policy v2 fee types (default to the citation codes until Finance assigns their own)
+    gl_account_late_fees: str = "43008"
+    gl_activity_late_fees: str = "1069"
+    gl_account_barnacle: str = "43008"
+    gl_activity_barnacle: str = "1069"
+    gl_account_owner_notification: str = "43008"
+    gl_activity_owner_notification: str = "1069"
+    gl_account_collection_cost: str = "43008"
+    gl_activity_collection_cost: str = "1069"
+    gl_account_processing_fee: str = "43008"
+    gl_activity_processing_fee: str = "1069"
+
+    # Barnacle immobilization: master switch, off until counsel approves.
+    # Also requires the Enforcement Settings toggle.
+    barnacle_enabled: bool = False
 
     # SMTP Email
     smtp_host: str = ""

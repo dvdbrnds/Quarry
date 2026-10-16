@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import String, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func, JSON
+from sqlalchemy import String, Date, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,6 +15,7 @@ class Ticket(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticket_number: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     plate: Mapped[str] = mapped_column(String(32))
+    plate_state: Mapped[str | None] = mapped_column(String(2), nullable=True)
     permit_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("permits.id"), nullable=True
     )
@@ -40,6 +41,14 @@ class Ticket(Base):
     permit_lot_zone: Mapped[str | None] = mapped_column(String(256), nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status: Mapped[str] = mapped_column(String(32), default="issued")
+
+    # Citation policy v2 — status stays the payment state; stage tracks the timeline
+    policy_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    timeline_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    delinquent_since: Mapped[date | None] = mapped_column(Date, nullable=True)
+    appeal_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    appeal_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Moving violation / traffic stop fields
     ticket_category: Mapped[str] = mapped_column(String(32), default="parking")

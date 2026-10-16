@@ -1498,10 +1498,19 @@ async def update_ticket(
             else:
                 updated_fields["permit_id"] = None
 
+    if "plate_state" in updated_fields:
+        updated_fields["plate_state"] = (updated_fields["plate_state"] or "").strip().upper() or None
+
     for field, value in updated_fields.items():
         if field == "status" and value not in VALID_STATUSES:
             raise HTTPException(400, f"Invalid status: {value}")
         setattr(ticket, field, value)
+
+    from ..services.citation_policy.service import DISMISSED_STATUSES, void_fees_for_dismissed
+    if updated_fields.get("status") in DISMISSED_STATUSES:
+        await void_fees_for_dismissed(db, ticket, _admin.email, f"Citation marked {ticket.status}")
+    elif plate_was_corrected:
+        await void_fees_for_dismissed(db, ticket, _admin.email, "Plate corrected; fees accrued under the wrong plate")
 
     await db.flush()
     await db.refresh(ticket)
@@ -1600,6 +1609,8 @@ async def void_ticket(
     ticket.status = "voided"
     if body and body.reason:
         ticket.void_reason = body.reason.strip()[:1024]
+    from ..services.citation_policy.service import void_fees_for_dismissed
+    await void_fees_for_dismissed(db, ticket, user.email, f"Citation voided: {ticket.void_reason or 'no reason given'}")
     await db.flush()
 
     if ticket.plate:
@@ -1640,6 +1651,8 @@ async def bulk_void_tickets(
             skipped += 1
             continue
         ticket.status = "voided"
+        from ..services.citation_policy.service import void_fees_for_dismissed
+        await void_fees_for_dismissed(db, ticket, _admin.email, "Citation voided (bulk)")
         voided += 1
         if ticket.plate:
             plates_seen.add(ticket.plate)
@@ -1679,10 +1692,8 @@ async def deny_ticket(
         raise HTTPException(400, f"Cannot deny a {ticket.status} ticket")
 
     if ticket.appeal_decision == "pending":
-        ticket.appeal_decision = "denied"
-        ticket.appeal_decided_by = admin.email
-        if body.reason:
-            ticket.appeal_decision_reason = body.reason.strip()[:1024]
+        from ..services.citation_policy.service import record_appeal_decision
+        await record_appeal_decision(db, ticket, "denied", admin.email, body.reason)
 
     ticket.status = "pending_payment"
     await db.flush()
@@ -1718,10 +1729,8 @@ async def bulk_deny_tickets(
             continue
 
         if ticket.appeal_decision == "pending":
-            ticket.appeal_decision = "denied"
-            ticket.appeal_decided_by = admin.email
-            if reason:
-                ticket.appeal_decision_reason = reason.strip()[:1024]
+            from ..services.citation_policy.service import record_appeal_decision
+            await record_appeal_decision(db, ticket, "denied", admin.email, reason)
 
         ticket.status = "pending_payment"
         denied += 1
@@ -1739,30 +1748,22 @@ async def appeal_ticket(
         raise HTTPException(404, "Ticket not found")
     if ticket.status in ("paid", "voided"):
         raise HTTPException(400, f"Cannot appeal a {ticket.status} ticket")
+    if ticket.appeal_decision == "pending":
+        raise HTTPException(400, "An appeal has already been submitted for this ticket.")
 
-    # Enforce appeal window from EnforcementSettings
-    es_result = await db.execute(
-        select(EnforcementSettings).where(EnforcementSettings.id == 1)
-    )
-    es = es_result.scalar()
-    appeal_window_days = es.appeal_window_days if es else 5
-
-    if ticket.issued_at:
-        from datetime import timedelta
-        issued = ticket.issued_at
-        if issued.tzinfo is None:
-            issued = issued.replace(tzinfo=timezone.utc)
-        deadline = issued + timedelta(days=appeal_window_days)
-        if datetime.now(timezone.utc) > deadline:
-            raise HTTPException(
-                400,
-                f"Appeal window has closed. Appeals must be submitted within "
-                f"{appeal_window_days} day(s) of issuance.",
-            )
+    from ..services.citation_policy.service import appeal_deadline_for, on_appeal_submitted
+    deadline, appeal_window_days = await appeal_deadline_for(db, ticket)
+    if deadline and datetime.now(timezone.utc) > deadline:
+        raise HTTPException(
+            400,
+            f"Appeal window has closed. Appeals must be submitted within "
+            f"{appeal_window_days} day(s) of issuance.",
+        )
 
     ticket.status = "appealed"
     ticket.appeal_note = appeal.note
     ticket.appeal_decision = "pending"
+    await on_appeal_submitted(db, ticket, ticket.dispute_email or "staff")
     await db.flush()
     await db.refresh(ticket)
     return ticket
@@ -1784,16 +1785,10 @@ async def decide_appeal(
     if decision.decision not in ("approved", "denied"):
         raise HTTPException(400, "Decision must be 'approved' or 'denied'")
 
-    ticket.appeal_decision = decision.decision
-    ticket.appeal_decided_by = decision.decided_by
-    if decision.reason:
-        ticket.appeal_decision_reason = decision.reason.strip()[:1024]
-
-    if decision.decision == "approved":
-        ticket.status = "voided"
-    else:
-        ticket.status = "pending_payment"
-
+    from ..services.citation_policy.service import record_appeal_decision
+    await record_appeal_decision(
+        db, ticket, decision.decision, decision.decided_by or _admin.email, decision.reason,
+    )
     await db.flush()
 
     if decision.decision == "approved" and ticket.plate:

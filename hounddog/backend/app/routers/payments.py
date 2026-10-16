@@ -126,9 +126,16 @@ async def _ticket_to_lookup(ticket: Ticket, db: AsyncSession) -> dict:
         if c.key in TicketLookup.model_fields
     }
     data["is_commuter_lot"] = await _check_commuter_lot(ticket.lot, db)
-    fine_cents = int(float(ticket.fine_amount) * 100)
-    processing_fee_cents = round(fine_cents * settings.citation_processing_fee_pct / 100) + settings.citation_processing_fee_fixed_cents
+    from ..services.citation_policy import payments as policy_pay
+    from ..services.citation_policy.timeline import processing_fee_cents as _proc_fee
+    items = await policy_pay.checkout_items(db, [ticket])
+    fees = [{"fee_type": i["fee_type"], "label": i["name"], "amount": f"{i['cents'] / 100:.2f}"}
+            for i in items if i["fee_id"]]
+    total_cents = sum(i["cents"] for i in items) if items else int(float(ticket.fine_amount) * 100)
+    processing_fee_cents = _proc_fee(total_cents, settings.citation_processing_fee_pct, settings.citation_processing_fee_fixed_cents)
     data["processing_fee"] = f"{processing_fee_cents / 100:.2f}"
+    data["fees"] = fees
+    data["balance"] = f"{total_cents / 100:.2f}"
     return data
 
 
@@ -209,34 +216,18 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
 
     ticket_ref = ticket.ticket_number or str(ticket.id)[:8].upper()
 
-    processing_fee_cents = round(fine_cents * settings.citation_processing_fee_pct / 100) + settings.citation_processing_fee_fixed_cents
+    from ..services.citation_policy import payments as policy_pay
+    from ..services.citation_policy.timeline import processing_fee_cents as _proc_fee
+    items = await policy_pay.checkout_items(db, [ticket])
+    if not items:
+        raise HTTPException(400, "Nothing is owed on this citation")
+    total_cents = sum(i["cents"] for i in items)
+    processing_fee_cents = _proc_fee(total_cents, settings.citation_processing_fee_pct, settings.citation_processing_fee_fixed_cents)
+    policy_md = policy_pay.policy_metadata(items, [ticket], processing_fee_cents)
 
     session = stripe.checkout.Session.create(
         customer_email=payer_email,
-        line_items=[
-            {
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": f"Parking Citation {ticket_ref}",
-                        "description": f"Plate: {ticket.plate} | Violation: {ticket.violation_type}",
-                    },
-                    "unit_amount": fine_cents,
-                },
-                "quantity": 1,
-            },
-            {
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": "Processing Fee",
-                        "description": "Non-refundable online payment processing fee",
-                    },
-                    "unit_amount": processing_fee_cents,
-                },
-                "quantity": 1,
-            },
-        ],
+        line_items=policy_pay.stripe_line_items(items, processing_fee_cents),
         mode="payment",
         payment_intent_data={
             "statement_descriptor_suffix": f"CITE {ticket_ref}"[:22],
@@ -265,11 +256,15 @@ async def create_checkout(data: CheckoutRequest, db: AsyncSession = Depends(get_
                 "officer_id": ticket.officer_id or "",
                 "payer_name": ticket.owner_name or ticket.driver_name or "",
                 "institution": settings.school_name or "moravian",
+                **policy_md,
             },
         },
         success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}{data.cancel_url}",
-        metadata={"ticket_id": str(ticket.id), "type": "ticket_payment"},
+        metadata={
+            "ticket_id": str(ticket.id), "type": "ticket_payment",
+            **policy_pay.chunk_ids([i["fee_id"] for i in items if i["fee_id"]], "fee_ids"),
+        },
     )
 
     ticket.status = "pending_payment"
@@ -329,9 +324,17 @@ async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Dep
                 payer_email = linked.email
                 break
 
-    processing_fee_cents = round(
-        total_fine_cents * settings.citation_processing_fee_pct / 100
-    ) + settings.citation_processing_fee_fixed_cents
+    from ..services.citation_policy import payments as policy_pay
+    from ..services.citation_policy.timeline import processing_fee_cents as _proc_fee
+    items = await policy_pay.checkout_items(db, tickets)
+    if not items:
+        raise HTTPException(400, "Nothing is owed on these citations")
+    processing_fee_cents = _proc_fee(
+        sum(i["cents"] for i in items),
+        settings.citation_processing_fee_pct, settings.citation_processing_fee_fixed_cents,
+    )
+    policy_md = policy_pay.policy_metadata(items, tickets, processing_fee_cents)
+    fee_id_chunks = policy_pay.chunk_ids([i["fee_id"] for i in items if i["fee_id"]], "fee_ids")
 
     all_ticket_ids = [str(t.id) for t in tickets]
     ticket_refs = ", ".join(t.ticket_number or str(t.id)[:8].upper() for t in tickets)
@@ -365,31 +368,7 @@ async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Dep
     ticket_id_chunks = _chunk_ids(all_ticket_ids)
     ticket_ids_str = ",".join(all_ticket_ids)
 
-    line_items = []
-    for t in tickets:
-        ref = t.ticket_number or str(t.id)[:8].upper()
-        line_items.append({
-            "price_data": {
-                "currency": "usd",
-                "product_data": {
-                    "name": f"Citation {ref}",
-                    "description": f"Plate: {t.plate} | {t.violation_type}",
-                },
-                "unit_amount": int(t.fine_amount * 100),
-            },
-            "quantity": 1,
-        })
-    line_items.append({
-        "price_data": {
-            "currency": "usd",
-            "product_data": {
-                "name": "Processing Fee",
-                "description": "Non-refundable online payment processing fee",
-            },
-            "unit_amount": processing_fee_cents,
-        },
-        "quantity": 1,
-    })
+    line_items = policy_pay.stripe_line_items(items, processing_fee_cents)
 
     session = stripe.checkout.Session.create(
         customer_email=payer_email,
@@ -410,11 +389,12 @@ async def create_bulk_checkout(data: BulkCheckoutRequest, db: AsyncSession = Dep
                 "total_fines": str(sum(t.fine_amount for t in tickets)),
                 "plates": plates,
                 "institution": settings.school_name or "moravian",
+                **policy_md,
             },
         },
         success_url=f"{base_url}{data.success_url}?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}{data.cancel_url}",
-        metadata={**ticket_id_chunks, "type": "bulk_ticket_payment"},
+        metadata={**ticket_id_chunks, **fee_id_chunks, "type": "bulk_ticket_payment"},
     )
 
     for t in tickets:
@@ -435,14 +415,13 @@ async def dispute_ticket(
     Delegates to the shared appeal validation in appeals.py so the rules
     (window check, status guard) are consistent across both entry points.
     """
-    from .appeals import _get_appeal_window, _validate_and_appeal
+    from .appeals import _validate_and_appeal
 
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
-    appeal_window_days = await _get_appeal_window(db)
-    await _validate_and_appeal(ticket, data.explanation, appeal_window_days)
+    await _validate_and_appeal(db, ticket, data.explanation, data.email or "public")
 
     ticket.dispute_name = data.name
     ticket.dispute_email = data.email
@@ -906,6 +885,9 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
     ticket.status = "paid"
     await db.flush()
 
+    from ..services.citation_policy.payments import record_checkout_allocations
+    await record_checkout_allocations(db, metadata, [payment], Decimal(session["amount_total"]) / 100)
+
     try:
         if ticket.plate:
             from ..services.escalation import check_and_resolve_on_payment
@@ -941,6 +923,7 @@ async def _handle_bulk_ticket_payment(session: dict, metadata: dict, db: AsyncSe
     total_amount = Decimal(session["amount_total"]) / 100
     ticket_ids = [tid.strip() for tid in ticket_ids_str.split(",") if tid.strip()]
     plates_seen = set()
+    created_payments: list[Payment] = []
 
     for tid in ticket_ids:
         try:
@@ -963,10 +946,14 @@ async def _handle_bulk_ticket_payment(session: dict, metadata: dict, db: AsyncSe
             description=f"Citation #{ticket_ref} — {ticket.plate} (bulk payment)",
         )
         db.add(payment)
+        created_payments.append(payment)
         ticket.status = "paid"
         plates_seen.add(ticket.plate)
 
     await db.flush()
+
+    from ..services.citation_policy.payments import record_checkout_allocations
+    await record_checkout_allocations(db, metadata, created_payments, total_amount)
 
     for plate in plates_seen:
         try:
@@ -3022,6 +3009,12 @@ async def export_oracle_gl(
             payment_id, ticket_id_str,
         ])
 
+    from ..services.citation_policy.payments import allocations_by_payment, gl_for
+    allocations = await allocations_by_payment(db, [p.id for p in payments])
+    # A bulk checkout makes one Payment row per citation under one payment intent; Stripe's fee
+    # belongs to the intent, so book it once (on the first row) instead of once per row.
+    fee_booked_for: set[str] = set()
+
     for p in payments:
         acct_date = p.paid_at.strftime("%Y-%m-%d") if p.paid_at else batch_date
         ptype = p.payment_type or ""
@@ -3044,12 +3037,13 @@ async def export_oracle_gl(
         fee_cents = 0
         net_cents = 0
 
-        if p.stripe_payment_id:
+        if p.stripe_payment_id and p.stripe_payment_id not in fee_booked_for:
             fee_cents, net_cents = _fetch_stripe_fee(p.stripe_payment_id)
+            fee_booked_for.add(p.stripe_payment_id)
 
         if fee_cents > 0:
-            net_amount = Decimal(net_cents) / 100
             fee_amount = Decimal(fee_cents) / 100
+            net_amount = gross - fee_amount
         else:
             net_amount = gross
             fee_amount = Decimal(0)
@@ -3074,14 +3068,29 @@ async def export_oracle_gl(
                 line_method, pid_str, tid_str,
             )
 
-        # Line 3: Credit — Revenue (full gross amount)
-        _write_row(
-            acct_date, header_name, f"CR-REV-{ref_id[:8]}",
-            settings.gl_fund, settings.gl_org,
-            revenue_acct, revenue_activity,
-            revenue_string, "", f"{gross:.2f}",
-            description, ref_id, ticket_ref, line_method, pid_str, tid_str,
-        )
+        # Line 3: Credit — Revenue (full gross amount), one line per fee type when itemized
+        p_allocs = allocations.get(p.id, [])
+        if p_allocs and not is_permit:
+            by_type: dict[str, Decimal] = {}
+            for a in p_allocs:
+                by_type[a.fee_type] = by_type.get(a.fee_type, Decimal(0)) + Decimal(a.amount)
+            for fee_type, amt in by_type.items():
+                acct, activity = gl_for(fee_type)
+                _write_row(
+                    acct_date, header_name, f"CR-{fee_type[:12]}-{ref_id[:8]}",
+                    settings.gl_fund, settings.gl_org, acct, activity,
+                    _build_gl_string(settings.gl_fund, settings.gl_org, acct, activity),
+                    "", f"{amt:.2f}",
+                    f"{description} [{fee_type}]", ref_id, ticket_ref, line_method, pid_str, tid_str,
+                )
+        else:
+            _write_row(
+                acct_date, header_name, f"CR-REV-{ref_id[:8]}",
+                settings.gl_fund, settings.gl_org,
+                revenue_acct, revenue_activity,
+                revenue_string, "", f"{gross:.2f}",
+                description, ref_id, ticket_ref, line_method, pid_str, tid_str,
+            )
 
     # ── Refund entries (reverse journal lines) ────────────────────────────
     # Fetch refunds from Stripe for the date range and write reverse entries:

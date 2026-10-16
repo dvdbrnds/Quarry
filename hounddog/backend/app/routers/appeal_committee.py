@@ -457,16 +457,17 @@ async def close_voting(
     ticket.committee_status = "decided"
     ticket.committee_decision = body.decision
     ticket.committee_decided_at = now
-    ticket.appeal_decided_by = f"committee ({admin.email})"
-
+    from ..services.citation_policy.service import record_appeal_decision
     if body.decision == "upheld":
-        ticket.status = "voided"
-        ticket.appeal_decision = "approved"
-        ticket.appeal_decision_reason = body.reason.strip() if body.reason else "Appeal upheld by committee"
+        await record_appeal_decision(
+            db, ticket, "approved", f"committee ({admin.email})",
+            body.reason.strip() if body.reason else "Appeal upheld by committee",
+        )
     else:
-        ticket.status = "pending_payment"
-        ticket.appeal_decision = "denied"
-        ticket.appeal_decision_reason = body.reason.strip() if body.reason else "Appeal denied by committee"
+        await record_appeal_decision(
+            db, ticket, "denied", f"committee ({admin.email})",
+            body.reason.strip() if body.reason else "Appeal denied by committee",
+        )
 
     await db.flush()
     await db.refresh(ticket)

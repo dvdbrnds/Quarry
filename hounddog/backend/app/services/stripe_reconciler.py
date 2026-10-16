@@ -197,6 +197,11 @@ async def _fulfill_ticket_payment(db: AsyncSession, session_data: dict) -> bool:
     db.add(payment)
     ticket.status = "paid"
     await db.flush()
+
+    from .citation_policy.payments import record_checkout_allocations
+    await record_checkout_allocations(
+        db, metadata, [payment], Decimal(amount_total) / 100 if amount_total else Decimal("0.00"),
+    )
     return True
 
 

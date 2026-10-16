@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 import structlog
 from decimal import Decimal
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.permit import Permit
@@ -71,12 +71,23 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
     if fixed_tickets:
         logger.info("Reverted %d $0 tickets back to warning status", len(fixed_tickets))
 
+    # v2 citations and legacy citations that have entered the v2 timeline use `stage` instead
+    today = today_local()
+    old_flow = or_(
+        Ticket.policy_version.is_(None),
+        and_(
+            Ticket.policy_version == "legacy",
+            or_(Ticket.timeline_start_date.is_(None), Ticket.timeline_start_date > today),
+        ),
+    )
+
     # issued → overdue (only tickets with a fine > $0)
     issued_result = await db.execute(
         select(Ticket).where(
             Ticket.status == "issued",
             Ticket.fine_amount > 0,
             Ticket.issued_at <= overdue_cutoff,
+            old_flow,
         )
     )
     issued_tickets = issued_result.scalars().all()
@@ -90,6 +101,7 @@ async def auto_escalate_tickets(db: AsyncSession) -> tuple[int, int]:
             Ticket.status == "overdue",
             Ticket.fine_amount > 0,
             Ticket.issued_at <= escalated_cutoff,
+            old_flow,
         )
     )
     overdue_tickets = overdue_result.scalars().all()
