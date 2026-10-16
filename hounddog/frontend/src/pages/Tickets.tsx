@@ -62,7 +62,14 @@ interface Ticket {
   mailed_address: string | null;
   has_legacy?: boolean;
   enforcement_warning: string | null;
-  conduct_escalation?: { escalation_type: string; escalation_status: string; escalation_student: string | null } | null;
+  conduct_escalation?: {
+    escalation_type: string;
+    escalation_status: string;
+    escalation_student: string | null;
+    resolved?: boolean;
+    resolved_by?: string | null;
+    conduct_resolved?: boolean;
+  } | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1915,8 +1922,21 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           return <div>{tag}<div className="text-[10px] text-purple-600 mt-0.5">→ Appeals Committee</div></div>;
         }
         if (record.conduct_escalation) {
-          const label = record.conduct_escalation.escalation_type === "registration_hold" ? "Reg Hold" : "Conduct";
-          return <div>{tag}<div className="text-[10px] text-orange-600 mt-0.5">→ {label}</div></div>;
+          const esc = record.conduct_escalation;
+          if (esc.escalation_type === "registration_hold" && !esc.resolved) {
+            return (
+              <div>{tag}
+                <div className="text-[10px] text-red-600 mt-0.5 font-medium">🚫 Reg Hold</div>
+                {esc.conduct_resolved && <div className="text-[10px] text-green-600">✓ Conduct met</div>}
+              </div>
+            );
+          }
+          if (esc.escalation_type === "conduct_referral" && !esc.resolved) {
+            return <div>{tag}<div className="text-[10px] text-orange-600 mt-0.5">→ Conduct</div></div>;
+          }
+          if (esc.resolved) {
+            return <div>{tag}<div className="text-[10px] text-green-600 mt-0.5">✓ {esc.escalation_type === "registration_hold" ? "Hold lifted" : "Conduct resolved"}</div></div>;
+          }
         }
         return tag;
       },
@@ -2518,22 +2538,38 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               </div>
             )}
 
-            {selected.conduct_escalation && (
-              <div className="bg-orange-50 rounded-lg p-3 text-sm">
-                <div className="font-medium text-orange-800 mb-1">
-                  {selected.conduct_escalation.escalation_type === "registration_hold"
-                    ? "🚫 Escalated → Registration Hold"
-                    : "📋 Escalated → Conduct Referral"}
+            {selected.conduct_escalation && (() => {
+              const esc = selected.conduct_escalation!;
+              const isHold = esc.escalation_type === "registration_hold";
+              const isActive = !esc.resolved;
+              const bgColor = isActive ? (isHold ? "bg-red-50" : "bg-orange-50") : "bg-green-50";
+              const textColor = isActive ? (isHold ? "text-red-800" : "text-orange-800") : "text-green-800";
+              return (
+                <div className={`${bgColor} rounded-lg p-3 text-sm`}>
+                  <div className={`font-medium ${textColor} mb-1`}>
+                    {isHold
+                      ? (isActive ? "🚫 Registration Hold — ACTIVE" : "✅ Registration Hold — Lifted")
+                      : (isActive ? "📋 Conduct Referral — Pending" : "✅ Conduct Referral — Resolved")}
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <div>Status: <Tag color={isActive ? (isHold ? "red" : "orange") : "green"}>{esc.escalation_status}</Tag></div>
+                    {esc.escalation_student && <div>Student: {esc.escalation_student}</div>}
+                    {esc.resolved && esc.resolved_by && <div>Resolved by: {esc.resolved_by}</div>}
+                    {isHold && isActive && (
+                      <div className="text-red-600 font-medium mt-1">
+                        Hold remains until tickets are paid below threshold
+                      </div>
+                    )}
+                    {isHold && esc.conduct_resolved && (
+                      <div className="text-green-600 mt-1">✓ Conduct meeting scheduled/completed</div>
+                    )}
+                    {!isHold && isActive && (
+                      <div className="text-orange-600/70">Auto-escalated (unpaid ticket threshold)</div>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs space-y-1">
-                  <div>Status: <Tag color="orange">{selected.conduct_escalation.escalation_status}</Tag></div>
-                  {selected.conduct_escalation.escalation_student && (
-                    <div>Student: {selected.conduct_escalation.escalation_student}</div>
-                  )}
-                  <div className="text-orange-600/70">Auto-escalated (unpaid ticket threshold)</div>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {selected.status === "expired_magistrate" && (
               <div className="bg-red-50 rounded-lg p-3 text-sm">

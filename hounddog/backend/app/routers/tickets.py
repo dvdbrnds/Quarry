@@ -221,26 +221,51 @@ async def list_tickets(
     conduct_tickets: dict[str, dict] = {}
     if ticket_ids_str:
         try:
+            # Fetch ALL escalations (including resolved) so we can show the full picture:
+            # - Active registration hold even if conduct referral was resolved
+            # - "Conduct resolved" badge so admin knows meeting was scheduled
             esc_result = await db.execute(
                 text("""
-                    SELECT id, ticket_ids, escalation_type, status, student_name, created_at
+                    SELECT id, ticket_ids, escalation_type, status, student_name,
+                           created_at, resolved_at, resolved_by
                     FROM escalation_log
-                    WHERE resolved_at IS NULL
                     ORDER BY created_at DESC
                 """)
             )
+            # Group by ticket: prefer active (unresolved) holds, then active conduct,
+            # then resolved conduct. Also track if a hold exists separately.
+            ticket_holds: dict[str, dict] = {}
             for row in esc_result.mappings().all():
                 tids = (row["ticket_ids"] or "").split(",")
                 for tid in tids:
                     tid = tid.strip()
-                    if tid in ticket_ids_str and tid not in conduct_tickets:
-                        conduct_tickets[tid] = {
-                            "escalation_type": row["escalation_type"],
-                            "escalation_status": row["status"],
-                            "escalation_student": row["student_name"],
-                        }
+                    if tid not in ticket_ids_str:
+                        continue
+                    entry = {
+                        "escalation_type": row["escalation_type"],
+                        "escalation_status": row["status"],
+                        "escalation_student": row["student_name"],
+                        "resolved": row["resolved_at"] is not None,
+                        "resolved_by": row["resolved_by"],
+                    }
+                    if row["escalation_type"] == "registration_hold" and not row["resolved_at"]:
+                        # Active hold always takes priority
+                        ticket_holds[tid] = entry
+                    elif tid not in ticket_holds:
+                        conduct_tickets[tid] = entry
+                    elif tid in conduct_tickets and conduct_tickets[tid].get("resolved") and not entry.get("resolved"):
+                        # Replace resolved entry with active one
+                        conduct_tickets[tid] = entry
+
+            # Merge: active holds override conduct entries
+            for tid, hold in ticket_holds.items():
+                existing = conduct_tickets.get(tid)
+                if existing and existing["escalation_type"] == "conduct_referral":
+                    # Keep both: show hold as primary, note conduct was resolved
+                    hold["conduct_resolved"] = existing.get("resolved", False)
+                conduct_tickets[tid] = hold
         except Exception:
-            await db.rollback()  # reset session after failed query
+            await db.rollback()
 
     enriched = []
     for t in items:
