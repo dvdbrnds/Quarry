@@ -548,6 +548,18 @@ async def _run_loop():
                 pass
 
         try:
+            from .escalation import process_hold_exemptions
+            async with async_session() as db:
+                async with db.begin():
+                    await process_hold_exemptions(db)
+        except Exception as e:
+            logger.error("Scheduler tick (hold exemptions) failed: %s", e, exc_info=True)
+            try:
+                import sentry_sdk; sentry_sdk.capture_exception(e)
+            except Exception as e:
+                pass
+
+        try:
             await _expire_lottery_offers()
         except Exception as e:
             logger.error("Scheduler tick (lottery offers) failed: %s", e, exc_info=True)

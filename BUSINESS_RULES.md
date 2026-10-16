@@ -71,6 +71,8 @@ Implemented in `backend/app/services/escalation.py`.
 - Tickets count toward a student when the plate is on one of their real permits.
 - Vehicle tags count only after staff verify the owner: the tag's email must resolve to a real Okta user, and an admin confirms it via "Verify owner" in the Conduct Portal. Tag emails are not trusted on their own — before Oct 12, 2026 BirdDog's student search could put the wrong student's email on a tag.
 - Verifying a tag owner immediately applies the registration hold if the student is at or over the threshold. It does not open a new conduct referral.
+- Hold exemptions (`hold_exemptions` table, by plate or email) block new registration holds until they expire. When an exemption starts, existing holds for matching students are lifted in Quarry and Jenzabar. When it expires, students still at or over the threshold get the hold back automatically.
+- Current exemption: the 180 plates on the Oct 16, 2026 unsent-citation contact list (citation email outage, Sep 18 to Oct 15) are exempt through Oct 26, 2026 11:59 PM ET.
 
 ## Sponsor Permits
 

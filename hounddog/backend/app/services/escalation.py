@@ -105,6 +105,10 @@ async def apply_registration_hold_if_needed(
 
     if unpaid_count < settings.registration_hold_threshold:
         return actions
+    if await is_hold_exempt(db, student_id):
+        actions["exempt"] = True
+        logger.info("Registration hold skipped for %s — active hold exemption", student_id)
+        return actions
     if await _has_active_escalation(db, student_id, "registration_hold"):
         actions["already_held"] = True
         return actions
@@ -129,6 +133,119 @@ async def apply_registration_hold_if_needed(
         student_id, unpaid_count,
     )
     return actions
+
+
+# hold_exemptions (alias e) rows that apply to permit p, by plate or email.
+_EXEMPTION_MATCHES_PERMIT = """(
+    (e.plate IS NOT NULL AND e.plate = ANY(SELECT UPPER(unnest(p.plates))))
+    OR (e.email IS NOT NULL AND LOWER(p.email) = LOWER(e.email))
+)"""
+
+
+async def is_hold_exempt(db: AsyncSession, student_id: str) -> bool:
+    result = await db.execute(
+        text(f"""
+            SELECT 1 FROM hold_exemptions e
+            JOIN permits p ON {_EXEMPTION_MATCHES_PERMIT}
+            WHERE e.expires_at > NOW() AND {_OWNED_BY_STUDENT}
+            LIMIT 1
+        """),
+        {"student_id": student_id},
+    )
+    return result.scalar() is not None
+
+
+async def _exemption_student_ids(db: AsyncSession, where: str) -> tuple[list[str], set[str]]:
+    """Student ids matched by the exemptions selected by `where`, plus those exemption ids."""
+    rows = (await db.execute(text(f"""
+        SELECT e.id::text AS eid,
+               CASE WHEN p.is_tag_only THEN p.owner_student_id ELSE p.student_id END AS sid
+        FROM hold_exemptions e
+        LEFT JOIN permits p ON {_EXEMPTION_MATCHES_PERMIT}
+          AND ((p.is_tag_only = false AND COALESCE(p.student_id, '') <> '')
+               OR (p.is_tag_only = true AND p.owner_verified_at IS NOT NULL
+                   AND p.owner_student_id IS NOT NULL))
+        WHERE {where}
+    """))).mappings().all()
+    exemption_ids = {r["eid"] for r in rows}
+    sids = sorted({r["sid"] for r in rows if r["sid"]})
+
+    # Holds recorded against an exempt plate even if the permit link is gone
+    if exemption_ids:
+        extra = await db.execute(text(f"""
+            SELECT DISTINCT l.student_id FROM escalation_log l
+            JOIN hold_exemptions e
+              ON UPPER(REPLACE(REPLACE(COALESCE(l.plate, ''), ' ', ''), '-', '')) = e.plate
+              OR (e.email IS NOT NULL AND LOWER(l.student_email) = LOWER(e.email))
+            WHERE l.escalation_type = 'registration_hold' AND l.resolved_at IS NULL
+              AND COALESCE(l.student_id, '') <> '' AND {where}
+        """))
+        sids = sorted(set(sids) | {r[0] for r in extra.fetchall()})
+    return sids, exemption_ids
+
+
+async def process_hold_exemptions(db: AsyncSession) -> dict:
+    """Lift holds for newly exempt students; re-apply holds once exemptions expire."""
+    got_lock = (await db.execute(text("SELECT pg_try_advisory_xact_lock(4747)"))).scalar()
+    if not got_lock:
+        return {}
+    summary = {"lifted": 0, "reapplied": 0}
+
+    sids, eids = await _exemption_student_ids(
+        db, "e.expires_at > NOW() AND e.lifted_existing_at IS NULL"
+    )
+    for sid in sids:
+        if not await resolve_escalation(db, sid, "registration_hold", "exemption:hold-grace"):
+            continue
+        summary["lifted"] += 1
+        moravian_id = await _get_moravian_id(db, sid)
+        if moravian_id and settings.sis_hold_enabled and settings.sis_mssql_host:
+            from .sis_hold_service import set_jenzabar_hold
+            if not await set_jenzabar_hold(moravian_id, apply=False):
+                sentry_sdk.capture_message(
+                    f"Hold exemption: Jenzabar hold removal failed for moravian_id={moravian_id}",
+                    level="error",
+                )
+                logger.error("Hold exemption: Jenzabar removal FAILED for %s (moravian_id=%s) — remove manually", sid, moravian_id)
+        logger.info("Hold exemption: lifted registration hold for %s", sid)
+    if eids:
+        await db.execute(
+            text("UPDATE hold_exemptions SET lifted_existing_at = NOW() WHERE id::text = ANY(:ids)"),
+            {"ids": list(eids)},
+        )
+
+    sids, eids = await _exemption_student_ids(
+        db, "e.expires_at <= NOW() AND e.expiry_processed_at IS NULL"
+    )
+    for sid in sids:
+        if await is_hold_exempt(db, sid):
+            continue
+        permit = (await db.execute(
+            select(Permit).where(
+                or_(
+                    and_(Permit.is_tag_only.is_(False), Permit.student_id == sid),
+                    and_(Permit.is_tag_only.is_(True), Permit.owner_student_id == sid),
+                ),
+                Permit.deleted_at.is_(None),
+            ).order_by(Permit.is_tag_only.asc()).limit(1)
+        )).scalar()
+        actions = await apply_registration_hold_if_needed(
+            db, sid,
+            permit.name if permit else None,
+            permit.email if permit else None,
+            (permit.plates[0] if permit and permit.plates else ""),
+        )
+        if actions.get("registration_hold"):
+            summary["reapplied"] += 1
+    if eids:
+        await db.execute(
+            text("UPDATE hold_exemptions SET expiry_processed_at = NOW() WHERE id::text = ANY(:ids)"),
+            {"ids": list(eids)},
+        )
+
+    if summary["lifted"] or summary["reapplied"]:
+        logger.info("Hold exemptions processed: %s", summary)
+    return summary
 
 
 async def _count_unpaid_tickets_for_student(db: AsyncSession, student_id: str) -> int:

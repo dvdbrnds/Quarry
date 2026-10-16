@@ -338,6 +338,23 @@ async def _cjis_periodic_tasks():
         await _aio.sleep(3600)
 
 
+def _hold_exemption_seed_sql() -> str:
+    from .data.hold_exemptions_2026_10 import EXPIRES_AT, PLATES, REASON
+
+    plates = [p for p in PLATES if p.isalnum()]
+    values = ", ".join(f"('{p}')" for p in plates)
+    reason = REASON.replace("'", "''")
+    return f"""
+        INSERT INTO hold_exemptions (plate, reason, created_by, expires_at)
+        SELECT v.plate, '{reason}', 'migration-v47', TIMESTAMPTZ '{EXPIRES_AT}'
+        FROM (VALUES {values}) AS v(plate)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM hold_exemptions h
+            WHERE h.plate = v.plate AND h.created_by = 'migration-v47'
+        )
+    """
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .logging_config import setup_logging
@@ -418,7 +435,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 46
+    SCHEMA_VERSION = 47
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1431,6 +1448,23 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS owner_student_id VARCHAR(512)",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS owner_verified_at TIMESTAMPTZ",
             "ALTER TABLE permits ADD COLUMN IF NOT EXISTS owner_verified_by VARCHAR(256)",
+            # v47: Temporary registration-hold exemptions (by plate or email)
+            """
+            CREATE TABLE IF NOT EXISTS hold_exemptions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                plate VARCHAR(32),
+                email VARCHAR(256),
+                reason TEXT NOT NULL DEFAULT '',
+                created_by VARCHAR(256) NOT NULL DEFAULT 'system',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at TIMESTAMPTZ NOT NULL,
+                lifted_existing_at TIMESTAMPTZ,
+                expiry_processed_at TIMESTAMPTZ
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_hold_exemptions_plate ON hold_exemptions(plate)",
+            "CREATE INDEX IF NOT EXISTS idx_hold_exemptions_email ON hold_exemptions(LOWER(email))",
+            _hold_exemption_seed_sql(),
             ]
             for migration in migrations:
                 try:
