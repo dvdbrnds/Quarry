@@ -42,11 +42,18 @@ interface AuditData {
   unsent_tickets: UnsentTicket[];
 }
 
+interface ResendJob {
+  running: boolean;
+  total?: number; sent?: number; failed?: number; skipped?: number;
+  error?: string | null;
+}
+
 export default function EmailAudit() {
   const [data, setData] = useState<AuditData | null>(null);
   const [loading, setLoading] = useState(true);
   const [resending, setResending] = useState<Set<string>>(new Set());
   const [resendingAll, setResendingAll] = useState(false);
+  const [resendJob, setResendJob] = useState<ResendJob | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
   const [pasteIds, setPasteIds] = useState("");
   const [markingPaste, setMarkingPaste] = useState(false);
@@ -86,6 +93,27 @@ export default function EmailAudit() {
     }
   };
 
+  const pollResend = async () => {
+    setResendingAll(true);
+    try {
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const res = await fetch("/api/sync/email-resend-all/status", { headers: await authHeaders() });
+        if (!res.ok) continue;
+        const job: ResendJob = await res.json();
+        setResendJob(job);
+        if (!job.running) {
+          if (job.error) message.error(`Resend stopped: ${job.error}`);
+          else message.success(`Done. Sent ${job.sent}, failed ${job.failed}, skipped ${job.skipped}`);
+          load();
+          return;
+        }
+      }
+    } finally {
+      setResendingAll(false);
+    }
+  };
+
   const resendAll = async () => {
     setResendingAll(true);
     try {
@@ -94,18 +122,27 @@ export default function EmailAudit() {
         headers: await authHeaders(),
       });
       const result = await res.json();
-      if (res.ok) {
-        message.success(`Sent: ${result.sent}, Failed: ${result.failed}`);
-        load();
-      } else {
+      if (!res.ok) {
         message.error(`Failed: ${result.detail || "unknown error"}`);
+        setResendingAll(false);
+        return;
       }
+      setResendJob(result);
+      pollResend();
     } catch (e: any) {
       message.error(`Error: ${e.message}`);
-    } finally {
       setResendingAll(false);
     }
   };
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetch("/api/sync/email-resend-all/status", { headers: await authHeaders() });
+      if (!res.ok) return;
+      const job: ResendJob = await res.json();
+      if (job.running) { setResendJob(job); pollResend(); }
+    })();
+  }, []);
 
   const markAllSent = async () => {
     setMarkingAll(true);
@@ -344,6 +381,17 @@ export default function EmailAudit() {
           )}
         </Space>
       </div>
+
+      {resendJob && (resendJob.running || resendingAll) && (
+        <Card size="small" className="mb-6">
+          <div className="text-sm font-medium mb-2">
+            Resending citation emails: {(resendJob.sent ?? 0) + (resendJob.failed ?? 0) + (resendJob.skipped ?? 0)} of {resendJob.total ?? 0}
+            {" "}(sent {resendJob.sent ?? 0}, failed {resendJob.failed ?? 0}, skipped {resendJob.skipped ?? 0})
+          </div>
+          <Progress percent={resendJob.total ? Math.round((((resendJob.sent ?? 0) + (resendJob.failed ?? 0) + (resendJob.skipped ?? 0)) / resendJob.total) * 100) : 0} />
+          <div className="text-xs text-gray-500 mt-1">This runs on the server. You can leave this page; it keeps going.</div>
+        </Card>
+      )}
 
       <Alert
         type="warning"

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import sentry_sdk
 import logging
@@ -428,71 +429,100 @@ async def mark_emails_sent_by_token(
     return {"marked": marked, "submitted": len(ids)}
 
 
-@diagnostic_router.post("/email-resend-all")
-async def resend_all_unsent_emails(
-    db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(require_admin()),
-):
-    """Resend citation emails for tickets that are CONFIRMED unsent (email_sent_at IS NULL)."""
-    bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
-    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)
+_RESEND_SQL = """
+    SELECT id FROM tickets
+    WHERE issued_at >= :start AND issued_at < :end
+      AND status NOT IN ('warning', 'voided', 'paid', 'resolved_permit')
+      AND notification_email IS NOT NULL
+      AND notification_email LIKE '%@%'
+      AND email_sent_at IS NULL
+"""
+_resend_job: dict = {"running": False}
 
-    result = await db.execute(
-        text("""
-            SELECT id FROM tickets
-            WHERE issued_at >= :start AND issued_at < :end
-              AND status NOT IN ('warning', 'voided', 'paid', 'resolved_permit')
-              AND notification_email IS NOT NULL
-              AND notification_email LIKE '%@%'
-              AND email_sent_at IS NULL
-            ORDER BY issued_at ASC
-        """),
-        {"start": bug_start, "end": bug_end},
-    )
-    ticket_ids = [r[0] for r in result.fetchall()]
 
-    sent = 0
-    failed = 0
-    for tid in ticket_ids:
-        ticket = await db.get(Ticket, tid)
-        if not ticket or not ticket.notification_email:
-            failed += 1
-            continue
-
-        vtype_label = ticket.violation_type or "Parking Violation"
-        if ticket.violation_type:
-            vt_row = await db.execute(
-                select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
-            )
-            vt_lbl = vt_row.scalar()
-            if vt_lbl:
-                vtype_label = vt_lbl
-
-        payment_url = f"{settings.student_facing_url}/pay?ticket={ticket.id}"
-        try:
-            ok = await send_citation_email(
+async def _resend_one(session_factory, tid) -> str:
+    """Send one citation email. The row lock (held through the send) and the email_sent_at
+    re-check stop a second worker or a retry from emailing the same ticket twice."""
+    async with session_factory() as db:
+        async with db.begin():
+            ticket = (await db.execute(
+                select(Ticket).where(Ticket.id == tid, Ticket.email_sent_at.is_(None))
+                .with_for_update(skip_locked=True)
+            )).scalar()
+            if not ticket or ticket.status in ("warning", "voided", "paid", "resolved_permit") \
+                    or not ticket.notification_email or "@" not in ticket.notification_email:
+                return "skipped"
+            vtype_label = ticket.violation_type or "Parking Violation"
+            if ticket.violation_type:
+                vt_lbl = (await db.execute(
+                    select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+                )).scalar()
+                if vt_lbl:
+                    vtype_label = vt_lbl
+            ok = await asyncio.wait_for(send_citation_email(
                 recipient_email=ticket.notification_email,
                 plate=ticket.plate,
                 lot=ticket.lot or "",
                 violation_label=vtype_label,
                 fine_amount=str(ticket.fine_amount),
-                payment_url=payment_url,
+                payment_url=f"{settings.student_facing_url}/pay?ticket={ticket.id}",
                 officer_name=ticket.officer_name,
                 issued_at=to_local(ticket.issued_at).strftime("%b %d, %Y %I:%M %p %Z") if ticket.issued_at else "",
                 ticket_id=ticket.ticket_number or str(ticket.id),
-            )
-            if ok:
-                ticket.email_sent_at = datetime.now(timezone.utc)
-                await db.flush()
-                sent += 1
-            else:
-                failed += 1
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
-            failed += 1
+            ), timeout=30)
+            if not ok:
+                return "failed"
+            ticket.email_sent_at = datetime.now(timezone.utc)
+    return "sent"
 
-    await db.commit()
-    return {"sent": sent, "failed": failed, "total": len(ticket_ids)}
+
+async def _run_resend_job(ticket_ids: list) -> None:
+    from ..database import async_session
+    try:
+        for tid in ticket_ids:
+            try:
+                outcome = await _resend_one(async_session, tid)
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                outcome = "failed"
+            _resend_job[outcome] += 1
+            await asyncio.sleep(0.2)
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        _resend_job["error"] = str(e)
+    finally:
+        _resend_job["running"] = False
+        _resend_job["finished_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info("Citation email resend finished: %s", {k: v for k, v in _resend_job.items()})
+
+
+@diagnostic_router.post("/email-resend-all")
+async def resend_all_unsent_emails(
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_admin()),
+):
+    """Start resending citation emails for unpaid tickets still marked unsent. Runs in the
+    background (a single request would time out at the gateway); poll /email-resend-all/status."""
+    if _resend_job.get("running"):
+        return _resend_job
+    bug_start = datetime(2026, 9, 18, tzinfo=timezone.utc)
+    bug_end = datetime(2026, 10, 15, 21, 0, tzinfo=timezone.utc)
+    rows = await db.execute(text(_RESEND_SQL + " ORDER BY issued_at ASC"), {"start": bug_start, "end": bug_end})
+    ticket_ids = [r[0] for r in rows.fetchall()]
+    _resend_job.clear()
+    _resend_job.update({
+        "running": True, "total": len(ticket_ids), "sent": 0, "failed": 0, "skipped": 0,
+        "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None, "error": None,
+    })
+    task = asyncio.create_task(_run_resend_job(ticket_ids))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return _resend_job
+
+
+@diagnostic_router.get("/email-resend-all/status")
+async def resend_all_status(_user: OktaUser = Depends(require_admin())):
+    return _resend_job
 
 
 @diagnostic_router.get("/ticket-test")
