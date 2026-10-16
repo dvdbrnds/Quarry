@@ -1443,15 +1443,14 @@ async def _upload_ticket_impl(
         await db.flush()
 
     try:
-        # Only escalate for real permits — vehicle tags should not count
-        # against a student's escalation threshold (the tag's student_id
-        # may reference a student who doesn't own the tagged vehicle).
-        if permit and getattr(permit, 'student_id', None) and not getattr(permit, 'is_tag_only', False):
-            from ..services.escalation import check_and_escalate
+        # Vehicle tags only escalate once staff have verified the owner.
+        from ..services.escalation import check_and_escalate, escalation_student_id
+        esc_sid = escalation_student_id(permit)
+        if esc_sid:
             await check_and_escalate(
                 db=db,
                 plate=new_ticket.plate,
-                student_id=permit.student_id,
+                student_id=esc_sid,
                 student_name=permit.name,
                 student_email=recipient_email or getattr(permit, 'email', None),
             )

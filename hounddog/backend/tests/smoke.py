@@ -140,6 +140,34 @@ def test_lot_assignment_parsing():
     print("  pass: lot assignment parsing")
 
 
+def test_escalation_student_id():
+    """
+    Which student a permit's tickets count against for holds.
+    Vehicle tags count only once staff have verified the owner.
+    """
+    from datetime import datetime, timezone
+    from types import SimpleNamespace as P
+    from app.services.escalation import escalation_student_id
+
+    now = datetime.now(timezone.utc)
+
+    assert escalation_student_id(None) is None
+    assert escalation_student_id(P(is_tag_only=False, student_id="sub1")) == "sub1"
+    assert escalation_student_id(P(is_tag_only=False, student_id="")) is None
+
+    # Unverified tag never counts, even with a leftover student_id
+    assert escalation_student_id(P(is_tag_only=True, student_id="sub1",
+                                   owner_student_id=None, owner_verified_at=None)) is None
+    assert escalation_student_id(P(is_tag_only=True, student_id="",
+                                   owner_student_id="sub2", owner_verified_at=None)) is None
+
+    # Verified tag counts against the verified owner, not student_id
+    assert escalation_student_id(P(is_tag_only=True, student_id="sub1",
+                                   owner_student_id="sub2", owner_verified_at=now)) == "sub2"
+
+    print("  pass: escalation student id")
+
+
 if __name__ == "__main__":
     print("Running smoke tests...\n")
     passed = 0

@@ -10,7 +10,7 @@ import logging
 import sentry_sdk
 from uuid import uuid4
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -18,12 +18,34 @@ from app.models.permit import Permit
 
 logger = logging.getLogger("quarry.escalation")
 
+# Permits (alias p) whose plates count against student :student_id — real permits,
+# plus vehicle tags only once staff have verified the owner.
+_OWNED_BY_STUDENT = """(
+    (p.is_tag_only = false AND p.student_id = :student_id)
+    OR (p.is_tag_only = true AND p.deleted_at IS NULL
+        AND p.owner_verified_at IS NOT NULL AND p.owner_student_id = :student_id)
+)"""
+
+
+def escalation_student_id(permit) -> str | None:
+    """The student a permit's tickets count against, or None if they shouldn't count."""
+    if permit is None:
+        return None
+    if getattr(permit, "is_tag_only", False):
+        if getattr(permit, "owner_verified_at", None) and getattr(permit, "owner_student_id", None):
+            return permit.owner_student_id
+        return None
+    return getattr(permit, "student_id", None) or None
+
 
 async def _get_moravian_id(db: AsyncSession, student_id: str) -> str | None:
     """Resolve the Jenzabar numeric ID from the Okta sub stored on permits."""
     result = await db.execute(
         select(Permit.moravian_id).where(
-            Permit.student_id == student_id,
+            or_(
+                Permit.student_id == student_id,
+                and_(Permit.is_tag_only.is_(True), Permit.owner_student_id == student_id),
+            ),
             Permit.moravian_id.isnot(None),
             Permit.moravian_id != "",
         ).limit(1)
@@ -61,42 +83,63 @@ async def check_and_escalate(
                 student_id, unpaid_count,
             )
 
-    if unpaid_count >= settings.registration_hold_threshold:
-        already_held = await _has_active_escalation(db, student_id, "registration_hold")
-        if not already_held:
-            moravian_id = await _get_moravian_id(db, student_id)
-            await _create_registration_hold(
-                db, student_id, student_name, student_email, plate, unpaid_count
-            )
-            if moravian_id:
-                from .sis_hold_service import set_jenzabar_hold
-                ok = await set_jenzabar_hold(moravian_id, apply=True)
-                actions["jenzabar_hold_set"] = ok
-            else:
-                logger.warning(
-                    "Registration hold triggered for %s but no moravian_id — "
-                    "Jenzabar hold NOT set (manual action needed)",
-                    student_id,
-                )
-            actions["registration_hold"] = True
-            logger.info(
-                "Registration hold triggered for student %s (%d tickets)",
-                student_id, unpaid_count,
-            )
+    actions.update(await apply_registration_hold_if_needed(
+        db, student_id, student_name, student_email, plate, unpaid_count
+    ))
+    return actions
 
+
+async def apply_registration_hold_if_needed(
+    db: AsyncSession,
+    student_id: str,
+    student_name: str | None,
+    student_email: str | None,
+    plate: str,
+    unpaid_count: int | None = None,
+) -> dict:
+    """Place a registration hold (Quarry + Jenzabar) if the student is at/over threshold."""
+    actions: dict = {}
+    if unpaid_count is None:
+        unpaid_count = await _count_unpaid_tickets_for_student(db, student_id)
+    actions["unpaid_count"] = unpaid_count
+
+    if unpaid_count < settings.registration_hold_threshold:
+        return actions
+    if await _has_active_escalation(db, student_id, "registration_hold"):
+        actions["already_held"] = True
+        return actions
+
+    moravian_id = await _get_moravian_id(db, student_id)
+    await _create_registration_hold(
+        db, student_id, student_name, student_email, plate, unpaid_count
+    )
+    if moravian_id:
+        from .sis_hold_service import set_jenzabar_hold
+        ok = await set_jenzabar_hold(moravian_id, apply=True)
+        actions["jenzabar_hold_set"] = ok
+    else:
+        logger.warning(
+            "Registration hold triggered for %s but no moravian_id — "
+            "Jenzabar hold NOT set (manual action needed)",
+            student_id,
+        )
+    actions["registration_hold"] = True
+    logger.info(
+        "Registration hold triggered for student %s (%d tickets)",
+        student_id, unpaid_count,
+    )
     return actions
 
 
 async def _count_unpaid_tickets_for_student(db: AsyncSession, student_id: str) -> int:
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT COUNT(DISTINCT t.id)
             FROM tickets t
             JOIN permits p ON UPPER(t.plate) = ANY(
                 SELECT UPPER(unnest(p.plates))
             )
-            WHERE p.student_id = :student_id
-              AND p.is_tag_only = false
+            WHERE {_OWNED_BY_STUDENT}
               AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
         """),
         {"student_id": student_id},
@@ -120,14 +163,13 @@ async def _has_active_escalation(db: AsyncSession, student_id: str, escalation_t
 
 async def _get_ticket_ids_for_student(db: AsyncSession, student_id: str) -> list[str]:
     result = await db.execute(
-        text("""
-            SELECT t.id::text
+        text(f"""
+            SELECT DISTINCT t.id::text, t.issued_at
             FROM tickets t
             JOIN permits p ON UPPER(t.plate) = ANY(
                 SELECT UPPER(unnest(p.plates))
             )
-            WHERE p.student_id = :student_id
-              AND p.is_tag_only = false
+            WHERE {_OWNED_BY_STUDENT}
               AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
             ORDER BY t.issued_at DESC
         """),
@@ -331,31 +373,59 @@ async def check_and_resolve_on_payment(db: AsyncSession, plate: str):
     has dropped below escalation thresholds and auto-resolve."""
     result = await db.execute(
         text("""
-            SELECT DISTINCT p.student_id
+            SELECT DISTINCT
+                CASE WHEN p.is_tag_only THEN p.owner_student_id ELSE p.student_id END AS sid
             FROM permits p
             WHERE UPPER(:plate) = ANY(
                 SELECT UPPER(unnest(p.plates))
             )
-              AND p.student_id IS NOT NULL
-              AND p.is_tag_only = false
+              AND (
+                (p.is_tag_only = false AND p.student_id IS NOT NULL)
+                OR (p.is_tag_only = true AND p.owner_verified_at IS NOT NULL
+                    AND p.owner_student_id IS NOT NULL)
+              )
         """),
         {"plate": plate},
     )
     for (student_id,) in result.fetchall():
-        remaining = await _count_unpaid_tickets_for_student(db, student_id)
-        if remaining < settings.registration_hold_threshold:
-            resolved = await resolve_escalation(db, student_id, "registration_hold", "system:payment")
-            if resolved:
-                moravian_id = await _get_moravian_id(db, student_id)
-                if moravian_id:
-                    from .sis_hold_service import set_jenzabar_hold
-                    await set_jenzabar_hold(moravian_id, apply=False)
-                    logger.info(
-                        "Jenzabar hold removed for %s (moravian_id=%s, %d tickets remaining < threshold %d)",
-                        student_id, moravian_id, remaining, settings.registration_hold_threshold,
-                    )
-        if remaining < settings.conduct_referral_threshold:
-            await resolve_escalation(db, student_id, "conduct_referral", "system:payment")
+        if not student_id:
+            continue
+        await release_if_below_threshold(db, student_id, "system:payment")
+
+
+async def clear_tag_verification(db: AsyncSession, tag: Permit, cleared_by: str) -> None:
+    """Un-verify a tag's owner and lift any hold that depended on it."""
+    old_sid, old_mid = tag.owner_student_id, tag.moravian_id
+    if not tag.owner_verified_at and not old_sid:
+        return
+    tag.owner_student_id = None
+    tag.owner_verified_at = None
+    tag.owner_verified_by = None
+    tag.moravian_id = None
+    await db.flush()
+    if old_sid:
+        await release_if_below_threshold(db, old_sid, f"unverified:{cleared_by}", old_mid)
+    logger.info("Tag owner verification cleared: tag=%s student=%s by=%s", tag.id, old_sid, cleared_by)
+
+
+async def release_if_below_threshold(
+    db: AsyncSession, student_id: str, resolved_by: str, moravian_id: str | None = None,
+) -> None:
+    """Lift the hold (Quarry + Jenzabar) and close the referral once under threshold."""
+    remaining = await _count_unpaid_tickets_for_student(db, student_id)
+    if remaining < settings.registration_hold_threshold:
+        resolved = await resolve_escalation(db, student_id, "registration_hold", resolved_by)
+        if resolved:
+            moravian_id = moravian_id or await _get_moravian_id(db, student_id)
+            if moravian_id:
+                from .sis_hold_service import set_jenzabar_hold
+                await set_jenzabar_hold(moravian_id, apply=False)
+                logger.info(
+                    "Jenzabar hold removed for %s (moravian_id=%s, %d tickets remaining < threshold %d)",
+                    student_id, moravian_id, remaining, settings.registration_hold_threshold,
+                )
+    if remaining < settings.conduct_referral_threshold:
+        await resolve_escalation(db, student_id, "conduct_referral", resolved_by)
 
 
 async def resolve_escalation(

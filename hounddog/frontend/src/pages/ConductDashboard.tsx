@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, App, Button, Descriptions, Empty, Input, Modal, Segmented, Space, Spin, Table, Tag } from "antd";
 import { PrinterOutlined, DownloadOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, isAdminRole, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
@@ -17,6 +17,8 @@ interface PermitInfo {
   is_tag_only: boolean;
   name: string;
   email: string;
+  owner_verified_at?: string | null;
+  owner_verified_by?: string | null;
 }
 
 interface CaseRow {
@@ -124,6 +126,8 @@ function ConductPage() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -172,7 +176,9 @@ function ConductPage() {
       const headers = await authHeaders();
       const res = await fetch(`/api/conduct/cases/${row.id}`, { headers });
       if (!res.ok) throw new Error("Failed to load case details");
-      setSelected(await res.json());
+      const detail: CaseDetail = await res.json();
+      setSelected(detail);
+      setVerifyEmail(detail.permit?.email || detail.student_email || "");
     } catch (e: any) {
       message.error(e.message);
     } finally {
@@ -228,6 +234,39 @@ function ConductPage() {
       message.error(e.message);
     } finally {
       setNoteSaving(false);
+    }
+  }
+
+  async function handleVerifyOwner() {
+    if (!selected) return;
+    setVerifying(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/conduct/cases/${selected.id}/verify-owner`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: verifyEmail.trim() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || "Failed to verify owner");
+      if (body.hold_applied) {
+        message.success(
+          body.jenzabar_hold_set
+            ? `Owner verified — registration hold applied in Quarry and Jenzabar (${body.unpaid_count} unpaid)`
+            : `Owner verified — hold recorded in Quarry, but the Jenzabar call did not succeed. Apply it manually.`,
+          8,
+        );
+      } else if (body.already_held) {
+        message.success("Owner verified — student already has an active hold");
+      } else {
+        message.success(`Owner verified — ${body.unpaid_count} unpaid, below the hold threshold`);
+      }
+      await openCase(selected);
+      loadCases();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -695,6 +734,54 @@ function ConductPage() {
                 message={`Conduct resolved — $${unpaidFines.toFixed(2)} in tickets still unpaid`}
                 description="Resolving the conduct case does not clear the balance. The registration hold stays until the tickets are paid or voided."
               />
+            )}
+
+            {selected.permit?.is_tag_only && (
+              selected.permit.owner_verified_at ? (
+                <div className="text-xs text-gray-500">
+                  Vehicle tag owner verified by {selected.permit.owner_verified_by || "—"} on {fmtDate(selected.permit.owner_verified_at)}
+                </div>
+              ) : (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Vehicle tag — owner not verified"
+                  description={
+                    <div className="space-y-2">
+                      <div>Tickets on vehicle tags don't count toward a registration hold until a parking admin confirms who owns the car.</div>
+                      {isAdminRole(user?.role) ? (
+                        <div className="flex gap-2">
+                          <Input
+                            size="small"
+                            value={verifyEmail}
+                            onChange={e => setVerifyEmail(e.target.value)}
+                            placeholder="student@moravian.edu"
+                            style={{ maxWidth: 280 }}
+                          />
+                          <Button
+                            size="small"
+                            type="primary"
+                            danger
+                            loading={verifying}
+                            disabled={!verifyEmail.includes("@")}
+                            onClick={() => Modal.confirm({
+                              title: "Verify vehicle owner?",
+                              content: `Confirm ${verifyEmail.trim()} owns plate ${selected.plate}. If they're at the threshold, this places an academic registration hold in Jenzabar.`,
+                              okText: "Verify & apply hold",
+                              okButtonProps: { danger: true },
+                              onOk: handleVerifyOwner,
+                            })}
+                          >
+                            Verify owner
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-xs">Ask the parking office to verify the owner.</div>
+                      )}
+                    </div>
+                  }
+                />
+              )
             )}
 
             {selected.hold_status && (

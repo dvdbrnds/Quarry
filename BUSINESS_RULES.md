@@ -1,6 +1,6 @@
 # Business Rules — Quarry Parking
 
-Last updated: 2026-09-18
+Last updated: 2026-10-16
 
 **Before changing any of these rules in code, update this file FIRST.**
 
@@ -59,6 +59,18 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 - Ticket numbers are sequential: CIT-00001 format.
 - QR code on printed ticket links to the payment portal.
 - Payment URL format must match between BirdDog (generator) and Hounddog (resolver).
+
+## Escalation (Conduct Referral + Registration Hold)
+
+Implemented in `backend/app/services/escalation.py`.
+
+- Unpaid = any status except paid, voided, resolved_permit, warning.
+- At 3+ unpaid tickets (configurable thresholds), a student gets a conduct referral and a registration hold (Jenzabar stored procedure).
+- The hold is removed only when unpaid tickets drop below the threshold (payment, void, or approved appeal).
+- Resolving a conduct case in the Conduct Portal closes the referral only. It never clears tickets or the hold.
+- Tickets count toward a student when the plate is on one of their real permits.
+- Vehicle tags count only after staff verify the owner: the tag's email must resolve to a real Okta user, and an admin confirms it via "Verify owner" in the Conduct Portal. Tag emails are not trusted on their own — before Oct 12, 2026 BirdDog's student search could put the wrong student's email on a tag.
+- Verifying a tag owner immediately applies the registration hold if the student is at or over the threshold. It does not open a new conduct referral.
 
 ## Sponsor Permits
 

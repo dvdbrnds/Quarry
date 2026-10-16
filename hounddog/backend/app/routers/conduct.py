@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, text
@@ -83,6 +84,22 @@ async def _enrich_student_fields(
     return moravian_id, student_email, student_name
 
 router = SafeRouter()
+
+
+def _permit_info(permit: Permit) -> dict:
+    return {
+        "permit_id": str(permit.id),
+        "permit_number": permit.permit_number,
+        "permit_type": permit.permit_type,
+        "lot_zone": permit.lot_assignment,
+        "plates": permit.plates,
+        "status": permit.status,
+        "is_tag_only": permit.is_tag_only,
+        "name": permit.name,
+        "email": permit.email,
+        "owner_verified_at": permit.owner_verified_at.isoformat() if permit.owner_verified_at else None,
+        "owner_verified_by": permit.owner_verified_by,
+    }
 
 
 async def _get_conduct_emails(db: AsyncSession) -> list[str]:
@@ -177,17 +194,7 @@ async def list_cases(
         )
         permit = p_result.scalars().first()
         if permit:
-            permit_info = {
-                "permit_id": str(permit.id),
-                "permit_number": permit.permit_number,
-                "permit_type": permit.permit_type,
-                "lot_zone": permit.lot_assignment,
-                "plates": permit.plates,
-                "status": permit.status,
-                "is_tag_only": permit.is_tag_only,
-                "name": permit.name,
-                "email": permit.email,
-            }
+            permit_info = _permit_info(permit)
             moravian_id = permit.moravian_id or ""
             okta_sub = permit.student_id or ""
             student_name = permit.name or student_name
@@ -330,17 +337,7 @@ async def _get_case_by_plate(plate_norm: str, db: AsyncSession):
         okta_sub = permit.student_id or ""
         owner_name = permit.name or owner_name
         notification_email = permit.email or notification_email
-        permit_info = {
-            "permit_id": str(permit.id),
-            "permit_number": permit.permit_number,
-            "permit_type": permit.permit_type,
-            "lot_zone": permit.lot_assignment,
-            "plates": permit.plates,
-            "status": permit.status,
-            "is_tag_only": permit.is_tag_only,
-            "name": permit.name,
-            "email": permit.email,
-        }
+        permit_info = _permit_info(permit)
 
         # Find tickets on other plates belonging to this same student
         seen_ids = {t.id for t in all_tickets}
@@ -559,17 +556,7 @@ async def _get_case_detail(case_id: uuid.UUID, db: AsyncSession):
         permit = p_result.scalars().first()
 
     if permit:
-        permit_info = {
-            "permit_id": str(permit.id),
-            "permit_number": permit.permit_number,
-            "permit_type": permit.permit_type,
-            "lot_zone": permit.lot_assignment,
-            "plates": permit.plates,
-            "status": permit.status,
-            "is_tag_only": permit.is_tag_only,
-            "name": permit.name,
-            "email": permit.email,
-        }
+        permit_info = _permit_info(permit)
 
     moravian_id = (permit.moravian_id or "") if permit else ""
     okta_sub = case_row["student_id"] or ((permit.student_id or "") if permit else "")
@@ -759,6 +746,98 @@ async def add_note(
     return {"ok": True, "details": new_details}
 
 
+class VerifyOwnerRequest(BaseModel):
+    email: str = ""
+
+
+async def _case_plate_norm(case_id: str, db: AsyncSession) -> str:
+    if case_id.startswith("plate:"):
+        return case_id[6:]
+    row = await db.execute(text("""
+        SELECT plate FROM escalation_log
+        WHERE id = :case_id AND escalation_type = 'conduct_referral'
+    """), {"case_id": case_id})
+    plate = row.scalar()
+    if not plate:
+        raise HTTPException(404, "Case not found")
+    return plate.upper().replace(" ", "").replace("-", "")
+
+
+@router.post("/cases/{case_id}/verify-owner")
+async def verify_tag_owner(
+    case_id: str,
+    body: VerifyOwnerRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_conduct),
+):
+    """Confirm who owns a tagged vehicle so its tickets count toward a registration hold.
+
+    Admin-only: this can place an academic hold in Jenzabar.
+    """
+    if not user.is_admin:
+        raise HTTPException(403, "Only parking admins can verify vehicle owners")
+
+    plate_norm = await _case_plate_norm(case_id, db)
+    tags = list((await db.execute(
+        select(Permit).where(
+            Permit.is_tag_only.is_(True),
+            Permit.deleted_at.is_(None),
+            Permit.plates.any(plate_norm),
+        )
+    )).scalars().all())
+    if not tags:
+        raise HTTPException(400, "No vehicle tag on this plate — permit holders are already covered by holds")
+
+    email = (body.email or next((t.email for t in tags if t.email and "@" in t.email), "")).strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(400, "No email to verify — enter the student's university email")
+
+    okta = await _lookup_okta_user(email)
+    if not okta or not okta.get("sub"):
+        raise HTTPException(400, f"{email} was not found in Okta — can't verify this owner")
+
+    now = datetime.now(timezone.utc)
+    for tag in tags:
+        tag.owner_student_id = okta["sub"]
+        tag.owner_verified_at = now
+        tag.owner_verified_by = user.email
+        tag.email = okta["email"] or email
+        if okta.get("moravian_id"):
+            tag.moravian_id = okta["moravian_id"]
+    await db.flush()
+
+    await db.execute(text("""
+        UPDATE escalation_log SET student_id = :sid
+        WHERE escalation_type = 'conduct_referral'
+          AND COALESCE(student_id, '') = ''
+          AND UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :plate
+    """), {"sid": okta["sub"], "plate": plate_norm})
+
+    from ..services.escalation import apply_registration_hold_if_needed
+    try:
+        actions = await apply_registration_hold_if_needed(
+            db, okta["sub"], okta["name"] or tags[0].name, okta["email"] or email, tags[0].plates[0] if tags[0].plates else plate_norm,
+        )
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        _logger.error("Hold check failed after verifying owner of %s: %s", plate_norm, e, exc_info=True)
+        raise HTTPException(500, "Hold check failed, so the verification was not saved — try again")
+
+    _logger.info(
+        "Tag owner verified: plate=%s email=%s moravian_id=%s by=%s actions=%s",
+        plate_norm, email, okta.get("moravian_id"), user.email, actions,
+    )
+    return {
+        "ok": True,
+        "email": okta["email"] or email,
+        "moravian_id": okta.get("moravian_id"),
+        "unpaid_count": actions.get("unpaid_count"),
+        "hold_applied": bool(actions.get("registration_hold")),
+        "already_held": bool(actions.get("already_held")),
+        "jenzabar_hold_set": actions.get("jenzabar_hold_set"),
+    }
+
+
 class UpdateStudentRequest(BaseModel):
     student_name: str | None = None
     student_email: str | None = None
@@ -829,6 +908,9 @@ async def update_student_info(
         if body.student_name is not None:
             tag.name = body.student_name
         if body.student_email is not None:
+            if body.student_email.strip().lower() != (tag.email or "").strip().lower():
+                from ..services.escalation import clear_tag_verification
+                await clear_tag_verification(db, tag, user.email)
             tag.email = body.student_email
         await db.flush()
 

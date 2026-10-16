@@ -276,6 +276,9 @@ async def update_vehicle_tag(
                 )
         tag.plates = new_plates
     if data.email is not None:
+        if (data.email or "").strip().lower() != (tag.email or "").strip().lower():
+            from ..services.escalation import clear_tag_verification
+            await clear_tag_verification(db, tag, _user.email)
         tag.email = data.email
     if data.phone is not None:
         tag.phone = data.phone
