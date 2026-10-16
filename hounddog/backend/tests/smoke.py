@@ -165,6 +165,15 @@ def test_escalation_student_id():
     assert escalation_student_id(P(is_tag_only=True, student_id="sub1",
                                    owner_student_id="sub2", owner_verified_at=now)) == "sub2"
 
+    # Placeholder metadata in student_id never counts as a person
+    from app.services.escalation import is_person_student_id
+    for placeholder in ("plate_state:PA", "company_name:Visitor|work_description:x", "student_name:Jo"):
+        assert not is_person_student_id(placeholder), placeholder
+        assert escalation_student_id(P(is_tag_only=False, student_id=placeholder)) is None
+    for person in ("00uzbn82l9aLAXOH00x7", "553581", "menzelt@moravian.edu"):
+        assert is_person_student_id(person), person
+    assert not is_person_student_id("") and not is_person_student_id(None)
+
     print("  pass: escalation student id")
 
 

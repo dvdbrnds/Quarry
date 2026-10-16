@@ -7,6 +7,7 @@ Integration points are pluggable:
 - SIS holds: defaults to logging + admin notification (wire up API later)
 """
 import logging
+import re
 import sentry_sdk
 from uuid import uuid4
 
@@ -27,15 +28,29 @@ _OWNED_BY_STUDENT = """(
 )"""
 
 
+_PLACEHOLDER_SID = re.compile(r"^[a-z_]+:")
+PLACEHOLDER_SID_SQL = "^[a-z_]+:"
+
+
+def is_person_student_id(student_id: str | None) -> bool:
+    """False for blanks and metadata stuffed into student_id (visitor permits store
+    'company_name:...|...', legacy-imported tags store 'plate_state:XX'). Those pool
+    unrelated people under one key and must never drive a hold."""
+    return bool(student_id) and not _PLACEHOLDER_SID.match(student_id)
+
+
 def escalation_student_id(permit) -> str | None:
     """The student a permit's tickets count against, or None if they shouldn't count."""
     if permit is None:
         return None
     if getattr(permit, "is_tag_only", False):
         if getattr(permit, "owner_verified_at", None) and getattr(permit, "owner_student_id", None):
-            return permit.owner_student_id
-        return None
-    return getattr(permit, "student_id", None) or None
+            sid = permit.owner_student_id
+        else:
+            return None
+    else:
+        sid = getattr(permit, "student_id", None)
+    return sid if is_person_student_id(sid) else None
 
 
 async def _get_moravian_id(db: AsyncSession, student_id: str) -> str | None:
@@ -66,7 +81,7 @@ async def check_and_escalate(
     """
     actions = {}
 
-    if not student_id:
+    if not is_person_student_id(student_id):
         return actions
 
     unpaid_count = await _count_unpaid_tickets_for_student(db, student_id)
@@ -99,6 +114,9 @@ async def apply_registration_hold_if_needed(
 ) -> dict:
     """Place a registration hold (Quarry + Jenzabar) if the student is at/over threshold."""
     actions: dict = {}
+    if not is_person_student_id(student_id):
+        actions["not_a_person"] = True
+        return actions
     if unpaid_count is None:
         unpaid_count = await _count_unpaid_tickets_for_student(db, student_id)
     actions["unpaid_count"] = unpaid_count
@@ -168,7 +186,7 @@ async def _exemption_student_ids(db: AsyncSession, where: str) -> tuple[list[str
         WHERE {where}
     """))).mappings().all()
     exemption_ids = {r["eid"] for r in rows}
-    sids = sorted({r["sid"] for r in rows if r["sid"]})
+    sids = {r["sid"] for r in rows if is_person_student_id(r["sid"])}
 
     # Holds recorded against an exempt plate even if the permit link is gone
     if exemption_ids:
@@ -180,8 +198,8 @@ async def _exemption_student_ids(db: AsyncSession, where: str) -> tuple[list[str
             WHERE l.escalation_type = 'registration_hold' AND l.resolved_at IS NULL
               AND COALESCE(l.student_id, '') <> '' AND {where}
         """))
-        sids = sorted(set(sids) | {r[0] for r in extra.fetchall()})
-    return sids, exemption_ids
+        sids |= {r[0] for r in extra.fetchall() if is_person_student_id(r[0])}
+    return sorted(sids), exemption_ids
 
 
 async def process_hold_exemptions(db: AsyncSession) -> dict:

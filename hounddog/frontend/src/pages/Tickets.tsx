@@ -2863,6 +2863,64 @@ function EnforcementAudit() {
   );
 }
 
+function PlaceholderHolds() {
+  const { message } = App.useApp();
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/tickets/placeholder-holds", {
+        headers: { Authorization: `Bearer ${await (await import("../auth")).getAccessToken()}` },
+      });
+      if (!res.ok) throw new Error("Failed");
+      setRows(await res.json());
+    } catch {
+      message.error("Failed to load placeholder holds");
+    } finally {
+      setLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const columns: ColumnsType<any> = [
+    { title: "Filed Under", dataIndex: "placeholder", key: "placeholder", width: 200, ellipsis: true, render: (v: string) => <span className="font-mono text-xs">{v}</span> },
+    { title: "Plate", dataIndex: "plate", key: "plate", width: 100, render: (v: string, r: any) => (
+      <span className="font-mono">{v || "—"}{r.plate_on_exemption_list && <Tag color="blue" className="ml-1" style={{ fontSize: 10 }}>on list</Tag>}</span>
+    ) },
+    { title: "Tickets", dataIndex: "ticket_count", key: "ticket_count", width: 70 },
+    { title: "Created", dataIndex: "created_at", key: "created_at", width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString() : "—" },
+    { title: "Quarry Hold", key: "state", width: 170, render: (_: unknown, r: any) => r.resolved_at
+      ? <div><Tag color={r.lifted_by_exemption ? "orange" : "default"}>{r.lifted_by_exemption ? "Lifted by exemption" : "Resolved"}</Tag><div className="text-xs text-gray-400">{r.resolved_by}</div></div>
+      : <Tag color="red">Active</Tag> },
+    { title: "Jenzabar Hold Applied To", key: "jenzabar", render: (_: unknown, r: any) => r.jenzabar
+      ? <div className="text-xs">
+          <div className="font-semibold">{r.jenzabar.name || "—"} <span className="font-mono text-gray-500">({r.jenzabar.moravian_id})</span></div>
+          <div className="text-gray-500">{r.jenzabar.email || ""}</div>
+          <div>Jenzabar now: {r.jenzabar.jenzabar_hold_now === null ? <Tag>unknown</Tag> : r.jenzabar.jenzabar_hold_now ? <Tag color="red">hold</Tag> : <Tag color="green">no hold</Tag>}</div>
+        </div>
+      : <span className="text-xs text-gray-400">No Jenzabar ID — Quarry only</span> },
+  ];
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-lg font-semibold">Holds Filed Under Placeholders</h3>
+          <p className="text-sm text-gray-500">
+            Registration holds recorded against visitor or legacy-import metadata instead of a real student. These pooled unrelated
+            vehicles together, and the Jenzabar hold went to whichever student shared that placeholder. New holds can no longer be filed this way.
+          </p>
+        </div>
+        <Button onClick={load} loading={loading}>Refresh</Button>
+      </div>
+      <Table dataSource={rows} columns={columns} rowKey="id" loading={loading} size="small" pagination={{ pageSize: 25 }} />
+    </div>
+  );
+}
+
 export default function Tickets() {
   const user = useCurrentUser();
   const isAdmin = isAdminRole(user?.role);
@@ -2874,7 +2932,7 @@ export default function Tickets() {
     ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
     ...(isAdmin ? [{ key: "officer-report", label: "Reporting", children: <ReportingContainer /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
-    ...(isAdmin ? [{ key: "audit", label: "Enforcement Audit", children: <EnforcementAudit /> }] : []),
+    ...(isAdmin ? [{ key: "audit", label: "Enforcement Audit", children: <><EnforcementAudit /><PlaceholderHolds /></> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];
 

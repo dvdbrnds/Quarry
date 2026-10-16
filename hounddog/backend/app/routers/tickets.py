@@ -1074,6 +1074,69 @@ async def check_hold_status(
     }
 
 
+@router.get("/placeholder-holds")
+async def placeholder_holds(
+    db: AsyncSession = Depends(get_db),
+    _admin: OktaUser = Depends(require_admin()),
+):
+    """Registration holds filed under a placeholder student_id (visitor/legacy metadata)
+    instead of a real person, with the Jenzabar ID those holds were applied to."""
+    import asyncio
+    from ..services.escalation import PLACEHOLDER_SID_SQL
+    from ..services.sis_hold_service import check_jenzabar_hold
+
+    rows = (await db.execute(text("""
+        SELECT l.id::text AS id, l.student_id, l.student_name, l.student_email, l.plate,
+               l.ticket_count, l.created_at, l.resolved_at, l.resolved_by,
+               EXISTS (
+                   SELECT 1 FROM hold_exemptions e
+                   WHERE e.plate = UPPER(REPLACE(REPLACE(COALESCE(l.plate, ''), ' ', ''), '-', ''))
+               ) AS plate_on_exemption_list
+        FROM escalation_log l
+        WHERE l.escalation_type = 'registration_hold' AND l.student_id ~ :pattern
+        ORDER BY l.resolved_at DESC NULLS FIRST, l.created_at DESC
+    """), {"pattern": PLACEHOLDER_SID_SQL})).mappings().all()
+
+    jenzabar_targets: dict[str, dict] = {}
+    for sid in {r["student_id"] for r in rows}:
+        target = (await db.execute(text("""
+            SELECT moravian_id, name, email FROM permits
+            WHERE student_id = :sid AND moravian_id IS NOT NULL AND moravian_id <> ''
+            LIMIT 1
+        """), {"sid": sid})).mappings().first()
+        if not target:
+            continue
+        try:
+            live = await asyncio.wait_for(check_jenzabar_hold(target["moravian_id"]), timeout=15)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            live = None
+        jenzabar_targets[sid] = {
+            "moravian_id": target["moravian_id"],
+            "name": target["name"],
+            "email": target["email"],
+            "jenzabar_hold_now": live,
+        }
+
+    return [
+        {
+            "id": r["id"],
+            "placeholder": r["student_id"],
+            "student_name": r["student_name"],
+            "student_email": r["student_email"],
+            "plate": r["plate"],
+            "ticket_count": r["ticket_count"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "resolved_at": r["resolved_at"].isoformat() if r["resolved_at"] else None,
+            "resolved_by": r["resolved_by"],
+            "lifted_by_exemption": r["resolved_by"] == "exemption:hold-grace",
+            "plate_on_exemption_list": r["plate_on_exemption_list"],
+            "jenzabar": jenzabar_targets.get(r["student_id"]),
+        }
+        for r in rows
+    ]
+
+
 @router.post("", response_model=TicketRead, status_code=201)
 async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
     from ..services.ticket_numbering import next_ticket_number

@@ -69,6 +69,7 @@ Implemented in `backend/app/services/escalation.py`.
 - The hold is removed only when unpaid tickets drop below the threshold (payment, void, or approved appeal).
 - Resolving a conduct case in the Conduct Portal closes the referral only. It never clears tickets or the hold.
 - Tickets count toward a student when the plate is on one of their real permits.
+- Holds only ever apply to a real person (Okta sub, Moravian ID, or email). Placeholder values stored in `student_id` — visitor permit metadata (`company_name:...|...`) and legacy-import tags (`plate_state:XX`) — never create, count toward, or lift a hold. Older holds filed under placeholders are listed under Tickets → Enforcement Audit.
 - Vehicle tags count only after staff verify the owner: the tag's email must resolve to a real Okta user, and an admin confirms it via "Verify owner" in the Conduct Portal. Tag emails are not trusted on their own — before Oct 12, 2026 BirdDog's student search could put the wrong student's email on a tag.
 - Verifying a tag owner immediately applies the registration hold if the student is at or over the threshold. It does not open a new conduct referral.
 - Hold exemptions (`hold_exemptions` table, by plate or email) block new registration holds until they expire. When an exemption starts, existing holds for matching students are lifted in Quarry and Jenzabar. When it expires, students still at or over the threshold get the hold back automatically.
