@@ -31,7 +31,8 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 - "After 4:00 PM" means >= 16:00.
 - Midnight (00:00) counts as after hours (falls in the 16:00–07:00 window).
 - Faculty/staff permits have 24/7 access to all assigned lots.
-- Who can self-register a faculty/staff vehicle: anyone in an Okta faculty/staff group, OR with an office Faculty/Staff classification override, OR who already holds an active faculty/staff permit, OR whom Jenzabar marks as an employee (unless Jenzabar also shows them as a current resident/commuter student).
+- Who can self-register a faculty/staff vehicle: anyone in an Okta faculty/staff group, OR with an office Faculty/Staff classification override, OR who has ever been issued a faculty/staff permit (active, expired, or removed), OR whom Jenzabar marks as an employee (unless Jenzabar also shows them as a current resident/commuter student).
+- A person's faculty/staff vehicles share one permit. Removing a vehicle removes only that plate; the permit is removed only when its last plate is.
 - Extended Premium Commuter has full-time access to FS, FSC, and all street lots.
 
 ## Lottery Eligibility

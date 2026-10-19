@@ -185,7 +185,7 @@ function StaffPage({ user, impersonateEmail }: { user: AuthUser; impersonateEmai
         try {
           const headers = await authHeadersAs(impersonateEmail);
           headers["X-HTTP-Method-Override"] = "DELETE";
-          const res = await fetch(`/api/staff/permits/${v.id}`, { method: "POST", headers });
+          const res = await fetch(`/api/staff/permits/${v.id}?plate=${encodeURIComponent(v.plate)}`, { method: "POST", headers });
           if (!res.ok && res.status !== 204) { const b = await res.json(); throw new Error(b.detail || "Remove failed"); }
           message.success("Vehicle removed"); load();
         } catch (e: any) { message.error(e.message); }

@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from app import error_reporting
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -95,15 +95,14 @@ async def _employee_basis(user: OktaUser, db: AsyncSession) -> str | None:
         override = await get_classification_override_by_email(email, db)
         if override and override_is_faculty_staff(override):
             return "classification_override"
-        has_staff_permit = (await db.execute(
+        # Any staff permit ever issued counts, so removing your last vehicle doesn't lock you out.
+        had_staff_permit = (await db.execute(
             select(Permit.id).where(
                 func.lower(Permit.email) == email,
                 Permit.permit_type == STAFF_PERMIT_CODE,
-                Permit.status == "active",
-                Permit.deleted_at.is_(None),
             ).limit(1)
         )).first()
-        if has_staff_permit:
+        if had_staff_permit:
             return "existing_staff_permit"
     from .student_permits import _extract_moravian_id
     moravian_id = _extract_moravian_id(user)
@@ -317,10 +316,11 @@ async def my_vehicles(
 @router.delete("/{permit_id}", status_code=204)
 async def remove_vehicle(
     permit_id: uuid.UUID,
+    plate: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user),
 ):
-    """Remove a vehicle registration."""
+    """Remove one vehicle (plate) from a registration; the permit goes only with its last plate."""
     permit = await db.get(Permit, permit_id)
     if not permit or permit.deleted_at:
         raise HTTPException(404, "Vehicle registration not found")
@@ -329,7 +329,16 @@ async def remove_vehicle(
     if permit.permit_type != STAFF_PERMIT_CODE:
         raise HTTPException(400, "This is not a staff/faculty vehicle registration")
 
-    permit.deleted_at = datetime.now(timezone.utc)
+    plates = list(permit.plates or [])
+    target = (plate or "").upper().strip()
+    if len(plates) > 1 and target not in plates:
+        raise HTTPException(400, "Please refresh the page and choose the vehicle to remove.")
+    if len(plates) > 1:
+        permit.plates = [p for p in plates if p != target]
+        permit.last_plate_change = datetime.now(timezone.utc)
+        logger.info("Removed plate %s from permit %s for %s", target, permit.permit_number, user.email)
+    else:
+        permit.deleted_at = datetime.now(timezone.utc)
     await db.flush()
 
 
