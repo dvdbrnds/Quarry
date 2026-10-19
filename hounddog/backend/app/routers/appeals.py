@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -163,6 +163,7 @@ class PlateClaimRequest(BaseModel):
 @router.post("/claim-plate", response_model=MyTicketsResponse)
 async def claim_plate_tickets(
     data: PlateClaimRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
@@ -175,6 +176,10 @@ async def claim_plate_tickets(
         raise HTTPException(400, "Please enter a license plate or ticket number")
 
     tickets = await find_tickets_by_plate_or_number(db, data.plate)
+
+    # Impersonation is view-only: never link tickets to the student being viewed.
+    if request.headers.get("X-Impersonate", "").strip():
+        return await _summaries(db, tickets)
 
     # Link unlinked tickets to this student's email so they show up automatically next time
     linked = 0
