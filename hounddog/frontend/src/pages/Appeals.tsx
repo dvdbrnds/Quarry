@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Form, Input, Modal, Spin, Tag, App as AntApp } from "antd";
-import { initAuth, isAuthenticated, login, authHeaders } from "../auth";
+import { initAuth, isAuthenticated, login, authHeadersAs, getImpersonateEmail } from "../auth";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
@@ -94,7 +94,7 @@ export default function Appeals() {
   async function loadTickets() {
     setLoading(true);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(getImpersonateEmail());
       const res = await fetch("/api/appeals/my-tickets", { headers });
       if (!res.ok) throw new Error("Failed to load");
       const data: MyTicketsResponse = await res.json();
@@ -165,7 +165,7 @@ export default function Appeals() {
     if (!val) return;
     setPlateLookupLoading(true);
     try {
-      const headers = await authHeaders();
+      const headers = await authHeadersAs(getImpersonateEmail());
       const res = await fetch("/api/appeals/claim-plate", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
@@ -186,7 +186,13 @@ export default function Appeals() {
   function statusTag(t: TicketSummary) {
     if (t.appeal_decision === "pending") return <Tag color="blue">Under Review</Tag>;
     if (t.appeal_decision === "approved") return <Tag color="green">Appeal Approved</Tag>;
-    if (t.appeal_decision === "denied") return <Tag color="red">Appeal Denied</Tag>;
+    if (t.appeal_decision === "denied") {
+      return <><Tag color="red">Appeal Denied</Tag>{paymentTag(t)}</>;
+    }
+    return paymentTag(t);
+  }
+
+  function paymentTag(t: TicketSummary) {
     if (t.status === "paid") return <Tag color="default">Paid</Tag>;
     if (t.status === "voided") return <Tag color="default">Voided</Tag>;
     if (t.status === "warning") return <Tag color="orange">Warning</Tag>;
@@ -194,6 +200,8 @@ export default function Appeals() {
     if (t.status === "overdue") return <Tag color="orange">Overdue</Tag>;
     if (t.status === "escalated") return <Tag color="purple">Escalated</Tag>;
     if (t.status === "past_due") return <Tag color="red">Past Due</Tag>;
+    if (t.status === "pending_payment") return <Tag color="gold">Unpaid</Tag>;
+    if (t.status === "expired_magistrate") return <Tag color="default">Referred to Court</Tag>;
     return <Tag color="gold">Issued</Tag>;
   }
 
@@ -467,7 +475,7 @@ function AppealModal({
           }),
         });
       } else {
-        const headers = await authHeaders();
+        const headers = await authHeadersAs(getImpersonateEmail());
         res = await fetch("/api/appeals/submit", {
           method: "POST",
           headers,
