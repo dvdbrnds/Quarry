@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-import sentry_sdk
+from app import error_reporting
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, text
@@ -819,7 +819,7 @@ async def verify_tag_owner(
             db, okta["sub"], okta["name"] or tags[0].name, okta["email"] or email, tags[0].plates[0] if tags[0].plates else plate_norm,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         _logger.error("Hold check failed after verifying owner of %s: %s", plate_norm, e, exc_info=True)
         raise HTTPException(500, "Hold check failed, so the verification was not saved — try again")
 

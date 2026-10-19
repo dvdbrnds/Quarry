@@ -14,40 +14,6 @@ from .auth.okta import require_admin, require_office
 from .config import settings
 from .database import get_db
 
-
-def _sentry_before_send(event, hint):
-    """Filter out noisy or expected errors before sending to Sentry."""
-    if "exc_info" in hint:
-        _exc_type, exc_value, _ = hint["exc_info"]
-        if isinstance(exc_value, HTTPException) and exc_value.status_code in (401, 403, 404):
-            return None
-        # Transient DB lock errors caused by startup migrations vs live queries —
-        # these resolve on their own and waste Sentry quota.
-        # Check both the exception type name and string representation to catch
-        # unhandled exceptions that bypass message-level filters (QUARRY-1V, QUARRY-1W).
-        exc_type_name = _exc_type.__name__ if _exc_type else ""
-        if exc_type_name in ("DeadlockDetectedError", "LockNotAvailable"):
-            return None
-        err_str = str(exc_value).lower()
-        if "deadlock" in err_str or "locknotavailable" in err_str or "lock timeout" in err_str:
-            return None
-    # Also check message-level events (structlog warnings about migrations)
-    msg = (event.get("message") or "").lower()
-    if "migration skipped" in msg or "migration failed" in msg:
-        return None
-    return event
-
-
-if settings.sentry_dsn:
-    import sentry_sdk
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.sentry_environment,
-        traces_sample_rate=0.1,
-        profiles_sample_rate=0.1,
-        send_default_pii=False,
-        before_send=_sentry_before_send,
-    )
 from .routers import (
     academic_calendar,
     alerts,
@@ -331,8 +297,8 @@ async def _cjis_periodic_tasks():
 
             logger.info("cjis_periodic_tasks_complete")
         except Exception as exc:
-            import sentry_sdk
-            sentry_sdk.capture_exception(exc)
+            from app import error_reporting
+            error_reporting.capture_exception(exc)
             logger.error("cjis_periodic_tasks_failed", error=str(exc))
 
         # Run every hour
@@ -2556,8 +2522,8 @@ async def health():
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
         try:
-            import sentry_sdk
-            sentry_sdk.capture_message(
+            from app import error_reporting
+            error_reporting.capture_message(
                 f"Health check DEGRADED: {exc}",
                 level="error",
             )

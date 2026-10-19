@@ -13,7 +13,7 @@ alwaysApply: false
 - Never use HTTP PATCH — the WAF blocks it silently. Use PUT or POST instead.
 - HTTP DELETE works via MethodOverrideMiddleware (frontend sends POST + X-HTTP-Method-Override: DELETE). Use `router.delete()` normally.
 - Never persist files to the container filesystem — it's ephemeral
-- Always surface errors to Sentry — never silently swallow exceptions
+- Always report errors with `error_reporting.capture_exception(e)` (from `app import error_reporting`; ships to Axiom) — never silently swallow exceptions. Sentry has been removed; do not add it back.
 - Log structured events to Axiom for any new endpoint that handles money, external services, or user-facing operations
 
 ## Before changing lottery, access, or permit logic:
@@ -27,7 +27,7 @@ alwaysApply: false
 try:
     result = await risky_operation()
 except Exception as e:
-    sentry_sdk.capture_exception(e)
+    error_reporting.capture_exception(e)
     # degrade gracefully but NEVER silently
     result = fallback_value
 ```

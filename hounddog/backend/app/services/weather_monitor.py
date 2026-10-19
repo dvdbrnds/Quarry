@@ -7,7 +7,7 @@ type is detected, auto-dispatches an alert using the mapped template.
 """
 
 import asyncio
-import sentry_sdk
+from app import error_reporting
 import json
 import logging
 import uuid
@@ -117,7 +117,7 @@ async def _poll_loop():
         try:
             await _check_weather()
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Weather check failed: %s", e, exc_info=True)
         await asyncio.sleep(interval)
 

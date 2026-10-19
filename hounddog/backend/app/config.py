@@ -186,10 +186,6 @@ class Settings(BaseSettings):
     # Campus timezone for "today", schedules, and display (EST/EDT)
     app_timezone: str = "America/New_York"
 
-    # Sentry error monitoring
-    sentry_dsn: str = ""
-    sentry_environment: str = "production"
-
     # Axiom (Observability)
     axiom_token: str = ""
     axiom_org_id: str = ""

@@ -1,5 +1,5 @@
 import csv
-import sentry_sdk
+from app import error_reporting
 import io
 import math
 import uuid
@@ -769,7 +769,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
                         await db.commit()
                         permit_fulfilled = True
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("verify-session fulfillment failed (reconciler will retry): %s", e)
 
         # Trigger admin permit charge fulfillment
@@ -781,7 +781,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
                     await db.commit()
                     permit_fulfilled = True
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("verify-session admin charge fulfillment failed (reconciler will retry): %s", e)
 
         # Trigger ticket fulfillment for paid ticket sessions
@@ -800,7 +800,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
                         await db.commit()
                         ticket_fulfilled = True
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("verify-session ticket fulfillment failed (reconciler will retry): %s", e)
 
         # Trigger bulk ticket fulfillment
@@ -820,7 +820,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
                         await db.commit()
                         ticket_fulfilled = True
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("verify-session bulk ticket fulfillment failed: %s", e)
 
         ticket_plate = None
@@ -839,7 +839,7 @@ async def verify_stripe_session(session_id: str, db: AsyncSession = Depends(get_
             "ticket_fulfilled": ticket_fulfilled,
         }
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         return {"status": "error", "payment_status": "unknown", "detail": str(e)}
 
 
@@ -893,7 +893,7 @@ async def _handle_ticket_payment(session: dict, metadata: dict, db: AsyncSession
             from ..services.escalation import check_and_resolve_on_payment
             await check_and_resolve_on_payment(db, ticket.plate)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.warning("Escalation resolve on payment failed (non-fatal): %s", e)
 
     return True
@@ -960,7 +960,7 @@ async def _handle_bulk_ticket_payment(session: dict, metadata: dict, db: AsyncSe
             from ..services.escalation import check_and_resolve_on_payment
             await check_and_resolve_on_payment(db, plate)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.warning("Escalation resolve on bulk payment failed (non-fatal) for %s: %s", plate, e)
 
     return True
@@ -1592,7 +1592,7 @@ async def stripe_backfill_emails(
         try:
             page = stripe.PaymentIntent.list(**params)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             errors.append(f"PaymentIntent.list failed: {e}")
             break
 
@@ -1650,7 +1650,7 @@ async def stripe_backfill_emails(
                             email = ticket.dispute_email
                             source = "ticket.dispute_email"
                 except Exception as e:
-                    sentry_sdk.capture_exception(e)
+                    error_reporting.capture_exception(e)
                     pass
 
             if not email:
@@ -1662,7 +1662,7 @@ async def stripe_backfill_emails(
                 updated += 1
                 details.append({"id": pi_id, "email": email, "source": source})
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 errors.append(f"{pi_id}: {e}")
 
         if not page.has_more:
@@ -1811,7 +1811,7 @@ async def stripe_backfill_payments(
         try:
             page = stripe.PaymentIntent.list(**params)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             errors.append(f"PaymentIntent.list failed: {e}")
             break
 
@@ -1916,7 +1916,7 @@ async def stripe_debug(user: OktaUser = Depends(require_admin())):
         result["account_name"] = getattr(acct, "business_profile", {}).get("name") if getattr(acct, "business_profile", None) else None
         result["account_email"] = getattr(acct, "email", None)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         result["account_error"] = str(e)
 
     for label, fn in [
@@ -1934,7 +1934,7 @@ async def stripe_debug(user: OktaUser = Depends(require_admin())):
                 "sample_ids": [item.id for item in items],
             }
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             result[label] = {"error": str(e)}
 
     return result
@@ -2187,10 +2187,10 @@ async def stripe_transactions(
                     if txn.payment_intent_id:
                         existing.payment_intent_id = txn.payment_intent_id
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 errors.append(f"charge {ch.id}: {e}")
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         errors.append(f"Charge.list failed: {e}\n{traceback.format_exc()}")
 
     try:
@@ -2216,10 +2216,10 @@ async def stripe_transactions(
                     if txn.payment_intent_id:
                         existing.payment_intent_id = txn.payment_intent_id
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 errors.append(f"pi {pi.id}: {e}")
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         errors.append(f"PaymentIntent.list failed: {e}\n{traceback.format_exc()}")
 
     try:
@@ -2238,10 +2238,10 @@ async def stripe_transactions(
                     db.add(_cache_txn(txn))
                     new_count += 1
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 errors.append(f"session {sess.id}: {e}")
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         errors.append(f"Session.list failed: {e}\n{traceback.format_exc()}")
 
     await db.flush()
@@ -2515,7 +2515,7 @@ async def export_payments(
                     ref_dt.isoformat(),
                 ])
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Failed to fetch Stripe refunds for CSV export: %s", e)
 
     output.seek(0)
@@ -2539,7 +2539,7 @@ def _fetch_stripe_fee(payment_intent_id: str) -> tuple[int, int]:
         bt = pi.latest_charge.balance_transaction
         return bt.fee, bt.net
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         return 0, 0
 
 
@@ -2618,7 +2618,7 @@ async def refund_stripe_charge(
             },
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         raise HTTPException(400, f"Stripe refund failed: {e}") from e
 
     logger.info(
@@ -2855,7 +2855,7 @@ async def bulk_refund_execute(
                                 (cache_row.amount or Decimal("0")) - live_left,
                             )
                         except Exception as e:
-                            sentry_sdk.capture_exception(e)
+                            error_reporting.capture_exception(e)
                             cache_row.amount_refunded = (
                                 (cache_row.amount_refunded or Decimal("0")) + refunded_now
                             )
@@ -2886,7 +2886,7 @@ async def bulk_refund_execute(
                         "customer_name": classified.get("customer_name"),
                     })
                 except Exception as e:
-                    sentry_sdk.capture_exception(e)
+                    error_reporting.capture_exception(e)
                     try:
                         await db.rollback()
                     except Exception as e:
@@ -3160,7 +3160,7 @@ async def export_oracle_gl(
                     "refund", ref_id, "",
                 )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Failed to fetch Stripe refunds for GL export: %s", e)
 
     output.seek(0)

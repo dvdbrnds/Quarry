@@ -16,7 +16,6 @@ Required origins for features currently in use:
 - **Google Maps:** `*.googleapis.com`, `*.gstatic.com` in `script-src` and `connect-src`; `fonts.googleapis.com` in `style-src`
 - **Okta SSO:** `login.moravian.edu` AND `*.okta.com` in `frame-src` and `connect-src`
 - **Stripe:** `js.stripe.com` in `script-src` and `frame-src`; `api.stripe.com` in `connect-src`
-- **Sentry:** `*.ingest.us.sentry.io` in `connect-src`
 - **Axiom:** `api.axiom.co` in `connect-src`
 
 ## Container (Coolify / Docker)

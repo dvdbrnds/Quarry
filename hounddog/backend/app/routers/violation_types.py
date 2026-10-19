@@ -1,5 +1,5 @@
 import uuid
-import sentry_sdk
+from app import error_reporting
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from ..utils.safe_router import SafeRouter
@@ -170,7 +170,7 @@ async def import_violation_types(
                 db.add(vtype)
                 created += 1
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             errors.append(f"Error processing '{row.code}': {e}")
 
     await db.flush()

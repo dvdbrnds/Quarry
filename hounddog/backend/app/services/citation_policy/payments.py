@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-import sentry_sdk
+from app import error_reporting
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -247,7 +247,7 @@ async def record_staff_payment(
         try:
             await check_and_resolve_on_payment(db, plate)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
     return payment, touched
 
 

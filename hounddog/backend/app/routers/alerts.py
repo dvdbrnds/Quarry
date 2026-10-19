@@ -1,5 +1,5 @@
 import csv
-import sentry_sdk
+from app import error_reporting
 import io
 import logging
 import uuid
@@ -1461,5 +1461,5 @@ async def trigger_sis_sync():
         from ..services.sis_subscriber_sync import get_sync_status
         return get_sync_status()
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         raise HTTPException(500, f"Sync failed: {str(e)}")

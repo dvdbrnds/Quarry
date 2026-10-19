@@ -6,7 +6,7 @@ Does NOT print secret values — only presence/format validity.
 """
 
 import logging
-import sentry_sdk
+from app import error_reporting
 import re
 
 from ..config import settings
@@ -148,7 +148,7 @@ def run_preflight() -> list[dict]:
         else:
             check("APP_TIMEZONE", "pass", detail)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         check("APP_TIMEZONE", "fail", f"Invalid timezone {tz_name}: {e}")
 
     # --- Log summary ---

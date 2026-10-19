@@ -1,7 +1,7 @@
 """Public visitor/vendor parking permit portal — no authentication required."""
 
 import re
-import sentry_sdk
+from app import error_reporting
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -436,7 +436,7 @@ async def create_visitor_permit(data: VisitorPermitCreate, db: AsyncSession = De
     except HTTPException:
         raise
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Permit creation failed")
         raise HTTPException(500, f"Permit creation error: {type(e).__name__}: {e}")
@@ -1002,7 +1002,7 @@ async def _notify_permit_change(action: str, count: int):
         from ..services.apns import send_permit_push
         await send_permit_push(action, count)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("APNs push notification failed")
 
@@ -1025,7 +1025,7 @@ async def _send_visitor_confirmation(permit: Permit):
             end_date=end_str,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Visitor confirmation email failed")
 
@@ -1061,7 +1061,7 @@ async def _send_sponsor_approval_email(
             instructor_name=instructor_name,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         import logging
         logging.getLogger("quarry.visitor_permits").exception("Sponsor approval email failed")
         return False

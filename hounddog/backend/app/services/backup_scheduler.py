@@ -164,8 +164,8 @@ async def _read_schedule_from_db() -> dict | None:
                 parsed = row if isinstance(row, dict) else json.loads(row)
                 return parsed
     except Exception as e:
-        import sentry_sdk
-        sentry_sdk.capture_exception(e)
+        from app import error_reporting
+        error_reporting.capture_exception(e)
         logger.warning("Backup schedule: failed to read from DB: %s", e)
     return None
 
@@ -198,15 +198,15 @@ async def _write_schedule(data: dict):
             """), {"val": value_str})
             await db.commit()
     except Exception as e:
-        import sentry_sdk
-        sentry_sdk.capture_exception(e)
+        from app import error_reporting
+        error_reporting.capture_exception(e)
         logger.error("Failed to write schedule to DB: %s", e)
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         SCHEDULE_FILE.write_text(json.dumps(data, indent=2))
     except Exception as e:
-        import sentry_sdk
-        sentry_sdk.capture_exception(e)
+        from app import error_reporting
+        error_reporting.capture_exception(e)
         logger.warning("Failed to write schedule to disk: %s", e)
 
 
@@ -241,8 +241,8 @@ async def _audit(summary: str, action: str = "POST", details: dict | None = None
                     changes=details,
                 ))
     except Exception as e:
-        import sentry_sdk
-        sentry_sdk.capture_exception(e)
+        from app import error_reporting
+        error_reporting.capture_exception(e)
         logger.warning("Failed to write backup audit entry: %s", e)
 
 
@@ -452,8 +452,8 @@ def _cleanup_old_backups_disk(keep: int = MAX_KEEP_COUNT):
             deleted += 1
             logger.info("Deleted old backup: %s", old_file.name)
         except Exception as e:
-            import sentry_sdk
-            sentry_sdk.capture_exception(e)
+            from app import error_reporting
+            error_reporting.capture_exception(e)
             logger.warning("Failed to delete old backup %s: %s", old_file.name, e)
     if deleted:
         logger.info("Backup retention: kept %d, deleted %d on disk", min(keep, len(backups)), deleted)
@@ -488,8 +488,8 @@ def _check_disk_space() -> bool:
             return False
         return True
     except Exception as e:
-        import sentry_sdk
-        sentry_sdk.capture_exception(e)
+        from app import error_reporting
+        error_reporting.capture_exception(e)
         logger.warning("Disk space check failed: %s — proceeding with backup", e)
         return True
 
@@ -606,8 +606,8 @@ async def _execute_scheduled_backup(
                     else:
                         logger.warning("Google Drive upload returned no file ID")
                 except Exception as e:
-                    import sentry_sdk
-                    sentry_sdk.capture_exception(e)
+                    from app import error_reporting
+                    error_reporting.capture_exception(e)
                     logger.error("Google Drive upload failed (backup still saved on disk): %s", e)
                     await _audit(f"Google Drive upload failed: {e}", action="DELETE")
 
@@ -617,8 +617,8 @@ async def _execute_scheduled_backup(
     except Exception as e:
         logger.error("Scheduled backup failed: %s", e, exc_info=True)
         try:
-            import sentry_sdk
-            sentry_sdk.capture_exception(e)
+            from app import error_reporting
+            error_reporting.capture_exception(e)
         except Exception:
             pass
         await _audit(f"Scheduled backup FAILED: {e}", action="DELETE")

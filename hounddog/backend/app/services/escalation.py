@@ -8,7 +8,7 @@ Integration points are pluggable:
 """
 import logging
 import re
-import sentry_sdk
+from app import error_reporting
 from uuid import uuid4
 
 from sqlalchemy import and_, or_, select, text
@@ -220,7 +220,7 @@ async def process_hold_exemptions(db: AsyncSession) -> dict:
         if moravian_id and settings.sis_hold_enabled and settings.sis_mssql_host:
             from .sis_hold_service import set_jenzabar_hold
             if not await set_jenzabar_hold(moravian_id, apply=False):
-                sentry_sdk.capture_message(
+                error_reporting.capture_message(
                     f"Hold exemption: Jenzabar hold removal failed for moravian_id={moravian_id}",
                     level="error",
                 )
@@ -395,7 +395,7 @@ async def _send_maxient_email_referral(
             body_text=body_text,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("Failed to send Maxient referral email: %s", e)
 
 
@@ -464,7 +464,7 @@ async def _notify_student_of_hold(
     try:
         await send_email(to=[student_email], subject=subject, body_html=body_html, body_text=body_text)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("Failed to send hold notification to %s: %s", student_email, e)
 
 
@@ -499,7 +499,7 @@ async def _notify_admin_of_hold(
     try:
         await send_email(to=[admin_email], subject=subject, body_html=body_html, body_text=body_text)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("Failed to send admin hold notification: %s", e)
 
 
@@ -646,5 +646,5 @@ async def _notify_conduct_officers(
             ", ".join(recipients), student_name or student_email or plate,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("Failed to send conduct officer notification: %s", e)

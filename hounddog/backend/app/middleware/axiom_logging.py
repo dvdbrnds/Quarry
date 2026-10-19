@@ -12,7 +12,7 @@ import os
 import time
 
 import httpx
-import sentry_sdk
+from app import error_reporting
 import structlog
 from starlette.types import ASGIApp, Receive, Scope, Send, Message
 
@@ -56,7 +56,7 @@ class AxiomRequestLogger:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            sentry_sdk.capture_exception(exc)
+            error_reporting.capture_exception(exc)
             error_str = str(exc)
             raise
         finally:

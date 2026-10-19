@@ -1,7 +1,7 @@
 """Faculty/staff permit renewal via magic-link token."""
 
 import secrets
-import sentry_sdk
+from app import error_reporting
 import uuid as uuid_mod
 from datetime import date, datetime, timedelta, timezone
 
@@ -56,7 +56,7 @@ async def _build_response_html(title: str, heading: str, message: str, success: 
                 department = bs.department_name or department
                 logo_url = bs.logo_url or ""
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         pass
 
     nav_title = f"{school} {department}" if school else f"{brand}"
@@ -190,7 +190,7 @@ async def send_renewal_campaign(
             else:
                 errors.append(f"Email send failed for {permit.email}")
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             errors.append(f"Error sending to {permit.email}: {str(e)}")
 
     await db.flush()

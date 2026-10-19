@@ -1,5 +1,5 @@
 import uuid
-import sentry_sdk
+from app import error_reporting
 from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
@@ -1109,7 +1109,7 @@ async def placeholder_holds(
         try:
             live = await asyncio.wait_for(check_jenzabar_hold(target["moravian_id"]), timeout=15)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             live = None
         jenzabar_targets[sid] = {
             "moravian_id": target["moravian_id"],
@@ -1179,7 +1179,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                 )
                 await db.flush()
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         import logging
         logging.getLogger("quarry.tickets").warning("Citation email failed (non-fatal): %s", e)
 
@@ -1203,7 +1203,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                     student_email=getattr(esc_permit, 'email', None),
                 )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         import logging
         logging.getLogger("quarry.tickets").warning("Escalation check failed (non-fatal): %s", e)
 
@@ -1563,7 +1563,7 @@ async def update_ticket(
                 issued_at=ticket.issued_at.isoformat() if ticket.issued_at else "",
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
 
     # Re-check escalation after plate correction or owner propagation
     if plate_was_corrected or propagate_fields:
@@ -1586,7 +1586,7 @@ async def update_ticket(
                     student_email=getattr(esc_permit, 'email', None),
                 )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
 
     return ticket
 
@@ -1618,7 +1618,7 @@ async def void_ticket(
             from ..services.escalation import check_and_resolve_on_payment
             await check_and_resolve_on_payment(db, ticket.plate)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
 
     await db.refresh(ticket)
     return ticket
@@ -1664,7 +1664,7 @@ async def bulk_void_tickets(
             from ..services.escalation import check_and_resolve_on_payment
             await check_and_resolve_on_payment(db, plate)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
 
     return {"voided": voided, "skipped": skipped}
 
@@ -1796,7 +1796,7 @@ async def decide_appeal(
             from ..services.escalation import check_and_resolve_on_payment
             await check_and_resolve_on_payment(db, ticket.plate)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
 
     await db.refresh(ticket)
     return ticket

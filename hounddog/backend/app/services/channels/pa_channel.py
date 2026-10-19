@@ -15,7 +15,7 @@ Config:
 """
 
 import asyncio
-import sentry_sdk
+from app import error_reporting
 import json
 import logging
 
@@ -128,7 +128,7 @@ class PaChannel(AlertChannel):
             await _qrc_session(commands)
             return ChannelResult(channel=self.name, sent=1)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Q-SYS QRC alert failed: %s", e)
             return ChannelResult(channel=self.name, failed=1, error=str(e))
 
@@ -142,5 +142,5 @@ class PaChannel(AlertChannel):
                 "params": {"Name": CONTROL_ALL_CLEAR, "Value": 1},
             }])
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Q-SYS QRC clear failed: %s", e)

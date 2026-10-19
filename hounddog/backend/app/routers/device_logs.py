@@ -1,6 +1,6 @@
 """Ingest logs from BirdDog enforcement devices."""
 import structlog
-import sentry_sdk
+from app import error_reporting
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from ..utils.safe_router import SafeRouter
@@ -69,7 +69,7 @@ async def ingest_device_logs(
     try:
         client.ingest_events(settings.axiom_device_dataset, events)
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error("axiom_ingest_failed", dataset="birddog", error=str(exc))
         raise HTTPException(502, "Log shipping failed")
 

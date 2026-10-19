@@ -1,5 +1,5 @@
 import secrets
-import sentry_sdk
+from app import error_reporting
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -82,7 +82,7 @@ async def _apply_approval(req: VehicleRequest, db: AsyncSession, decided_by: str
             note=None,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.warning("Failed to send approval email: %s", e)
 
     logger.info("Vehicle request %s approved by %s — plate %s added to permit %s",
@@ -107,7 +107,7 @@ async def _apply_denial(req: VehicleRequest, db: AsyncSession, decided_by: str, 
             note=req.decision_note,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.warning("Failed to send denial email: %s", e)
 
     logger.info("Vehicle request %s denied by %s", req.id, decided_by)
@@ -199,7 +199,7 @@ async def submit_multi_vehicle_request(
                 approval_url=approval_url,
             )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.warning("Failed to send vehicle request notification: %s", e)
 
     return {

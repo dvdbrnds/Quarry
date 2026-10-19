@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-import sentry_sdk
+from app import error_reporting
 import structlog
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -241,7 +241,7 @@ async def deliver_pending_emails(session_factory, limit: int = 500) -> dict:
                         from_override=settings.citation_from_address or None,
                     )
                 except Exception as e:
-                    sentry_sdk.capture_exception(e)
+                    error_reporting.capture_exception(e)
                     ok = False
                     notice.last_error = str(e)[:1000]
                 if ok:
@@ -254,7 +254,7 @@ async def deliver_pending_emails(session_factory, limit: int = 500) -> dict:
                     notice.last_error = notice.last_error or "send_email returned False"
                     failed += 1
                     if notice.attempts >= MAX_ATTEMPTS:
-                        sentry_sdk.capture_message(
+                        error_reporting.capture_message(
                             f"Citation notice {notice.id} ({notice.notice_type}) failed {MAX_ATTEMPTS} times",
                             level="error",
                         )

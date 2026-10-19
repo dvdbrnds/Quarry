@@ -6,7 +6,7 @@ The service account must be granted Editor access to the target folder.
 """
 
 import json
-import sentry_sdk
+from app import error_reporting
 import logging
 from pathlib import Path
 
@@ -79,7 +79,7 @@ def upload_to_drive(filepath: Path, folder_id: str) -> str | None:
         return result.get("id")
 
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("Google Drive upload failed: %s", e, exc_info=True)
         return None
 
@@ -109,7 +109,7 @@ def test_drive_connection(folder_id: str) -> dict:
         return {"ok": True, "folder_name": folder.get("name")}
 
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         error_msg = str(e)
         if "404" in error_msg or "notFound" in error_msg:
             return {"ok": False, "error": "Folder not found. Make sure the folder is shared with the service account email."}

@@ -1,7 +1,7 @@
 """Admin endpoints for managing the fee-exempt roster."""
 
 import io
-import sentry_sdk
+from app import error_reporting
 import logging
 import uuid
 from decimal import Decimal
@@ -179,7 +179,7 @@ async def upload_roster(
                 row_dict = dict(zip(headers, row_cells))
                 rows.append(row_dict)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             raise HTTPException(400, f"Failed to parse Excel file: {e}")
     elif filename.endswith(".csv"):
         import csv
@@ -581,7 +581,7 @@ async def send_balance_payment(
             checkout_url=session.url,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.exception("Failed to send balance-due email to %s", app.student_email)
 
     return {
@@ -835,7 +835,7 @@ async def get_refund_due(db: AsyncSession = Depends(get_db)):
                         permit.refund_id = refunds.data[0].id
                         already_refunded = True
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 pass
 
         rows.append(RefundDueRow(

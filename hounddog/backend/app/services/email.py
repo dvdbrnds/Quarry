@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-import sentry_sdk
+from app import error_reporting
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -61,7 +61,7 @@ async def _load_branding() -> dict:
                 }
                 return _cached_branding
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         pass
     return {
         "brand_name": settings.brand_name,
@@ -215,7 +215,7 @@ async def send_email(
                 logger.warning("Email send attempt 1 failed, retrying in 2s: %s", e)
                 await asyncio.sleep(2)
             else:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.error("Email send failed to %s: %s", ", ".join(to), e, exc_info=True)
     from .notification_health import stats
     for r in to:

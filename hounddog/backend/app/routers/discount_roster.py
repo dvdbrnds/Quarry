@@ -1,7 +1,7 @@
 """Admin endpoints for program discount roster (e.g. ABSN $100 off)."""
 
 import io
-import sentry_sdk
+from app import error_reporting
 import logging
 import uuid
 from decimal import Decimal
@@ -182,7 +182,7 @@ async def upload_roster(
             for row_cells in ws.iter_rows(min_row=2, values_only=True):
                 rows.append(dict(zip(headers, row_cells)))
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             raise HTTPException(400, f"Failed to parse Excel file: {e}")
     elif filename.endswith(".csv"):
         import csv

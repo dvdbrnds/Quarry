@@ -5,7 +5,7 @@ Does not touch permit_applications or the live per-tier lottery.
 """
 
 from __future__ import annotations
-import sentry_sdk
+from app import error_reporting
 
 import uuid
 
@@ -614,7 +614,7 @@ async def try_place_application(
                 lot_assignments=list(pt.lot_assignments or []),
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Failed to notify placed applicant %s: %s", app.id, e)
     return True
 
@@ -1043,7 +1043,7 @@ async def manual_select_application(
                 lot_assignments=list(pt.lot_assignments or []),
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Failed to notify manually selected applicant %s: %s", app.id, e)
 
     return app
@@ -1140,7 +1140,7 @@ async def promote_from_waitlist(
                         lot_assignments=list(pt.lot_assignments or []),
                     )
                 except Exception as e:
-                    sentry_sdk.capture_exception(e)
+                    error_reporting.capture_exception(e)
                     logger.error("Failed to notify promoted applicant %s: %s", app.id, e)
             break
 
@@ -1177,7 +1177,7 @@ async def _notify_selected(
                     app.student_email, app.student_name,
                 )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             failed_count += 1
             logger.error("Failed to notify selected v2 applicant %s: %s", app.id, e)
 
@@ -1239,7 +1239,7 @@ async def _notify_waitlisted(waitlisted: list[LotteryV2Application]) -> dict:
             else:
                 failed += 1
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             failed += 1
             logger.error("Failed to notify waitlisted v2 applicant %s: %s", app.id, e)
     return {"sent": sent, "failed": failed, "skipped": skipped}
@@ -1490,7 +1490,7 @@ async def offer_vacated_seat(
                 lot_assignments=list(permit_type.lot_assignments or []),
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Failed to notify vacated-seat offer for %s: %s", app.id, e)
 
     return app

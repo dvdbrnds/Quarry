@@ -1,7 +1,7 @@
 """Student-facing permit application endpoints."""
 
 import logging
-import sentry_sdk
+from app import error_reporting
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -119,7 +119,7 @@ async def _get_classification_status(user, db: AsyncSession | None = None) -> st
         _logger.warning("SIS returned no data for moravian_id=%s — classification filter skipped", moravian_id)
         return None
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         _logger.warning("SIS classification lookup failed for %s: %s — filter skipped", moravian_id, e)
         return None
 
@@ -177,7 +177,7 @@ async def _opt_in_alerts(
             db.add(subscriber)
         await db.flush()
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         _logger.warning("Alert opt-in failed (non-fatal): %s", e)
 
 
@@ -1195,5 +1195,5 @@ async def _advance_waitlist(permit_type_id: uuid.UUID, db: AsyncSession):
                     total_waitlisted=total_wl,
                 )
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 _logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)

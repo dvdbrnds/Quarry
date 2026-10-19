@@ -1,5 +1,5 @@
 import logging
-import sentry_sdk
+from app import error_reporting
 
 from fastapi import APIRouter, Depends, Request
 from ..utils.safe_router import SafeRouter
@@ -50,7 +50,7 @@ async def _write_auth_event(user: OktaUser, action: str, summary: str,
                     ip_address=ip,
                 ))
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.warning("Auth audit write failed: %s", e)
 
 
@@ -97,7 +97,7 @@ async def me(
                     elif sis.employee:
                         role = "staff"
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.debug("SIS lookup failed during auth for %s", user.email)
 
     await _write_auth_event(

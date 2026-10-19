@@ -2,7 +2,7 @@
 with a TTS reading of the alert message."""
 
 import logging
-import sentry_sdk
+from app import error_reporting
 
 from . import AlertChannel, ChannelResult
 from ..sms import _get_client
@@ -57,7 +57,7 @@ class VoiceChannel(AlertChannel):
                 )
                 sent += 1
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.error("Voice call failed to %s: %s", sub.phone, e)
                 failed += 1
 

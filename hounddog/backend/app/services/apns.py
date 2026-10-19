@@ -13,7 +13,7 @@ Requires a .p8 APNs auth key from Apple Developer portal. Configure via env:
 """
 
 import json
-import sentry_sdk
+from app import error_reporting
 import logging
 import time
 from pathlib import Path
@@ -110,7 +110,7 @@ async def send_permit_push(action: str, count: int):
                         device_token[:8], resp.status_code, resp.text,
                     )
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("APNs push error for token %s...: %s", device_token[:8], e)
 
     logger.info("Sent permit_changed push to %d device(s)", len(device_tokens))

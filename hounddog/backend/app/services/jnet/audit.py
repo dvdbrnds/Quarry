@@ -9,7 +9,7 @@ but should trigger an alert via structlog.
 import uuid
 from datetime import datetime, timezone
 
-import sentry_sdk
+from app import error_reporting
 import structlog
 
 from ...database import async_session
@@ -76,7 +76,7 @@ async def log_jnet_query(
 
     except Exception as exc:
         # CRITICAL: audit write failure must not propagate, but must be visible
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error(
             "cjis_audit_write_failed",
             user=user_email,

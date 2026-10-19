@@ -1,5 +1,5 @@
 import logging
-import sentry_sdk
+from app import error_reporting
 import uuid
 from datetime import datetime, timezone
 
@@ -622,7 +622,7 @@ async def detect_spots_endpoint(
     try:
         detected = await detect_spots(lot.boundary)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.exception("Spot detection failed for lot %s", lot_id)
         raise HTTPException(502, "AI spot detection failed — check server logs for details")
 

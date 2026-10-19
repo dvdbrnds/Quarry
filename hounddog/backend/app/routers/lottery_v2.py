@@ -5,7 +5,7 @@ permit_applications lottery tables.
 """
 
 from __future__ import annotations
-import sentry_sdk
+from app import error_reporting
 
 import uuid
 
@@ -1410,7 +1410,7 @@ async def admin_delete_application(
                 body_text=body_text,
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.warning("Failed to send withdraw notification to %s: %s", email, e)
 
     return {"deleted": True, "id": str(application_id), "name": name, "email": email}
@@ -1480,7 +1480,7 @@ async def admin_add_to_waitlist(
                         except (ValueError, TypeError):
                             pass
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             pass
 
     # DB fallback: check existing lottery apps or permits
@@ -2281,7 +2281,7 @@ async def advance_waitlist_tier(
                     lot_assignments=list(pt.lot_assignments or []),
                 )
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.error("Failed to email promoted applicant %s: %s", promoted_app.id, e)
         return {
             "action": "promote",
@@ -2670,7 +2670,7 @@ async def capacity_audit(
     try:
         sis_by_id = await lookup_batch_by_moravian_ids(all_moravian_ids)
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("SIS capacity audit enrichment failed: %s", e, exc_info=True)
         sis_by_id = {}
 
@@ -2960,7 +2960,7 @@ async def tier_detail(
         sis_by_id = await lookup_batch_by_moravian_ids(all_mids)
         logger.info("Tier detail SIS: %d/%d permits have SIS data", len(sis_by_id), len(permits))
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         logger.error("Tier detail SIS enrichment failed: %s", e, exc_info=True)
 
     _empty_sis = {"housing_status": None, "housing_label": None, "division_code": None,

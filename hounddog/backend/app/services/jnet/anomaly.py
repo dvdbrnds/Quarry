@@ -9,7 +9,7 @@ import ipaddress
 import uuid
 from datetime import datetime, timezone, timedelta
 
-import sentry_sdk
+from app import error_reporting
 import structlog
 from sqlalchemy import select, func, and_
 
@@ -64,7 +64,7 @@ async def _create_alert(
                 ))
         logger.warning("cjis_alert_created", alert_type=alert_type, description=description)
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error("cjis_alert_creation_failed", error=str(exc))
 
 
@@ -146,7 +146,7 @@ async def check_query_anomalies(
             )
 
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error("cjis_anomaly_check_failed", error=str(exc))
 
 
@@ -220,5 +220,5 @@ async def run_comprehensive_anomaly_scan() -> None:
         logger.info("cjis_comprehensive_anomaly_scan_complete")
 
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error("cjis_comprehensive_anomaly_scan_failed", error=str(exc))

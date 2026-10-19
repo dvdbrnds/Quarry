@@ -5,7 +5,7 @@ and scheduled jobs use Eastern Time so evenings don't roll to the next day.
 """
 
 from datetime import date, datetime
-import sentry_sdk
+from app import error_reporting
 from zoneinfo import ZoneInfo
 
 from ..config import settings
@@ -17,7 +17,7 @@ def campus_tz() -> ZoneInfo:
     try:
         return ZoneInfo(settings.app_timezone or "America/New_York")
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         return EASTERN
 
 

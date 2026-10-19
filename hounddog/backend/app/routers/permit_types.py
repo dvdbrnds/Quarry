@@ -1,5 +1,5 @@
 import logging
-import sentry_sdk
+from app import error_reporting
 import random
 import string
 import uuid
@@ -235,7 +235,7 @@ async def import_permit_types(
                 db.add(ptype)
                 created += 1
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             errors.append(f"Error processing '{row.code}': {e}")
 
     await db.flush()
@@ -431,7 +431,7 @@ async def run_lottery(
                 body_text=body_text,
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             logger.error("Failed to notify waitlisted applicant %s", app.id, exc_info=True)
 
     return LotteryResult(
@@ -535,7 +535,7 @@ async def advance_waitlist(
                         total_waitlisted=total_wl,
                     )
                 except Exception as e:
-                    sentry_sdk.capture_exception(e)
+                    error_reporting.capture_exception(e)
                     logger.error("Failed to send waitlist update to %s", app.id, exc_info=True)
 
     return {"expired": len(expired), "advanced": advanced}

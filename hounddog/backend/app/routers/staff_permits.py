@@ -5,7 +5,7 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 
-import sentry_sdk
+from app import error_reporting
 from fastapi import APIRouter, Depends, HTTPException
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
@@ -115,7 +115,7 @@ async def _employee_basis(user: OktaUser, db: AsyncSession) -> str | None:
             if sis and sis.employee and sis.housing_status not in ("R", "C"):
                 return "sis_employee"
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
     return None
 
 

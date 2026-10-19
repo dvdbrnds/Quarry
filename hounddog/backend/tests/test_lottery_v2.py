@@ -15,6 +15,7 @@ from pathlib import Path
 _stubs = [
     "app",
     "app.config",
+    "app.error_reporting",
     "app.models",
     "app.models.lottery_v2",
     "app.models.permit",
@@ -40,6 +41,10 @@ _sa.func = types.SimpleNamespace()
 _sa.select = lambda *a, **k: None
 _sa.text = lambda *a, **k: None
 sys.modules["sqlalchemy.ext.asyncio"].AsyncSession = type("AsyncSession", (), {})
+
+_errors = sys.modules["app.error_reporting"]
+_errors.capture_exception = lambda *a, **k: None
+_errors.capture_message = lambda *a, **k: None
 
 # Minimal config
 _cfg = sys.modules["app.config"]

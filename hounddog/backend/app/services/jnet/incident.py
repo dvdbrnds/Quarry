@@ -5,7 +5,7 @@ Creates incident records and sends email notifications to the
 CJIS Information Security Officer (ISO).
 """
 
-import sentry_sdk
+from app import error_reporting
 import structlog
 
 from ...database import async_session
@@ -52,7 +52,7 @@ async def report_cjis_incident(
         return incident
 
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error(
             "cjis_incident_creation_failed",
             incident_type=incident_type,
@@ -96,5 +96,5 @@ async def _send_incident_email(incident: CJISIncident) -> None:
         logger.info("cjis_incident_email_sent", to=email_addr)
 
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         logger.error("cjis_incident_email_failed", error=str(exc))

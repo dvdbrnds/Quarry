@@ -1,5 +1,5 @@
 import csv
-import sentry_sdk
+from app import error_reporting
 import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -636,7 +636,7 @@ async def create_permit_with_charge(data: AdminChargeRequest, db: AsyncSession =
             checkout_url=session.url,
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
+        error_reporting.capture_exception(e)
         pass  # best-effort, admin sees the URL in the response
 
     return {
@@ -1117,7 +1117,7 @@ async def reassign_permit(
                 checkout_url=session.url,
             )
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             pass
 
         logger.info(
@@ -1188,7 +1188,7 @@ async def reassign_permit(
                     new_pt.label, refund_amount, refund.id,
                 )
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("Stripe refund failed for reassignment: %s", e)
                 refund_result["refund_error"] = str(e)
                 refund_result["manual_refund_needed"] = True
@@ -1303,7 +1303,7 @@ async def _permit_payment_info(
                     amount_paid = amount_paid or (Decimal(str(pi.amount)) / 100)
                     refundable = amount_paid
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            error_reporting.capture_exception(e)
             pass
 
     return payment, stripe_id, amount_paid, refundable
@@ -1452,7 +1452,7 @@ async def cancel_permit(
                 refund_result["refund_status"] = refund.status
                 permit.refund_id = refund.id
             except Exception as e:
-                sentry_sdk.capture_exception(e)
+                error_reporting.capture_exception(e)
                 logger.warning("Stripe refund failed for cancel %s: %s", permit.id, e)
                 refund_result["refund_error"] = str(e)
                 refund_result["manual_refund_needed"] = True
@@ -1921,7 +1921,7 @@ async def send_payment_link(
             checkout_url=session.url,
         )
     except Exception as exc:
-        sentry_sdk.capture_exception(exc)
+        error_reporting.capture_exception(exc)
         structlog.get_logger("quarry.permits").warning("Payment link email failed: %s", exc)
 
     structlog.get_logger("quarry.permits").info(
