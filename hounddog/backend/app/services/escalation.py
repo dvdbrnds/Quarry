@@ -276,6 +276,7 @@ async def _count_unpaid_tickets_for_student(db: AsyncSession, student_id: str) -
             )
             WHERE {_OWNED_BY_STUDENT}
               AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
+              AND COALESCE(t.fine_amount, 0) > 0
         """),
         {"student_id": student_id},
     )
@@ -306,6 +307,7 @@ async def _get_ticket_ids_for_student(db: AsyncSession, student_id: str) -> list
             )
             WHERE {_OWNED_BY_STUDENT}
               AND t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
+              AND COALESCE(t.fine_amount, 0) > 0
             ORDER BY t.issued_at DESC
         """),
         {"student_id": student_id},

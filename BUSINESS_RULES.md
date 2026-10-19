@@ -68,7 +68,7 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 
 Implemented in `backend/app/services/escalation.py`.
 
-- Unpaid = any status except paid, voided, resolved_permit, warning.
+- Unpaid = any status except paid, voided, resolved_permit, warning, and only tickets with a fine above $0. Warnings never count toward a referral or hold, even after an appeal changes their status.
 - At 3+ unpaid tickets (configurable thresholds), a student gets a conduct referral and a registration hold (Jenzabar stored procedure).
 - The hold is removed only when unpaid tickets drop below the threshold (payment, void, or approved appeal).
 - Resolving a conduct case in the Conduct Portal closes the referral only. It never clears tickets or the hold.

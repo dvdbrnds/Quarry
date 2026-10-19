@@ -151,6 +151,7 @@ async def list_cases(
             COALESCE(SUM(t.fine_amount), 0) AS unpaid_amount
         FROM tickets t
         WHERE t.status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
+          AND COALESCE(t.fine_amount, 0) > 0
         GROUP BY plate_norm, t.plate
         HAVING COUNT(*) >= 3
         ORDER BY MAX(t.issued_at) DESC
@@ -645,6 +646,7 @@ async def _ensure_escalation_log(case_id: str, db: AsyncSession) -> str:
         FROM tickets
         WHERE UPPER(REPLACE(REPLACE(plate, ' ', ''), '-', '')) = :plate
           AND status NOT IN ('paid', 'voided', 'resolved_permit', 'warning')
+          AND COALESCE(fine_amount, 0) > 0
         GROUP BY plate, owner_name LIMIT 1
     """), {"plate": plate_norm})
     t_row = t_result.mappings().first()
