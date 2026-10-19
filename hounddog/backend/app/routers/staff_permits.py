@@ -1,9 +1,11 @@
 """Staff/faculty self-service vehicle enrollment — no lottery, no cost."""
 
+import asyncio
 import logging
 import uuid
 from datetime import date, datetime, timezone
 
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException
 from ..utils.safe_router import SafeRouter
 from pydantic import BaseModel
@@ -13,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, FACULTY_STAFF_OKTA_GROUPS
 
 logger = logging.getLogger(__name__)
+from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
 from ..models.permit_type import PermitType
@@ -81,6 +84,41 @@ async def available_staff_permits(
     ]
 
 
+async def _employee_basis(user: OktaUser, db: AsyncSession) -> str | None:
+    """Why this person counts as an employee, or None. Okta groups are missing for some
+    real employees (e.g. IT/admin accounts), so fall back to what the office already knows."""
+    if user.is_staff or user.is_office:
+        return "okta_group"
+    email = (user.email or "").lower()
+    if email:
+        from .housing_overrides import get_classification_override_by_email, override_is_faculty_staff
+        override = await get_classification_override_by_email(email, db)
+        if override and override_is_faculty_staff(override):
+            return "classification_override"
+        has_staff_permit = (await db.execute(
+            select(Permit.id).where(
+                func.lower(Permit.email) == email,
+                Permit.permit_type == STAFF_PERMIT_CODE,
+                Permit.status == "active",
+                Permit.deleted_at.is_(None),
+            ).limit(1)
+        )).first()
+        if has_staff_permit:
+            return "existing_staff_permit"
+    from .student_permits import _extract_moravian_id
+    moravian_id = _extract_moravian_id(user)
+    if moravian_id and settings.sis_mssql_host:
+        try:
+            from ..services.sis_student_data import lookup_student_parking_data
+            sis = await asyncio.wait_for(lookup_student_parking_data(moravian_id), timeout=8)
+            # Current resident/commuter students stay students even if SIS flags them as employees (RAs, work-study).
+            if sis and sis.employee and sis.housing_status not in ("R", "C"):
+                return "sis_employee"
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+    return None
+
+
 @router.post("/enroll", response_model=VehicleRead, status_code=201)
 async def enroll_vehicle(
     data: VehicleEnroll,
@@ -88,7 +126,10 @@ async def enroll_vehicle(
     user: OktaUser = Depends(get_current_user_or_impersonated),
 ):
     """Register a vehicle — creates a permit immediately (no lottery, no cost)."""
-    if not user.is_staff and not user.is_office:
+    basis = await _employee_basis(user, db)
+    if basis and basis != "okta_group":
+        logger.info("Staff permit allowed for %s via %s (Okta groups: %s)", user.email, basis, user.groups)
+    if not basis:
         logger.warning(
             "Staff permit denied for %s (sub=%s) — groups: %s | matched faculty/staff: %s",
             user.email, user.sub, user.groups,
