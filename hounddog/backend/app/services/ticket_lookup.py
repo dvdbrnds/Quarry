@@ -15,10 +15,10 @@ from ..models.ticket import Ticket
 from .plate_utils import normalize_plate
 
 # Statuses that mean the ticket is still actionable (unpaid)
-UNPAID_STATUSES = {"issued", "appealed", "escalated", "past_due"}
+UNPAID_STATUSES = {"issued", "overdue", "past_due", "escalated", "appealed", "pending_payment"}
 
 # All non-terminal statuses (includes paid tickets for history views)
-ALL_ACTIVE_STATUSES = {"issued", "appealed", "escalated", "past_due", "paid", "voided", "warning", "resolved_permit"}
+ALL_ACTIVE_STATUSES = UNPAID_STATUSES | {"paid", "voided", "warning", "resolved_permit"}
 
 
 async def find_tickets_by_plate(

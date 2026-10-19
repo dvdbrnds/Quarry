@@ -60,6 +60,7 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 - Ticket numbers are sequential: CIT-00001 format.
 - QR code on printed ticket links to the payment portal.
 - Payment URL format must match between BirdDog (generator) and Hounddog (resolver).
+- The Pay page (plate lookup and "my tickets") lists every payable citation: issued, overdue, past_due, escalated, appealed, and pending_payment. pending_payment covers abandoned Stripe checkouts and upheld/denied appeals; it must stay payable.
 
 ## Escalation (Conduct Referral + Registration Hold)
 
