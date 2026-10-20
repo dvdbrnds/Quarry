@@ -28,7 +28,7 @@ export interface MailRecipient {
   address: string;
 }
 
-const DEPT = "Moravian University Police Department";
+const DEPT = "Moravian University Parking Authority";
 const DEPT_STREET = "119 West Greenwich Street";
 const DEPT_CITY = "Bethlehem, PA 18018";
 const DEPT_EMAIL = "campuspolice@moravian.edu";
