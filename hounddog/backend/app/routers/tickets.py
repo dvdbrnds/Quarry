@@ -1875,6 +1875,8 @@ async def pending_mail_notices(
                 "plate_state": ticket.plate_state,
                 "ticket_category": ticket.ticket_category,
                 "location_text": ticket.location_text,
+                "location_lat": ticket.location_lat,
+                "location_lng": ticket.location_lng,
                 "additional_violations": ticket.additional_violations,
                 "photo_url": ticket.photo_url,
                 "payment_url": f"{settings.student_facing_url}/pay/{ticket.id}",

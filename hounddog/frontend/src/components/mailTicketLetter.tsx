@@ -19,6 +19,8 @@ export interface MailLetterTicket {
   officer_name: string | null;
   officer_id: string;
   photo_url: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
 }
 
 export interface MailRecipient {
@@ -113,6 +115,7 @@ function letterPage(ticket: MailLetterTicket, recipient: MailRecipient | null, o
         <tr><td class="l">License plate</td><td style="font-family:Menlo,monospace;letter-spacing:1px;font-weight:700;">${esc(plate)}</td></tr>
         ${ticket.vehicle_description ? `<tr><td class="l">Vehicle</td><td>${esc(ticket.vehicle_description)}</td></tr>` : ""}
         <tr><td class="l">Location</td><td>${esc(moving ? (ticket.location_text || ticket.lot || "—") : (ticket.lot || "—"))}</td></tr>
+        ${ticket.location_lat != null && ticket.location_lng != null ? `<tr><td class="l">GPS (lat, long)</td><td style="font-family:Menlo,monospace;font-size:9pt;">${ticket.location_lat.toFixed(6)}, ${ticket.location_lng.toFixed(6)}</td></tr>` : ""}
         <tr><td class="l">Violation${violations.length > 1 ? "s" : ""}</td><td>${violations.map(esc).join("<br/>")}</td></tr>
         <tr><td class="l">Issuing officer</td><td>${esc(ticket.officer_name || ticket.officer_id)}</td></tr>
         <tr><td class="l">Amount due</td><td style="font-weight:700;font-size:12pt;">${fine}</td></tr>
