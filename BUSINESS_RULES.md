@@ -70,6 +70,7 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 - The Pay page (plate lookup and "my tickets") lists every payable citation: issued, overdue, past_due, escalated, appealed, and pending_payment. pending_payment covers abandoned Stripe checkouts and upheld/denied appeals; it must stay payable.
 - When an officer tickets a plate whose permit is valid for the lot on the ticket (or that is flagged Never Ticket), BirdDog re-checks at submit and requires a written reason before it will issue. The reason is stored on the ticket and shown under the "may be legally parked" warning. Warnings and moving violations are exempt.
 - "Print for Mail" (office staff, per ticket) prints a letter-size citation notice for a #10 window envelope: the registered owner's name and address (looked up by MUPD and entered under Registered Owner), all citation details, the evidence photo, a payment QR code and link, mail-in payment instructions, and a return stub. Printing does not charge any fee. Staff confirm afterwards to record it as mailed (date and address).
+- Evidence photo orientation is fixed in Quarry, never in BirdDog (changing capture orientation in BirdDog breaks plate scanning). Office staff can flip or rotate a ticket's photos; the rotation is saved per ticket and used in the ticket view, Print, and Print for Mail. The stored photo is never modified.
 
 ## Escalation (Conduct Referral + Registration Hold)
 

@@ -12,6 +12,7 @@ import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
 import { openMailLetter } from "../components/mailTicketLetter";
+import { photoRotation, rotatedPhotoSrc } from "../photoRotation";
 
 interface Ticket {
   id: string;
@@ -65,6 +66,7 @@ interface Ticket {
   has_legacy?: boolean;
   enforcement_warning: string | null;
   override_reason?: string | null;
+  photo_rotation?: number | null;
   conduct_escalation?: {
     escalation_type: string;
     escalation_status: string;
@@ -1522,7 +1524,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     return () => { cancelled = true; };
   }, [selected?.id]);
 
-  function handlePrintTicket(ticket: Ticket) {
+  async function handlePrintTicket(ticket: Ticket) {
     const photoUrl = ticket.photo_url
       ? `${window.location.origin}${ticket.photo_url}`
       : `${window.location.origin}/api/tickets/${ticket.id}/photo`;
@@ -1532,6 +1534,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
     const printWindow = window.open("", "_blank", "width=800,height=900");
     if (!printWindow) return;
+    const rotation = photoRotation(ticket);
+    const mainPhotoSrc = await rotatedPhotoSrc(photoUrl, rotation);
+    const extraPhotoSrcs = await Promise.all(
+      Array.from({ length: ticket.additional_photo_count }).map((_, i) =>
+        rotatedPhotoSrc(`${window.location.origin}/api/tickets/${ticket.id}/photos/${i}`, rotation)),
+    );
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
@@ -1617,8 +1625,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   ${photoUrl ? `
   <div class="section">
     <div class="section-title">Evidence Photo${ticket.additional_photo_count > 0 ? "s" : ""}</div>
-    <img src="${photoUrl}" class="photo" />
-    ${ticket.additional_photo_count > 0 ? Array.from({ length: ticket.additional_photo_count }).map((_, i) => `<img src="${window.location.origin}/api/tickets/${ticket.id}/photos/${i}" class="photo" style="margin-top:8px" />`).join("") : ""}
+    <img src="${mainPhotoSrc}" class="photo" />
+    ${extraPhotoSrcs.map((src) => `<img src="${src}" class="photo" style="margin-top:8px" />`).join("")}
   </div>` : ""}
 
   <div class="footer">
@@ -1638,6 +1646,16 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 </body>
 </html>`);
     printWindow.document.close();
+  }
+
+  async function handleRotatePhoto(ticket: Ticket, by: number) {
+    const next = (photoRotation(ticket) + by) % 360;
+    const res = await fetch(`/api/tickets/${ticket.id}/photo-rotation`, {
+      method: "POST", headers: await authHeaders(), body: JSON.stringify({ rotation: next }),
+    });
+    if (!res.ok) { message.error("Could not rotate the photo"); return; }
+    setSelected((prev) => prev && prev.id === ticket.id ? { ...prev, photo_rotation: next } : prev);
+    setTickets((prev) => prev.map((t) => t.id === ticket.id ? { ...t, photo_rotation: next } : t));
   }
 
   function handlePrintForMail(ticket: Ticket) {
@@ -2547,16 +2565,23 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <div>
                 <div className="flex gap-2 flex-wrap">
                   {selected.photo_url && (
-                    <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" />
+                    <Image src={selected.photo_url} alt="Violation photo" className="rounded-lg max-h-48 object-cover" style={{ transform: `rotate(${photoRotation(selected)}deg)` }} />
                   )}
                   {!selected.photo_url && (
-                    <Image src={`/api/tickets/${selected.id}/photo`} alt="Violation photo" className="rounded-lg max-h-48 object-cover"
+                    <Image src={`/api/tickets/${selected.id}/photo`} alt="Violation photo" className="rounded-lg max-h-48 object-cover" style={{ transform: `rotate(${photoRotation(selected)}deg)` }}
                       onError={(e: any) => { e.target.style.display = "none"; }} />
                   )}
                   {selected.additional_photo_count > 0 && Array.from({ length: selected.additional_photo_count }).map((_, i) => (
-                    <Image key={i} src={`/api/tickets/${selected.id}/photos/${i}`} alt={`Additional photo ${i + 1}`} className="rounded-lg max-h-48 object-cover" />
+                    <Image key={i} src={`/api/tickets/${selected.id}/photos/${i}`} alt={`Additional photo ${i + 1}`} className="rounded-lg max-h-48 object-cover" style={{ transform: `rotate(${photoRotation(selected)}deg)` }} />
                   ))}
                 </div>
+                {isOffice && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button size="small" onClick={() => handleRotatePhoto(selected, 180)}>Flip upside down</Button>
+                    <Button size="small" onClick={() => handleRotatePhoto(selected, 90)}>Rotate ↻</Button>
+                    <span className="text-xs text-gray-400">Saved for this ticket. Applies to Print and Print for Mail; the original photo is kept.</span>
+                  </div>
+                )}
               </div>
             )}
 

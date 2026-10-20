@@ -102,6 +102,7 @@ class TicketRead(BaseModel):
     dispute_phone: str | None = None
     enforcement_warning: str | None = None
     override_reason: str | None = None
+    photo_rotation: int | None = None
     policy_version: str | None = None
     timeline_start_date: date | None = None
     stage: str | None = None

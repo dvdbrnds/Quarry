@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { QRCodeSVG } from "qrcode.react";
 import { fmtDateTime } from "../dateUtils";
+import { photoRotation, rotatedPhotoSrc } from "../photoRotation";
 
 export interface MailLetterTicket {
   id: string;
@@ -19,6 +20,7 @@ export interface MailLetterTicket {
   officer_name: string | null;
   officer_id: string;
   photo_url: string | null;
+  photo_rotation?: number | null;
 }
 
 export interface MailRecipient {
@@ -66,7 +68,10 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
 
   const w = window.open("", "_blank", "width=850,height=1000");
   if (!w) return false;
+  w.document.write("<p style=\"font-family:sans-serif;padding:24px\">Preparing letter…</p>");
 
+  rotatedPhotoSrc(photoUrl, photoRotation(ticket)).then((photoSrc) => {
+  w.document.open();
   w.document.write(`<!DOCTYPE html>
 <html>
 <head>
@@ -123,7 +128,7 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
         <tr><td class="l">Issuing officer</td><td>${esc(ticket.officer_name || ticket.officer_id)}</td></tr>
         <tr><td class="l">Amount due</td><td style="font-weight:700;font-size:12pt;">${fine}</td></tr>
       </table>
-      <img class="photo" src="${esc(photoUrl)}" onerror="this.style.display='none'" />
+      <img class="photo" src="${esc(photoSrc)}" onerror="this.style.display='none'" />
     </div>
 
     <div class="respond">
@@ -158,5 +163,6 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
 </body>
 </html>`);
   w.document.close();
+  });
   return true;
 }

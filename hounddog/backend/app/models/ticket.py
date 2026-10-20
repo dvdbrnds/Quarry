@@ -87,6 +87,8 @@ class Ticket(Base):
     owner_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     enforcement_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
     override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Display-only clockwise rotation (0/90/180/270) for evidence photos; stored bytes are never changed.
+    photo_rotation: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     dispute_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
