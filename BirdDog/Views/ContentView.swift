@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var showAdminSettings = false
     @State private var showSessionHistory = false
     @State private var showIssuedTickets = false
+    @State private var reprintTicket: PendingTicket?
+    @State private var showNoLocalTicket = false
     @State private var showCameraLog = false
     @State private var showTicketIssuance = false
     // Moving violations now handled in unified TicketIssuanceView
@@ -67,7 +69,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             let anyScreenOpen = showTicketIssuance
-                || showAdminSettings || showSessionHistory || showIssuedTickets || showPlateCorrection || showVehicleTag || showManualLookup
+                || showAdminSettings || showSessionHistory || showIssuedTickets || reprintTicket != nil || showPlateCorrection || showVehicleTag || showManualLookup
             if viewModel.cameraPermission == .authorized && !anyScreenOpen {
                 // Resume if paused by willResignActive (share sheet, app switcher)
                 if viewModel.isScanningPaused {
@@ -83,7 +85,7 @@ struct ContentView: View {
         }
         .onReceive(tick) { t in
             let anyScreenOpen = showTicketIssuance
-                || showAdminSettings || showSessionHistory || showIssuedTickets || showPlateCorrection || showVehicleTag || showManualLookup
+                || showAdminSettings || showSessionHistory || showIssuedTickets || reprintTicket != nil || showPlateCorrection || showVehicleTag || showManualLookup
             if !anyScreenOpen {
                 now = t
             }
@@ -261,7 +263,18 @@ struct ContentView: View {
                             viewModel.pauseScanning()
                             tagPlate = entry.text
                             showVehicleTag = true
-                        } : nil
+                        } : nil,
+                        onReprintTapped: { entry in
+                            let key = Self.plateKey(entry.text)
+                            if let ticket = PlateDatabase.shared
+                                .issuedTickets(since: Date().addingTimeInterval(-7 * 86_400))
+                                .first(where: { Self.plateKey($0.plate) == key }) {
+                                viewModel.pauseScanning()
+                                reprintTicket = ticket
+                            } else {
+                                showNoLocalTicket = true
+                            }
+                        }
                     )
 
                     Divider()
@@ -282,6 +295,21 @@ struct ContentView: View {
                         }
                     }
             }
+        }
+        .sheet(item: $reprintTicket) { ticket in
+            NavigationStack {
+                IssuedTicketDetailView(ticket: ticket)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { reprintTicket = nil }
+                        }
+                    }
+            }
+        }
+        .alert("Ticket Not on This Device", isPresented: $showNoLocalTicket) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This plate was ticketed from another device or more than 7 days ago. Reprint it from the device that issued it.")
         }
         .sheet(isPresented: $showIssuedTickets) {
             NavigationStack {
@@ -366,6 +394,13 @@ struct ContentView: View {
         .onChange(of: showIssuedTickets) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
         }
+        .onChange(of: reprintTicket == nil) { _, isClosed in
+            if isClosed { viewModel.resumeScanning() }
+        }
+    }
+
+    private static func plateKey(_ plate: String) -> String {
+        plate.uppercased().filter { $0.isLetter || $0.isNumber }
     }
 
     @ViewBuilder

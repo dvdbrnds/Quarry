@@ -11,6 +11,7 @@ struct ScanLogView: View {
     var onIssueTapped: ((ScannedPlate) -> Void)?
     var onCorrectPlateTapped: ((ScannedPlate) -> Void)?
     var onTagTapped: ((ScannedPlate) -> Void)?
+    var onReprintTapped: ((ScannedPlate) -> Void)?
 
     @State private var filter: StatusFilter = .all
     @State private var selectedDiagnosticEntry: ScannedPlate?
@@ -152,10 +153,26 @@ struct ScanLogView: View {
                     .foregroundStyle(plateTextColor(for: entry.authStatus))
 
                 if let detail = permitDetail(for: entry.authStatus) {
-                    Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(detail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        if case .ticketed = entry.authStatus, let reprint = onReprintTapped {
+                            Button {
+                                reprint(entry)
+                            } label: {
+                                Label("Reprint", systemImage: "printer.fill")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.purple.opacity(0.25), in: Capsule())
+                                    .overlay(Capsule().stroke(Color.purple, lineWidth: 1))
+                                    .foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
 
                 if let legacy = entry.legacyInfo {
