@@ -10,6 +10,7 @@ import { api, LegacyRecord } from "../api";
 import { PrinterOutlined, DownloadOutlined, FilePdfOutlined } from "@ant-design/icons";
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
+import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
 
 interface Ticket {
   id: string;
@@ -2932,6 +2933,7 @@ export default function Tickets() {
     ...(user?.email ? [{ key: "my-tickets", label: "My Ticket History", children: <TicketsList officerEmail={user.email} /> }] : []),
     ...(isAdmin ? [{ key: "officer-report", label: "Reporting", children: <ReportingContainer /> }] : []),
     ...(isOffice ? [{ key: "enforcement", label: "Enforcement", children: <EnforcementSettings /> }] : []),
+    ...(isOffice ? [{ key: "holds", label: "Registration Holds", children: <JenzabarHoldLookup canRelease /> }] : []),
     ...(isAdmin ? [{ key: "audit", label: "Enforcement Audit", children: <><EnforcementAudit /><PlaceholderHolds /></> }] : []),
     { key: "devices", label: "Enforcement Devices", children: <Devices /> },
   ];
