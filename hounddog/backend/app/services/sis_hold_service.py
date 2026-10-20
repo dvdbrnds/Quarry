@@ -62,17 +62,17 @@ def _check_hold(id_num: str) -> bool | None:
             timeout=10,
         )
         cur = conn.cursor(as_dict=True)
-        # Jenzabar stores holds in the HOLD table.
-        hold_type = settings.sis_hold_type or "PK"
+        # View provided by Paul Edinger; the parking hold code is TK.
+        hold_code = settings.sis_hold_type or "TK"
         cur.execute(
             """
             SELECT TOP 1 1 AS has_hold
-            FROM HOLD
+            FROM Mor_CUS_Active_TK_Hold
             WHERE id_num = %s
-              AND hold_type = %s
-              AND (end_dt IS NULL OR end_dt > GETDATE())
+              AND hold_cde = %s
+              AND (end_dte IS NULL OR end_dte > GETDATE())
             """,
-            (id_num, hold_type),
+            (id_num, hold_code),
         )
         row = cur.fetchone()
         conn.close()
@@ -96,7 +96,11 @@ async def check_jenzabar_hold(id_num: str) -> bool | None:
         return None
     if not id_num or not id_num.strip().isdigit():
         return None
-    return await asyncio.to_thread(_check_hold, id_num)
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_check_hold, id_num), timeout=15)
+    except asyncio.TimeoutError:
+        logger.error("Jenzabar hold check timed out: id_num=%s", id_num)
+        return None
 
 
 async def set_jenzabar_hold(id_num: str, apply: bool) -> bool:
