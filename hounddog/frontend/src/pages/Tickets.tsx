@@ -11,6 +11,7 @@ import { PrinterOutlined, DownloadOutlined, FilePdfOutlined } from "@ant-design/
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
+import { openMailLetter } from "../components/mailTicketLetter";
 
 interface Ticket {
   id: string;
@@ -1639,6 +1640,41 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     printWindow.document.close();
   }
 
+  function handlePrintForMail(ticket: Ticket) {
+    const field = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value;
+    const name = (field(`ro-name-${ticket.id}`) ?? ticket.owner_name ?? "").trim();
+    const address = (field(`ro-addr-${ticket.id}`) ?? ticket.owner_address ?? "").trim();
+    if (!name || !address) {
+      message.warning("Enter the registered owner's name and mailing address under Registered Owner first.");
+      return;
+    }
+    if (!openMailLetter({ ...ticket, plate_state: (ticket as any).plate_state }, { name, address })) {
+      message.error("Allow pop-ups for this site to print the letter.");
+      return;
+    }
+    const mailedTo = `${name}, ${address}`;
+    modal.confirm({
+      title: "Record this notice as mailed?",
+      content: `${ticket.ticket_number || "This citation"} will be marked as mailed today to ${mailedTo}.`,
+      okText: "Mark mailed",
+      cancelText: "Not yet",
+      onOk: async () => {
+        const res = await fetch("/api/tickets/mail-notices/mark-mailed", {
+          method: "POST", headers: await authHeaders(),
+          body: JSON.stringify({ ticket_ids: [ticket.id], mailing_address: mailedTo }),
+        });
+        if (!res.ok) { message.error("Could not record the mailing"); return; }
+        const data = await res.json();
+        if (data.marked === 0) {
+          message.info("This citation was already recorded as mailed");
+        } else {
+          message.success("Recorded as mailed");
+          setSelected((prev) => prev && prev.id === ticket.id ? { ...prev, mailed_at: new Date().toISOString(), mailed_address: mailedTo } : prev);
+        }
+      },
+    });
+  }
+
   async function handleVoid(id: string) {
     if (!isOffice) return;
     let voidReason = "";
@@ -2261,6 +2297,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
             <Button onClick={() => setSelected(null)}>Close</Button>
             {selected && (
               <Button onClick={() => handlePrintTicket(selected)}>Print</Button>
+            )}
+            {isOffice && selected && (
+              <Button onClick={() => handlePrintForMail(selected)}>Print for Mail</Button>
             )}
             <div className="flex-1" />
             {isOffice && selected && !["paid", "voided"].includes(selected.status) && (() => {
