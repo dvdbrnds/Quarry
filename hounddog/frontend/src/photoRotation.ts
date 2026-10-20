@@ -1,9 +1,3 @@
-/** Normalized clockwise display rotation for a ticket's evidence photos. */
-export function photoRotation(ticket: { photo_rotation?: number | null }): number {
-  const r = (((ticket.photo_rotation ?? 0) % 360) + 360) % 360;
-  return [0, 90, 180, 270].includes(r) ? r : 0;
-}
-
 /**
  * Returns an image src rotated clockwise by `degrees`, baked into the pixels so print
  * layouts get the right width/height. Falls back to the original src if loading fails.

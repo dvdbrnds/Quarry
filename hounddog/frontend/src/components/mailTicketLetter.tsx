@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { QRCodeSVG } from "qrcode.react";
 import { fmtDateTime } from "../dateUtils";
-import { photoRotation, rotatedPhotoSrc } from "../photoRotation";
+import { rotatedPhotoSrc } from "../photoRotation";
 
 export interface MailLetterTicket {
   id: string;
@@ -20,7 +20,6 @@ export interface MailLetterTicket {
   officer_name: string | null;
   officer_id: string;
   photo_url: string | null;
-  photo_rotation?: number | null;
 }
 
 export interface MailRecipient {
@@ -70,7 +69,8 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
   if (!w) return false;
   w.document.write("<p style=\"font-family:sans-serif;padding:24px\">Preparing letter…</p>");
 
-  rotatedPhotoSrc(photoUrl, photoRotation(ticket)).then((photoSrc) => {
+  // BirdDog photos come out upside down and can't be fixed at capture without breaking scanning.
+  rotatedPhotoSrc(photoUrl, 180).then((photoSrc) => {
   w.document.open();
   w.document.write(`<!DOCTYPE html>
 <html>

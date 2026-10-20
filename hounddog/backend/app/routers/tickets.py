@@ -1592,29 +1592,6 @@ async def update_ticket(
     return ticket
 
 
-class PhotoRotationRequest(BaseModel):
-    rotation: int
-
-
-@router.post("/{ticket_id}/photo-rotation")
-async def set_photo_rotation(
-    ticket_id: uuid.UUID,
-    body: PhotoRotationRequest,
-    db: AsyncSession = Depends(get_db),
-    _office: OktaUser = Depends(require_office()),
-):
-    """Set how evidence photos are displayed/printed. The stored photo is not modified."""
-    rotation = body.rotation % 360
-    if rotation not in (0, 90, 180, 270):
-        raise HTTPException(400, "Rotation must be 0, 90, 180, or 270")
-    ticket = await db.get(Ticket, ticket_id)
-    if not ticket:
-        raise HTTPException(404, "Ticket not found")
-    ticket.photo_rotation = rotation or None
-    await db.flush()
-    return {"photo_rotation": rotation}
-
-
 @router.post("/{ticket_id}/void", response_model=TicketRead)
 async def void_ticket(
     ticket_id: uuid.UUID,
