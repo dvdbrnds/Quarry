@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, OktaUser
+from ..auth.okta import get_current_user, OktaUser, require_admin
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
@@ -931,3 +931,79 @@ async def update_student_info(
 
     _logger.info("Student info updated for plate %s by %s: %s", plate_val, user.email, updates)
     return {"ok": True}
+
+
+# ── Jenzabar hold lookup / manual removal ────────────────────────────
+
+async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str) -> dict:
+    from ..services.escalation import _count_unpaid_tickets_for_student, is_person_student_id
+    from ..services.sis_hold_service import check_jenzabar_hold
+
+    sid_rows = await db.execute(
+        select(Permit.student_id, Permit.name, Permit.email).where(
+            Permit.moravian_id == moravian_id, Permit.deleted_at.is_(None),
+        ).order_by(Permit.created_at.desc())
+    )
+    rows = sid_rows.all()
+    student_ids = sorted({r[0] for r in rows if is_person_student_id(r[0])})
+    unpaid = 0
+    for sid in student_ids:
+        unpaid = max(unpaid, await _count_unpaid_tickets_for_student(db, sid))
+    quarry_hold = (await db.execute(text("""
+        SELECT 1 FROM escalation_log
+        WHERE escalation_type = 'registration_hold' AND resolved_at IS NULL
+          AND student_id = ANY(:sids)
+        LIMIT 1
+    """), {"sids": student_ids + [moravian_id]})).scalar() is not None
+    return {
+        "moravian_id": moravian_id,
+        "name": rows[0][1] if rows else None,
+        "email": rows[0][2] if rows else None,
+        "unpaid_tickets": unpaid,
+        "hold_threshold": settings.registration_hold_threshold,
+        "quarry_hold_active": quarry_hold,
+        "jenzabar_hold_active": await check_jenzabar_hold(moravian_id),
+        "student_ids": student_ids,
+    }
+
+
+@router.get("/jenzabar-hold/{moravian_id}")
+async def jenzabar_hold_lookup(
+    moravian_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_conduct),
+):
+    moravian_id = moravian_id.strip()
+    if not moravian_id.isdigit():
+        raise HTTPException(400, "Enter the numeric Moravian ID")
+    return await _jenzabar_hold_summary(db, moravian_id)
+
+
+@router.post("/jenzabar-hold/{moravian_id}/release")
+async def jenzabar_hold_release(
+    moravian_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Send the removal flag (N) to Jenzabar and close any open Quarry hold record."""
+    from ..services.escalation import resolve_escalation
+    from ..services.sis_hold_service import set_jenzabar_hold
+
+    moravian_id = moravian_id.strip()
+    if not moravian_id.isdigit():
+        raise HTTPException(400, "Enter the numeric Moravian ID")
+    before = await _jenzabar_hold_summary(db, moravian_id)
+    ok = await set_jenzabar_hold(moravian_id, apply=False)
+    if not ok:
+        error_reporting.capture_message(
+            f"Manual Jenzabar hold removal FAILED for moravian_id={moravian_id} by {user.email}", level="error",
+        )
+        raise HTTPException(502, "Jenzabar did not accept the removal. Check the logs or contact Paul Edinger.")
+    for sid in before["student_ids"] + [moravian_id]:
+        await resolve_escalation(db, sid, "registration_hold", f"manual:{user.email}")
+    await db.flush()
+    _logger.info(
+        "Manual Jenzabar hold removal for moravian_id=%s by %s (unpaid=%d, quarry_hold=%s, jenzabar_before=%s)",
+        moravian_id, user.email, before["unpaid_tickets"], before["quarry_hold_active"], before["jenzabar_hold_active"],
+    )
+    return {"sent": True, "before": before}

@@ -549,18 +549,26 @@ async def release_if_below_threshold(
     db: AsyncSession, student_id: str, resolved_by: str, moravian_id: str | None = None,
 ) -> None:
     """Lift the hold (Quarry + Jenzabar) and close the referral once under threshold."""
+    if not is_person_student_id(student_id):
+        return
     remaining = await _count_unpaid_tickets_for_student(db, student_id)
     if remaining < settings.registration_hold_threshold:
         resolved = await resolve_escalation(db, student_id, "registration_hold", resolved_by)
-        if resolved:
-            moravian_id = moravian_id or await _get_moravian_id(db, student_id)
-            if moravian_id:
-                from .sis_hold_service import set_jenzabar_hold
-                await set_jenzabar_hold(moravian_id, apply=False)
-                logger.info(
-                    "Jenzabar hold removed for %s (moravian_id=%s, %d tickets remaining < threshold %d)",
-                    student_id, moravian_id, remaining, settings.registration_hold_threshold,
-                )
+        moravian_id = moravian_id or await _get_moravian_id(db, student_id)
+        if moravian_id:
+            from .sis_hold_service import check_jenzabar_hold, set_jenzabar_hold
+            # Holds set outside Quarry have no Quarry record; Jenzabar's live view is the tiebreaker.
+            if resolved or await check_jenzabar_hold(moravian_id) is True:
+                if await set_jenzabar_hold(moravian_id, apply=False):
+                    logger.info(
+                        "Jenzabar hold removed for %s (moravian_id=%s, %d tickets remaining < threshold %d, quarry_record=%s)",
+                        student_id, moravian_id, remaining, settings.registration_hold_threshold, resolved,
+                    )
+                else:
+                    error_reporting.capture_message(
+                        f"Jenzabar hold removal FAILED for {student_id} (moravian_id={moravian_id}) — remove manually",
+                        level="error",
+                    )
     if remaining < settings.conduct_referral_threshold:
         await resolve_escalation(db, student_id, "conduct_referral", resolved_by)
 

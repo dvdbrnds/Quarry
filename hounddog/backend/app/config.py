@@ -152,7 +152,7 @@ class Settings(BaseSettings):
     sis_hold_enabled: bool = True
     sis_hold_api_url: str = ""
     sis_hold_api_key: str = ""
-    sis_hold_procedure: str = "Mor_CUS_ParkingHold"
+    sis_hold_procedure: str = "Mor_CUS_Set_Parking_Ticket_Flag"
     sis_hold_type: str = "TK"  # hold_cde in Jenzabar Mor_CUS_Active_TK_Hold
 
     # SIS SQL Server (Jenzabar) — student data lookup

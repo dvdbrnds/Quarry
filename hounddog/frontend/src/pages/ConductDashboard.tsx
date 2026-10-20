@@ -6,6 +6,7 @@ import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, isAdmi
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
+import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
 
 interface PermitInfo {
   permit_id: string;
@@ -604,6 +605,8 @@ function ConductPage() {
             <Button icon={<DownloadOutlined />} size="small" onClick={exportCSV} disabled={cases.length === 0}>Export CSV</Button>
           </Space>
         </div>
+
+        <JenzabarHoldLookup canRelease={isAdminRole(user?.role)} />
 
         <div className="mb-4">
           <Segmented
