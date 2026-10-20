@@ -30,7 +30,25 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
   const [loading, setLoading] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [summary, setSummary] = useState<HoldSummary | null>(null);
+  const [matches, setMatches] = useState<{ moravian_id: string; name: string | null; email: string | null }[] | null>(null);
   const [stale, setStale] = useState<StaleHolds | null>(null);
+
+  async function search(q: string): Promise<void> {
+    setLoading(true);
+    setSummary(null);
+    try {
+      const res = await fetch(`/api/conduct/jenzabar-hold/search?q=${encodeURIComponent(q)}`, { headers: await authHeaders() });
+      const body = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(body.detail || "Search failed");
+      if (body.length === 0) message.info("No student with a Moravian ID matches that name or email");
+      else if (body.length === 1) { setLoading(false); return lookup(body[0].moravian_id); }
+      else setMatches(body);
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
   const [scanning, setScanning] = useState(false);
 
   async function scan() {
@@ -70,8 +88,10 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
     });
   }
 
-  async function lookup(target = id.trim()) {
+  async function lookup(target = id.trim()): Promise<void> {
     if (!target) return;
+    setMatches(null);
+    if (!/^\d+$/.test(target)) return search(target);
     setLoading(true);
     try {
       const res = await fetch(`/api/conduct/jenzabar-hold/${encodeURIComponent(target)}`, { headers: await authHeaders() });
@@ -116,9 +136,9 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
 
   return (
     <Card size="small" title="Jenzabar parking hold" className="mb-4">
-      <Space.Compact style={{ width: 320 }}>
+      <Space.Compact style={{ width: 360 }}>
         <Input
-          placeholder="Moravian ID (e.g. 550534)"
+          placeholder="Name, email, or Moravian ID"
           value={id}
           onChange={e => setId(e.target.value)}
           onPressEnter={() => lookup()}
@@ -126,6 +146,15 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
         <Button type="primary" loading={loading} onClick={() => lookup()}>Look up</Button>
       </Space.Compact>
       <Button className="ml-2" loading={scanning} onClick={scan}>Find holds to clear</Button>
+      {matches && (
+        <div className="mt-2">
+          {matches.map(m => (
+            <Button key={m.moravian_id} size="small" className="mr-2 mb-1" onClick={() => { setId(m.moravian_id); lookup(m.moravian_id); }}>
+              {m.name || "—"} · {m.email || "no email"} · {m.moravian_id}
+            </Button>
+          ))}
+        </div>
+      )}
       {stale && (
         <div className="mt-3 text-sm">
           <div>

@@ -1052,6 +1052,25 @@ async def jenzabar_hold_release(
     return {"sent": True, "before": before}
 
 
+@router.get("/jenzabar-hold/search")
+async def jenzabar_hold_search(
+    q: str = Query(..., min_length=2),
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_conduct),
+):
+    """Find Moravian IDs by student name or email."""
+    like = f"%{q.strip()}%"
+    rows = (await db.execute(text("""
+        SELECT DISTINCT ON (moravian_id) moravian_id, name, email
+        FROM permits
+        WHERE moravian_id ~ '^[0-9]+$'
+          AND (name ILIKE :like OR email ILIKE :like)
+        ORDER BY moravian_id, deleted_at NULLS FIRST, created_at DESC
+        LIMIT 15
+    """), {"like": like})).mappings().all()
+    return [dict(r) for r in rows]
+
+
 @router.get("/jenzabar-hold/{moravian_id}")
 async def jenzabar_hold_lookup(
     moravian_id: str,
