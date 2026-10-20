@@ -1892,7 +1892,8 @@ async def mark_mailed(
             ticket = await db.get(Ticket, uuid.UUID(tid))
             if ticket and ticket.mailed_at is None:
                 ticket.mailed_at = now
-                ticket.mailed_address = address or None
+                on_file = ", ".join(p for p in (ticket.owner_name, ticket.owner_address) if p)
+                ticket.mailed_address = address or on_file or None
                 marked += 1
         except (ValueError, TypeError):
             continue

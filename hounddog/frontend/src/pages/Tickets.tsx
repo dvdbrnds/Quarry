@@ -2060,10 +2060,38 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
     setMailAddrErrors(errors);
     if (!name) { message.warning("Enter the registered owner's name."); return; }
     if (Object.keys(errors).length) { message.warning("Fix the mailing address before printing."); return; }
-    const id = mailTarget.ticket.id;
-    printMailLetter(mailTarget.ticket, name, formatAddress(mailTarget.address), () => setPendingNotices((prev) => prev.filter((t) => t.id !== id)));
+    const ticket = mailTarget.ticket;
+    const address = formatAddress(mailTarget.address);
+    printMailLetter(ticket, name, address, () => setPendingNotices((prev) => prev.filter((t) => t.id !== ticket.id)));
     setMailTarget(null);
+    if (name !== (ticket.owner_name || "") || address !== (ticket.owner_address || "")) {
+      void saveOwnerMailing(ticket, name, address);
+    }
   }
+
+  async function saveOwnerMailing(ticket: Ticket, name: string, address: string) {
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify({ owner_name: name, owner_address: address }),
+      });
+      if (!res.ok) throw new Error();
+      const samePlate = (t: { plate: string }) => t.plate === ticket.plate;
+      setPendingNotices((prev) => prev.map((t) => samePlate(t) ? { ...t, owner_name: name, owner_address: address } : t));
+      setTickets((prev) => prev.map((t) => samePlate(t) ? { ...t, owner_name: name, owner_address: address } : t));
+      setSelected((prev) => prev && samePlate(prev) ? { ...prev, owner_name: name, owner_address: address } : prev);
+    } catch {
+      message.error("Letter printed, but the owner's name and address could not be saved to the ticket");
+    }
+  }
+
+  function mailableAddress(t: { owner_name?: string | null; owner_address?: string | null }): string | null {
+    const parsed = parseAddress(t.owner_address);
+    return t.owner_name?.trim() && isValidAddress(parsed) ? formatAddress(parsed) : null;
+  }
+
+  const mailableNotices = pendingNotices.filter((t) => mailableAddress(t));
 
   async function loadPendingNotices() {
     setNoticesLoading(true);
@@ -2078,28 +2106,26 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }
 
   async function handleMarkMailed() {
-    if (pendingNotices.length === 0) return;
+    if (mailableNotices.length === 0) return;
+    const ids = new Set(mailableNotices.map((t) => t.id));
     setMarkingMailed(true);
     try {
       const res = await fetch("/api/tickets/mail-notices/mark-mailed", {
         method: "POST", headers: await authHeaders(),
-        body: JSON.stringify({ ticket_ids: pendingNotices.map(t => t.id) }),
+        body: JSON.stringify({ ticket_ids: [...ids] }),
       });
       if (res.ok) {
         const data = await res.json();
         message.success(`${data.marked} notice(s) marked as mailed`);
-        setPendingNotices([]);
-        setMailNoticesOpen(false);
+        setPendingNotices((prev) => prev.filter((t) => !ids.has(t.id)));
       }
     } catch { message.error("Failed to mark notices"); }
     finally { setMarkingMailed(false); }
   }
 
   function handlePrintNotices() {
-    const items = pendingNotices.map((t) => ({
-      ticket: t,
-      recipient: t.owner_name && isValidAddress(parseAddress(t.owner_address)) ? { name: t.owner_name, address: formatAddress(parseAddress(t.owner_address)) } : null,
-    }));
+    const items = mailableNotices.map((t) => ({ ticket: t, recipient: { name: t.owner_name.trim(), address: mailableAddress(t)! } }));
+    if (items.length === 0) { message.warning("No pending notices have an owner name and valid mailing address yet."); return; }
     if (!openMailLetters(items, "Mail Notices - Unpaid Citations")) {
       message.error("Allow pop-ups for this site to print the notices.");
     }
@@ -2679,15 +2705,15 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         open={mailNoticesOpen}
         onCancel={() => setMailNoticesOpen(false)}
         title="Mail Notices — Unpaid Guest/Visitor Citations"
-        width={820}
+        width={1000}
         footer={
           <Space>
             <Button onClick={() => setMailNoticesOpen(false)}>Close</Button>
             {pendingNotices.length > 0 && (
               <>
-                <Button onClick={handlePrintNotices}>Print Notices ({pendingNotices.length})</Button>
-                <Button type="primary" loading={markingMailed} onClick={handleMarkMailed}>
-                  Mark All as Mailed ({pendingNotices.length})
+                <Button disabled={mailableNotices.length === 0} onClick={handlePrintNotices}>Print Notices ({mailableNotices.length})</Button>
+                <Button type="primary" disabled={mailableNotices.length === 0} loading={markingMailed} onClick={handleMarkMailed}>
+                  Mark Printed as Mailed ({mailableNotices.length})
                 </Button>
               </>
             )}
@@ -2698,6 +2724,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           Overdue citations for unregistered vehicles (guests/visitors) that have not yet received a mailed notice.
           Print these notices and mail them to the registered vehicle owner via DMV records.
         </p>
+        {pendingNotices.length > 0 && (
+          <p className="text-sm mb-3">
+            <strong>{mailableNotices.length}</strong> of {pendingNotices.length} have an owner name and valid address and will print.
+            {pendingNotices.length > mailableNotices.length && " Use Print for Mail on a row to add the owner's address; it is saved to the ticket."}
+          </p>
+        )}
         {noticesLoading ? (
           <div className="text-center py-8 text-ink-mute">Loading...</div>
         ) : pendingNotices.length === 0 ? (
@@ -2716,6 +2748,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 { title: "Violation", dataIndex: "violation_type", render: (v: string) => <span className="capitalize text-xs">{(v || "").replace(/_/g, " ")}</span> },
                 { title: "Lot", dataIndex: "lot", width: 60 },
                 { title: "Fine", dataIndex: "fine_amount", width: 80, render: (v: string) => `$${Number(v).toFixed(2)}` },
+                { title: "Mail to", key: "mail_to", render: (_: unknown, row: any) => {
+                  const addr = mailableAddress(row);
+                  return addr
+                    ? <span className="text-xs">{row.owner_name}<br />{addr}</span>
+                    : <Tag color="orange">{row.owner_address ? "Invalid address" : "No address"}</Tag>;
+                } },
                 { title: "Issued", dataIndex: "issued_at", width: 160, render: (v: string) => v ? fmtDateTimeCompact(v) : "—" },
                 { title: "Status", dataIndex: "status", width: 90, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
                 { title: "", key: "print", width: 110, render: (_: unknown, row: any) => (
