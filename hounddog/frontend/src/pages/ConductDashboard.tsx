@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, App, Button, Descriptions, Empty, Input, Modal, Segmented, Space, Spin, Table, Tag } from "antd";
 import { PrinterOutlined, DownloadOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, isAdminRole, type AuthUser } from "../auth";
+import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, isAdminRole, isOfficeRole, type AuthUser } from "../auth";
 import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
@@ -606,7 +606,7 @@ function ConductPage() {
           </Space>
         </div>
 
-        <JenzabarHoldLookup canRelease={isAdminRole(user?.role)} />
+        <JenzabarHoldLookup canRelease={isOfficeRole(user?.role)} />
 
         <div className="mb-4">
           <Segmented

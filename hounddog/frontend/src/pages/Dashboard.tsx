@@ -13,6 +13,7 @@ import {
 } from "@ant-design/icons";
 import { authHeaders, isAdminRole } from "../auth";
 import { useCurrentUser } from "../UserContext";
+import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
 
 type Period = "today" | "week" | "month";
 
@@ -233,6 +234,8 @@ export default function Dashboard() {
             ]}
           />
         </div>
+
+        <JenzabarHoldLookup canRelease />
 
         {data && (
           <>

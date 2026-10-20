@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import get_current_user, OktaUser, require_admin
+from ..auth.okta import get_current_user, OktaUser, require_office
 from ..config import settings
 from ..database import get_db
 from ..models.permit import Permit
@@ -126,6 +126,16 @@ async def require_conduct(
     if user.email.lower() in allowed:
         return user
     raise HTTPException(403, "Access restricted to conduct officers")
+
+
+async def require_hold_access(
+    user: OktaUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OktaUser:
+    """Jenzabar hold lookup: parking office (admin/operator) or conduct officers."""
+    if user.is_office:
+        return user
+    return await require_conduct(user, db)
 
 
 class ResolveRequest(BaseModel):
@@ -990,7 +1000,7 @@ async def _stale_holds(db: AsyncSession) -> dict:
 @router.get("/jenzabar-hold/stale")
 async def jenzabar_stale_holds(
     db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(require_conduct),
+    _user: OktaUser = Depends(require_hold_access),
 ):
     return await _stale_holds(db)
 
@@ -998,7 +1008,7 @@ async def jenzabar_stale_holds(
 @router.post("/jenzabar-hold/release-stale")
 async def jenzabar_release_stale_holds(
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(require_admin()),
+    user: OktaUser = Depends(require_office()),
 ):
     """Send N for every active Jenzabar hold whose student is under the threshold in Quarry."""
     import asyncio
@@ -1026,7 +1036,7 @@ async def jenzabar_release_stale_holds(
 async def jenzabar_hold_release(
     moravian_id: str,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(require_admin()),
+    user: OktaUser = Depends(require_office()),
 ):
     """Send the removal flag (N) to Jenzabar and close any open Quarry hold record."""
     from ..services.escalation import resolve_escalation
@@ -1056,7 +1066,7 @@ async def jenzabar_hold_release(
 async def jenzabar_hold_search(
     q: str = Query(..., min_length=2),
     db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(require_conduct),
+    _user: OktaUser = Depends(require_hold_access),
 ):
     """Find Moravian IDs by student name or email."""
     like = f"%{q.strip()}%"
@@ -1075,7 +1085,7 @@ async def jenzabar_hold_search(
 async def jenzabar_hold_lookup(
     moravian_id: str,
     db: AsyncSession = Depends(get_db),
-    _user: OktaUser = Depends(require_conduct),
+    _user: OktaUser = Depends(require_hold_access),
 ):
     moravian_id = moravian_id.strip()
     if not moravian_id.isdigit():
