@@ -93,9 +93,6 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
              font-family: -apple-system, "Segoe UI", Arial, sans-serif; font-size: 9.5pt; line-height: 1.35; }
   .respond .url { font-family: Menlo, monospace; font-size: 9pt; word-break: break-all; }
   .court { font-size: 9.5pt; color: #7f1d1d; }
-  .stub { margin-top: 8px; border-top: 1.5px dashed #555; padding-top: 8px; font-family: -apple-system, "Segoe UI", Arial, sans-serif; font-size: 9.5pt; }
-  .stub .cut { font-size: 8pt; color: #555; text-align: center; margin-bottom: 6px; }
-  .stub table td { padding: 4px 8px; }
   @media screen { body { background: #e5e7eb; } .page { box-shadow: 0 0 8px rgba(0,0,0,.2); background: #fff; margin: 16px auto; } }
   .photo.flipped { transform: rotate(180deg); }
   .toolbar { position: sticky; top: 0; z-index: 1; display: flex; gap: 8px; justify-content: center; padding: 10px; background: #1a2744; }
@@ -136,24 +133,13 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
     <div class="respond">
       <div>${qrSvg}</div>
       <div>
-        <strong>Pay or appeal online</strong> — scan the code or visit:<br/>
+        <strong>Pay or appeal online</strong> — payment is accepted online only. Scan the code or visit:<br/>
         <span class="url">${esc(payUrl)}</span><div style="height:6px"></div>
-        <strong>Pay by mail</strong> — send a check or money order for ${fine} with the stub below to:<br/>
-        ${DEPT}, ${DEPT_STREET}, ${DEPT_CITY}<br/>
-        Write citation # ${esc(citationNo)} on your check.<div style="height:6px"></div>
         Questions? Email ${DEPT_EMAIL}.
       </div>
     </div>
 
     <p class="court">Citations that are not paid or appealed may be referred to the local Magisterial District Court, which carries additional court costs and fees.</p>
-
-    <div class="stub">
-      <div class="cut">✂ - - - - - - - - Detach and return this portion with your payment - - - - - - - -</div>
-      <table style="width:100%">
-        <tr><td class="l">Citation #</td><td>${esc(citationNo)}</td><td class="l">Plate</td><td>${esc(plate)}</td></tr>
-        <tr><td class="l">Name</td><td>${esc(recipient.name)}</td><td class="l">Amount due</td><td style="font-weight:700;">${fine}</td></tr>
-      </table>
-    </div>
   </div>
 </div>
 </body>
