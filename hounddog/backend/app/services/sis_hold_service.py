@@ -84,6 +84,48 @@ def _check_hold(id_num: str) -> bool | None:
         return None
 
 
+def _list_active_holds() -> list[str] | None:
+    import pymssql  # type: ignore
+
+    try:
+        conn = pymssql.connect(
+            server=settings.sis_mssql_host,
+            port=settings.sis_mssql_port,
+            user=settings.sis_mssql_user,
+            password=settings.sis_mssql_password,
+            database=settings.sis_mssql_database,
+            login_timeout=5,
+            timeout=30,
+        )
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT id_num
+            FROM Mor_CUS_Active_TK_Hold
+            WHERE hold_cde = %s
+              AND (end_dte IS NULL OR end_dte > GETDATE())
+            """,
+            (settings.sis_hold_type or "TK",),
+        )
+        ids = [str(r[0]).strip() for r in cur.fetchall() if r[0] is not None]
+        conn.close()
+        return ids
+    except Exception as e:
+        logger.error("Jenzabar active hold list FAILED: %s", e)
+        return None
+
+
+async def list_active_jenzabar_holds() -> list[str] | None:
+    """Every Moravian ID with an active parking hold in Jenzabar, or None if the query failed."""
+    if not settings.sis_mssql_host or not settings.sis_mssql_password:
+        return None
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_list_active_holds), timeout=45)
+    except asyncio.TimeoutError:
+        logger.error("Jenzabar active hold list timed out")
+        return None
+
+
 async def check_jenzabar_hold(id_num: str) -> bool | None:
     """Check if a parking hold exists in Jenzabar.
 

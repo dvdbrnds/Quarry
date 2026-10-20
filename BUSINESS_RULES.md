@@ -73,6 +73,7 @@ Implemented in `backend/app/services/escalation.py`.
 - The hold is removed only when unpaid tickets drop below the threshold (payment, void, or approved appeal).
 - On removal Quarry calls the Jenzabar flag procedure (`Mor_CUS_Set_Parking_Ticket_Flag`, flag N) when it has an open hold record, or when Jenzabar's live check (`Mor_CUS_Active_TK_Hold`, code TK) shows an active parking hold that Quarry didn't place.
 - Admins can look up any Moravian ID on the Conduct page (Quarry hold, Jenzabar hold, unpaid count) and send the removal flag by hand. Every manual removal is audit-logged with who did it.
+- "Find holds to clear" on the Conduct page reads every active parking hold in Jenzabar and lists students Quarry knows who are under the threshold; an admin can remove them all at once. Holds on IDs Quarry has no permit for are listed for manual review, never cleared automatically.
 - Resolving a conduct case in the Conduct Portal closes the referral only. It never clears tickets or the hold.
 - Tickets count toward a student when the plate is on one of their real permits.
 - Holds only ever apply to a real person (Okta sub, Moravian ID, or email). Placeholder values stored in `student_id` — visitor permit metadata (`company_name:...|...`) and legacy-import tags (`plate_state:XX`) — never create, count toward, or lift a hold. Older holds filed under placeholders are listed under Tickets → Enforcement Audit.

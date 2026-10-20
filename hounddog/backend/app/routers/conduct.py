@@ -935,7 +935,7 @@ async def update_student_info(
 
 # ── Jenzabar hold lookup / manual removal ────────────────────────────
 
-async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str) -> dict:
+async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str, live: bool = True) -> dict:
     from ..services.escalation import _count_unpaid_tickets_for_student, is_person_student_id
     from ..services.sis_hold_service import check_jenzabar_hold
 
@@ -962,21 +962,64 @@ async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str) -> dict:
         "unpaid_tickets": unpaid,
         "hold_threshold": settings.registration_hold_threshold,
         "quarry_hold_active": quarry_hold,
-        "jenzabar_hold_active": await check_jenzabar_hold(moravian_id),
+        "jenzabar_hold_active": await check_jenzabar_hold(moravian_id) if live else True,
         "student_ids": student_ids,
     }
 
 
-@router.get("/jenzabar-hold/{moravian_id}")
-async def jenzabar_hold_lookup(
-    moravian_id: str,
+async def _stale_holds(db: AsyncSession) -> dict:
+    """Split Jenzabar's active parking holds into ones to clear (known student under threshold)
+    and ones to review by hand (Quarry has no permit for that ID)."""
+    from ..services.sis_hold_service import list_active_jenzabar_holds
+
+    ids = await list_active_jenzabar_holds()
+    if ids is None:
+        raise HTTPException(502, "Could not read active holds from Jenzabar. Check the logs or contact Paul Edinger.")
+    to_clear, still_owed, unknown = [], [], []
+    for mid in ids:
+        s = await _jenzabar_hold_summary(db, mid, live=False)
+        if not s["student_ids"]:
+            unknown.append(s)
+        elif s["unpaid_tickets"] < s["hold_threshold"]:
+            to_clear.append(s)
+        else:
+            still_owed.append(s)
+    return {"active_in_jenzabar": len(ids), "to_clear": to_clear, "still_owed": still_owed, "unknown": unknown}
+
+
+@router.get("/jenzabar-hold/stale")
+async def jenzabar_stale_holds(
     db: AsyncSession = Depends(get_db),
     _user: OktaUser = Depends(require_conduct),
 ):
-    moravian_id = moravian_id.strip()
-    if not moravian_id.isdigit():
-        raise HTTPException(400, "Enter the numeric Moravian ID")
-    return await _jenzabar_hold_summary(db, moravian_id)
+    return await _stale_holds(db)
+
+
+@router.post("/jenzabar-hold/release-stale")
+async def jenzabar_release_stale_holds(
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_admin()),
+):
+    """Send N for every active Jenzabar hold whose student is under the threshold in Quarry."""
+    import asyncio
+    from ..services.escalation import resolve_escalation
+    from ..services.sis_hold_service import set_jenzabar_hold
+
+    found = await _stale_holds(db)
+    sent, failed = [], []
+    for s in found["to_clear"]:
+        if await set_jenzabar_hold(s["moravian_id"], apply=False):
+            sent.append(s["moravian_id"])
+            for sid in s["student_ids"] + [s["moravian_id"]]:
+                await resolve_escalation(db, sid, "registration_hold", f"sweep:{user.email}")
+        else:
+            failed.append(s["moravian_id"])
+        await asyncio.sleep(0.2)
+    await db.flush()
+    _logger.info("Stale Jenzabar hold sweep by %s: sent=%s failed=%s", user.email, sent, failed)
+    if failed:
+        error_reporting.capture_message(f"Stale hold sweep: removal FAILED for {failed}", level="error")
+    return {"sent": sent, "failed": failed, "still_owed": len(found["still_owed"]), "unknown": found["unknown"]}
 
 
 @router.post("/jenzabar-hold/{moravian_id}/release")
@@ -1007,3 +1050,15 @@ async def jenzabar_hold_release(
         moravian_id, user.email, before["unpaid_tickets"], before["quarry_hold_active"], before["jenzabar_hold_active"],
     )
     return {"sent": True, "before": before}
+
+
+@router.get("/jenzabar-hold/{moravian_id}")
+async def jenzabar_hold_lookup(
+    moravian_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: OktaUser = Depends(require_conduct),
+):
+    moravian_id = moravian_id.strip()
+    if not moravian_id.isdigit():
+        raise HTTPException(400, "Enter the numeric Moravian ID")
+    return await _jenzabar_hold_summary(db, moravian_id)
