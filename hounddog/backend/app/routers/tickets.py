@@ -114,6 +114,7 @@ async def enforcement_audit(
                     "permit_lot_assignment": p.lot_assignment,
                     "reason": reason,
                     "enforcement_warning": t.enforcement_warning,
+                    "override_reason": t.override_reason,
                 })
                 break
 

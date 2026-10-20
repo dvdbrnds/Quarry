@@ -41,6 +41,9 @@ final class PendingTicket {
     var permitTypeLabel: String?
     var permitLotZone: String?
 
+    // Officer's reason for ticketing a plate whose permit is valid in this lot
+    var overrideReason: String?
+
     // Retry tracking
     var retryCount: Int
     var permanentFailure: Bool
@@ -75,7 +78,8 @@ final class PendingTicket {
         ownerName: String? = nil,
         permitNumber: String? = nil,
         permitTypeLabel: String? = nil,
-        permitLotZone: String? = nil
+        permitLotZone: String? = nil,
+        overrideReason: String? = nil
     ) {
         self.ticketId = UUID().uuidString
         self.plate = plate
@@ -106,5 +110,6 @@ final class PendingTicket {
         self.permitNumber = permitNumber
         self.permitTypeLabel = permitTypeLabel
         self.permitLotZone = permitLotZone
+        self.overrideReason = overrideReason
     }
 }

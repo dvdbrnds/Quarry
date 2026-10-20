@@ -68,6 +68,7 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 - Payment URL format must match between BirdDog (generator) and Hounddog (resolver).
 - Admin impersonation is view-only for citations: a plate lookup on My Citations while impersonating shows matches but never links them to the impersonated student.
 - The Pay page (plate lookup and "my tickets") lists every payable citation: issued, overdue, past_due, escalated, appealed, and pending_payment. pending_payment covers abandoned Stripe checkouts and upheld/denied appeals; it must stay payable.
+- When an officer tickets a plate whose permit is valid for the lot on the ticket (or that is flagged Never Ticket), BirdDog re-checks at submit and requires a written reason before it will issue. The reason is stored on the ticket and shown under the "may be legally parked" warning. Warnings and moving violations are exempt.
 
 ## Escalation (Conduct Referral + Registration Hold)
 

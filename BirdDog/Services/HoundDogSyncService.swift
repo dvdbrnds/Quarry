@@ -656,6 +656,7 @@ final class HoundDogSyncService: ObservableObject {
         if let permitNumber = ticket.permitNumber { body["permit_number"] = permitNumber }
         if let permitType = ticket.permitTypeLabel { body["permit_type_label"] = permitType }
         if let permitLot = ticket.permitLotZone { body["permit_lot_zone"] = permitLot }
+        if let override = ticket.overrideReason { body["override_reason"] = override }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

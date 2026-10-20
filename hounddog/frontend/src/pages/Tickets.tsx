@@ -63,6 +63,7 @@ interface Ticket {
   mailed_address: string | null;
   has_legacy?: boolean;
   enforcement_warning: string | null;
+  override_reason?: string | null;
   conduct_escalation?: {
     escalation_type: string;
     escalation_status: string;
@@ -2348,6 +2349,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               {selected.enforcement_warning && (
                 <Descriptions.Item label="⚠️ Warning" span={2}>
                   <span style={{ color: "#d4380d", fontWeight: 600 }}>{selected.enforcement_warning}</span>
+                </Descriptions.Item>
+              )}
+              {(selected.enforcement_warning || selected.override_reason) && (
+                <Descriptions.Item label="Officer's reason" span={2}>
+                  {selected.override_reason
+                    ? <span style={{ fontWeight: 600 }}>{selected.override_reason}</span>
+                    : <span className="text-ink-mute">None given (issued before BirdDog asked for one)</span>}
                 </Descriptions.Item>
               )}
               {selected.permit_number && <Descriptions.Item label="Permit #">{selected.permit_number}</Descriptions.Item>}

@@ -89,6 +89,7 @@ class TicketUpload(BaseModel):
     is_warning: bool = False
     warning_reason: str | None = None
     ocr_original_plate: str | None = None
+    override_reason: str | None = None
     confidence: float = 0.0
     camera_name: str = ""
     timestamp: datetime

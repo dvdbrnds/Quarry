@@ -25,6 +25,8 @@ struct TicketIssuanceView: View {
     @State private var plateMisread = false
     @State private var correctedPlate = ""
     @State private var otherReason = ""
+    @State private var overrideReason = ""
+    @State private var plateAuth: PlateAuthService?
 
     private static let commonWarningReasons = [
         "No permit displayed",
@@ -89,6 +91,23 @@ struct TicketIssuanceView: View {
 
     private func ensureValidViolationSelection(preferred: [String] = []) {
         // No-op: officers must deliberately choose a violation type
+    }
+
+    /// Plate status re-checked against the lot on the form, when the permit allows parking there.
+    private var permitValidHereStatus: PlateStatus? {
+        guard !isWarning, !hasMovingViolation, let plateAuth else { return nil }
+        let corrected = correctedPlate.trimmingCharacters(in: .whitespaces)
+        let target = (plateMisread && !corrected.isEmpty ? corrected : plate).trimmingCharacters(in: .whitespaces)
+        guard !target.isEmpty else { return nil }
+        let status = plateAuth.check(plate: target, currentLot: selectedLot.isEmpty ? nil : selectedLot)
+        switch status {
+        case .authorized, .neverTicket: return status
+        default: return nil
+        }
+    }
+
+    private var trimmedOverrideReason: String {
+        overrideReason.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// True when any selected violation is a moving violation
@@ -487,6 +506,26 @@ struct TicketIssuanceView: View {
                 }
             }
 
+            if let validStatus = permitValidHereStatus {
+                Section {
+                    if case .neverTicket = validStatus {
+                        Label("DO NOT TICKET — this plate is flagged Never Ticket", systemImage: "hand.raised.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                    } else {
+                        Label("This permit is valid in \(selectedLot.isEmpty ? "this lot" : selectedLot)", systemImage: "checkmark.shield.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                    }
+                    TextField("Why are you ticketing this vehicle?", text: $overrideReason, axis: .vertical)
+                        .lineLimit(2...4)
+                } header: {
+                    Text("Permit Valid Here")
+                } footer: {
+                    Text("Required. The parking office reviews every ticket issued to a vehicle with a valid permit for this lot.")
+                }
+            }
+
             Section("Notes") {
                 TextEditor(text: $officerNotes)
                     .frame(minHeight: 80)
@@ -508,11 +547,12 @@ struct TicketIssuanceView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(isWarning ? "Issue Warning" : "Issue") { submitTicket() }
-                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolations.isEmpty || (isWarning && selectedWarningReason.isEmpty) || (selectedViolations.contains("other") && otherReason.trimmingCharacters(in: .whitespaces).isEmpty) || isSubmitting)
+                    .disabled(plate.isEmpty || (!lots.isEmpty && selectedLot.isEmpty) || selectedViolations.isEmpty || (isWarning && selectedWarningReason.isEmpty) || (selectedViolations.contains("other") && otherReason.trimmingCharacters(in: .whitespaces).isEmpty) || (permitValidHereStatus != nil && trimmedOverrideReason.isEmpty) || isSubmitting)
                     .bold()
             }
         }
         .onAppear {
+            if plateAuth == nil { plateAuth = PlateAuthService() }
             let geo = GeofenceService.shared
             lots = geo.lots
             officerName = OfficerAuthService.shared.officerName
@@ -690,7 +730,8 @@ struct TicketIssuanceView: View {
             ownerName: permit?.ownerName,
             permitNumber: permit?.permitNumber,
             permitTypeLabel: permit?.displayType,
-            permitLotZone: permit?.lotZone
+            permitLotZone: permit?.lotZone,
+            overrideReason: permitValidHereStatus != nil && !trimmedOverrideReason.isEmpty ? trimmedOverrideReason : nil
         )
 
         // Persist locally FIRST so the retry queue works even if the server is unreachable

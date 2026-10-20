@@ -1200,6 +1200,7 @@ async def lifespan(app: FastAPI):
                WHERE code = 'commuter_grad' AND NOT ('U' = ANY(lot_assignments))""",
             # ── v32: Enforcement audit fixes
             "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS enforcement_warning TEXT",
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS override_reason TEXT",
             # Create contracted_staff permit type for vendor/contractor workers (Sodexo, etc.)
             """INSERT INTO permit_types (id, code, label, eligible, price, max_capacity, valid_days, lot_assignments, is_purchasable_online, is_active, sort_order)
                VALUES (gen_random_uuid(), 'contracted_staff', 'Contracted Staff', 'Vendor/contractor employees (Sodexo, etc.)', 0, 0, 365,

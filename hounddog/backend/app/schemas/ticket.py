@@ -101,6 +101,7 @@ class TicketRead(BaseModel):
     dispute_email: str | None = None
     dispute_phone: str | None = None
     enforcement_warning: str | None = None
+    override_reason: str | None = None
     policy_version: str | None = None
     timeline_start_date: date | None = None
     stage: str | None = None

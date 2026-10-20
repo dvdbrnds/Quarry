@@ -1372,6 +1372,7 @@ async def _upload_ticket_impl(
         additional_photos=additional_photos_data,
         status="warning" if ticket.is_warning else "issued",
         enforcement_warning=enforcement_warning,
+        override_reason=(ticket.override_reason or "").strip() or None,
     )
     if ticket.client_ticket_id:
         ticket_kwargs["id"] = ticket.client_ticket_id

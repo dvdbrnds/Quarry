@@ -86,6 +86,7 @@ class Ticket(Base):
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     owner_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     enforcement_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     dispute_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     dispute_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
