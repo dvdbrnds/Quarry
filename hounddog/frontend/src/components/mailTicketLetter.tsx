@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { QRCodeSVG } from "qrcode.react";
 import { fmtDateTime } from "../dateUtils";
-import { rotatedPhotoSrc } from "../photoRotation";
 
 export interface MailLetterTicket {
   id: string;
@@ -67,11 +66,6 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
 
   const w = window.open("", "_blank", "width=850,height=1000");
   if (!w) return false;
-  w.document.write("<p style=\"font-family:sans-serif;padding:24px\">Preparing letter…</p>");
-
-  // BirdDog photos come out upside down and can't be fixed at capture without breaking scanning.
-  rotatedPhotoSrc(photoUrl, 180).then((photoSrc) => {
-  w.document.open();
   w.document.write(`<!DOCTYPE html>
 <html>
 <head>
@@ -103,9 +97,17 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
   .stub .cut { font-size: 8pt; color: #555; text-align: center; margin-bottom: 6px; }
   .stub table td { padding: 4px 8px; }
   @media screen { body { background: #e5e7eb; } .page { box-shadow: 0 0 8px rgba(0,0,0,.2); background: #fff; margin: 16px auto; } }
+  .photo.flipped { transform: rotate(180deg); }
+  .toolbar { position: sticky; top: 0; z-index: 1; display: flex; gap: 8px; justify-content: center; padding: 10px; background: #1a2744; }
+  .toolbar button { font: 600 13px -apple-system, "Segoe UI", Arial, sans-serif; padding: 7px 16px; border: 0; border-radius: 4px; cursor: pointer; }
+  @media print { .toolbar { display: none; } }
 </style>
 </head>
 <body>
+<div class="toolbar">
+  <button type="button" onclick="document.querySelector('.photo').classList.toggle('flipped')">Flip photo</button>
+  <button type="button" onclick="window.print()">Print</button>
+</div>
 <div class="page">
   <div class="return"><strong>${DEPT}</strong><br/>${DEPT_STREET}<br/>${DEPT_CITY}</div>
 
@@ -128,7 +130,7 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
         <tr><td class="l">Issuing officer</td><td>${esc(ticket.officer_name || ticket.officer_id)}</td></tr>
         <tr><td class="l">Amount due</td><td style="font-weight:700;font-size:12pt;">${fine}</td></tr>
       </table>
-      <img class="photo" src="${esc(photoSrc)}" onerror="this.style.display='none'" />
+      <img class="photo" src="${esc(photoUrl)}" onerror="this.style.display='none'" />
     </div>
 
     <div class="respond">
@@ -154,15 +156,8 @@ export function openMailLetter(ticket: MailLetterTicket, recipient: MailRecipien
     </div>
   </div>
 </div>
-<script>
-  const img = document.querySelector('.photo');
-  let printed = false;
-  const go = () => { if (!printed) { printed = true; window.print(); } };
-  if (img && !img.complete) { img.onload = go; img.onerror = go; setTimeout(go, 3000); } else { go(); }
-</script>
 </body>
 </html>`);
   w.document.close();
-  });
   return true;
 }

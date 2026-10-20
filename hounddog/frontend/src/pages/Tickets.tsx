@@ -1648,6 +1648,10 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       message.warning("Enter the registered owner's name and mailing address under Registered Owner first.");
       return;
     }
+    printMailLetter(ticket, name, address);
+  }
+
+  function printMailLetter(ticket: Ticket, name: string, address: string, onMarked?: () => void) {
     if (!openMailLetter({ ...ticket, plate_state: (ticket as any).plate_state }, { name, address })) {
       message.error("Allow pop-ups for this site to print the letter.");
       return;
@@ -1671,6 +1675,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           message.success("Recorded as mailed");
           setSelected((prev) => prev && prev.id === ticket.id ? { ...prev, mailed_at: new Date().toISOString(), mailed_address: mailedTo } : prev);
         }
+        onMarked?.();
       },
     });
   }
@@ -2023,7 +2028,30 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [pendingNotices, setPendingNotices] = useState<any[]>([]);
   const [noticesLoading, setNoticesLoading] = useState(false);
   const [markingMailed, setMarkingMailed] = useState(false);
+  const [mailTarget, setMailTarget] = useState<{ ticket: Ticket; name: string; address: string } | null>(null);
+  const [mailTargetLoading, setMailTargetLoading] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
+
+  async function openMailTarget(id: string) {
+    setMailTargetLoading(id);
+    try {
+      const res = await fetch(`/api/tickets/${id}`, { headers: await authHeaders() });
+      if (!res.ok) throw new Error();
+      const ticket: Ticket = await res.json();
+      setMailTarget({ ticket, name: ticket.owner_name || "", address: ticket.owner_address || "" });
+    } catch { message.error("Could not load this citation"); }
+    finally { setMailTargetLoading(null); }
+  }
+
+  function printMailTarget() {
+    if (!mailTarget) return;
+    const name = mailTarget.name.trim();
+    const address = mailTarget.address.trim();
+    if (!name || !address) { message.warning("Enter the registered owner's name and mailing address."); return; }
+    const id = mailTarget.ticket.id;
+    printMailLetter(mailTarget.ticket, name, address, () => setPendingNotices((prev) => prev.filter((t) => t.id !== id)));
+    setMailTarget(null);
+  }
 
   async function loadPendingNotices() {
     setNoticesLoading(true);
@@ -2415,6 +2443,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               )}
             </Descriptions>
 
+
             {isOffice && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="font-medium text-blue-800 text-sm mb-2">Registered Owner / Connected Student</div>
@@ -2691,7 +2720,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         open={mailNoticesOpen}
         onCancel={() => setMailNoticesOpen(false)}
         title="Mail Notices — Unpaid Guest/Visitor Citations"
-        width={700}
+        width={820}
         footer={
           <Space>
             <Button onClick={() => setMailNoticesOpen(false)}>Close</Button>
@@ -2730,10 +2759,36 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                 { title: "Fine", dataIndex: "fine_amount", width: 80, render: (v: string) => `$${Number(v).toFixed(2)}` },
                 { title: "Issued", dataIndex: "issued_at", width: 160, render: (v: string) => v ? fmtDateTimeCompact(v) : "—" },
                 { title: "Status", dataIndex: "status", width: 90, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
+                { title: "", key: "print", width: 110, render: (_: unknown, row: any) => (
+                  <Button size="small" loading={mailTargetLoading === row.id} onClick={() => openMailTarget(row.id)}>Print for Mail</Button>
+                ) },
               ]}
             />
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={!!mailTarget}
+        onCancel={() => setMailTarget(null)}
+        onOk={printMailTarget}
+        okText="Print Letter"
+        title={`Print for Mail — ${mailTarget?.ticket.ticket_number || "Citation"} (${mailTarget?.ticket.plate || ""})`}
+      >
+        <label className="text-xs text-gray-500 block mb-1">Registered owner name</label>
+        <Input
+          value={mailTarget?.name || ""}
+          onChange={(e) => setMailTarget((prev) => prev && { ...prev, name: e.target.value })}
+          placeholder="Owner name from DMV records"
+          className="mb-3"
+        />
+        <label className="text-xs text-gray-500 block mb-1">Mailing address</label>
+        <Input.TextArea
+          value={mailTarget?.address || ""}
+          onChange={(e) => setMailTarget((prev) => prev && { ...prev, address: e.target.value })}
+          placeholder={"123 Main St\nBethlehem, PA 18018"}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+        />
       </Modal>
 
       {/* Add Vehicle Tag modal — pre-populated from selected ticket */}
