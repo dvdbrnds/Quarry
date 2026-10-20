@@ -11,7 +11,7 @@ import { PrinterOutlined, DownloadOutlined, FilePdfOutlined } from "@ant-design/
 import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
-import { openMailLetter } from "../components/mailTicketLetter";
+import { openMailLetter, openMailLetters } from "../components/mailTicketLetter";
 
 interface Ticket {
   id: string;
@@ -2084,64 +2084,13 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }
 
   function handlePrintNotices() {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html><head><title>Mail Notices - Unpaid Citations</title>
-      <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 0; margin: 0; }
-        .notice { page-break-after: always; padding: 48px; max-width: 8.5in; margin: 0 auto; }
-        .notice:last-child { page-break-after: auto; }
-        .header { text-align: center; border-bottom: 2px solid #1a2744; padding-bottom: 16px; margin-bottom: 24px; }
-        .header h1 { margin: 0; font-size: 18px; color: #1a2744; }
-        .header p { margin: 4px 0 0; font-size: 12px; color: #666; }
-        .details { border: 1px solid #ddd; border-radius: 4px; padding: 16px; margin: 16px 0; }
-        .details table { width: 100%; border-collapse: collapse; }
-        .details td { padding: 6px 8px; font-size: 13px; }
-        .details td:first-child { color: #666; width: 140px; }
-        .details td:last-child { font-weight: 600; }
-        .warning { background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 12px 16px; margin: 20px 0; font-size: 12px; color: #991b1b; }
-        .payment { text-align: center; margin: 24px 0; padding: 16px; background: #f8f9fa; border-radius: 4px; }
-        .payment p { margin: 0 0 8px; font-size: 13px; }
-        .payment .url { font-family: monospace; font-size: 11px; color: #1a2744; word-break: break-all; }
-        .footer { text-align: center; font-size: 11px; color: #999; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px; }
-        @media print { body { margin: 0; } .notice { padding: 0.5in; } }
-      </style></head><body>`);
-    for (const t of pendingNotices) {
-      printWindow.document.write(`
-        <div class="notice">
-          <div class="header">
-            <h1>MORAVIAN UNIVERSITY POLICE DEPARTMENT</h1>
-            <p>Unpaid Parking Citation Notice</p>
-          </div>
-          <p style="font-size:13px;color:#333;">A ${t.ticket_category === "moving" ? "traffic" : "parking"} citation was issued to a vehicle registered to this address. The citation remains unpaid and is now overdue. Failure to pay or ${t.ticket_category === "moving" ? "respond" : "appeal"} within ${t.ticket_category === "moving" ? "10" : "5"} days of this notice may result in a state citation being issued through the local Magisterial District Court, which carries additional court costs and fees.</p>
-          <div class="details"><table>
-            <tr><td>Citation #</td><td>${t.ticket_number || t.id.slice(0, 8).toUpperCase()}</td></tr>
-            <tr><td>License Plate</td><td style="font-family:monospace;letter-spacing:1px;">${t.plate}</td></tr>
-            <tr><td>Violation</td><td>${(t.violation_type || "").replace(/_/g, " ")}</td></tr>
-            <tr><td>Location</td><td>${t.lot || "—"}</td></tr>
-            <tr><td>Date Issued</td><td>${t.issued_at ? fmtDateTime(t.issued_at) : "—"}</td></tr>
-            <tr><td>Fine Amount</td><td style="color:#dc2626;font-size:16px;">$${Number(t.fine_amount).toFixed(2)}</td></tr>
-            <tr><td>Status</td><td>${t.status.toUpperCase()}</td></tr>
-            ${t.vehicle_description ? `<tr><td>Vehicle</td><td>${t.vehicle_description}</td></tr>` : ""}
-          </table></div>
-          <div class="warning">
-            <strong>NOTICE:</strong> If this citation is not paid or ${t.ticket_category === "moving" ? "responded to" : "appealed"} within ${t.ticket_category === "moving" ? "10" : "5"} days of the date on this notice, a state citation will be issued through the local Magisterial District Court, carrying mandatory court costs and fees — often totaling more than $100 on top of the fine itself.
-          </div>
-          <div class="payment">
-            <p><strong>Pay Online:</strong></p>
-            <p class="url">${t.payment_url}</p>
-            <p style="margin-top:12px;font-size:11px;color:#666;">Or mail payment (check/money order) to:<br/>Moravian University Police Department<br/>119 West Greenwich Street, Bethlehem, PA 18018</p>
-          </div>
-          <div class="footer">
-            <p>Moravian University Police Department &middot; 119 West Greenwich Street &middot; Bethlehem, PA 18018</p>
-            <p>Questions? Contact us at campuspolice@moravian.edu</p>
-          </div>
-        </div>`);
+    const items = pendingNotices.map((t) => ({
+      ticket: t,
+      recipient: t.owner_name || t.owner_address ? { name: t.owner_name || "", address: t.owner_address || "" } : null,
+    }));
+    if (!openMailLetters(items, "Mail Notices - Unpaid Citations")) {
+      message.error("Allow pop-ups for this site to print the notices.");
     }
-    printWindow.document.write("</body></html>");
-    printWindow.document.close();
-    printWindow.print();
   }
 
   return (

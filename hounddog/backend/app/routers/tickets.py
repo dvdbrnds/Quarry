@@ -1846,8 +1846,15 @@ async def pending_mail_notices(
                 "status": ticket.status,
                 "issued_at": ticket.issued_at.isoformat() if ticket.issued_at else None,
                 "owner_name": ticket.owner_name,
+                "owner_address": ticket.owner_address,
                 "vehicle_description": ticket.vehicle_description,
                 "officer_name": ticket.officer_name,
+                "officer_id": ticket.officer_id,
+                "plate_state": ticket.plate_state,
+                "ticket_category": ticket.ticket_category,
+                "location_text": ticket.location_text,
+                "additional_violations": ticket.additional_violations,
+                "photo_url": ticket.photo_url,
                 "payment_url": f"{settings.student_facing_url}/pay/{ticket.id}",
             })
 
