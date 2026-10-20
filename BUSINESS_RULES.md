@@ -4,6 +4,11 @@ Last updated: 2026-10-16
 
 **Before changing any of these rules in code, update this file FIRST.**
 
+## Office Roles
+
+- Operators (Quarry-Staff) run day-to-day work: create, edit, cancel, renew, and bulk-change permits; convert vehicle tags; approve vehicle requests; manage classification overrides; remove registration holds.
+- Admin-only: lottery cycles, permit type and violation type setup, enforcement settings, finance (revenue, refunds, exports, bursar import), backups/restore, duplicate merges, renewal campaigns, appeals committee membership.
+
 ## Lot Access Schedules
 
 Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and enforced in `backend/app/services/access.py`.

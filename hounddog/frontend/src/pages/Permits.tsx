@@ -1064,6 +1064,7 @@ export default function Permits() {
   const { vouchersEnabled } = useBranding();
   const user = useCurrentUser();
   const isAdmin = isAdminRole(user?.role);
+  const isOffice = isOfficeRole(user?.role);
 
   const initTab =
     location.hash === "#lottery" || location.hash === "#lottery-v2"
@@ -1263,7 +1264,7 @@ export default function Permits() {
         </div>
       ),
     },
-    ...(isAdmin ? [{
+    ...(isOffice ? [{
       title: "", key: "actions", width: 48, fixed: "right" as const,
       render: (_: unknown, p: Permit) => {
         const items = [
@@ -1310,7 +1311,7 @@ export default function Permits() {
                       downloadWithAuth(`/api/permits/export/csv${qs ? `?${qs}` : ""}`, "permits.csv");
                     }}>Export CSV</Button>
                     <Button onClick={() => setTagModalOpen(true)}>🏷️ Add Vehicle Tag</Button>
-                    {isAdmin && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>}
+                    {isOffice && <Button type="primary" onClick={() => { setCreating(true); setEditing(null); }}>+ New Permit</Button>}
                   </Space>
                 </div>
 
@@ -1394,7 +1395,7 @@ export default function Permits() {
                   )}
                 </Space>
 
-                {isAdmin && (creating || editing) && (
+                {isOffice && (creating || editing) && (
                   <PermitForm initial={editing ?? undefined} permitTypes={permitTypes} lots={lots}
                     onSave={() => { setCreating(false); setEditing(null); load(); loadMeta(); }}
                     onCancel={() => { setCreating(false); setEditing(null); }}
@@ -1402,7 +1403,7 @@ export default function Permits() {
                   />
                 )}
 
-                {isAdmin && selected.size > 0 && (
+                {isOffice && selected.size > 0 && (
                   <div className="flex items-center gap-3 mb-3 bg-brand-primary/5 rounded-lg px-4 py-2">
                     <span className="text-sm font-medium">{selected.size} selected</span>
                     <Select value={bulkAction || undefined} onChange={v => setBulkAction(v || "")}
@@ -1424,7 +1425,7 @@ export default function Permits() {
                   columns={columns}
                   rowKey="id"
                   loading={loading}
-                  rowSelection={isAdmin ? {
+                  rowSelection={isOffice ? {
                     selectedRowKeys: Array.from(selected),
                     onChange: (keys) => setSelected(new Set(keys as string[])),
                   } : undefined}
@@ -1501,7 +1502,7 @@ export default function Permits() {
             label: <span>Live <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" /></span>,
             children: <LiveMonitor />,
           },
-  ].filter((t) => isAdmin || (t.key !== "lottery" && t.key !== "vehicle-requests" && t.key !== "housing-overrides" && (t.key !== "types" || isOfficeRole(user?.role))));
+  ].filter((t) => isAdmin || (t.key !== "lottery" && (isOffice || !["vehicle-requests", "housing-overrides", "types"].includes(t.key))));
 
   return (
     <div>

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, require_admin
+from ..auth.okta import OktaUser, get_current_user, require_office
 from ..database import get_db
 from ..models.vehicle_request import VehicleRequest
 from ..models.permit import Permit
@@ -22,7 +22,7 @@ logger = logging.getLogger("quarry.vehicle_requests")
 COMMUTER_CODES = {"commuter_undergrad", "commuter_grad", "premium_commuter"}
 
 student_router = SafeRouter(prefix="/api/student/permits", dependencies=[Depends(get_current_user)])
-admin_router = SafeRouter(prefix="/api/admin/vehicle-requests", dependencies=[Depends(require_admin())])
+admin_router = SafeRouter(prefix="/api/admin/vehicle-requests", dependencies=[Depends(require_office())])
 public_router = SafeRouter(prefix="/api/vehicle-requests")
 
 
@@ -308,7 +308,7 @@ async def decide_vehicle_request_by_token(
 async def list_vehicle_requests(
     status: str = Query(None),
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """List all vehicle requests, optionally filtered by status."""
     query = select(VehicleRequest).order_by(VehicleRequest.created_at.desc())
@@ -350,7 +350,7 @@ async def list_vehicle_requests(
 @admin_router.get("/pending-count")
 async def pending_vehicle_request_count(
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_admin()),
+    _admin: OktaUser = Depends(require_office()),
 ):
     """Return count of pending vehicle requests for dashboard display."""
     count = (await db.execute(
@@ -363,7 +363,7 @@ async def pending_vehicle_request_count(
 async def approve_vehicle_request(
     request_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_office()),
 ):
     """Approve a multi-vehicle request from the admin panel."""
     req = await db.get(VehicleRequest, request_id)
@@ -381,7 +381,7 @@ async def deny_vehicle_request(
     request_id: uuid.UUID,
     data: DenyBody,
     db: AsyncSession = Depends(get_db),
-    admin: OktaUser = Depends(require_admin()),
+    admin: OktaUser = Depends(require_office()),
 ):
     """Deny a multi-vehicle request from the admin panel."""
     req = await db.get(VehicleRequest, request_id)
