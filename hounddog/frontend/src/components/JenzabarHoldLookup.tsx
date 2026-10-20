@@ -29,6 +29,7 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
   const [id, setId] = useState("");
   const [loading, setLoading] = useState(false);
   const [releasing, setReleasing] = useState(false);
+  const [placing, setPlacing] = useState(false);
   const [summary, setSummary] = useState<HoldSummary | null>(null);
   const [matches, setMatches] = useState<{ moravian_id: string; name: string | null; email: string | null }[] | null>(null);
   const [stale, setStale] = useState<StaleHolds | null>(null);
@@ -134,6 +135,33 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
     });
   }
 
+  function place() {
+    if (!summary) return;
+    const under = summary.unpaid_tickets < summary.hold_threshold;
+    Modal.confirm({
+      title: `Place a parking hold in Jenzabar for ${summary.name || summary.moravian_id}?`,
+      content: under
+        ? `This student has only ${summary.unpaid_tickets} unpaid ticket(s), under the hold threshold of ${summary.hold_threshold}. Place the hold anyway?`
+        : `This sends the hold flag (Y) to Jenzabar for ${summary.unpaid_tickets} unpaid tickets. Jenzabar's scheduled job applies it.`,
+      okText: "Place hold",
+      onOk: async () => {
+        setPlacing(true);
+        try {
+          const headers = { ...(await authHeaders()), "Content-Type": "application/json" };
+          const res = await fetch(`/api/conduct/jenzabar-hold/${encodeURIComponent(summary.moravian_id)}/apply`, { method: "POST", headers });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.detail || "Placing the hold failed");
+          message.success(body.opened_quarry_hold ? "Hold sent to Jenzabar and recorded in Quarry" : "Hold sent to Jenzabar");
+          await lookup(summary.moravian_id);
+        } catch (e: any) {
+          message.error(e.message);
+        } finally {
+          setPlacing(false);
+        }
+      },
+    });
+  }
+
   return (
     <Card size="small" title="Jenzabar parking hold" className="mb-4">
       <Space.Compact style={{ width: 360 }}>
@@ -182,7 +210,10 @@ export default function JenzabarHoldLookup({ canRelease }: { canRelease: boolean
           <Descriptions.Item label="Jenzabar hold">{holdTag(summary.jenzabar_hold_active)}</Descriptions.Item>
           {canRelease && (
             <Descriptions.Item label="Action">
-              <Button danger size="small" loading={releasing} onClick={release}>Remove hold in Jenzabar</Button>
+              <Space>
+                <Button type="primary" size="small" loading={placing} onClick={place}>Place hold in Jenzabar</Button>
+                <Button danger size="small" loading={releasing} onClick={release}>Remove hold in Jenzabar</Button>
+              </Space>
             </Descriptions.Item>
           )}
         </Descriptions>

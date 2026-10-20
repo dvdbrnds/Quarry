@@ -950,12 +950,15 @@ async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str, live: bool 
     from ..services.sis_hold_service import check_jenzabar_hold
 
     sid_rows = await db.execute(
-        select(Permit.student_id, Permit.name, Permit.email).where(
+        select(Permit.student_id, Permit.name, Permit.email, Permit.owner_student_id, Permit.plates).where(
             Permit.moravian_id == moravian_id, Permit.deleted_at.is_(None),
-        ).order_by(Permit.created_at.desc())
+        ).order_by(Permit.is_tag_only.asc(), Permit.created_at.desc())
     )
     rows = sid_rows.all()
-    student_ids = sorted({r[0] for r in rows if is_person_student_id(r[0])})
+    student_ids = sorted(
+        {r[0] for r in rows if is_person_student_id(r[0])}
+        | {r[3] for r in rows if is_person_student_id(r[3])}
+    )
     unpaid = 0
     for sid in student_ids:
         unpaid = max(unpaid, await _count_unpaid_tickets_for_student(db, sid))
@@ -974,6 +977,7 @@ async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str, live: bool 
         "quarry_hold_active": quarry_hold,
         "jenzabar_hold_active": await check_jenzabar_hold(moravian_id) if live else True,
         "student_ids": student_ids,
+        "plate": next((r[4][0] for r in rows if r[4]), ""),
     }
 
 
@@ -1060,6 +1064,46 @@ async def jenzabar_hold_release(
         moravian_id, user.email, before["unpaid_tickets"], before["quarry_hold_active"], before["jenzabar_hold_active"],
     )
     return {"sent": True, "before": before}
+
+
+@router.post("/jenzabar-hold/{moravian_id}/apply")
+async def jenzabar_hold_apply(
+    moravian_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(require_office()),
+):
+    """Send the hold flag (Y) to Jenzabar and open a Quarry hold record if there isn't one."""
+    import asyncio
+    from ..services.escalation import _create_registration_hold
+    from ..services.sis_hold_service import set_jenzabar_hold
+
+    moravian_id = moravian_id.strip()
+    if not moravian_id.isdigit():
+        raise HTTPException(400, "Enter the numeric Moravian ID")
+    before = await _jenzabar_hold_summary(db, moravian_id, live=False)
+    if not before["student_ids"]:
+        raise HTTPException(404, "No student in Quarry has this Moravian ID")
+    try:
+        ok = await asyncio.wait_for(set_jenzabar_hold(moravian_id, apply=True), timeout=20)
+    except asyncio.TimeoutError:
+        ok = False
+    if not ok:
+        error_reporting.capture_message(
+            f"Manual Jenzabar hold placement FAILED for moravian_id={moravian_id} by {user.email}", level="error",
+        )
+        raise HTTPException(502, "Jenzabar did not accept the hold. Check the logs or contact Paul Edinger.")
+    opened = False
+    if not before["quarry_hold_active"]:
+        await _create_registration_hold(
+            db, before["student_ids"][0], before["name"], before["email"], before["plate"], before["unpaid_tickets"],
+        )
+        opened = True
+    await db.flush()
+    _logger.info(
+        "Manual Jenzabar hold placement for moravian_id=%s by %s (unpaid=%d, quarry_hold_before=%s, opened_quarry_hold=%s)",
+        moravian_id, user.email, before["unpaid_tickets"], before["quarry_hold_active"], opened,
+    )
+    return {"sent": True, "opened_quarry_hold": opened, "before": before}
 
 
 @router.get("/jenzabar-hold/search")

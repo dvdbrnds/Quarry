@@ -6,7 +6,7 @@ Last updated: 2026-10-16
 
 ## Office Roles
 
-- Operators (Quarry-Staff) run day-to-day work: create, edit, cancel, renew, and bulk-change permits; convert vehicle tags; approve vehicle requests; manage classification overrides; remove registration holds.
+- Operators (Quarry-Staff) run day-to-day work: create, edit, cancel, renew, and bulk-change permits; convert vehicle tags; approve vehicle requests; manage classification overrides; place and remove registration holds.
 - Admin-only: lottery cycles, permit type and violation type setup, enforcement settings, finance (revenue, refunds, exports, bursar import), backups/restore, duplicate merges, renewal campaigns, appeals committee membership.
 
 ## Lot Access Schedules
@@ -84,7 +84,7 @@ Implemented in `backend/app/services/escalation.py`.
 - At 3+ unpaid tickets (configurable thresholds), a student gets a conduct referral and a registration hold (Jenzabar stored procedure).
 - The hold is removed only when unpaid tickets drop below the threshold (payment, void, or approved appeal).
 - On removal Quarry calls the Jenzabar flag procedure (`Mor_CUS_Set_Parking_Ticket_Flag`, flag N) when it has an open hold record, or when Jenzabar's live check (`Mor_CUS_Active_TK_Hold`, code TK) shows an active parking hold that Quarry didn't place.
-- Admins and operators can look up any student by name, email, or Moravian ID (Tickets page, "Registration Holds" tab, and the Conduct page) to see the Quarry hold, Jenzabar hold, and unpaid count, and send the removal flag by hand. Conduct officers can look up but not remove. Every manual removal is audit-logged with who did it.
+- Admins and operators can look up any student by name, email, or Moravian ID (Tickets page, "Registration Holds" tab, and the Conduct page) to see the Quarry hold, Jenzabar hold, and unpaid count, and send the hold (Y) or removal (N) flag by hand. Placing a hold by hand also opens a Quarry hold record if none exists, and works even under the ticket threshold (staff confirm first). Students are found through their own permits and through vehicle tags they were verified as owning. Conduct officers can look up but not place or remove. Every manual placement and removal is logged with who did it.
 - "Find holds to clear" on the Conduct page reads every active parking hold in Jenzabar and lists students Quarry knows who are under the threshold; an admin or operator can remove them all at once. Holds on IDs Quarry has no permit for are listed for manual review, never cleared automatically.
 - Resolving a conduct case in the Conduct Portal closes the referral only. It never clears tickets or the hold.
 - Tickets count toward a student when the plate is on one of their real permits.
