@@ -12,6 +12,7 @@ import EnforcementSettings from "./EnforcementSettings";
 import Devices from "./Devices";
 import JenzabarHoldLookup from "../components/JenzabarHoldLookup";
 import { openMailLetter, openMailLetters } from "../components/mailTicketLetter";
+import { AddressFields, EMPTY_ADDRESS, formatAddress, isValidAddress, parseAddress, validateAddress, type AddressErrors, type MailingAddress } from "../components/AddressFields";
 
 interface Ticket {
   id: string;
@@ -1288,6 +1289,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [violationOptions, setViolationOptions] = useState<{ label: string; value: string }[]>([]);
   const [lotOptions, setLotOptions] = useState<{ label: string; value: string }[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
+  const [roAddress, setRoAddress] = useState<MailingAddress>(EMPTY_ADDRESS);
+  const [roAddrErrors, setRoAddrErrors] = useState<AddressErrors>({});
+  useEffect(() => {
+    setRoAddress(parseAddress(selected?.owner_address));
+    setRoAddrErrors({});
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [holdStatus, setHoldStatus] = useState<{ quarry_hold_active: boolean; jenzabar_hold_active: boolean | null; synced: boolean | null } | null>(null);
   const [holdChecking, setHoldChecking] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1335,7 +1342,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         headers: { "Content-Type": "application/json", ...(await authHeaders()) },
         body: JSON.stringify({ owner_name: ownerName || null, notification_email: email || null, owner_address: address || null }),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null))?.detail;
+        message.error(typeof detail === "string" ? detail : "Failed to save owner info");
+        return;
+      }
       const updated = await res.json();
       setSelected((prev) => prev ? { ...prev, owner_name: updated.owner_name, notification_email: updated.notification_email, owner_address: updated.owner_address } : null);
       setTickets((prev) => prev.map((t) =>
@@ -1641,14 +1652,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   }
 
   function handlePrintForMail(ticket: Ticket) {
-    const field = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value;
-    const name = (field(`ro-name-${ticket.id}`) ?? ticket.owner_name ?? "").trim();
-    const address = (field(`ro-addr-${ticket.id}`) ?? ticket.owner_address ?? "").trim();
-    if (!name || !address) {
-      message.warning("Enter the registered owner's name and mailing address under Registered Owner first.");
-      return;
-    }
-    printMailLetter(ticket, name, address);
+    const nameEl = document.getElementById(`ro-name-${ticket.id}`) as HTMLInputElement | null;
+    const name = (nameEl?.value ?? ticket.owner_name ?? "").trim();
+    const address = roAddress.street || roAddress.city || roAddress.zip ? roAddress : parseAddress(ticket.owner_address);
+    setMailAddrErrors({});
+    setMailTarget({ ticket, name, address });
   }
 
   function printMailLetter(ticket: Ticket, name: string, address: string, onMarked?: () => void) {
@@ -2028,7 +2036,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [pendingNotices, setPendingNotices] = useState<any[]>([]);
   const [noticesLoading, setNoticesLoading] = useState(false);
   const [markingMailed, setMarkingMailed] = useState(false);
-  const [mailTarget, setMailTarget] = useState<{ ticket: Ticket; name: string; address: string } | null>(null);
+  const [mailTarget, setMailTarget] = useState<{ ticket: Ticket; name: string; address: MailingAddress } | null>(null);
+  const [mailAddrErrors, setMailAddrErrors] = useState<AddressErrors>({});
   const [mailTargetLoading, setMailTargetLoading] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -2038,7 +2047,8 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
       const res = await fetch(`/api/tickets/${id}`, { headers: await authHeaders() });
       if (!res.ok) throw new Error();
       const ticket: Ticket = await res.json();
-      setMailTarget({ ticket, name: ticket.owner_name || "", address: ticket.owner_address || "" });
+      setMailAddrErrors({});
+      setMailTarget({ ticket, name: ticket.owner_name || "", address: parseAddress(ticket.owner_address) });
     } catch { message.error("Could not load this citation"); }
     finally { setMailTargetLoading(null); }
   }
@@ -2046,10 +2056,12 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   function printMailTarget() {
     if (!mailTarget) return;
     const name = mailTarget.name.trim();
-    const address = mailTarget.address.trim();
-    if (!name || !address) { message.warning("Enter the registered owner's name and mailing address."); return; }
+    const errors = validateAddress(mailTarget.address);
+    setMailAddrErrors(errors);
+    if (!name) { message.warning("Enter the registered owner's name."); return; }
+    if (Object.keys(errors).length) { message.warning("Fix the mailing address before printing."); return; }
     const id = mailTarget.ticket.id;
-    printMailLetter(mailTarget.ticket, name, address, () => setPendingNotices((prev) => prev.filter((t) => t.id !== id)));
+    printMailLetter(mailTarget.ticket, name, formatAddress(mailTarget.address), () => setPendingNotices((prev) => prev.filter((t) => t.id !== id)));
     setMailTarget(null);
   }
 
@@ -2086,7 +2098,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   function handlePrintNotices() {
     const items = pendingNotices.map((t) => ({
       ticket: t,
-      recipient: t.owner_name || t.owner_address ? { name: t.owner_name || "", address: t.owner_address || "" } : null,
+      recipient: t.owner_name && isValidAddress(parseAddress(t.owner_address)) ? { name: t.owner_name, address: formatAddress(parseAddress(t.owner_address)) } : null,
     }));
     if (!openMailLetters(items, "Mail Notices - Unpaid Citations")) {
       message.error("Allow pop-ups for this site to print the notices.");
@@ -2419,14 +2431,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   </div>
                 </div>
                 <div className="mt-2">
-                  <label className="text-xs text-gray-500 block mb-1">Mailing Address</label>
-                  <Input
-                    size="small"
-                    defaultValue={(selected as any).owner_address || ""}
-                    key={`ro-addr-${selected.id}`}
-                    id={`ro-addr-${selected.id}`}
-                    placeholder="e.g. 123 Main St, Bethlehem, PA 18018"
-                  />
+                  <div className="text-xs font-medium text-gray-600 mb-1">Mailing Address</div>
+                  <AddressFields size="small" value={roAddress} errors={roAddrErrors}
+                    onChange={(a) => { setRoAddress(a); setRoAddrErrors({}); }} />
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Button
@@ -2436,8 +2443,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                     onClick={() => {
                       const nameEl = document.getElementById(`ro-name-${selected.id}`) as HTMLInputElement;
                       const emailEl = document.getElementById(`ro-email-${selected.id}`) as HTMLInputElement;
-                      const addrEl = document.getElementById(`ro-addr-${selected.id}`) as HTMLInputElement;
-                      handleSaveRO(selected.id, nameEl?.value || "", emailEl?.value || "", addrEl?.value || "");
+                      const blank = !Object.values(roAddress).some((v) => v.trim());
+                      const errors = blank ? {} : validateAddress(roAddress);
+                      setRoAddrErrors(errors);
+                      if (Object.keys(errors).length) { message.warning("Fix the mailing address or clear it before saving."); return; }
+                      handleSaveRO(selected.id, nameEl?.value || "", emailEl?.value || "", blank ? "" : formatAddress(roAddress));
                     }}
                   >
                     Save & Apply to All Tickets
@@ -2731,12 +2741,10 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           placeholder="Owner name from DMV records"
           className="mb-3"
         />
-        <label className="text-xs text-gray-500 block mb-1">Mailing address</label>
-        <Input.TextArea
-          value={mailTarget?.address || ""}
-          onChange={(e) => setMailTarget((prev) => prev && { ...prev, address: e.target.value })}
-          placeholder={"123 Main St\nBethlehem, PA 18018"}
-          autoSize={{ minRows: 2, maxRows: 4 }}
+        <AddressFields
+          value={mailTarget?.address || EMPTY_ADDRESS}
+          onChange={(address) => { setMailTarget((prev) => prev && { ...prev, address }); setMailAddrErrors({}); }}
+          errors={mailAddrErrors}
         />
       </Modal>
 

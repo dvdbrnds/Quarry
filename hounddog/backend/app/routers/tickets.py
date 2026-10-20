@@ -1502,6 +1502,15 @@ async def update_ticket(
     if "plate_state" in updated_fields:
         updated_fields["plate_state"] = (updated_fields["plate_state"] or "").strip().upper() or None
 
+    if "owner_address" in updated_fields:
+        addr = (updated_fields["owner_address"] or "").strip()
+        if addr:
+            from ..services.address_format import mailing_address_error
+            problem = mailing_address_error(addr)
+            if problem:
+                raise HTTPException(400, problem)
+        updated_fields["owner_address"] = addr or None
+
     for field, value in updated_fields.items():
         if field == "status" and value not in VALID_STATUSES:
             raise HTTPException(400, f"Invalid status: {value}")
