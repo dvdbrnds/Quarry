@@ -2038,19 +2038,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
   const [markingMailed, setMarkingMailed] = useState(false);
   const [mailTarget, setMailTarget] = useState<{ ticket: Ticket; name: string; address: MailingAddress } | null>(null);
   const [mailAddrErrors, setMailAddrErrors] = useState<AddressErrors>({});
-  const [mailTargetLoading, setMailTargetLoading] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
-  async function openMailTarget(id: string) {
-    setMailTargetLoading(id);
-    try {
-      const res = await fetch(`/api/tickets/${id}`, { headers: await authHeaders() });
-      if (!res.ok) throw new Error();
-      const ticket: Ticket = await res.json();
-      setMailAddrErrors({});
-      setMailTarget({ ticket, name: ticket.owner_name || "", address: parseAddress(ticket.owner_address) });
-    } catch { message.error("Could not load this citation"); }
-    finally { setMailTargetLoading(null); }
+  function openMailTarget(row: any) {
+    setMailAddrErrors({});
+    setMailTarget({ ticket: row as Ticket, name: row.owner_name || "", address: parseAddress(row.owner_address) });
   }
 
   function printMailTarget() {
@@ -2752,12 +2744,14 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                   const addr = mailableAddress(row);
                   return addr
                     ? <span className="text-xs">{row.owner_name}<br />{addr}</span>
-                    : <Tag color="orange">{row.owner_address ? "Invalid address" : "No address"}</Tag>;
+                    : row.owner_address
+                      ? <span className="text-xs"><Tag color="orange">Invalid address</Tag><br /><span className="text-gray-500">{row.owner_address}</span></span>
+                      : <Tag color="orange">No address</Tag>;
                 } },
                 { title: "Issued", dataIndex: "issued_at", width: 160, render: (v: string) => v ? fmtDateTimeCompact(v) : "—" },
                 { title: "Status", dataIndex: "status", width: 90, render: (v: string) => <Tag color={STATUS_COLORS[v] || "default"}>{v}</Tag> },
                 { title: "", key: "print", width: 110, render: (_: unknown, row: any) => (
-                  <Button size="small" loading={mailTargetLoading === row.id} onClick={() => openMailTarget(row.id)}>Print for Mail</Button>
+                  <Button size="small" onClick={() => openMailTarget(row)}>Print for Mail</Button>
                 ) },
               ]}
             />
@@ -2767,6 +2761,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
 
       <Modal
         open={!!mailTarget}
+        zIndex={1100}
         onCancel={() => setMailTarget(null)}
         onOk={printMailTarget}
         okText="Print Letter"
@@ -2779,6 +2774,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
           placeholder="Owner name from DMV records"
           className="mb-3"
         />
+        {mailTarget?.ticket.owner_address && (
+          <div className="text-xs text-gray-500 mb-2">On file: {mailTarget.ticket.owner_address}</div>
+        )}
         <AddressFields
           value={mailTarget?.address || EMPTY_ADDRESS}
           onChange={(address) => { setMailTarget((prev) => prev && { ...prev, address }); setMailAddrErrors({}); }}

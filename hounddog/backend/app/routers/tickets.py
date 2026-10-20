@@ -1844,6 +1844,19 @@ async def pending_mail_notices(
         )
         has_permit = permit_result.scalar() is not None
         if not has_permit:
+            owner_name, owner_address = ticket.owner_name, ticket.owner_address
+            if not owner_address:
+                sibling = (await db.execute(
+                    select(Ticket.owner_name, Ticket.owner_address).where(
+                        Ticket.plate == ticket.plate,
+                        Ticket.id != ticket.id,
+                        Ticket.owner_address.is_not(None),
+                        Ticket.owner_address != "",
+                    ).order_by(Ticket.issued_at.desc()).limit(1)
+                )).first()
+                if sibling:
+                    owner_address = sibling.owner_address
+                    owner_name = owner_name or sibling.owner_name
             guest_tickets.append({
                 "id": str(ticket.id),
                 "ticket_number": ticket.ticket_number,
@@ -1854,8 +1867,8 @@ async def pending_mail_notices(
                 "fine_amount": str(ticket.fine_amount),
                 "status": ticket.status,
                 "issued_at": ticket.issued_at.isoformat() if ticket.issued_at else None,
-                "owner_name": ticket.owner_name,
-                "owner_address": ticket.owner_address,
+                "owner_name": owner_name,
+                "owner_address": owner_address,
                 "vehicle_description": ticket.vehicle_description,
                 "officer_name": ticket.officer_name,
                 "officer_id": ticket.officer_id,
