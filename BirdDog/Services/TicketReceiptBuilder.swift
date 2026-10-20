@@ -29,6 +29,7 @@ struct TicketReceiptBuilder {
         var ownerName: String? = nil
         var permitTypeLabel: String? = nil
         var permitLotZone: String? = nil
+        var isReprint: Bool = false
     }
 
     static func buildCommands(
@@ -55,6 +56,14 @@ struct TicketReceiptBuilder {
                     .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
                     .actionPrintText("\(title)\n")
             )
+        if ticket.isReprint {
+            _ = printerBuilder.add(
+                StarXpandCommand.PrinterBuilder()
+                    .styleBold(true)
+                    .actionPrintText("*** REPRINT ***\n")
+            )
+        }
+        _ = printerBuilder
             .actionFeed(1)
             .add(
                 StarXpandCommand.PrinterBuilder()

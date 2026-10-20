@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showExportSheet = false
     @State private var showAdminSettings = false
     @State private var showSessionHistory = false
+    @State private var showIssuedTickets = false
     @State private var showCameraLog = false
     @State private var showTicketIssuance = false
     // Moving violations now handled in unified TicketIssuanceView
@@ -25,6 +26,7 @@ struct ContentView: View {
     /// after the Menu finishes dismissing (avoids SwiftUI sheet-swallowing bug).
     private enum MenuAction: Equatable {
         case sessionHistory
+        case issuedTickets
         case exportCSV
         case performanceSummary
         case exportDiagnosticCaptures
@@ -65,7 +67,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             let anyScreenOpen = showTicketIssuance
-                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag || showManualLookup
+                || showAdminSettings || showSessionHistory || showIssuedTickets || showPlateCorrection || showVehicleTag || showManualLookup
             if viewModel.cameraPermission == .authorized && !anyScreenOpen {
                 // Resume if paused by willResignActive (share sheet, app switcher)
                 if viewModel.isScanningPaused {
@@ -81,7 +83,7 @@ struct ContentView: View {
         }
         .onReceive(tick) { t in
             let anyScreenOpen = showTicketIssuance
-                || showAdminSettings || showSessionHistory || showPlateCorrection || showVehicleTag || showManualLookup
+                || showAdminSettings || showSessionHistory || showIssuedTickets || showPlateCorrection || showVehicleTag || showManualLookup
             if !anyScreenOpen {
                 now = t
             }
@@ -118,6 +120,9 @@ struct ContentView: View {
             case .sessionHistory:
                 viewModel.pauseScanning()
                 showSessionHistory = true
+            case .issuedTickets:
+                viewModel.pauseScanning()
+                showIssuedTickets = true
             case .exportCSV:
                 guard !isExporting else { return }
                 isExporting = true
@@ -278,6 +283,16 @@ struct ContentView: View {
                     }
             }
         }
+        .sheet(isPresented: $showIssuedTickets) {
+            NavigationStack {
+                IssuedTicketsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showIssuedTickets = false }
+                        }
+                    }
+            }
+        }
         .sheet(isPresented: $showCameraLog) {
             NavigationStack {
                 CameraLogView(cameraService: viewModel.cameraService)
@@ -346,6 +361,9 @@ struct ContentView: View {
             if !isOpen { viewModel.resumeScanning() }
         }
         .onChange(of: showSessionHistory) { _, isOpen in
+            if !isOpen { viewModel.resumeScanning() }
+        }
+        .onChange(of: showIssuedTickets) { _, isOpen in
             if !isOpen { viewModel.resumeScanning() }
         }
     }
@@ -623,6 +641,9 @@ struct ContentView: View {
             }
 
             Menu {
+                Button { pendingMenuAction = .issuedTickets } label: {
+                    Label("Issued Tickets", systemImage: "printer")
+                }
                 Button { pendingMenuAction = .sessionHistory } label: {
                     Label("Session History", systemImage: "archivebox")
                 }

@@ -1230,3 +1230,202 @@ struct TicketConfirmationView: View {
         return UIImage(cgImage: cgImage)
     }
 }
+
+// MARK: - Issued Tickets (reprint)
+
+private let issuedTicketDateFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "MM/dd h:mm a"
+    f.timeZone = TimeZone(identifier: "America/New_York")
+    return f
+}()
+
+private func issuedTicketViolationLabel(_ ticket: PendingTicket) -> String {
+    ticket.violationType
+        .split(separator: ",")
+        .map { ViolationTypeStore.shared.label(for: String($0).trimmingCharacters(in: .whitespaces)) }
+        .joined(separator: ", ")
+}
+
+struct IssuedTicketsView: View {
+    @State private var tickets: [PendingTicket] = []
+
+    var body: some View {
+        List {
+            if tickets.isEmpty {
+                ContentUnavailableView(
+                    "No Tickets",
+                    systemImage: "doc.text",
+                    description: Text("Tickets issued on this device in the last 7 days show up here.")
+                )
+            }
+            ForEach(tickets, id: \.ticketId) { ticket in
+                NavigationLink {
+                    IssuedTicketDetailView(ticket: ticket)
+                } label: {
+                    row(ticket)
+                }
+            }
+        }
+        .navigationTitle("Issued Tickets")
+        .onAppear {
+            tickets = PlateDatabase.shared.issuedTickets(since: Date().addingTimeInterval(-7 * 86_400))
+        }
+    }
+
+    private func row(_ ticket: PendingTicket) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(ticket.plate)
+                    .font(.system(.body, design: .monospaced, weight: .bold))
+                Spacer()
+                if ticket.isWarning {
+                    Text("Warning")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.orange)
+                } else if !ticket.uploaded {
+                    Text("Not uploaded")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.red)
+                }
+            }
+            Text(issuedTicketViolationLabel(ticket))
+                .font(.caption)
+                .lineLimit(1)
+            Text("\(issuedTicketDateFormatter.string(from: ticket.issuedAt))\(ticket.lot.isEmpty ? "" : " · \(ticket.lot)")")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct IssuedTicketDetailView: View {
+    let ticket: PendingTicket
+    @ObservedObject private var printerService = PrinterService.shared
+    @State private var isPrinting = false
+    @State private var printError: String?
+    @State private var didPrint = false
+
+    /// Fine and payment link come back from the server on upload; a copy without them would be wrong.
+    private var canReprint: Bool {
+        ticket.uploaded && ticket.fineAmount != nil
+    }
+
+    var body: some View {
+        Form {
+            Section("Ticket") {
+                LabeledContent("Ticket #", value: String(ticket.ticketId.prefix(8)).uppercased())
+                LabeledContent("Plate", value: ticket.plate)
+                LabeledContent("Violation", value: issuedTicketViolationLabel(ticket))
+                if !ticket.lot.isEmpty {
+                    LabeledContent("Lot", value: ticket.lot)
+                }
+                LabeledContent("Issued", value: issuedTicketDateFormatter.string(from: ticket.issuedAt))
+                if ticket.isWarning {
+                    LabeledContent("Fine", value: "Warning — no fine")
+                } else if let fine = ticket.fineAmount {
+                    LabeledContent("Fine", value: "$\(fine)")
+                }
+                if let offense = ticket.offenseNumber, offense > 1 {
+                    LabeledContent("Offense", value: "#\(offense)")
+                }
+            }
+
+            if ticket.ownerName != nil || ticket.permitTypeLabel != nil || ticket.permitLotZone != nil {
+                Section("Permit on File") {
+                    if let name = ticket.ownerName, !name.isEmpty {
+                        LabeledContent("Owner", value: name)
+                    }
+                    if let type = ticket.permitTypeLabel, !type.isEmpty {
+                        LabeledContent("Type", value: type)
+                    }
+                    if let zone = ticket.permitLotZone, !zone.isEmpty {
+                        LabeledContent("Assigned", value: zone)
+                    }
+                }
+            }
+
+            Section {
+                Button { reprint() } label: {
+                    HStack {
+                        Image(systemName: "printer.fill")
+                        Text(isPrinting ? "Printing…" : "Reprint Ticket")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .disabled(!canReprint || isPrinting || printerService.connectionState == .connecting)
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !canReprint {
+                        Text("This ticket hasn't uploaded yet. Reprint becomes available once it does, so the copy has the right fine and payment code.")
+                    } else if printerService.connectionState == .connecting {
+                        Text("Connecting to printer…")
+                    } else if !printerService.isConnected {
+                        Text(printerService.hasSavedPrinter
+                             ? "Printer not connected — tap Reprint to reconnect."
+                             : "No printer paired. Pair one in Settings → Printer.")
+                    } else if didPrint {
+                        Text("Sent to printer. The copy is marked REPRINT.")
+                    }
+                    if let printError {
+                        Text(printError).foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+        .navigationTitle(ticket.plate)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if !printerService.isConnected && printerService.hasSavedPrinter {
+                printerService.reconnectSaved()
+            }
+        }
+    }
+
+    private func reprint() {
+        #if canImport(StarIO10)
+        isPrinting = true
+        printError = nil
+
+        let ticketData = TicketReceiptBuilder.TicketData(
+            ticketId: ticket.ticketId,
+            plate: ticket.plate,
+            violationType: ticket.violationType,
+            violationLabel: issuedTicketViolationLabel(ticket),
+            lot: ticket.lot,
+            fineAmount: ticket.fineAmount ?? "0",
+            offenseNumber: ticket.offenseNumber ?? 1,
+            paymentUrl: ticket.paymentUrl ?? "",
+            issuedAt: ticket.issuedAt,
+            vehicleDescription: ticket.vehicleDescription,
+            officerNotes: ticket.officerNotes,
+            driverName: ticket.driverName,
+            driverLicense: ticket.driverLicense,
+            locationText: ticket.locationText,
+            ticketCategory: ticket.ticketCategory,
+            officerName: ticket.officerName,
+            officerEmail: ticket.officerEmail,
+            ownerName: ticket.ownerName,
+            permitTypeLabel: ticket.permitTypeLabel,
+            permitLotZone: ticket.permitLotZone,
+            isReprint: true
+        )
+
+        Task {
+            do {
+                let commands = TicketReceiptBuilder.buildCommands(
+                    ticket: ticketData,
+                    schoolName: AppSettings.shared.schoolName
+                )
+                try await printerService.printCommands(commands)
+                didPrint = true
+            } catch {
+                printError = error.localizedDescription
+            }
+            isPrinting = false
+        }
+        #else
+        printError = "Printing is not available in this build."
+        #endif
+    }
+}

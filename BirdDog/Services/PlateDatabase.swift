@@ -533,6 +533,15 @@ final class PlateDatabase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    /// Tickets issued on this device since the given date, newest first.
+    func issuedTickets(since: Date) -> [PendingTicket] {
+        let descriptor = FetchDescriptor<PendingTicket>(
+            predicate: #Predicate<PendingTicket> { $0.issuedAt >= since },
+            sortBy: [SortDescriptor(\.issuedAt, order: .reverse)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
     func markTicketUploaded(_ ticket: PendingTicket) {
         ticket.uploaded = true
         try? context.save()
