@@ -1074,7 +1074,7 @@ async def jenzabar_hold_apply(
 ):
     """Send the hold flag (Y) to Jenzabar and open a Quarry hold record if there isn't one."""
     import asyncio
-    from ..services.escalation import _create_registration_hold
+    from ..services.escalation import _create_registration_hold, _notify_admin_of_hold
     from ..services.sis_hold_service import set_jenzabar_hold
 
     moravian_id = moravian_id.strip()
@@ -1096,6 +1096,9 @@ async def jenzabar_hold_apply(
     if not before["quarry_hold_active"]:
         await _create_registration_hold(
             db, before["student_ids"][0], before["name"], before["email"], before["plate"], before["unpaid_tickets"],
+        )
+        await _notify_admin_of_hold(
+            before["student_ids"][0], before["name"], before["email"], before["plate"], before["unpaid_tickets"], True,
         )
         opened = True
     await db.flush()

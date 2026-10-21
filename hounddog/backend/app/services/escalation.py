@@ -135,16 +135,18 @@ async def apply_registration_hold_if_needed(
     await _create_registration_hold(
         db, student_id, student_name, student_email, plate, unpaid_count
     )
+    jenzabar_result: bool | None = None
     if moravian_id:
         from .sis_hold_service import set_jenzabar_hold
-        ok = await set_jenzabar_hold(moravian_id, apply=True)
-        actions["jenzabar_hold_set"] = ok
+        jenzabar_result = await set_jenzabar_hold(moravian_id, apply=True)
+        actions["jenzabar_hold_set"] = jenzabar_result
     else:
         logger.warning(
             "Registration hold triggered for %s but no moravian_id — "
             "Jenzabar hold NOT set (manual action needed)",
             student_id,
         )
+    await _notify_admin_of_hold(student_id, student_name, student_email, plate, unpaid_count, jenzabar_result)
     actions["registration_hold"] = True
     logger.info(
         "Registration hold triggered for student %s (%d tickets)",
@@ -432,11 +434,8 @@ async def _create_registration_hold(
         },
     )
 
-    # The actual Jenzabar stored procedure call happens in check_and_escalate()
-    # after this function returns, so we only log + notify here.
-
+    # Callers send the Jenzabar flag and then the admin notice, which reports that result.
     await _notify_student_of_hold(student_name, student_email, ticket_count)
-    await _notify_admin_of_hold(student_id, student_name, student_email, plate, ticket_count)
 
 
 async def _notify_student_of_hold(
@@ -476,6 +475,7 @@ async def _notify_admin_of_hold(
     student_email: str | None,
     plate: str,
     ticket_count: int,
+    jenzabar_result: bool | None,
 ):
     from app.services.email import send_email, _load_branding
     from app.services.email_templates import render_hold_admin_email
@@ -491,7 +491,7 @@ async def _notify_admin_of_hold(
 
     body_html, body_text = render_hold_admin_email(
         student_id, student_name, student_email, plate, ticket_count,
-        sis_configured=bool(settings.sis_hold_api_url),
+        jenzabar_result=jenzabar_result,
         detail_url=detail_url, school_name=school,
         primary=b["primary_color"], accent=b["accent_color"],
         brand_name=b["brand_name"], has_logo=b["has_logo"],

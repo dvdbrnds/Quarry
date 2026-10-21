@@ -679,7 +679,7 @@ def render_hold_admin_email(
     student_email: str | None,
     plate: str,
     ticket_count: int,
-    sis_configured: bool,
+    jenzabar_result: bool | None,
     detail_url: str,
     *,
     school_name: str = "",
@@ -699,17 +699,19 @@ def render_hold_admin_email(
         ("Unpaid Violations", str(ticket_count), "font-weight:600;color:#dc2626;"),
     ]
 
-    if sis_configured:
-        status_badge = (
-            '<div style="background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;'
-            'font-size:14px;font-weight:600;margin:20px 0;">Hold placed via SIS API</div>'
-        )
+    if jenzabar_result is True:
+        status_text = "Hold sent to Jenzabar. Jenzabar's scheduled job applies it."
+        bg, fg = "#dcfce7", "#166534"
+    elif jenzabar_result is False:
+        status_text = "Jenzabar did not accept the hold. Use Place hold in Jenzabar in Quarry or place it in Jenzabar by hand."
+        bg, fg = "#fef2f2", "#991b1b"
     else:
-        status_badge = (
-            '<div style="background:#fef2f2;color:#991b1b;padding:10px 16px;border-radius:8px;'
-            'font-size:14px;font-weight:600;margin:20px 0;">SIS API not configured &mdash; '
-            'please place the hold manually in Banner/Workday</div>'
-        )
+        status_text = "No Moravian ID on file, so the Jenzabar hold was not set. Place it in Jenzabar by hand."
+        bg, fg = "#fef3c7", "#92400e"
+    status_badge = (
+        f'<div style="background:{bg};color:{fg};padding:10px 16px;border-radius:8px;'
+        f'font-size:14px;font-weight:600;margin:20px 0;">{status_text}</div>'
+    )
 
     inner = (
         _heading("Registration Hold Triggered", primary)
@@ -729,7 +731,7 @@ def render_hold_admin_email(
         f"Email: {student_email or 'Unknown'}\n"
         f"Plate: {plate}\n"
         f"Unpaid Violations: {ticket_count}\n"
-        f"SIS hold: {'placed via API' if sis_configured else 'NOT configured \u2014 place manually'}\n\n"
+        f"Jenzabar: {status_text}\n\n"
         f"View details: {detail_url}\n\n"
         f"{school} {department_name}"
     )
