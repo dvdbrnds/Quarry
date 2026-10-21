@@ -165,6 +165,8 @@ async def render_html(paras: list[str]) -> str:
 
 async def recipient_for(db: AsyncSession, ticket: Ticket) -> tuple[str, str]:
     """('email', address) when we have one, else ('mail', name/address for the mail queue)."""
+    from ..escalation import tag_tied_clause
+
     for candidate in (ticket.notification_email, ticket.dispute_email):
         if candidate and "@" in candidate:
             return "email", candidate.strip().lower()
@@ -173,7 +175,7 @@ async def recipient_for(db: AsyncSession, ticket: Ticket) -> tuple[str, str]:
             Permit.plates.contains([norm_plate(ticket.plate)]),
             Permit.deleted_at.is_(None),
             Permit.email.isnot(None),
-            (Permit.is_tag_only.is_(False)) | (Permit.owner_verified_at.isnot(None)),
+            tag_tied_clause(),
         ).order_by(Permit.is_tag_only.asc()).limit(1)
     )).scalar()
     if permit and permit.email and "@" in permit.email:

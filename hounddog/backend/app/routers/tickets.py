@@ -1186,7 +1186,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
 
     try:
         if ticket.plate:
-            from ..services.escalation import check_and_escalate, escalation_student_id
+            from ..services.escalation import check_and_escalate, resolve_escalation_student_id
             esc_permit_result = await db.execute(
                 select(Permit).where(
                     Permit.plates.contains([ticket.plate.upper()]),
@@ -1194,7 +1194,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db)):
                 ).order_by(Permit.is_tag_only.asc()).limit(1)
             )
             esc_permit = esc_permit_result.scalar()
-            esc_sid = escalation_student_id(esc_permit)
+            esc_sid = await resolve_escalation_student_id(db, esc_permit)
             if esc_sid:
                 await check_and_escalate(
                     db=db,
@@ -1578,7 +1578,7 @@ async def update_ticket(
     # Re-check escalation after plate correction or owner propagation
     if plate_was_corrected or propagate_fields:
         try:
-            from ..services.escalation import check_and_escalate, escalation_student_id
+            from ..services.escalation import check_and_escalate, resolve_escalation_student_id
             # Find the permit for the (possibly new) plate to get student info
             esc_permit = (await db.execute(
                 select(Permit).where(
@@ -1586,7 +1586,7 @@ async def update_ticket(
                     Permit.plates.any(ticket.plate.upper().replace(" ", "").replace("-", "")),
                 ).order_by(Permit.is_tag_only.asc())
             )).scalars().first()
-            esc_sid = escalation_student_id(esc_permit)
+            esc_sid = await resolve_escalation_student_id(db, esc_permit)
             if esc_sid:
                 await check_and_escalate(
                     db=db,

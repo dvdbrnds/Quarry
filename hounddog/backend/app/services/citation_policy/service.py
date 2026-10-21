@@ -425,23 +425,26 @@ async def balance_for_tickets(db: AsyncSession, tickets: list[Ticket]) -> Decima
 
 async def person_plates(db: AsyncSession, plate: str) -> set[str]:
     """Every plate on any permit belonging to the same person as this plate (by email or Okta id)."""
+    from ..escalation import tag_sid_sql, tag_tied_sql
+
     p = norm_plate(plate)
-    rows = (await db.execute(text("""
+    rows = (await db.execute(text(f"""
         WITH owners AS (
-            SELECT LOWER(email) AS email,
-                   CASE WHEN is_tag_only THEN owner_student_id ELSE student_id END AS sid
-            FROM permits
-            WHERE deleted_at IS NULL AND :p = ANY(SELECT UPPER(REPLACE(x, ' ', '')) FROM unnest(plates) x)
-              AND (is_tag_only = false OR owner_verified_at IS NOT NULL)
+            SELECT LOWER(ow.email) AS email,
+                   NULLIF(ow.moravian_id, '') AS mid,
+                   CASE WHEN ow.is_tag_only THEN {tag_sid_sql("ow")} ELSE ow.student_id END AS sid
+            FROM permits ow
+            WHERE ow.deleted_at IS NULL AND :p = ANY(SELECT UPPER(REPLACE(x, ' ', '')) FROM unnest(ow.plates) x)
+              AND (ow.is_tag_only = false OR {tag_tied_sql("ow")})
         )
         SELECT DISTINCT UPPER(REPLACE(x, ' ', ''))
         FROM permits pm, unnest(pm.plates) x
-        WHERE pm.deleted_at IS NULL AND EXISTS (
+        WHERE pm.deleted_at IS NULL AND (pm.is_tag_only = false OR {tag_tied_sql("pm")}) AND EXISTS (
             SELECT 1 FROM owners o
-            WHERE (o.email IS NOT NULL AND o.email <> '' AND LOWER(pm.email) = o.email
-                   AND (pm.is_tag_only = false OR pm.owner_verified_at IS NOT NULL))
+            WHERE (o.email IS NOT NULL AND o.email LIKE '%@%' AND LOWER(pm.email) = o.email)
+               OR (o.mid ~ '^[0-9]+$' AND pm.moravian_id = o.mid)
                OR (o.sid IS NOT NULL AND o.sid <> '' AND o.sid !~ '^[a-z_]+:'
-                   AND o.sid = CASE WHEN pm.is_tag_only THEN pm.owner_student_id ELSE pm.student_id END)
+                   AND o.sid = CASE WHEN pm.is_tag_only THEN {tag_sid_sql("pm")} ELSE pm.student_id END)
         )
     """), {"p": p})).scalars().all()
     return {p} | set(rows)
@@ -453,8 +456,10 @@ async def person_balance(db: AsyncSession, plate: str) -> Decimal:
 
 
 async def is_affiliated(db: AsyncSession, plate: str) -> bool:
-    """A non-visitor, non-tag permit on the plate, or a staff-verified tag owner."""
-    row = (await db.execute(text("""
+    """A non-visitor, non-tag permit on the plate, or a vehicle tag tied to a student."""
+    from ..escalation import tag_tied_sql
+
+    row = (await db.execute(text(f"""
         SELECT 1 FROM permits
         WHERE deleted_at IS NULL
           AND :p = ANY(SELECT UPPER(REPLACE(x, ' ', '')) FROM unnest(plates) x)
@@ -462,7 +467,7 @@ async def is_affiliated(db: AsyncSession, plate: str) -> bool:
                 (is_tag_only = false AND permit_type NOT LIKE 'visitor%'
                  AND permit_type NOT IN ('guest', 'contracted_staff')
                  AND COALESCE(student_id, '') !~ '^[a-z_]+:')
-             OR (is_tag_only = true AND owner_verified_at IS NOT NULL)
+             OR (permits.is_tag_only = true AND {tag_tied_sql("permits")})
           )
         LIMIT 1
     """), {"p": norm_plate(plate)})).first()

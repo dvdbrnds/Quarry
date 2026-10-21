@@ -8,10 +8,11 @@ Integration points are pluggable:
 """
 import logging
 import re
+from datetime import datetime, timezone
 from app import error_reporting
 from uuid import uuid4
 
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -19,12 +20,64 @@ from app.models.permit import Permit
 
 logger = logging.getLogger("quarry.escalation")
 
-# Permits (alias p) whose plates count against student :student_id — real permits,
-# plus vehicle tags only once staff have verified the owner.
-_OWNED_BY_STUDENT = """(
-    (p.is_tag_only = false AND p.student_id = :student_id)
-    OR (p.is_tag_only = true AND p.deleted_at IS NULL
-        AND p.owner_verified_at IS NOT NULL AND p.owner_student_id = :student_id)
+# Before this date BirdDog's student search could put the wrong student's email on a tag,
+# so older email-only tags still need "Verify owner".
+TAG_EMAIL_TRUSTED_FROM = datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)
+_TAG_CUTOFF_SQL = "TIMESTAMPTZ '2026-10-12 04:00:00+00'"
+
+
+def tag_tied_sql(a: str = "p") -> str:
+    """SQL: tag (alias a) is tied to a student — verified owner, Moravian ID, or post-cutoff email."""
+    return f"""({a}.owner_verified_at IS NOT NULL
+        OR COALESCE({a}.moravian_id, '') ~ '^[0-9]+$'
+        OR ({a}.created_at >= {_TAG_CUTOFF_SQL} AND COALESCE({a}.email, '') LIKE '%@%'))"""
+
+
+def tag_sid_sql(a: str = "p") -> str:
+    """SQL: the student key a tied tag (alias a) is filed under."""
+    return f"""COALESCE(
+        NULLIF({a}.owner_student_id, ''),
+        CASE WHEN COALESCE({a}.student_id, '') <> '' AND {a}.student_id !~ '^[a-z_]+:' THEN {a}.student_id END,
+        CASE WHEN COALESCE({a}.moravian_id, '') ~ '^[0-9]+$' THEN {a}.moravian_id END,
+        CASE WHEN COALESCE({a}.email, '') LIKE '%@%' THEN LOWER({a}.email) END)"""
+
+
+def tag_tied_clause():
+    """SQLAlchemy filter: a real permit, or a vehicle tag tied to a student."""
+    return or_(
+        Permit.is_tag_only.is_(False),
+        Permit.owner_verified_at.isnot(None),
+        Permit.moravian_id.op("~")("^[0-9]+$"),
+        and_(Permit.created_at >= TAG_EMAIL_TRUSTED_FROM, Permit.email.like("%@%")),
+    )
+
+
+def tag_is_tied(permit) -> bool:
+    if getattr(permit, "owner_verified_at", None):
+        return True
+    if re.fullmatch(r"\d+", getattr(permit, "moravian_id", None) or ""):
+        return True
+    created = getattr(permit, "created_at", None)
+    return bool(created and created >= TAG_EMAIL_TRUSTED_FROM and "@" in (getattr(permit, "email", None) or ""))
+
+
+# Permits (alias p) whose plates count against student :student_id. Real permits match by
+# Okta id, Moravian ID, or email; tied vehicle tags match by owner, Moravian ID, or email,
+# directly or through the Moravian ID / email on that student's own permit.
+_OWNED_BY_STUDENT = f"""(
+    (p.is_tag_only = false AND (
+        p.student_id = :student_id
+        OR (CAST(:student_id AS TEXT) ~ '^[0-9]+$' AND p.moravian_id = :student_id)
+        OR (CAST(:student_id AS TEXT) LIKE '%@%' AND LOWER(p.email) = LOWER(:student_id))))
+    OR (p.is_tag_only = true AND p.deleted_at IS NULL AND {tag_tied_sql("p")} AND (
+        p.owner_student_id = :student_id
+        OR p.student_id = :student_id
+        OR p.moravian_id = :student_id
+        OR LOWER(p.email) = LOWER(:student_id)
+        OR (COALESCE(p.moravian_id, '') <> '' AND p.moravian_id IN (
+            SELECT s.moravian_id FROM permits s WHERE s.is_tag_only = false AND s.student_id = :student_id))
+        OR (COALESCE(p.email, '') LIKE '%@%' AND LOWER(p.email) IN (
+            SELECT LOWER(s.email) FROM permits s WHERE s.is_tag_only = false AND s.student_id = :student_id))))
 )"""
 
 
@@ -44,26 +97,59 @@ def escalation_student_id(permit) -> str | None:
     if permit is None:
         return None
     if getattr(permit, "is_tag_only", False):
-        if getattr(permit, "owner_verified_at", None) and getattr(permit, "owner_student_id", None):
-            sid = permit.owner_student_id
-        else:
+        if not tag_is_tied(permit):
             return None
-    else:
-        sid = getattr(permit, "student_id", None)
+        mid = getattr(permit, "moravian_id", None) or ""
+        email = (getattr(permit, "email", None) or "").strip().lower()
+        candidates = [
+            getattr(permit, "owner_student_id", None),
+            getattr(permit, "student_id", None),
+            mid if mid.isdigit() else None,
+            email if "@" in email else None,
+        ]
+        return next((c for c in candidates if is_person_student_id(c)), None)
+    sid = getattr(permit, "student_id", None)
     return sid if is_person_student_id(sid) else None
 
 
+async def resolve_escalation_student_id(db: AsyncSession, permit) -> str | None:
+    """Like escalation_student_id, but files a tied tag under the student's own permit
+    (same Moravian ID or email) when they have one, so all their tickets add up together."""
+    sid = escalation_student_id(permit)
+    if not sid or not getattr(permit, "is_tag_only", False) or getattr(permit, "owner_student_id", None):
+        return sid
+    mid = getattr(permit, "moravian_id", None) or ""
+    email = (getattr(permit, "email", None) or "").strip().lower()
+    conds = []
+    if mid.isdigit():
+        conds.append(Permit.moravian_id == mid)
+    if "@" in email:
+        conds.append(func.lower(Permit.email) == email)
+    if not conds:
+        return sid
+    rows = (await db.execute(
+        select(Permit.student_id).where(
+            Permit.is_tag_only.is_(False), Permit.deleted_at.is_(None), or_(*conds),
+        ).order_by(Permit.created_at.desc())
+    )).scalars().all()
+    return next((r for r in rows if is_person_student_id(r)), sid)
+
+
 async def _get_moravian_id(db: AsyncSession, student_id: str) -> str | None:
-    """Resolve the Jenzabar numeric ID from the Okta sub stored on permits."""
+    """Resolve the Jenzabar numeric ID for a student key (Okta sub, Moravian ID, or email)."""
+    if student_id and student_id.isdigit():
+        return student_id
+    conds = [
+        Permit.student_id == student_id,
+        and_(Permit.is_tag_only.is_(True), Permit.owner_student_id == student_id),
+    ]
+    if student_id and "@" in student_id:
+        conds.append(func.lower(Permit.email) == student_id.lower())
     result = await db.execute(
         select(Permit.moravian_id).where(
-            or_(
-                Permit.student_id == student_id,
-                and_(Permit.is_tag_only.is_(True), Permit.owner_student_id == student_id),
-            ),
-            Permit.moravian_id.isnot(None),
-            Permit.moravian_id != "",
-        ).limit(1)
+            or_(*conds),
+            Permit.moravian_id.op("~")("^[0-9]+$"),
+        ).order_by(Permit.is_tag_only.asc()).limit(1)
     )
     return result.scalar()
 
@@ -179,12 +265,11 @@ async def _exemption_student_ids(db: AsyncSession, where: str) -> tuple[list[str
     """Student ids matched by the exemptions selected by `where`, plus those exemption ids."""
     rows = (await db.execute(text(f"""
         SELECT e.id::text AS eid,
-               CASE WHEN p.is_tag_only THEN p.owner_student_id ELSE p.student_id END AS sid
+               CASE WHEN p.is_tag_only THEN {tag_sid_sql("p")} ELSE p.student_id END AS sid
         FROM hold_exemptions e
         LEFT JOIN permits p ON {_EXEMPTION_MATCHES_PERMIT}
           AND ((p.is_tag_only = false AND COALESCE(p.student_id, '') <> '')
-               OR (p.is_tag_only = true AND p.owner_verified_at IS NOT NULL
-                   AND p.owner_student_id IS NOT NULL))
+               OR (p.is_tag_only = true AND p.deleted_at IS NULL AND {tag_tied_sql("p")}))
         WHERE {where}
     """))).mappings().all()
     exemption_ids = {r["eid"] for r in rows}
@@ -508,25 +593,16 @@ async def _notify_admin_of_hold(
 async def check_and_resolve_on_payment(db: AsyncSession, plate: str):
     """After a ticket is paid, check if any student associated with this plate
     has dropped below escalation thresholds and auto-resolve."""
-    result = await db.execute(
-        text("""
-            SELECT DISTINCT
-                CASE WHEN p.is_tag_only THEN p.owner_student_id ELSE p.student_id END AS sid
-            FROM permits p
-            WHERE UPPER(:plate) = ANY(
-                SELECT UPPER(unnest(p.plates))
-            )
-              AND (
-                (p.is_tag_only = false AND p.student_id IS NOT NULL)
-                OR (p.is_tag_only = true AND p.owner_verified_at IS NOT NULL
-                    AND p.owner_student_id IS NOT NULL)
-              )
-        """),
-        {"plate": plate},
-    )
-    for (student_id,) in result.fetchall():
-        if not student_id:
+    plate_norm = plate.upper().replace(" ", "").replace("-", "")
+    permits = (await db.execute(
+        select(Permit).where(Permit.deleted_at.is_(None), Permit.plates.any(plate_norm))
+    )).scalars().all()
+    seen: set[str] = set()
+    for permit in permits:
+        student_id = await resolve_escalation_student_id(db, permit)
+        if not student_id or student_id in seen:
             continue
+        seen.add(student_id)
         await release_if_below_threshold(db, student_id, "system:payment")
 
 

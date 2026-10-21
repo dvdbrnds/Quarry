@@ -946,19 +946,19 @@ async def update_student_info(
 # ── Jenzabar hold lookup / manual removal ────────────────────────────
 
 async def _jenzabar_hold_summary(db: AsyncSession, moravian_id: str, live: bool = True) -> dict:
-    from ..services.escalation import _count_unpaid_tickets_for_student, is_person_student_id
+    from ..services.escalation import _count_unpaid_tickets_for_student, escalation_student_id, tag_is_tied
     from ..services.sis_hold_service import check_jenzabar_hold
 
-    sid_rows = await db.execute(
-        select(Permit.student_id, Permit.name, Permit.email, Permit.owner_student_id, Permit.plates).where(
+    permits = (await db.execute(
+        select(Permit).where(
             Permit.moravian_id == moravian_id, Permit.deleted_at.is_(None),
         ).order_by(Permit.is_tag_only.asc(), Permit.created_at.desc())
-    )
-    rows = sid_rows.all()
-    student_ids = sorted(
-        {r[0] for r in rows if is_person_student_id(r[0])}
-        | {r[3] for r in rows if is_person_student_id(r[3])}
-    )
+    )).scalars().all()
+    keys = {escalation_student_id(p) for p in permits}
+    if any(p.is_tag_only and tag_is_tied(p) for p in permits):
+        keys.add(moravian_id)
+    student_ids = sorted(k for k in keys if k)
+    rows = [(p.student_id, p.name, p.email, p.owner_student_id, p.plates) for p in permits]
     unpaid = 0
     for sid in student_ids:
         unpaid = max(unpaid, await _count_unpaid_tickets_for_student(db, sid))

@@ -1506,9 +1506,9 @@ async def _upload_ticket_impl(
         await db.flush()
 
     try:
-        # Vehicle tags only escalate once staff have verified the owner.
-        from ..services.escalation import check_and_escalate, escalation_student_id
-        esc_sid = escalation_student_id(permit)
+        # Vehicle tags escalate once tied to a student (see BUSINESS_RULES vehicle tag rule).
+        from ..services.escalation import check_and_escalate, resolve_escalation_student_id
+        esc_sid = await resolve_escalation_student_id(db, permit)
         if esc_sid:
             await check_and_escalate(
                 db=db,
