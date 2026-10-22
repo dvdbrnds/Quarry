@@ -19,6 +19,7 @@ export default function CommitteeSettings() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [isChair, setIsChair] = useState(false);
+  const [sampleSending, setSampleSending] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +67,22 @@ export default function CommitteeSettings() {
       message.success("Member removed");
       await load();
     } catch { message.error("Failed to remove"); }
+  }
+
+  async function sendSample(decision: "denied" | "approved", committee: boolean) {
+    const key = `${decision}-${committee}`;
+    setSampleSending(key);
+    try {
+      const res = await fetch("/api/appeal-committee/sample-decision-email", {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ decision, committee }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { message.error(data.detail || "Failed to send sample"); return; }
+      message.success(`Sample sent to ${data.sent_to}`);
+    } catch { message.error("Failed to send sample"); }
+    finally { setSampleSending(null); }
   }
 
   if (loading) return <Spin className="py-8 flex justify-center" />;
@@ -137,6 +154,17 @@ export default function CommitteeSettings() {
           ]}
         />
       )}
+
+      <Card size="small" title="Appeal Decision Emails">
+        <p className="text-sm text-gray-500 mb-3">
+          Students get an email automatically when an appeal is approved or denied. Send yourself a sample to see what they receive.
+        </p>
+        <Space wrap>
+          <Button loading={sampleSending === "denied-true"} onClick={() => sendSample("denied", true)}>Sample: Denied (committee)</Button>
+          <Button loading={sampleSending === "denied-false"} onClick={() => sendSample("denied", false)}>Sample: Denied (office)</Button>
+          <Button loading={sampleSending === "approved-true"} onClick={() => sendSample("approved", true)}>Sample: Approved (committee)</Button>
+        </Space>
+      </Card>
     </div>
   );
 }

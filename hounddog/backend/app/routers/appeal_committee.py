@@ -505,6 +505,54 @@ async def delete_comment(
 
 
 # ---------------------------------------------------------------------------
+# Sample decision email (admin-only, always to the signed-in admin)
+# ---------------------------------------------------------------------------
+
+class SampleEmailRequest(BaseModel):
+    decision: str = "denied"  # "denied" or "approved"
+    committee: bool = True
+
+
+@router.post("/sample-decision-email")
+async def send_sample_decision_email(
+    body: SampleEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: OktaUser = Depends(require_admin()),
+):
+    from datetime import timedelta
+    from ..config import settings
+    from ..services.citation_policy.service import load_config
+    from ..services.email import _load_branding, send_email
+    from ..services.email_templates import render_appeal_decision_email
+    from ..services.timeutils import today_local
+
+    if body.decision not in ("denied", "approved"):
+        raise HTTPException(400, "decision must be 'denied' or 'approved'")
+    cfg = await load_config(db)
+    due = today_local() + timedelta(days=cfg.denied_grace_days)
+    b = await _load_branding()
+    html_body, text_body = render_appeal_decision_email(
+        name="Sample Student", citation="SAMPLE-0001", plate="ABC1234", violation="No Permit",
+        approved=body.decision == "approved",
+        reason="Sample reason: signage at the lot entrance was posted and visible.",
+        by_committee=body.committee, amount_due="$35.00",
+        due_date=f"{due:%A, %B} {due.day}, {due.year}",
+        pay_url=f"{settings.student_facing_url}/pay",
+        school_name=settings.school_name or "Campus",
+        primary=b["primary_color"], accent=b["accent_color"], brand_name=b["brand_name"],
+        has_logo=b["has_logo"], department_name=b.get("department_name", "Parking Authority"),
+    )
+    label = "Approved" if body.decision == "approved" else "Denied"
+    ok = await send_email(
+        [admin.email], f"[SAMPLE] Parking Appeal {label} \u2014 Citation SAMPLE-0001",
+        html_body, text_body, from_override=settings.citation_from_address or None,
+    )
+    if not ok:
+        raise HTTPException(502, "Email could not be sent (check SMTP settings and logs)")
+    return {"ok": True, "sent_to": admin.email}
+
+
+# ---------------------------------------------------------------------------
 # Close voting (admin-only)
 # ---------------------------------------------------------------------------
 
