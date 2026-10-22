@@ -679,11 +679,10 @@ function EvidencePhotos({ ticketId, additionalCount }: { ticketId: string; addit
       </div>
       <div className="flex gap-2 flex-wrap">
         {!primaryFailed ? (
-          <img
+          <FlippablePhoto
+            key={`${ticketId}-primary`}
             src={`/api/tickets/${ticketId}/photo`}
             alt="Primary citation photo"
-            className="max-h-48 rounded border cursor-pointer"
-            onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
             onError={() => setPrimaryFailed(true)}
           />
         ) : (
@@ -692,16 +691,36 @@ function EvidencePhotos({ ticketId, additionalCount }: { ticketId: string; addit
           </div>
         )}
         {additionalCount > 0 && Array.from({ length: additionalCount }).map((_, i) => (
-          <img
-            key={i}
+          <FlippablePhoto
+            key={`${ticketId}-${i}`}
             src={`/api/tickets/${ticketId}/photos/${i}`}
             alt={`Additional photo ${i + 1}`}
-            className="max-h-48 rounded border cursor-pointer"
-            onClick={e => window.open((e.target as HTMLImageElement).src, "_blank")}
-            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function FlippablePhoto({ src, alt, onError }: { src: string; alt: string; onError?: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <img
+        src={src}
+        alt={alt}
+        title="Click to open full size"
+        className="max-h-48 rounded border cursor-pointer"
+        style={flipped ? { transform: "rotate(180deg)" } : undefined}
+        onClick={() => window.open(src, "_blank")}
+        onError={() => { setFailed(true); onError?.(); }}
+      />
+      <Button size="small" onClick={() => setFlipped(f => !f)}>
+        {flipped ? "Undo flip" : "Flip"}
+      </Button>
     </div>
   );
 }
