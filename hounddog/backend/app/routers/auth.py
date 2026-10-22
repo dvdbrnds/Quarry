@@ -6,12 +6,15 @@ from fastapi import APIRouter, Depends, Request
 from ..utils.safe_router import SafeRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_token, directory_says_faculty_staff, groups_look_cut_down
+from ..auth.okta import (
+    OktaUser, get_current_user, get_current_user_or_impersonated, _fetch_userinfo, _extract_token,
+    fetch_directory_groups, groups_look_cut_down,
+)
 from ..config import settings
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
 from ..models.jnet_authorized_user import JNETAuthorizedUser
-from ..services.sis_student_data import lookup_student_parking_data
+from ..services.person_role import decide_role
 from ..services.jnet.dependencies import get_effective_jnet_enabled
 from ..services.jnet.config import jnet_settings
 
@@ -74,40 +77,20 @@ async def me(
     ip = request.client.host if request.client else None
 
     role = user.role
-    if role == "none" and user.email and groups_look_cut_down(user.groups):
-        try:
-            if await asyncio.wait_for(directory_says_faculty_staff(user.email), timeout=10):
-                logger.info("Faculty/staff group for %s found in Okta directory, not in token (%s)", user.email, user.groups)
-                role = "staff"
-        except Exception as e:
-            error_reporting.capture_exception(e)
-
-    # For non-office users, check Jenzabar SIS for authoritative employment status.
-    # Rule: current students who are also employees default to student.
-    # A class_year alone doesn't mean current student -- alumni who become
-    # faculty still have their old class_year in Okta (e.g. class of 2007).
-    # Do not overwrite admin or operator (parking office) roles.
+    # Office roles (admin/operator) are never overwritten.
     if role not in ("admin", "operator"):
-        from datetime import datetime
-        now = datetime.now()
-        # Graduates leave in May, so this year's class stops counting as current on June 1.
-        has_current_class_year = bool(user.class_year) and (
-            user.class_year > now.year or (user.class_year == now.year and now.month <= 5)
-        )
-
-        moravian_id = _extract_moravian_id(user)
-        if moravian_id:
+        groups = user.groups
+        if user.email and groups_look_cut_down(groups):
             try:
-                sis = await asyncio.wait_for(lookup_student_parking_data(moravian_id), timeout=8)
-                if sis:
-                    is_current_student = has_current_class_year or sis.housing_status in ("R", "C")
-                    if is_current_student:
-                        role = "student"
-                    elif sis.employee:
-                        role = "staff"
+                directory_groups = await asyncio.wait_for(fetch_directory_groups(user.email), timeout=10)
+                if directory_groups:
+                    groups = directory_groups
             except Exception as e:
                 error_reporting.capture_exception(e)
-                logger.debug("SIS lookup failed during auth for %s", user.email)
+        role = await decide_role(
+            db, email=user.email, groups=groups, class_year=user.class_year,
+            moravian_id=_extract_moravian_id(user),
+        )
 
     await _write_auth_event(
         user, "LOGIN",
@@ -188,7 +171,7 @@ async def me(
 
 
 @router.get("/profile")
-async def profile(user: OktaUser = Depends(get_current_user)):
+async def profile(user: OktaUser = Depends(get_current_user_or_impersonated)):
     """Return enriched Okta profile data for form pre-fill."""
     return {
         "sub": user.sub,

@@ -2409,52 +2409,9 @@ async def impersonate_lookup(email: str, user=Depends(require_office()), db: Asy
             sub = perm_row["sub"] or ""
             name = perm_row["name"] or email
 
-    # Same rule as sign-in (/api/auth/me): someone who is both is a student only while current.
-    # Past applications/permits don't count -- recent graduates who now work here have them.
-    from datetime import datetime as _dt
-    _now = _dt.now()
-    is_current_student = bool(class_year) and (
-        class_year > _now.year or (class_year == _now.year and _now.month <= 5)
-    )
-
-    # Check Jenzabar SIS for authoritative employment status
-    is_employee = False
-
-    if moravian_id:
-        try:
-            import asyncio as _asyncio
-            from app.services.sis_student_data import lookup_student_parking_data
-            sis = await _asyncio.wait_for(lookup_student_parking_data(moravian_id), timeout=8)
-            if sis:
-                is_employee = sis.employee
-                if sis.housing_status in ("R", "C"):
-                    is_current_student = True
-        except Exception as e:
-            logger.debug("SIS lookup failed for impersonate %s", email)
-
-    # Also check Okta groups for staff indicators
-    from app.auth.okta import OktaUser as _OktaUser
-    okta_says_staff = _OktaUser(sub="", email=email, groups=groups).is_staff
-
-    # Also check for existing faculty_staff permit as fallback
-    if not is_employee and not okta_says_staff:
-        staff_perm_check = await db.execute(text("""
-            SELECT 1 FROM permits
-            WHERE LOWER(email) = :email AND deleted_at IS NULL
-            AND permit_type = 'faculty_staff' AND status = 'active'
-            LIMIT 1
-        """), {"email": email})
-        is_employee = staff_perm_check.scalar() is not None
-
-    # Current students always take priority -- RAs and student workers are
-    # students first even though SIS marks them as employees.
-    # Alumni with stale class years (e.g. 2007) won't pass the current-year
-    # check, so they correctly fall through to staff.
-    if is_current_student:
-        role = "student"
-    elif is_employee or okta_says_staff:
-        role = "staff"
-    else:
+    from app.services.person_role import decide_role
+    role = await decide_role(db, email=email, groups=groups, class_year=class_year, moravian_id=moravian_id)
+    if role == "none":
         role = "student"
 
     return {
