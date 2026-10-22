@@ -9,6 +9,13 @@ import { useBranding } from "../useBranding";
 import PublicPageNav from "../components/PublicPageNav";
 import PublicFooter from "../components/PublicFooter";
 
+interface CommentInfo {
+  id: string;
+  author_email: string;
+  body: string;
+  created_at: string;
+}
+
 interface VoteInfo {
   voter_email: string;
   vote: string;
@@ -38,6 +45,7 @@ interface CaseSummary {
   votes_deny: number;
   total_members: number;
   has_voted: boolean;
+  comment_count: number;
 }
 
 interface CaseDetail extends CaseSummary {
@@ -67,6 +75,7 @@ interface CaseDetail extends CaseSummary {
   created_at: string | null;
   updated_at: string | null;
   votes: VoteInfo[];
+  comments: CommentInfo[];
   my_vote: string | null;
 }
 
@@ -113,6 +122,8 @@ function CommitteePage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [voteComment, setVoteComment] = useState("");
   const [voting, setVoting] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [posting, setPosting] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const isAdmin = isAdminRole(user?.role);
@@ -153,6 +164,7 @@ function CommitteePage() {
 
   async function loadDetail(ticketId: string) {
     setDetailLoading(true);
+    if (ticketId !== selectedId) setNewComment("");
     setSelectedId(ticketId);
     try {
       const res = await fetch(`/api/appeal-committee/cases/${ticketId}`, { headers: await authHeaders() });
@@ -182,6 +194,42 @@ function CommitteePage() {
       await loadCases();
     } catch (e: any) { message.error(e.message); }
     finally { setVoting(false); }
+  }
+
+  async function handlePostComment() {
+    if (!selectedId || !newComment.trim()) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`/api/appeal-committee/cases/${selectedId}/comments`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ body: newComment }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to post comment");
+      }
+      setNewComment("");
+      await loadDetail(selectedId);
+      await loadCases();
+    } catch (e: any) { message.error(e.message); }
+    finally { setPosting(false); }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/appeal-committee/cases/${selectedId}/comments/${commentId}`, {
+        method: "DELETE",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to delete comment");
+      }
+      await loadDetail(selectedId);
+      await loadCases();
+    } catch (e: any) { message.error(e.message); }
   }
 
   function handleClose() {
@@ -358,6 +406,11 @@ function CommitteePage() {
                       </div>
                       <div className="shrink-0 text-right">
                         <VoteTally uphold={c.votes_uphold} deny={c.votes_deny} total={c.total_members} />
+                        {c.comment_count > 0 && (
+                          <div className="text-[11px] text-gray-500 mt-1">
+                            {c.comment_count} comment{c.comment_count === 1 ? "" : "s"}
+                          </div>
+                        )}
                         {c.committee_status === "voting" && isAdmin && (
                           <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
                             <Popconfirm
@@ -644,6 +697,47 @@ function CommitteePage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Discussion (comments without voting) */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-1">
+                Discussion <span className="font-normal text-gray-400">(committee only, not visible to students)</span>
+              </div>
+              {detail.comments.length === 0 ? (
+                <p className="text-xs text-gray-400 italic mb-2">No comments yet</p>
+              ) : (
+                <div className="space-y-2 mb-2">
+                  {detail.comments.map(c => (
+                    <div key={c.id} className="text-xs bg-gray-50 rounded p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="font-medium">{c.author_email}</span>
+                          <span className="text-gray-400 ml-2">{fmtDateTime(c.created_at)}</span>
+                        </div>
+                        {user?.email && c.author_email.toLowerCase() === user.email.toLowerCase() && (
+                          <Popconfirm title="Delete this comment?" onConfirm={() => handleDeleteComment(c.id)}>
+                            <Button type="link" size="small" danger className="!p-0 !h-auto !text-[11px]">Delete</Button>
+                          </Popconfirm>
+                        )}
+                      </div>
+                      <p className="text-gray-700 mt-0.5 whitespace-pre-wrap">{c.body}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Input.TextArea
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+                placeholder="Add a comment or question (does not cast a vote)..."
+                rows={2}
+                maxLength={4000}
+              />
+              <div className="flex justify-end mt-1">
+                <Button size="small" type="primary" loading={posting} disabled={!newComment.trim()} onClick={handlePostComment}>
+                  Post Comment
+                </Button>
+              </div>
             </div>
 
             {/* Decision result (if decided) */}

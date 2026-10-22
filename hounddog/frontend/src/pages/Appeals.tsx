@@ -16,7 +16,6 @@ interface TicketSummary {
   issued_at: string;
   appeal_note: string | null;
   appeal_decision: string | null;
-  appeal_decided_by: string | null;
   can_appeal: boolean;
   appeal_deadline: string | null;
 }

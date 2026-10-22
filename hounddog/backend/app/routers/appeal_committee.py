@@ -12,7 +12,7 @@ from sqlalchemy.orm import defer
 
 from ..auth.okta import get_current_user, require_admin, require_role, OktaUser
 from ..database import get_db
-from ..models.appeal_committee import AppealCommitteeMember, CommitteeVote
+from ..models.appeal_committee import AppealCommitteeMember, CommitteeComment, CommitteeVote
 from ..models.ticket import Ticket
 
 router = SafeRouter(dependencies=[Depends(get_current_user)])
@@ -65,6 +65,20 @@ class VoteRead(BaseModel):
         from_attributes = True
 
 
+class CommentRequest(BaseModel):
+    body: str
+
+
+class CommentRead(BaseModel):
+    id: uuid.UUID
+    author_email: str
+    body: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class CaseSummary(BaseModel):
     id: uuid.UUID
     ticket_number: str | None
@@ -86,6 +100,7 @@ class CaseSummary(BaseModel):
     votes_deny: int = 0
     total_members: int = 0
     has_voted: bool = False
+    comment_count: int = 0
 
 
 class CaseDetail(CaseSummary):
@@ -115,6 +130,7 @@ class CaseDetail(CaseSummary):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     votes: list[VoteRead] = []
+    comments: list[CommentRead] = []
     my_vote: str | None = None  # current user's vote ("uphold"/"deny") or None
 
 
@@ -277,6 +293,10 @@ async def list_cases(
             )).scalar()
             user_voted = uv is not None
 
+        comment_count = (await db.execute(
+            select(func.count()).select_from(CommitteeComment).where(CommitteeComment.ticket_id == t.id)
+        )).scalar() or 0
+
         result.append(CaseSummary(
             id=t.id,
             ticket_number=t.ticket_number,
@@ -298,6 +318,7 @@ async def list_cases(
             votes_deny=vote_counts.deny,
             total_members=total_members,
             has_voted=user_voted,
+            comment_count=comment_count,
         ))
 
     return result
@@ -337,6 +358,11 @@ async def get_case(
         voted_at=v.voted_at,
         updated_at=v.updated_at,
     ) for v in vote_rows]
+
+    comments = (await db.execute(
+        select(CommitteeComment).where(CommitteeComment.ticket_id == ticket_id)
+        .order_by(CommitteeComment.created_at)
+    )).scalars().all()
 
     return CaseDetail(
         id=ticket.id,
@@ -385,6 +411,8 @@ async def get_case(
         total_members=total_members,
         has_voted=user_voted,
         votes=votes,
+        comments=[CommentRead.model_validate(c) for c in comments],
+        comment_count=len(comments),
         my_vote=my_vote_val,
     )
 
@@ -431,6 +459,49 @@ async def cast_vote(
     db.add(vote)
     await db.flush()
     return {"ok": True, "vote": body.vote}
+
+
+# ---------------------------------------------------------------------------
+# Discussion (committee members + admins; never shown to students)
+# ---------------------------------------------------------------------------
+
+@router.post("/cases/{ticket_id}/comments", response_model=CommentRead, status_code=201)
+async def add_comment(
+    ticket_id: uuid.UUID,
+    body: CommentRequest,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(_require_committee_or_admin),
+):
+    text_ = body.body.strip()
+    if not text_:
+        raise HTTPException(400, "Comment is empty")
+    if len(text_) > 4000:
+        raise HTTPException(400, "Comment is too long (4000 characters max)")
+    ticket = await db.get(Ticket, ticket_id, options=[defer(Ticket.photo_data)])
+    if not ticket or ticket.committee_status is None:
+        raise HTTPException(404, "Case not found")
+
+    comment = CommitteeComment(ticket_id=ticket_id, author_email=user.email.lower(), body=text_)
+    db.add(comment)
+    await db.flush()
+    await db.refresh(comment)
+    return comment
+
+
+@router.delete("/cases/{ticket_id}/comments/{comment_id}", status_code=204)
+async def delete_comment(
+    ticket_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(_require_committee_or_admin),
+):
+    comment = await db.get(CommitteeComment, comment_id)
+    if not comment or comment.ticket_id != ticket_id:
+        raise HTTPException(404, "Comment not found")
+    if comment.author_email.lower() != user.email.lower():
+        raise HTTPException(403, "You can only delete your own comments")
+    await db.delete(comment)
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------

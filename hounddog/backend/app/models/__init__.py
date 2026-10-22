@@ -1,5 +1,5 @@
 from .academic_season import AcademicSeason
-from .appeal_committee import AppealCommitteeMember, CommitteeVote
+from .appeal_committee import AppealCommitteeMember, CommitteeComment, CommitteeVote
 from .alert_log import AlertLog
 from .alert_response import AlertResponse
 from .alert_scenario import AlertScenario
@@ -55,6 +55,7 @@ __all__ = [
     "AcademicSeason",
     "AppealCommitteeMember",
     "CommitteeVote",
+    "CommitteeComment",
     "AlertLog",
     "AlertResponse",
     "AlertScenario",

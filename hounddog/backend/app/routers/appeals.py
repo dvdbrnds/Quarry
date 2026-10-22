@@ -30,7 +30,6 @@ class TicketSummary(BaseModel):
     issued_at: datetime
     appeal_note: str | None = None
     appeal_decision: str | None = None
-    appeal_decided_by: str | None = None
     can_appeal: bool = False
     appeal_deadline: datetime | None = None
 
@@ -83,7 +82,6 @@ def _ticket_to_summary(t: "Ticket", cfg: tl.PolicyConfig, legacy_window_days: in
         issued_at=t.issued_at,
         appeal_note=t.appeal_note,
         appeal_decision=t.appeal_decision,
-        appeal_decided_by=t.appeal_decided_by,
         can_appeal=can_appeal,
         appeal_deadline=deadline,
     )
