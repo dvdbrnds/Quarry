@@ -2409,46 +2409,22 @@ async def impersonate_lookup(email: str, user=Depends(require_office()), db: Asy
             sub = perm_row["sub"] or ""
             name = perm_row["name"] or email
 
-    # Determine role using Jenzabar SIS as the source of truth for employment.
-    # Rule: if someone is both a student and employee, student takes priority.
-    has_student_record = False
-
-    stu_check = await db.execute(text("""
-        SELECT 1 FROM lottery_v2_applications
-        WHERE LOWER(student_email) = :email LIMIT 1
-    """), {"email": email})
-    has_student_record = stu_check.scalar() is not None
-
-    if not has_student_record:
-        stu_check2 = await db.execute(text("""
-            SELECT 1 FROM permit_applications
-            WHERE LOWER(student_email) = :email LIMIT 1
-        """), {"email": email})
-        has_student_record = stu_check2.scalar() is not None
-
-    if not has_student_record:
-        stu_permit = await db.execute(text("""
-            SELECT 1 FROM permits
-            WHERE LOWER(email) = :email AND deleted_at IS NULL
-            AND permit_type NOT IN ('faculty_staff')
-            LIMIT 1
-        """), {"email": email})
-        has_student_record = stu_permit.scalar() is not None
-
-    # A class_year only indicates current student if recent -- alumni who
-    # become faculty still have their old class_year (e.g. 2007).
+    # Same rule as sign-in (/api/auth/me): someone who is both is a student only while current.
+    # Past applications/permits don't count -- recent graduates who now work here have them.
     from datetime import datetime as _dt
-    _current_year = _dt.now().year
-    has_current_class_year = bool(class_year) and class_year >= _current_year
-    is_current_student = has_current_class_year or has_student_record
+    _now = _dt.now()
+    is_current_student = bool(class_year) and (
+        class_year > _now.year or (class_year == _now.year and _now.month <= 5)
+    )
 
     # Check Jenzabar SIS for authoritative employment status
     is_employee = False
 
     if moravian_id:
         try:
+            import asyncio as _asyncio
             from app.services.sis_student_data import lookup_student_parking_data
-            sis = await lookup_student_parking_data(moravian_id)
+            sis = await _asyncio.wait_for(lookup_student_parking_data(moravian_id), timeout=8)
             if sis:
                 is_employee = sis.employee
                 if sis.housing_status in ("R", "C"):
@@ -2457,10 +2433,8 @@ async def impersonate_lookup(email: str, user=Depends(require_office()), db: Asy
             logger.debug("SIS lookup failed for impersonate %s", email)
 
     # Also check Okta groups for staff indicators
-    from app.auth.okta import FACULTY_STAFF_OKTA_GROUPS
-    okta_says_staff = bool(set(groups) & FACULTY_STAFF_OKTA_GROUPS) or any(
-        "faculty" in g.lower() or "staff" in g.lower() for g in groups
-    )
+    from app.auth.okta import OktaUser as _OktaUser
+    okta_says_staff = _OktaUser(sub="", email=email, groups=groups).is_staff
 
     # Also check for existing faculty_staff permit as fallback
     if not is_employee and not okta_says_staff:
