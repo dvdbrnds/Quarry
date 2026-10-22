@@ -36,7 +36,8 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 - "After 4:00 PM" means >= 16:00.
 - Midnight (00:00) counts as after hours (falls in the 16:00–07:00 window).
 - Faculty/staff permits have 24/7 access to all assigned lots.
-- Who can self-register a faculty/staff vehicle: anyone in an Okta faculty/staff group, OR with an office Faculty/Staff classification override, OR who has ever been issued a faculty/staff permit (active, expired, or removed), OR whom Jenzabar marks as an employee (unless Jenzabar also shows them as a current resident/commuter student).
+- Who can self-register a faculty/staff vehicle: anyone in an Okta faculty/staff group (checked against the Okta directory when the sign-in token doesn't list the group — some accounts sign in with a cut-down group list), OR with an office Faculty/Staff classification override, OR who has ever been issued a faculty/staff permit (active, expired, or removed), OR whom Jenzabar marks as an employee (unless Jenzabar also shows them as a current resident/commuter student).
+- On sign-in, employees go to the faculty/staff parking page and students to the student page. A person who is both is treated as a student only while they are a current student: a class year marks someone current through May 31 of that year (later years always), or Jenzabar shows them as a current resident/commuter. Recent graduates who now work at Moravian are employees.
 - A person's faculty/staff vehicles share one permit. Removing a vehicle removes only that plate; the permit is removed only when its last plate is.
 - Extended Premium Commuter has full-time access to FS, FSC, and all street lots.
 

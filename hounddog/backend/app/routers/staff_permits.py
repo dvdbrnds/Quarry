@@ -12,7 +12,10 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, get_current_user_or_impersonated, FACULTY_STAFF_OKTA_GROUPS
+from ..auth.okta import (
+    OktaUser, get_current_user, get_current_user_or_impersonated, FACULTY_STAFF_OKTA_GROUPS,
+    directory_says_faculty_staff,
+)
 
 logger = logging.getLogger(__name__)
 from ..config import settings
@@ -104,6 +107,11 @@ async def _employee_basis(user: OktaUser, db: AsyncSession) -> str | None:
         )).first()
         if had_staff_permit:
             return "existing_staff_permit"
+        try:
+            if await asyncio.wait_for(directory_says_faculty_staff(email), timeout=10):
+                return "okta_directory_group"
+        except Exception as e:
+            error_reporting.capture_exception(e)
     from .student_permits import _extract_moravian_id
     moravian_id = _extract_moravian_id(user)
     if moravian_id and settings.sis_mssql_host:

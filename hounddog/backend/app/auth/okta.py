@@ -1,6 +1,7 @@
 """Okta OIDC token verification for the dashboard."""
 
 import logging
+import time
 from app import error_reporting
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
@@ -54,6 +55,52 @@ async def _fetch_userinfo_groups(access_token: str) -> list[str]:
     doesn't contain the groups claim (common default configuration)."""
     info = await _fetch_userinfo(access_token)
     return info.get(settings.okta_claim, [])
+
+
+_directory_groups_cache: dict[str, tuple[float, list[str]]] = {}
+_DIRECTORY_GROUPS_TTL = 600
+
+
+async def fetch_directory_groups(email: str) -> list[str] | None:
+    """Group names from the Okta directory API. Some accounts' tokens and userinfo carry
+    a cut-down group list (e.g. only 'Everyone'), so use this before denying employee access."""
+    if not (settings.okta_domain and settings.okta_api_token and email):
+        return None
+    key = email.strip().lower()
+    hit = _directory_groups_cache.get(key)
+    if hit and time.monotonic() - hit[0] < _DIRECTORY_GROUPS_TTL:
+        return hit[1]
+    headers = {"Authorization": f"SSWS {settings.okta_api_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            user_res = await client.get(f"https://{settings.okta_domain}/api/v1/users/{key}", headers=headers)
+            if user_res.status_code != 200:
+                log.warning("Okta directory lookup failed for %s: %d", key, user_res.status_code)
+                return None
+            groups_res = await client.get(
+                f"https://{settings.okta_domain}/api/v1/users/{user_res.json()['id']}/groups", headers=headers,
+            )
+            if groups_res.status_code != 200:
+                log.warning("Okta directory groups failed for %s: %d", key, groups_res.status_code)
+                return None
+            groups = [g["profile"]["name"] for g in groups_res.json() if g.get("profile", {}).get("name")]
+    except Exception as e:
+        error_reporting.capture_exception(e)
+        log.warning("Okta directory lookup failed for %s: %s", key, e)
+        return None
+    _directory_groups_cache[key] = (time.monotonic(), groups)
+    return groups
+
+
+def groups_look_cut_down(groups: list[str]) -> bool:
+    """No affiliation groups at all (only e.g. 'Everyone', '___extensionAttribute2', '000 ...')."""
+    return not any(g.startswith("_") and not g.startswith("___") or "student" in g.lower()
+                   or g.lower().startswith("class of") for g in groups)
+
+
+async def directory_says_faculty_staff(email: str) -> bool:
+    groups = await fetch_directory_groups(email)
+    return bool(groups) and OktaUser(sub="", email=email, groups=groups).is_staff
 
 
 def _extract_token(request: Request) -> str | None:

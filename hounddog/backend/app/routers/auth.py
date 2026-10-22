@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from app import error_reporting
 
@@ -5,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from ..utils.safe_router import SafeRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_token
+from ..auth.okta import OktaUser, get_current_user, _fetch_userinfo, _extract_token, directory_says_faculty_staff, groups_look_cut_down
 from ..config import settings
 from ..database import get_db, async_session
 from ..models.audit_log import AuditLog
@@ -73,6 +74,13 @@ async def me(
     ip = request.client.host if request.client else None
 
     role = user.role
+    if role == "none" and user.email and groups_look_cut_down(user.groups):
+        try:
+            if await asyncio.wait_for(directory_says_faculty_staff(user.email), timeout=10):
+                logger.info("Faculty/staff group for %s found in Okta directory, not in token (%s)", user.email, user.groups)
+                role = "staff"
+        except Exception as e:
+            error_reporting.capture_exception(e)
 
     # For non-office users, check Jenzabar SIS for authoritative employment status.
     # Rule: current students who are also employees default to student.
@@ -81,15 +89,16 @@ async def me(
     # Do not overwrite admin or operator (parking office) roles.
     if role not in ("admin", "operator"):
         from datetime import datetime
-        current_year = datetime.now().year
-        has_current_class_year = (
-            bool(user.class_year) and user.class_year >= current_year
+        now = datetime.now()
+        # Graduates leave in May, so this year's class stops counting as current on June 1.
+        has_current_class_year = bool(user.class_year) and (
+            user.class_year > now.year or (user.class_year == now.year and now.month <= 5)
         )
 
         moravian_id = _extract_moravian_id(user)
         if moravian_id:
             try:
-                sis = await lookup_student_parking_data(moravian_id)
+                sis = await asyncio.wait_for(lookup_student_parking_data(moravian_id), timeout=8)
                 if sis:
                     is_current_student = has_current_class_year or sis.housing_status in ("R", "C")
                     if is_current_student:
