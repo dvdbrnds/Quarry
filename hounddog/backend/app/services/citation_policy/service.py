@@ -224,12 +224,12 @@ async def record_appeal_decision(
 
     await close_pauses(db, ticket, (tl.PAUSE_APPEAL,), today, actor, f"appeal {decision}")
 
+    cfg = await load_config(db)
     if decision == "approved":
         ticket.status = "voided"
         await void_fees_for_dismissed(db, ticket, actor, "Citation dismissed on appeal")
     else:
         ticket.status = "pending_payment"
-        cfg = await load_config(db)
         version, _ = ticket_policy(ticket, cfg)
         if version:
             # Pay by end of decision + grace days; delinquent the day after if still unpaid.
@@ -243,6 +243,58 @@ async def record_appeal_decision(
         f"Appeal {decision} on {ticket.ticket_number or ticket.id}" + (f": {reason}" if reason else ""),
         {"decision": decision},
     )
+    await _send_appeal_decision_email(db, ticket, decision, actor, reason, today + timedelta(days=cfg.denied_grace_days))
+
+
+async def _send_appeal_decision_email(
+    db: AsyncSession, ticket: Ticket, decision: str, actor: str, reason: str | None, due: date,
+) -> None:
+    """Queue the decision email; never blocks or fails the decision itself."""
+    import asyncio
+    from ...models.violation_type import ViolationType
+    from ...services.email import _load_branding, send_email
+    from ...services.email_templates import render_appeal_decision_email
+
+    to = next((e.strip().lower() for e in (ticket.dispute_email, ticket.notification_email) if e and "@" in e), None)
+    citation = ticket.ticket_number or str(ticket.id)[:8].upper()
+    if not to:
+        logger.info("appeal_decision_email_skipped_no_email", citation=citation)
+        return
+    try:
+        label = ticket.violation_type or "Parking Violation"
+        if ticket.violation_type:
+            label = (await db.execute(
+                select(ViolationType.label).where(ViolationType.code == ticket.violation_type)
+            )).scalar() or label.replace("_", " ").title()
+        amount = await balance_for_tickets(db, [ticket]) if decision == "denied" else Decimal("0")
+        b = await _load_branding()
+        html_body, text_body = render_appeal_decision_email(
+            name=ticket.dispute_name or ticket.owner_name,
+            citation=citation, plate=ticket.plate, violation=label,
+            approved=decision == "approved", reason=(reason or "").strip() or None,
+            by_committee=(actor or "").startswith("committee"),
+            amount_due=f"${amount:.2f}", due_date=f"{due:%A, %B} {due.day}, {due.year}",
+            pay_url=f"{settings.student_facing_url}/pay?ticket={ticket.id}",
+            school_name=settings.school_name or "Campus",
+            primary=b["primary_color"], accent=b["accent_color"], brand_name=b["brand_name"],
+            has_logo=b["has_logo"], department_name=b.get("department_name", "Parking Authority"),
+        )
+        subject = f"Parking Appeal {'Approved' if decision == 'approved' else 'Denied'} \u2014 Citation {citation}"
+    except Exception as e:
+        from app import error_reporting
+        error_reporting.capture_exception(e)
+        logger.warning("appeal_decision_email_render_failed", citation=citation, error=str(e))
+        return
+
+    async def _send():
+        try:
+            await send_email([to], subject, html_body, text_body, from_override=settings.citation_from_address or None)
+        except Exception as e:
+            from app import error_reporting
+            error_reporting.capture_exception(e)
+
+    asyncio.create_task(_send())
+    await record_policy_event(db, actor, "ticket", ticket.id, f"Appeal decision email queued to {to} ({citation})")
 
 
 # ── Fees ───────────────────────────────────────────────────────────────────

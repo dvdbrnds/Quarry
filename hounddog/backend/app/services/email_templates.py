@@ -670,6 +670,78 @@ def render_hold_student_email(
 
 
 # ---------------------------------------------------------------------------
+# Appeal decision (student)
+# ---------------------------------------------------------------------------
+
+def render_appeal_decision_email(
+    *,
+    name: str | None,
+    citation: str,
+    plate: str,
+    violation: str,
+    approved: bool,
+    reason: str | None,
+    by_committee: bool,
+    amount_due: str = "",
+    due_date: str = "",
+    pay_url: str = "",
+    school_name: str = "",
+    primary: str = "",
+    accent: str = "",
+    brand_name: str | None = None,
+    has_logo: bool = False,
+    department_name: str = "Parking Authority",
+) -> tuple[str, str]:
+    from html import escape
+
+    primary = primary or settings.brand_primary_color or "#1a2744"
+    school = school_name or "Campus"
+    heading = "Appeal Approved" if approved else "Appeal Denied"
+    reviewed = "the Parking Appeals Committee" if by_committee else f"the {department_name}"
+
+    rows = [("Citation", escape(citation), "font-weight:600;"), ("Plate", escape(plate), ""),
+            ("Violation", escape(violation), "")]
+    if reason:
+        rows.append(("Reason", escape(reason), ""))
+    if not approved:
+        rows += [("Amount due", escape(amount_due), "font-weight:600;"),
+                 ("Pay by", escape(due_date), "font-weight:600;color:#b91c1c;")]
+
+    if approved:
+        outcome = ("Your appeal has been <strong>approved</strong>. The citation has been voided "
+                   "and nothing is owed.")
+        action = ""
+        plain_action = "The citation has been voided and nothing is owed."
+    else:
+        outcome = ("Your appeal has been <strong>denied</strong>, so the citation stands. Your payment "
+                   f"deadline has been reset: please pay by <strong>{escape(due_date)}</strong> to avoid late fees.")
+        action = _cta_button(pay_url, "Pay Citation", primary)
+        plain_action = f"Your payment deadline has been reset. Amount due: {amount_due}. Pay by {due_date}: {pay_url}"
+
+    inner = (
+        _heading(heading, primary)
+        + _para(f"Dear {escape(name or 'Student')},")
+        + _para(f"Your appeal of citation {escape(citation)} was reviewed by {reviewed}. {outcome}")
+        + _detail_table("Appeal decision", rows)
+        + action
+        + _small("Questions? Contact the Parking Office.")
+    )
+    html = render_email(
+        heading, inner, school_name=school, primary=primary, accent=accent,
+        brand_name=brand_name, has_logo=has_logo,
+    )
+    plain = (
+        f"{heading.upper()}\n\n"
+        f"Dear {name or 'Student'},\n\n"
+        f"Your appeal of citation {citation} (plate {plate}, {violation}) was reviewed by {reviewed} "
+        f"and has been {'approved' if approved else 'denied'}.\n"
+        + (f"Reason: {reason}\n" if reason else "")
+        + f"\n{plain_action}\n\n{school} {department_name}"
+    )
+    return html, plain
+
+
+# ---------------------------------------------------------------------------
 # Escalation: registration hold (admin notification)
 # ---------------------------------------------------------------------------
 
