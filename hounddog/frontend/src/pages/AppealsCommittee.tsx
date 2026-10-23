@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Alert, App, Badge, Button, Card, Descriptions, Empty, Input, Modal,
-  Popconfirm, Segmented, Space, Spin, Tag, Tooltip,
+  Popconfirm, Radio, Segmented, Space, Spin, Tag, Tooltip,
 } from "antd";
 import { initAuth, isAuthenticated, login, authHeaders, fetchCurrentUser, type AuthUser } from "../auth";
 import { isAdminRole } from "../auth";
@@ -91,6 +91,40 @@ const DECISION_COLORS: Record<string, string> = {
   denied: "red",
   closed: "default",
 };
+
+function DecisionPicker({ onChange }: { onChange: (d: "upheld" | "denied") => void }) {
+  const [value, setValue] = useState<"upheld" | "denied" | null>(null);
+  const options = [
+    { key: "upheld" as const, title: "Uphold Appeal", sub: "Void the ticket", color: "#16a34a", text: "#15803d" },
+    { key: "denied" as const, title: "Deny Appeal", sub: "Ticket stands", color: "#dc2626", text: "#b91c1c" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map(o => {
+        const active = value === o.key;
+        return (
+          <Button
+            key={o.key}
+            block
+            onClick={() => { setValue(o.key); onChange(o.key); }}
+            style={{
+              height: "auto",
+              padding: "8px 6px",
+              whiteSpace: "normal",
+              borderWidth: 2,
+              borderColor: o.color,
+              background: active ? o.color : "#fff",
+              color: active ? "#fff" : o.text,
+            }}
+          >
+            <div className="font-semibold">{o.title}</div>
+            <div className="text-xs" style={{ opacity: 0.85 }}>{o.sub}</div>
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
 
 function decisionLabel(decision: string | null | undefined): string {
   if (decision === "upheld") return "Appeal Upheld";
@@ -262,6 +296,7 @@ function CommitteePage() {
   function handleClose() {
     if (!selectedId || !detail) return;
     let reason = "";
+    let decision: "upheld" | "denied" | null = null;
     modal.confirm({
       title: "Close Voting & Record Decision",
       content: (
@@ -270,17 +305,7 @@ function CommitteePage() {
             Current tally: <strong>{detail.votes_uphold}</strong> uphold, <strong>{detail.votes_deny}</strong> deny
             ({detail.total_members - detail.votes_uphold - detail.votes_deny} pending)
           </p>
-          <Segmented
-            options={[
-              { label: "Uphold Appeal (void ticket)", value: "upheld" },
-              { label: "Deny Appeal (ticket stands)", value: "denied" },
-            ]}
-            onChange={(v) => {
-              const btn = document.querySelector(".ant-modal-confirm-btns .ant-btn-primary") as HTMLButtonElement;
-              if (btn) btn.dataset.decision = v as string;
-            }}
-            block
-          />
+          <DecisionPicker onChange={d => { decision = d; }} />
           <Input.TextArea
             placeholder="Reason (optional)"
             rows={2}
@@ -290,8 +315,10 @@ function CommitteePage() {
       ),
       okText: "Record Decision",
       onOk: async () => {
-        const btn = document.querySelector(".ant-modal-confirm-btns .ant-btn-primary") as HTMLButtonElement;
-        const decision = btn?.dataset.decision || (detail.votes_uphold >= detail.votes_deny ? "upheld" : "denied");
+        if (!decision) {
+          message.warning("Choose Uphold or Deny first");
+          throw new Error("abort");
+        }
         const res = await fetch(`/api/appeal-committee/cases/${selectedId}/close`, {
           method: "POST",
           headers: await authHeaders(),
