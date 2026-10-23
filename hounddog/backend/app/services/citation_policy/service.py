@@ -517,7 +517,7 @@ async def is_affiliated(db: AsyncSession, plate: str) -> bool:
           AND :p = ANY(SELECT UPPER(REPLACE(x, ' ', '')) FROM unnest(plates) x)
           AND (
                 (is_tag_only = false AND permit_type NOT LIKE 'visitor%'
-                 AND permit_type NOT IN ('guest', 'contracted_staff')
+                 AND permit_type NOT IN ('guest', 'contracted_staff', 'local_resident', 'pending_id')
                  AND COALESCE(student_id, '') !~ '^[a-z_]+:')
              OR (permits.is_tag_only = true AND {tag_tied_sql("permits")})
           )

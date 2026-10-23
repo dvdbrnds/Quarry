@@ -28,6 +28,7 @@ struct PermitInfo: Sendable, Equatable, Codable {
         "faculty_staff": "Faculty/Staff",
         "contracted_staff": "Contracted Staff",
         "local_resident": "Local Resident",
+        "pending_id": "Pending ID",
         "visitor_day": "Visitor (Day)",
         "visitor_vendor": "Vendor",
         "visitor_vendor_longterm": "Vendor (Long-term)",

@@ -81,6 +81,11 @@ struct PlateOverlayView: View {
                                 .font(.caption.bold())
                                 .foregroundStyle(textColor)
                         }
+                        if permit.permitType.lowercased() == "pending_id" {
+                            Text("Pending ID — Do Not Ticket")
+                                .font(.caption.bold())
+                                .foregroundStyle(textColor)
+                        }
                         if !permit.ownerName.isEmpty {
                             Text(permit.ownerName)
                                 .font(.caption)

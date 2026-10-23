@@ -1757,6 +1757,7 @@ async def lifespan(app: FastAPI):
                     {"code": "south_standalone", "label": "South Third Party", "eligible": "Resident students", "price": 100, "max_capacity": 100, "valid_days": 365, "lot_assignments": ["Lehigh St", "Spring St"], "is_purchasable_online": False, "sort_order": 9},
                     {"code": "faculty_staff", "label": "Faculty/Staff", "eligible": "Employees", "price": 0, "max_capacity": 500, "valid_days": 365, "lot_assignments": ["A", "F", "H", "M", "N", "O", "R", "S", "U", "W"], "is_purchasable_online": False, "sort_order": 10, "eligible_groups": ["_Bethlehem - All - Faculty", "_Bethlehem - All - Staff", "_MU - Faculty, Adjunct", "Quarry-Staff", "Quarry-Admin"]},
                     {"code": "local_resident", "label": "Local Resident", "eligible": "Neighborhood residents", "price": 0, "max_capacity": 0, "valid_days": 365, "lot_assignments": [], "is_purchasable_online": False, "sort_order": 11},
+                    {"code": "pending_id", "label": "Pending ID", "eligible": "Street parkers not yet identified as city residents or students", "price": 0, "max_capacity": 0, "valid_days": 365, "lot_assignments": [], "is_purchasable_online": False, "sort_order": 12},
                 ]
                 for row in default_permits:
                     session.add(PermitType(
@@ -1781,6 +1782,19 @@ async def lifespan(app: FastAPI):
                 ))
                 await session.commit()
                 logger.info("Backfilled local_resident permit type")
+
+            existing_pid = await session.scalar(
+                select(func.count()).select_from(PermitType).where(PermitType.code == "pending_id")
+            )
+            if existing_pid == 0:
+                session.add(PermitType(
+                    code="pending_id", label="Pending ID",
+                    eligible="Street parkers not yet identified as city residents or students",
+                    price=Decimal("0"), max_capacity=0, valid_days=365, lot_assignments=[],
+                    is_purchasable_online=False, sort_order=12,
+                ))
+                await session.commit()
+                logger.info("Backfilled pending_id permit type")
 
             # Backfill: add student_guest permit type if missing
             existing_sg = await session.scalar(
