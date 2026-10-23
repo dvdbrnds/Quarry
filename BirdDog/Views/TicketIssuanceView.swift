@@ -870,6 +870,9 @@ struct TicketConfirmationView: View {
     @State private var isVoided = false
     @State private var voidError: String?
 
+    /// Only admins void tickets (in Quarry). Flip to true to bring back officer voiding.
+    static let officerVoidEnabled = false
+
     var body: some View {
         VStack(spacing: 24) {
             if result.isDuplicate {
@@ -1060,7 +1063,7 @@ struct TicketConfirmationView: View {
                     .multilineTextAlignment(.center)
             }
 
-            if !isWarning && !result.isDuplicate {
+            if Self.officerVoidEnabled && !isWarning && !result.isDuplicate {
                 Divider()
                     .padding(.vertical, 4)
 

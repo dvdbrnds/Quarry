@@ -1784,6 +1784,9 @@ async def student_search(
     return results
 
 
+OFFICER_VOID_ENABLED = False
+
+
 class OfficerVoidRequest(BaseModel):
     officer_email: str
     reason: str = ""
@@ -1796,7 +1799,9 @@ async def officer_void_ticket(
     device: Device = Depends(get_device),
     db: AsyncSession = Depends(get_db),
 ):
-    """Allow an officer to void a ticket they issued, from BirdDog."""
+    """Allow an officer to void a ticket they issued, from BirdDog (turned off: only admins void)."""
+    if not OFFICER_VOID_ENABLED:
+        raise HTTPException(403, "Voiding is turned off for officers. Ask an admin to void this ticket.")
     import uuid as _uuid
     try:
         tid = _uuid.UUID(ticket_id)

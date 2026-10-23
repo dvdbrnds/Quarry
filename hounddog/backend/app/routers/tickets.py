@@ -1511,6 +1511,8 @@ async def update_ticket(
                 raise HTTPException(400, problem)
         updated_fields["owner_address"] = addr or None
 
+    if updated_fields.get("status") == "voided" and ticket.status != "voided" and not _admin.is_admin:
+        raise HTTPException(403, "Only admins can void tickets")
     for field, value in updated_fields.items():
         if field == "status" and value not in VALID_STATUSES:
             raise HTTPException(400, f"Invalid status: {value}")
@@ -1606,16 +1608,13 @@ async def void_ticket(
     ticket_id: uuid.UUID,
     body: VoidRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    user: OktaUser = Depends(require_role("admin", "operator")),
+    user: OktaUser = Depends(require_admin()),
 ):
     ticket = await db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
     if ticket.status == "paid":
         raise HTTPException(400, "Cannot void a paid ticket")
-    if not user.is_admin:
-        if not ticket.officer_email or ticket.officer_email.lower() != user.email.lower():
-            raise HTTPException(403, "Officers can only void tickets they issued")
     ticket.status = "voided"
     if body and body.reason:
         ticket.void_reason = body.reason.strip()[:1024]
@@ -1638,9 +1637,9 @@ async def void_ticket(
 async def bulk_void_tickets(
     data: dict,
     db: AsyncSession = Depends(get_db),
-    _admin: OktaUser = Depends(require_role("admin", "operator")),
+    _admin: OktaUser = Depends(require_admin()),
 ):
-    """Void multiple tickets at once."""
+    """Void multiple tickets at once (admins only)."""
     ids = data.get("ids", [])
     if not ids:
         raise HTTPException(400, "No ticket IDs provided")

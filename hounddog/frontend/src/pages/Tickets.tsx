@@ -2021,7 +2021,9 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         const hasAppeal = t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"));
         return (
           <div style={{ display: "flex", gap: 2 }}>
-            <Button size="small" type="primary" title="Approve (void ticket)" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "approved") : handleVoid(t.id); }}>✓</Button>
+            {(hasAppeal || isAdmin) && (
+              <Button size="small" type="primary" title="Approve (void ticket)" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "approved") : handleVoid(t.id); }}>✓</Button>
+            )}
             <Button size="small" danger title="Deny (uphold ticket)" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "denied") : handleDeny(t.id); }}>✗</Button>
             {hasAppeal && (
               <Button size="small" title="Escalate to committee" style={{ background: "#a855f7", borderColor: "#a855f7", color: "#fff", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleEscalateToCommittee(t.id); }}>↑</Button>
@@ -2134,17 +2136,19 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               <Button danger loading={bulkDenying} onClick={handleBulkDeny}>
                 Deny Selected ({selectedRowKeys.length})
               </Button>
-              <Popconfirm
-                title={`Void ${selectedRowKeys.length} ticket(s)?`}
-                description="This will void all selected tickets. Paid and already-voided tickets will be skipped."
-                onConfirm={handleBulkVoid}
-                okText="Void All"
-                okButtonProps={{ danger: true, loading: bulkVoiding }}
-              >
-                <Button danger type="primary" loading={bulkVoiding}>
-                  Void Selected ({selectedRowKeys.length})
-                </Button>
-              </Popconfirm>
+              {isAdmin && (
+                <Popconfirm
+                  title={`Void ${selectedRowKeys.length} ticket(s)?`}
+                  description="This will void all selected tickets. Paid and already-voided tickets will be skipped."
+                  onConfirm={handleBulkVoid}
+                  okText="Void All"
+                  okButtonProps={{ danger: true, loading: bulkVoiding }}
+                >
+                  <Button danger type="primary" loading={bulkVoiding}>
+                    Void Selected ({selectedRowKeys.length})
+                  </Button>
+                </Popconfirm>
+              )}
             </>
           )}
           {isOffice && (
@@ -2313,9 +2317,11 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               const hasAppeal = selected.appeal_decision === "pending" || (selected.status === "appealed" && (!selected.appeal_decision || selected.appeal_decision === "pending"));
               return (
                 <>
-                  <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => hasAppeal ? handleAppealDecision(selected.id, "approved") : handleVoid(selected.id)}>
-                    Approve
-                  </Button>
+                  {(hasAppeal || isAdmin) && (
+                    <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => hasAppeal ? handleAppealDecision(selected.id, "approved") : handleVoid(selected.id)}>
+                      Approve
+                    </Button>
+                  )}
                   <Button size="small" danger onClick={() => hasAppeal ? handleAppealDecision(selected.id, "denied") : handleDeny(selected.id)}>
                     Deny
                   </Button>
@@ -2324,7 +2330,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
                       Escalate
                     </Button>
                   )}
-                  <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>
+                  {isAdmin && <Button size="small" danger type="primary" onClick={() => handleVoid(selected.id)}>Void</Button>}
                 </>
               );
             })()}

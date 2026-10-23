@@ -67,6 +67,7 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 
 - Ticket numbers are sequential: CIT-00001 format.
 - QR code on printed ticket links to the payment portal.
+- Only admins can void a ticket (Void, Bulk Void, or editing the status to voided). Operators and officers cannot. BirdDog's "Void This Ticket" is turned off (kept in the code behind a switch) and the server rejects voids from devices. Approving an appeal still dismisses the ticket; that is an appeal decision, not a void.
 - Printed parking tickets and the citation email say: payment or appeal is due within 10 calendar days of the date issued, and late fees apply after that (matches the day-11 late fee). Never "business days". Moving violations keep their own 10-day magistrate wording.
 - Payment URL format must match between BirdDog (generator) and Hounddog (resolver).
 - Admin impersonation is view-only for citations: a plate lookup on My Citations while impersonating shows matches but never links them to the impersonated student.
