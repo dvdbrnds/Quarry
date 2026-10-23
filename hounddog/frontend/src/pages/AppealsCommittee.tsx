@@ -89,7 +89,14 @@ const STATUS_COLORS: Record<string, string> = {
 const DECISION_COLORS: Record<string, string> = {
   upheld: "green",
   denied: "red",
+  closed: "default",
 };
+
+function decisionLabel(decision: string | null | undefined): string {
+  if (decision === "upheld") return "Appeal Upheld";
+  if (decision === "closed") return "Closed (ticket paid/voided)";
+  return "Appeal Denied";
+}
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -411,7 +418,7 @@ function CommitteePage() {
                           </Tag>
                           {c.committee_decision && (
                             <Tag color={DECISION_COLORS[c.committee_decision] || "default"}>
-                              {c.committee_decision === "upheld" ? "Appeal Upheld" : "Appeal Denied"}
+                              {decisionLabel(c.committee_decision)}
                             </Tag>
                           )}
                         </div>
@@ -545,6 +552,8 @@ function CommitteePage() {
             >
               {detail.committee_decision === "upheld"
                 ? "Appeal Upheld — Ticket Voided"
+                : detail.committee_decision === "closed"
+                ? "Closed — Ticket Paid/Voided"
                 : "Appeal Denied — Ticket Stands"}
             </Tag>
           ) : null
@@ -635,10 +644,10 @@ function CommitteePage() {
                 ))}
                 {detail.committee_decided_at && (
                   <div className="relative">
-                    <span className={`absolute -left-[11px] top-1 w-2 h-2 rounded-full ${detail.committee_decision === "upheld" ? "bg-green-600" : "bg-red-600"}`} />
+                    <span className={`absolute -left-[11px] top-1 w-2 h-2 rounded-full ${detail.committee_decision === "upheld" ? "bg-green-600" : detail.committee_decision === "closed" ? "bg-gray-400" : "bg-red-600"}`} />
                     <span className="text-gray-400">{fmtDateTime(detail.committee_decided_at)}</span>
                     <span className="ml-2 font-medium">
-                      Decision recorded: {detail.committee_decision === "upheld" ? "Appeal Upheld" : "Appeal Denied"}
+                      Decision recorded: {decisionLabel(detail.committee_decision)}
                       {detail.appeal_decided_by && <span className="font-normal text-gray-400"> by {detail.appeal_decided_by}</span>}
                     </span>
                   </div>
@@ -784,8 +793,8 @@ function CommitteePage() {
             {/* Decision result (if decided) */}
             {detail.committee_status === "decided" && (
               <Alert
-                type={detail.committee_decision === "upheld" ? "success" : "error"}
-                message={detail.committee_decision === "upheld" ? "Appeal Upheld" : "Appeal Denied"}
+                type={detail.committee_decision === "upheld" ? "success" : detail.committee_decision === "closed" ? "info" : "error"}
+                message={decisionLabel(detail.committee_decision)}
                 description={
                   <div className="text-xs space-y-1">
                     <p>Decision recorded on {fmtDateTime(detail.committee_decided_at)}</p>

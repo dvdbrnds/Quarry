@@ -1,10 +1,10 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import String, Date, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func, JSON
+from sqlalchemy import String, Date, DateTime, Float, Integer, ForeignKey, Numeric, Text, LargeBinary, func, JSON, event
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from ..database import Base
 
@@ -96,3 +96,34 @@ class Ticket(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+RESOLVED_STATUSES = ("paid", "voided", "resolved_permit")
+_CLOSE_REASONS = {
+    "paid": "Closed automatically: the citation was paid.",
+    "voided": "Closed automatically: the citation was voided.",
+    "resolved_permit": "Closed automatically: the citation was resolved with a permit.",
+}
+
+
+def close_resolved_appeal(ticket: Ticket) -> None:
+    """A paid/voided/resolved ticket can't keep a pending appeal or an open committee case."""
+    if ticket.status not in RESOLVED_STATUSES:
+        return
+    now = datetime.now(timezone.utc)
+    if ticket.appeal_decision == "pending":
+        ticket.appeal_decision = "closed"
+        ticket.appeal_decided_by = "system"
+        ticket.appeal_decided_at = now
+        ticket.appeal_decision_reason = _CLOSE_REASONS[ticket.status]
+    if ticket.committee_status == "voting":
+        ticket.committee_status = "decided"
+        ticket.committee_decision = "closed"
+        ticket.committee_decided_at = now
+
+
+@event.listens_for(Session, "before_flush")
+def _close_appeals_on_resolution(session, flush_context, instances):
+    for obj in list(session.new) + list(session.dirty):
+        if isinstance(obj, Ticket):
+            close_resolved_appeal(obj)

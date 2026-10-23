@@ -402,7 +402,7 @@ async def lifespan(app: FastAPI):
 
     # Schema migrations for columns added after initial table creation (fallback for pre-Alembic columns)
     # Bump SCHEMA_VERSION whenever you add/change a migration below.
-    SCHEMA_VERSION = 49
+    SCHEMA_VERSION = 50
     async with engine.begin() as conn:
         await conn.execute(text("SELECT pg_advisory_lock(42)"))
         await conn.execute(text("""
@@ -1463,6 +1463,21 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS barnacle_deployment_fee NUMERIC(8,2) NOT NULL DEFAULT 100.00",
             "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS removal_phone_daytime VARCHAR(64) NOT NULL DEFAULT ''",
             "ALTER TABLE enforcement_settings ADD COLUMN IF NOT EXISTS removal_phone_after_hours VARCHAR(64) NOT NULL DEFAULT ''",
+            # ── v50: Close appeals left pending on tickets that were already paid/voided/resolved
+            """UPDATE tickets SET
+                 appeal_decision = 'closed',
+                 appeal_decided_by = 'system',
+                 appeal_decided_at = now(),
+                 appeal_decision_reason = CASE status
+                   WHEN 'paid' THEN 'Closed automatically: the citation was paid.'
+                   WHEN 'voided' THEN 'Closed automatically: the citation was voided.'
+                   ELSE 'Closed automatically: the citation was resolved with a permit.' END
+               WHERE appeal_decision = 'pending' AND status IN ('paid', 'voided', 'resolved_permit')""",
+            """UPDATE tickets SET
+                 committee_status = 'decided',
+                 committee_decision = 'closed',
+                 committee_decided_at = now()
+               WHERE committee_status = 'voting' AND status IN ('paid', 'voided', 'resolved_permit')""",
             ]
             for migration in migrations:
                 try:
