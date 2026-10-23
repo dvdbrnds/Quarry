@@ -2021,7 +2021,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
         const hasAppeal = t.appeal_decision === "pending" || (t.status === "appealed" && (!t.appeal_decision || t.appeal_decision === "pending"));
         return (
           <div style={{ display: "flex", gap: 2 }}>
-            {(hasAppeal || isAdmin) && (
+            {isAdmin && (
               <Button size="small" type="primary" title="Approve (void ticket)" style={{ background: "#22C55E", borderColor: "#22C55E", padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "approved") : handleVoid(t.id); }}>✓</Button>
             )}
             <Button size="small" danger title="Deny (uphold ticket)" style={{ padding: "0 6px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); hasAppeal ? handleAppealDecision(t.id, "denied") : handleDeny(t.id); }}>✗</Button>
@@ -2317,7 +2317,7 @@ function TicketsList({ officerEmail }: { officerEmail?: string } = {}) {
               const hasAppeal = selected.appeal_decision === "pending" || (selected.status === "appealed" && (!selected.appeal_decision || selected.appeal_decision === "pending"));
               return (
                 <>
-                  {(hasAppeal || isAdmin) && (
+                  {isAdmin && (
                     <Button size="small" type="primary" style={{ background: "#22C55E" }} onClick={() => hasAppeal ? handleAppealDecision(selected.id, "approved") : handleVoid(selected.id)}>
                       Approve
                     </Button>

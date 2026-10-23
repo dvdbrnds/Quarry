@@ -1793,6 +1793,8 @@ async def decide_appeal(
 
     if decision.decision not in ("approved", "denied"):
         raise HTTPException(400, "Decision must be 'approved' or 'denied'")
+    if decision.decision == "approved" and not _admin.is_admin:
+        raise HTTPException(403, "Only admins can approve appeals")
 
     from ..services.citation_policy.service import record_appeal_decision
     await record_appeal_decision(
