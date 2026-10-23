@@ -45,6 +45,7 @@ interface CaseSummary {
   votes_deny: number;
   total_members: number;
   has_voted: boolean;
+  my_vote: string | null;
   comment_count: number;
 }
 
@@ -148,11 +149,11 @@ function CommitteePage() {
   }, []);
 
   useEffect(() => {
-    if (authState === "ready") loadCases();
+    if (authState === "ready") loadCases(true);
   }, [authState]);
 
-  async function loadCases() {
-    setLoading(true);
+  async function loadCases(showSpinner = false) {
+    if (showSpinner) setLoading(true);
     try {
       const res = await fetch("/api/appeal-committee/cases", { headers: await authHeaders() });
       if (res.status === 403) { setAccessDenied(true); return; }
@@ -190,6 +191,25 @@ function CommitteePage() {
       const result = await res.json();
       message.success(result.changed_from ? `Vote changed to: ${vote}` : `Vote cast: ${vote}`);
       setVoteComment("");
+      await loadDetail(selectedId);
+      await loadCases();
+    } catch (e: any) { message.error(e.message); }
+    finally { setVoting(false); }
+  }
+
+  async function handleRetractVote() {
+    if (!selectedId) return;
+    setVoting(true);
+    try {
+      const res = await fetch(`/api/appeal-committee/cases/${selectedId}/vote`, {
+        method: "DELETE",
+        headers: await authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to take back vote");
+      }
+      message.success("Vote taken back");
       await loadDetail(selectedId);
       await loadCases();
     } catch (e: any) { message.error(e.message); }
@@ -318,6 +338,10 @@ function CommitteePage() {
     if (filter === "voting") return c.committee_status === "voting";
     if (filter === "decided") return c.committee_status === "decided";
     return true;
+  }).sort((a, b) => {
+    const aNeeds = a.committee_status === "voting" && !a.has_voted ? 0 : 1;
+    const bNeeds = b.committee_status === "voting" && !b.has_voted ? 0 : 1;
+    return aNeeds - bNeeds;
   });
 
   const counts = {
@@ -446,6 +470,13 @@ function CommitteePage() {
                             <Badge status="warning" text={<span className="text-xs">Needs your vote</span>} />
                           </div>
                         )}
+                        {c.my_vote && c.committee_status === "voting" && (
+                          <div className="mt-1">
+                            <Tag color={c.my_vote === "uphold" ? "green" : "red"} className="mr-0">
+                              You voted: {c.my_vote === "uphold" ? "Uphold" : "Deny"}
+                            </Tag>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -495,6 +526,16 @@ function CommitteePage() {
                 >
                   {detail.my_vote && detail.my_vote !== "deny" ? "Change to Deny" : "Deny Appeal"}
                 </Button>
+                {detail.my_vote && (
+                  <Popconfirm
+                    title="Take back your vote?"
+                    description="Your vote will be removed and the case will show as not voted."
+                    onConfirm={handleRetractVote}
+                    okText="Take back"
+                  >
+                    <Button loading={voting}>Take back my vote</Button>
+                  </Popconfirm>
+                )}
               </Space>
             </div>
           ) : detail?.committee_status === "decided" ? (

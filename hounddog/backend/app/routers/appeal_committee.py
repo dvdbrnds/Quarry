@@ -100,6 +100,7 @@ class CaseSummary(BaseModel):
     votes_deny: int = 0
     total_members: int = 0
     has_voted: bool = False
+    my_vote: str | None = None
     comment_count: int = 0
 
 
@@ -283,15 +284,12 @@ async def list_cases(
             ).where(CommitteeVote.ticket_id == t.id)
         )).one()
 
-        user_voted = False
-        if not user.is_admin or True:
-            uv = (await db.execute(
-                select(CommitteeVote).where(
-                    CommitteeVote.ticket_id == t.id,
-                    func.lower(CommitteeVote.voter_email) == user.email.lower(),
-                )
-            )).scalar()
-            user_voted = uv is not None
+        uv = (await db.execute(
+            select(CommitteeVote).where(
+                CommitteeVote.ticket_id == t.id,
+                func.lower(CommitteeVote.voter_email) == user.email.lower(),
+            )
+        )).scalar()
 
         comment_count = (await db.execute(
             select(func.count()).select_from(CommitteeComment).where(CommitteeComment.ticket_id == t.id)
@@ -317,7 +315,8 @@ async def list_cases(
             votes_uphold=vote_counts.uphold,
             votes_deny=vote_counts.deny,
             total_members=total_members,
-            has_voted=user_voted,
+            has_voted=uv is not None,
+            my_vote=uv.vote if uv else None,
             comment_count=comment_count,
         ))
 
@@ -459,6 +458,27 @@ async def cast_vote(
     db.add(vote)
     await db.flush()
     return {"ok": True, "vote": body.vote}
+
+
+@router.delete("/cases/{ticket_id}/vote", status_code=204)
+async def retract_vote(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: OktaUser = Depends(_require_committee_member),
+):
+    ticket = await db.get(Ticket, ticket_id)
+    if not ticket or ticket.committee_status != "voting":
+        raise HTTPException(400, "Case is not open for voting")
+    existing = (await db.execute(
+        select(CommitteeVote).where(
+            CommitteeVote.ticket_id == ticket_id,
+            func.lower(CommitteeVote.voter_email) == user.email.lower(),
+        )
+    )).scalar()
+    if not existing:
+        raise HTTPException(404, "You have not voted on this case")
+    await db.delete(existing)
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------
