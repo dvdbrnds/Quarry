@@ -213,7 +213,7 @@ struct TicketReceiptBuilder {
             }
         } else {
             for line in wrapLines(
-                "Issued under campus parking regulations. Appeals must be filed within 5 business days."
+                "Issued under campus parking regulations. Payment or appeal is due within 10 calendar days of the date issued. Late fees apply after 10 days."
             ) {
                 _ = printerBuilder.actionPrintText("\(line)\n")
             }

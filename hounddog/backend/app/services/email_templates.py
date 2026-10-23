@@ -301,6 +301,10 @@ def render_citation_email(
             f'<strong style="font-family:monospace;">{plate}</strong>.'
         )
         + _detail_table("Citation Details", rows)
+        + _para(
+            '<strong>Payment or appeal is due within 10 calendar days of the date issued.</strong> '
+            'Late fees apply after 10 days.'
+        )
         + _cta_button(payment_url, "Pay Citation Online", primary)
         + _small(
             'A processing fee will be added at checkout for online payments. '
@@ -326,6 +330,8 @@ def render_citation_email(
     if officer_name:
         plain += f"Officer: {officer_name}\n"
     plain += (
+        f"\nPayment or appeal is due within 10 calendar days of the date issued. "
+        f"Late fees apply after 10 days.\n"
         f"\nPay online: {payment_url}\n"
         f"\nNote: A processing fee will be added at checkout for online payments.\n"
         f"\n{school} {department_name}"

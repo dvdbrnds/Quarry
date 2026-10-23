@@ -66,6 +66,7 @@ Access rules are defined as schedule arrays in `backend/app/routers/lots.py` and
 
 - Ticket numbers are sequential: CIT-00001 format.
 - QR code on printed ticket links to the payment portal.
+- Printed parking tickets and the citation email say: payment or appeal is due within 10 calendar days of the date issued, and late fees apply after that (matches the day-11 late fee). Never "business days". Moving violations keep their own 10-day magistrate wording.
 - Payment URL format must match between BirdDog (generator) and Hounddog (resolver).
 - Admin impersonation is view-only for citations: a plate lookup on My Citations while impersonating shows matches but never links them to the impersonated student.
 - The Pay page (plate lookup and "my tickets") lists every payable citation: issued, overdue, past_due, escalated, appealed, and pending_payment. pending_payment covers abandoned Stripe checkouts and upheld/denied appeals; it must stay payable.
